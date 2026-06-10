@@ -250,7 +250,6 @@
                timeout_seconds, status, create_by, create_time, update_by, update_time, remark
         from sup_tim_inspection_item_config
         where item_code = #{itemCode}
-        limit 1
     </select>
 
     <insert id="insertItemConfig" parameterType="SupportTimInspectionItemConfig" useGeneratedKeys="true" keyProperty="configId">

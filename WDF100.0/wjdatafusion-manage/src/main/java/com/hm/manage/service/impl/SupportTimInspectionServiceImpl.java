@@ -171,7 +171,6 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
     @Override
     public List<SupportTimInspectionTarget> selectTargetList(SupportTimInspectionTarget target)
     {
-        ensureDefaultConfigs();
         List<SupportTimInspectionTarget> list = timInspectionMapper.selectTargetList(target);
         for (SupportTimInspectionTarget item : list)
         {
