@@ -244,6 +244,19 @@ VALUES
 (2291, '现场融合全部权限', 2200, 99, '#', '', '', '', 1, 0, 'F', '0', '0', 'datafusion', '#', 'admin', NOW(), '', NULL, '')
 ON DUPLICATE KEY UPDATE perms=VALUES(perms), menu_name=VALUES(menu_name);
 
+-- 如果环境中存在 datafusion 角色，则自动绑定 datafusion 权限字符
+INSERT INTO sys_role_menu(role_id, menu_id)
+SELECT r.role_id, m.menu_id
+FROM sys_role r
+         INNER JOIN sys_menu m ON m.perms = 'datafusion'
+WHERE r.role_key = 'datafusion'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM sys_role_menu rm
+    WHERE rm.role_id = r.role_id
+      AND rm.menu_id = m.menu_id
+  );
+
 -- 现场管理按钮权限
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES

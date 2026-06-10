@@ -1,5 +1,26 @@
 export const releaseNotes = [
   {
+    version: 'v2.4.2',
+    submitTime: '2026-06-10 12:31:33',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: 'Datafusion权限字符绑定修复',
+    summary: '按若依权限模型修复 datafusion 权限字符分配问题，确保首页依据 permissions 中的 datafusion 展示现场融合工作台。',
+    changes: [
+      '确认 datafusion 为 sys_menu.perms 权限字符，并将首页判断恢复为只匹配 permissions 中的 datafusion。',
+      '新增升级脚本，将 sys_menu.perms=datafusion 的菜单权限自动绑定给 role_key=datafusion 的角色。',
+      '同步更新 support_v1.sql 和 support_deploy_all.sql，后续新环境部署时会自动补齐 datafusion 角色权限关系。'
+    ],
+    scope: ['首页', '权限分流', 'Datafusion权限字符', '角色菜单关系', 'SQL脚本', '版本记录'],
+    database: '不修改业务表结构；向 sys_role_menu 补充 role_key=datafusion 与 perms=datafusion 的缺失权限关系。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260610_datafusion_permission_binding_v2_4_2.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v2.4.1',
     submitTime: '2026-06-10 12:20:14',
     level: 'patch',

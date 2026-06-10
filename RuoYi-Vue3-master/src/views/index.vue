@@ -288,7 +288,7 @@ const isVehicleAlarmUser = computed(() =>
   || permissionList.value.some((permission) => String(permission).toLowerCase().includes('vehiclealarm'))
 )
 const isDatafusionUser = computed(() =>
-  hasExactAuthKey(roleList.value, 'datafusion') || hasExactAuthKey(permissionList.value, 'datafusion')
+  hasExactAuthKey(permissionList.value, 'datafusion')
 )
 const quickLinks = computed(() => {
   const links = [
