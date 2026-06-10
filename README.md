@@ -149,3 +149,40 @@ npm run build:prod
 
 当前已提交到 GitHub 的版本标签为 `v2.3.1`，该版本包含现场留言板修复、轮询优化、现场导入导出补充留言数据、删除现场清理留言和 SQL 索引优化。
 
+## 版本提交规范
+
+后续每次整理成版本号并提交到 GitHub 时，需要同步补齐版本描述信息，避免只有代码提交和标签，缺少部署与业务说明。
+
+每次版本提交至少包含：
+
+- 更新 `RuoYi-Vue3-master/src/views/support/version/releaseNotes.js`，补充版本号、提交时间、版本类型、标题、概要、修改明细、影响范围、数据库说明和 SQL 脚本路径。
+- 如果涉及数据库调整，新增独立升级脚本，文件名带版本号后缀，例如 `support_upgrade_yyyyMMdd_xxx_v2_3_1.sql`，并同步维护 `support_v1.sql` 和 `support_deploy_all.sql`。
+- Git commit message 写清版本或功能主题，例如 `feat: release support message board v2.3.0`、`fix: release site message fixes v2.3.1`。
+- Git tag 使用版本号，例如 `v2.3.1`，并在 GitHub Release 中补充对应描述。
+- Release 描述需要包含：功能概要、主要修改、涉及 SQL、验证结果和部署注意事项。
+
+建议的 Release 描述格式：
+
+```markdown
+## 概要
+
+一句话说明本版本解决的问题。
+
+## 主要修改
+
+- 修改点 1
+- 修改点 2
+
+## 数据库脚本
+
+- WDF100.0/sql/xxx.sql
+
+## 验证结果
+
+- 后端编译通过
+- 前端构建通过
+
+## 部署说明
+
+执行脚本前先备份数据库；无数据库变更时写“无”。
+```
