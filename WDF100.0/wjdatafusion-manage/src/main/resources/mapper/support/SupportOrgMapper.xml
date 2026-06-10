@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportOrgMapper">
+
+    <resultMap id="SupportOrgResult" type="SupportOrg">
+        <result property="orgId" column="org_id"/>
+        <result property="orgType" column="org_type"/>
+        <result property="orgName" column="org_name"/>
+        <result property="shortName" column="short_name"/>
+        <result property="status" column="status"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <sql id="selectSupportOrgVo">
+        select org_id, org_type, org_name, short_name, status,
+               create_by, create_time, update_by, update_time, remark
+        from sup_org
+    </sql>
+
+    <select id="selectSupportOrgByOrgId" parameterType="Long" resultMap="SupportOrgResult">
+        <include refid="selectSupportOrgVo"/>
+        where org_id = #{orgId}
+    </select>
+
+    <select id="selectSupportOrgList" parameterType="SupportOrg" resultMap="SupportOrgResult">
+        <include refid="selectSupportOrgVo"/>
+        <where>
+            <if test="orgType != null and orgType != ''">and org_type = #{orgType}</if>
+            <if test="orgName != null and orgName != ''">and org_name like concat('%', #{orgName}, '%')</if>
+            <if test="status != null and status != ''">and status = #{status}</if>
+        </where>
+        order by org_id desc
+    </select>
+
+    <select id="selectOrgsByPlatformId" parameterType="Long" resultMap="SupportOrgResult">
+        <include refid="selectSupportOrgVo"/>
+        where org_id in (select org_id from sup_platform_org_rel where platform_id = #{platformId})
+        order by org_id desc
+    </select>
+
+    <select id="selectOrgsBySiteId" parameterType="Long" resultMap="SupportOrgResult">
+        <include refid="selectSupportOrgVo"/>
+        where org_id in (
+            select distinct c.org_id
+            from sup_contact c
+                     inner join sup_platform_contact_rel pcr on pcr.contact_id = c.contact_id
+                     inner join sup_platform p on p.platform_id = pcr.platform_id
+            where p.site_id = #{siteId}
+        )
+        order by org_id desc
+    </select>
+
+    <select id="selectSiteIdsByOrgId" parameterType="Long" resultType="Long">
+        select distinct p.site_id
+        from sup_contact c
+                 inner join sup_platform_contact_rel pcr on pcr.contact_id = c.contact_id
+                 inner join sup_platform p on p.platform_id = pcr.platform_id
+        where c.org_id = #{orgId}
+        union
+        select distinct p.site_id
+        from sup_platform_org_rel por
+                 inner join sup_platform p on p.platform_id = por.platform_id
+        where por.org_id = #{orgId}
+    </select>
+
+    <select id="countBySiteId" parameterType="Long" resultType="int">
+        select count(distinct c.org_id)
+        from sup_contact c
+                 inner join sup_platform_contact_rel pcr on pcr.contact_id = c.contact_id
+                 inner join sup_platform p on p.platform_id = pcr.platform_id
+        where p.site_id = #{siteId}
+    </select>
+
+    <insert id="insertSupportOrg" parameterType="SupportOrg" useGeneratedKeys="true" keyProperty="orgId">
+        insert into sup_org
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="orgType != null and orgType != ''">org_type,</if>
+            <if test="orgName != null and orgName != ''">org_name,</if>
+            <if test="shortName != null">short_name,</if>
+            <if test="status != null and status != ''">status,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="orgType != null and orgType != ''">#{orgType},</if>
+            <if test="orgName != null and orgName != ''">#{orgName},</if>
+            <if test="shortName != null">#{shortName},</if>
+            <if test="status != null and status != ''">#{status},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateSupportOrg" parameterType="SupportOrg">
+        update sup_org
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="orgType != null and orgType != ''">org_type = #{orgType},</if>
+            <if test="orgName != null and orgName != ''">org_name = #{orgName},</if>
+            <if test="shortName != null">short_name = #{shortName},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where org_id = #{orgId}
+    </update>
+
+    <delete id="deleteSupportOrgByOrgId" parameterType="Long">
+        delete from sup_org where org_id = #{orgId}
+    </delete>
+
+    <delete id="deleteSupportOrgByOrgIds" parameterType="String">
+        delete from sup_org where org_id in
+        <foreach item="orgId" collection="array" open="(" separator="," close=")">
+            #{orgId}
+        </foreach>
+    </delete>
+</mapper>

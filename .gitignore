@@ -1,0 +1,16 @@
+.DS_Store
+
+# Local assistant/browser artifacts
+.claude/
+.playwright-mcp/
+tmp/
+
+# Runtime files
+ruoyiFiles/
+
+# Local screenshots and manual verification captures
+support-*.png
+
+# Frontend build archive
+RuoYi-Vue3-master/dist.zip
+RuoYi-Vue3-master/offline-packages/

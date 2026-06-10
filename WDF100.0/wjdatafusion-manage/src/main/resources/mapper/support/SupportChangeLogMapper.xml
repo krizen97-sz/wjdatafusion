@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportChangeLogMapper">
+
+    <resultMap id="SupportChangeLogResult" type="SupportChangeLog">
+        <result property="logId" column="log_id"/>
+        <result property="siteId" column="site_id"/>
+        <result property="actionType" column="action_type"/>
+        <result property="targetType" column="target_type"/>
+        <result property="targetId" column="target_id"/>
+        <result property="targetName" column="target_name"/>
+        <result property="summary" column="summary"/>
+        <result property="detailContent" column="detail_content"/>
+        <result property="operatorName" column="operator_name"/>
+        <result property="operatorIp" column="operator_ip"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <sql id="selectSupportChangeLogVo">
+        select log_id, site_id, action_type, target_type, target_id, target_name,
+               summary, detail_content, operator_name, operator_ip, create_time
+        from sup_change_log
+    </sql>
+
+    <select id="selectSupportChangeLogByLogId" parameterType="Long" resultMap="SupportChangeLogResult">
+        <include refid="selectSupportChangeLogVo"/>
+        where log_id = #{logId}
+    </select>
+
+    <select id="selectSupportChangeLogList" parameterType="SupportChangeLog" resultMap="SupportChangeLogResult">
+        <include refid="selectSupportChangeLogVo"/>
+        <where>
+            <if test="siteId != null">and site_id = #{siteId}</if>
+            <if test="actionType != null and actionType != ''">and action_type = #{actionType}</if>
+            <if test="actionType == null or actionType == ''">and action_type in ('INSERT', 'UPDATE', 'DELETE')</if>
+            <if test="targetType != null and targetType != ''">and target_type = #{targetType}</if>
+            <if test="operatorName != null and operatorName != ''">and operator_name like concat('%', #{operatorName}, '%')</if>
+        </where>
+        order by log_id desc
+    </select>
+
+    <insert id="insertSupportChangeLog" parameterType="SupportChangeLog" useGeneratedKeys="true" keyProperty="logId">
+        insert into sup_change_log
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="siteId != null">site_id,</if>
+            <if test="actionType != null and actionType != ''">action_type,</if>
+            <if test="targetType != null and targetType != ''">target_type,</if>
+            <if test="targetId != null">target_id,</if>
+            <if test="targetName != null">target_name,</if>
+            <if test="summary != null">summary,</if>
+            <if test="detailContent != null">detail_content,</if>
+            <if test="operatorName != null">operator_name,</if>
+            <if test="operatorIp != null">operator_ip,</if>
+            <if test="createTime != null">create_time,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="siteId != null">#{siteId},</if>
+            <if test="actionType != null and actionType != ''">#{actionType},</if>
+            <if test="targetType != null and targetType != ''">#{targetType},</if>
+            <if test="targetId != null">#{targetId},</if>
+            <if test="targetName != null">#{targetName},</if>
+            <if test="summary != null">#{summary},</if>
+            <if test="detailContent != null">#{detailContent},</if>
+            <if test="operatorName != null">#{operatorName},</if>
+            <if test="operatorIp != null">#{operatorIp},</if>
+            <if test="createTime != null">#{createTime},</if>
+        </trim>
+    </insert>
+</mapper>

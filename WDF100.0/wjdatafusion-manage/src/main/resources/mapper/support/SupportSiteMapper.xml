@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportSiteMapper">
+
+    <resultMap id="SupportSiteResult" type="SupportSite">
+        <result property="siteId" column="site_id"/>
+        <result property="siteName" column="site_name"/>
+        <result property="siteCode" column="site_code"/>
+        <result property="provinceCode" column="province_code"/>
+        <result property="provinceName" column="province_name"/>
+        <result property="cityCode" column="city_code"/>
+        <result property="cityName" column="city_name"/>
+        <result property="districtCode" column="district_code"/>
+        <result property="districtName" column="district_name"/>
+        <result property="location" column="location"/>
+        <result property="description" column="description"/>
+        <result property="status" column="status"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <sql id="selectSupportSiteVo">
+        select site_id, site_name, site_code,
+               province_code, province_name, city_code, city_name, district_code, district_name,
+               location, description, status,
+               create_by, create_time, update_by, update_time, remark
+        from sup_site
+    </sql>
+
+    <select id="selectSupportSiteBySiteId" parameterType="Long" resultMap="SupportSiteResult">
+        <include refid="selectSupportSiteVo"/>
+        where site_id = #{siteId}
+    </select>
+
+    <select id="selectSupportSiteList" parameterType="SupportSite" resultMap="SupportSiteResult">
+        <include refid="selectSupportSiteVo"/>
+        <where>
+            <if test="siteName != null and siteName != ''">and site_name like concat('%', #{siteName}, '%')</if>
+            <if test="siteCode != null and siteCode != ''">and site_code = #{siteCode}</if>
+            <if test="provinceCode != null and provinceCode != ''">and province_code = #{provinceCode}</if>
+            <if test="cityCode != null and cityCode != ''">and city_code = #{cityCode}</if>
+            <if test="districtCode != null and districtCode != ''">and district_code = #{districtCode}</if>
+            <if test="status != null and status != ''">and status = #{status}</if>
+        </where>
+        order by site_id desc
+    </select>
+
+    <insert id="insertSupportSite" parameterType="SupportSite" useGeneratedKeys="true" keyProperty="siteId">
+        insert into sup_site
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="siteName != null and siteName != ''">site_name,</if>
+            <if test="siteCode != null and siteCode != ''">site_code,</if>
+            <if test="provinceCode != null and provinceCode != ''">province_code,</if>
+            <if test="provinceName != null and provinceName != ''">province_name,</if>
+            <if test="cityCode != null and cityCode != ''">city_code,</if>
+            <if test="cityName != null and cityName != ''">city_name,</if>
+            <if test="districtCode != null and districtCode != ''">district_code,</if>
+            <if test="districtName != null and districtName != ''">district_name,</if>
+            <if test="location != null">location,</if>
+            <if test="description != null">description,</if>
+            <if test="status != null and status != ''">status,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="siteName != null and siteName != ''">#{siteName},</if>
+            <if test="siteCode != null and siteCode != ''">#{siteCode},</if>
+            <if test="provinceCode != null and provinceCode != ''">#{provinceCode},</if>
+            <if test="provinceName != null and provinceName != ''">#{provinceName},</if>
+            <if test="cityCode != null and cityCode != ''">#{cityCode},</if>
+            <if test="cityName != null and cityName != ''">#{cityName},</if>
+            <if test="districtCode != null and districtCode != ''">#{districtCode},</if>
+            <if test="districtName != null and districtName != ''">#{districtName},</if>
+            <if test="location != null">#{location},</if>
+            <if test="description != null">#{description},</if>
+            <if test="status != null and status != ''">#{status},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateSupportSite" parameterType="SupportSite">
+        update sup_site
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="siteName != null and siteName != ''">site_name = #{siteName},</if>
+            <if test="siteCode != null and siteCode != ''">site_code = #{siteCode},</if>
+            <if test="provinceCode != null and provinceCode != ''">province_code = #{provinceCode},</if>
+            <if test="provinceName != null and provinceName != ''">province_name = #{provinceName},</if>
+            <if test="cityCode != null and cityCode != ''">city_code = #{cityCode},</if>
+            <if test="cityName != null and cityName != ''">city_name = #{cityName},</if>
+            <if test="districtCode != null and districtCode != ''">district_code = #{districtCode},</if>
+            <if test="districtName != null and districtName != ''">district_name = #{districtName},</if>
+            <if test="location != null">location = #{location},</if>
+            <if test="description != null">description = #{description},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where site_id = #{siteId}
+    </update>
+
+    <select id="selectMaxSiteSequenceByRegion" parameterType="SupportSite" resultType="Integer">
+        select ifnull(max(cast(right(site_code, 4) as unsigned)), 0)
+        from sup_site
+        where province_code = #{provinceCode}
+          and city_code = #{cityCode}
+          and district_code = #{districtCode}
+          and site_code is not null
+          and site_code != ''
+        <if test="siteId != null">
+            and site_id != #{siteId}
+        </if>
+    </select>
+
+    <delete id="deleteSupportSiteBySiteId" parameterType="Long">
+        delete from sup_site where site_id = #{siteId}
+    </delete>
+
+    <delete id="deleteSupportSiteBySiteIds" parameterType="String">
+        delete from sup_site where site_id in
+        <foreach item="siteId" collection="array" open="(" separator="," close=")">
+            #{siteId}
+        </foreach>
+    </delete>
+</mapper>

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>com.hm</groupId>
+        <artifactId>wjdatafusion</artifactId>
+        <version>3.9.1</version>
+    </parent>
+
+    <artifactId>wjdatafusion-manage</artifactId>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.hm</groupId>
+            <artifactId>wjdatafusion-framework</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.hm</groupId>
+            <artifactId>wjdatafusion-common</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.hm</groupId>
+            <artifactId>wjdatafusion-system</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.belerweb</groupId>
+            <artifactId>pinyin4j</artifactId>
+            <version>2.5.1</version>
+        </dependency>
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka-clients</artifactId>
+        </dependency>
+    </dependencies>
+
+    <properties>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+</project>

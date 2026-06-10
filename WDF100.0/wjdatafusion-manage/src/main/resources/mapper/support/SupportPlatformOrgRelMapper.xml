@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportPlatformOrgRelMapper">
+
+    <insert id="insertSupportPlatformOrgRel" parameterType="SupportPlatformOrgRel" useGeneratedKeys="true" keyProperty="relId">
+        insert into sup_platform_org_rel(platform_id, org_id, create_by, create_time)
+        values(#{platformId}, #{orgId}, #{createBy}, #{createTime})
+    </insert>
+
+    <delete id="deleteSupportPlatformOrgRel">
+        delete from sup_platform_org_rel where platform_id = #{platformId} and org_id = #{orgId}
+    </delete>
+
+    <select id="countByPlatformAndOrg" resultType="int">
+        select count(1) from sup_platform_org_rel where platform_id = #{platformId} and org_id = #{orgId}
+    </select>
+
+    <delete id="deleteByPlatformId" parameterType="Long">
+        delete from sup_platform_org_rel where platform_id = #{platformId}
+    </delete>
+
+    <delete id="deleteByOrgId" parameterType="Long">
+        delete from sup_platform_org_rel where org_id = #{orgId}
+    </delete>
+</mapper>

@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportSubplatformEndpointMapper">
+
+    <resultMap id="SupportSubplatformEndpointResult" type="SupportSubplatformEndpoint">
+        <result property="endpointId" column="endpoint_id"/>
+        <result property="subPlatformId" column="sub_platform_id"/>
+        <result property="endpointName" column="endpoint_name"/>
+        <result property="accessUrl" column="access_url"/>
+        <result property="loginUsername" column="login_username"/>
+        <result property="loginPasswordCipher" column="login_password_cipher"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <sql id="selectSupportSubplatformEndpointVo">
+        select endpoint_id, sub_platform_id, endpoint_name, access_url, login_username, login_password_cipher,
+               create_by, create_time, update_by, update_time, remark
+        from sup_subplatform_endpoint
+    </sql>
+
+    <select id="selectSupportSubplatformEndpointByEndpointId" parameterType="Long" resultMap="SupportSubplatformEndpointResult">
+        <include refid="selectSupportSubplatformEndpointVo"/>
+        where endpoint_id = #{endpointId}
+    </select>
+
+    <select id="selectSupportSubplatformEndpointList" parameterType="SupportSubplatformEndpoint" resultMap="SupportSubplatformEndpointResult">
+        <include refid="selectSupportSubplatformEndpointVo"/>
+        <where>
+            <if test="subPlatformId != null">and sub_platform_id = #{subPlatformId}</if>
+            <if test="endpointName != null and endpointName != ''">and endpoint_name like concat('%', #{endpointName}, '%')</if>
+            <if test="accessUrl != null and accessUrl != ''">and access_url like concat('%', #{accessUrl}, '%')</if>
+        </where>
+        order by endpoint_id desc
+    </select>
+
+    <insert id="insertSupportSubplatformEndpoint" parameterType="SupportSubplatformEndpoint" useGeneratedKeys="true" keyProperty="endpointId">
+        insert into sup_subplatform_endpoint
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="subPlatformId != null">sub_platform_id,</if>
+            <if test="endpointName != null and endpointName != ''">endpoint_name,</if>
+            <if test="accessUrl != null and accessUrl != ''">access_url,</if>
+            <if test="loginUsername != null">login_username,</if>
+            <if test="loginPasswordCipher != null and loginPasswordCipher != ''">login_password_cipher,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="subPlatformId != null">#{subPlatformId},</if>
+            <if test="endpointName != null and endpointName != ''">#{endpointName},</if>
+            <if test="accessUrl != null and accessUrl != ''">#{accessUrl},</if>
+            <if test="loginUsername != null">#{loginUsername},</if>
+            <if test="loginPasswordCipher != null and loginPasswordCipher != ''">#{loginPasswordCipher},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateSupportSubplatformEndpoint" parameterType="SupportSubplatformEndpoint">
+        update sup_subplatform_endpoint
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="subPlatformId != null">sub_platform_id = #{subPlatformId},</if>
+            <if test="endpointName != null and endpointName != ''">endpoint_name = #{endpointName},</if>
+            <if test="accessUrl != null and accessUrl != ''">access_url = #{accessUrl},</if>
+            <if test="loginUsername != null">login_username = #{loginUsername},</if>
+            <if test="loginPasswordCipher != null and loginPasswordCipher != ''">login_password_cipher = #{loginPasswordCipher},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where endpoint_id = #{endpointId}
+    </update>
+
+    <delete id="deleteSupportSubplatformEndpointByEndpointId" parameterType="Long">
+        delete from sup_subplatform_endpoint where endpoint_id = #{endpointId}
+    </delete>
+
+    <delete id="deleteSupportSubplatformEndpointByEndpointIds" parameterType="String">
+        delete from sup_subplatform_endpoint where endpoint_id in
+        <foreach item="endpointId" collection="array" open="(" separator="," close=")">
+            #{endpointId}
+        </foreach>
+    </delete>
+</mapper>

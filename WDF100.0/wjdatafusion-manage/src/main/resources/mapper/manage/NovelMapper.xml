@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.NovelMapper">
+
+    <resultMap type="Novel" id="NovelResult">
+        <result property="id"    column="id"    />
+        <result property="novelName"    column="novel_name"    />
+        <result property="novelCategroy"    column="novel_categroy"    />
+        <result property="content"    column="content"    />
+        <result property="createBy"    column="create_by"    />
+        <result property="createTime"    column="create_time"    />
+        <result property="updateBy"    column="update_by"    />
+        <result property="updateTime"    column="update_time"    />
+        <result property="remark"    column="remark"    />
+    </resultMap>
+
+    <sql id="selectNovelVo">
+        select id, novel_name, novel_categroy, content, create_by, create_time, update_by, update_time, remark from tb_novel
+    </sql>
+
+    <select id="selectNovelList" parameterType="Novel" resultMap="NovelResult">
+        <include refid="selectNovelVo"/>
+        <where>
+            <if test="novelName != null  and novelName != ''"> and novel_name like concat('%', #{novelName}, '%')</if>
+            <if test="novelCategroy != null  and novelCategroy != ''"> and novel_categroy = #{novelCategroy}</if>
+            <if test="content != null  and content != ''"> and content = #{content}</if>
+        </where>
+    </select>
+
+    <select id="selectNovelById" parameterType="Long" resultMap="NovelResult">
+        <include refid="selectNovelVo"/>
+        where id = #{id}
+    </select>
+
+    <insert id="insertNovel" parameterType="Novel" useGeneratedKeys="true" keyProperty="id">
+        insert into tb_novel
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="novelName != null and novelName != ''">novel_name,</if>
+            <if test="novelCategroy != null and novelCategroy != ''">novel_categroy,</if>
+            <if test="content != null and content != ''">content,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="novelName != null and novelName != ''">#{novelName},</if>
+            <if test="novelCategroy != null and novelCategroy != ''">#{novelCategroy},</if>
+            <if test="content != null and content != ''">#{content},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateNovel" parameterType="Novel">
+        update tb_novel
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="novelName != null and novelName != ''">novel_name = #{novelName},</if>
+            <if test="novelCategroy != null and novelCategroy != ''">novel_categroy = #{novelCategroy},</if>
+            <if test="content != null and content != ''">content = #{content},</if>
+            <if test="createBy != null">create_by = #{createBy},</if>
+            <if test="createTime != null">create_time = #{createTime},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where id = #{id}
+    </update>
+
+    <delete id="deleteNovelById" parameterType="Long">
+        delete from tb_novel where id = #{id}
+    </delete>
+
+    <delete id="deleteNovelByIds" parameterType="String">
+        delete from tb_novel where id in
+        <foreach item="id" collection="array" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+</mapper>

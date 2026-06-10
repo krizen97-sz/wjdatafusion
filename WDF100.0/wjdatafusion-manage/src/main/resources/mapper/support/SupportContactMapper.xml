@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportContactMapper">
+
+    <resultMap id="SupportContactResult" type="SupportContact">
+        <result property="contactId" column="contact_id"/>
+        <result property="orgId" column="org_id"/>
+        <result property="orgName" column="org_name"/>
+        <result property="orgType" column="org_type"/>
+        <result property="contactName" column="contact_name"/>
+        <result property="roleType" column="role_type"/>
+        <result property="phone" column="phone"/>
+        <result property="email" column="email"/>
+        <result property="wechat" column="wechat"/>
+        <result property="isPrimary" column="is_primary"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <sql id="selectSupportContactVo">
+        select c.contact_id, c.org_id, o.org_name, o.org_type, c.contact_name, c.role_type, c.phone, c.email, c.wechat, c.is_primary,
+               c.create_by, c.create_time, c.update_by, c.update_time, c.remark
+        from sup_contact c
+                 left join sup_org o on o.org_id = c.org_id
+    </sql>
+
+    <select id="selectSupportContactByContactId" parameterType="Long" resultMap="SupportContactResult">
+        <include refid="selectSupportContactVo"/>
+        where c.contact_id = #{contactId}
+    </select>
+
+    <select id="selectSupportContactList" parameterType="SupportContact" resultMap="SupportContactResult">
+        <include refid="selectSupportContactVo"/>
+        <where>
+            <if test="orgId != null">and c.org_id = #{orgId}</if>
+            <if test="contactName != null and contactName != ''">and c.contact_name like concat('%', #{contactName}, '%')</if>
+            <if test="phone != null and phone != ''">and c.phone like concat('%', #{phone}, '%')</if>
+            <if test="roleType != null and roleType != ''">and c.role_type = #{roleType}</if>
+        </where>
+        order by c.contact_id desc
+    </select>
+
+    <select id="selectContactsByPlatformId" parameterType="Long" resultMap="SupportContactResult">
+        <include refid="selectSupportContactVo"/>
+        inner join sup_platform_contact_rel pcr on pcr.contact_id = c.contact_id
+        where pcr.platform_id = #{platformId}
+        order by c.is_primary desc, c.contact_id desc
+    </select>
+
+    <select id="selectSiteIdsByContactId" parameterType="Long" resultType="Long">
+        select distinct p.site_id
+        from sup_platform_contact_rel pcr
+                 inner join sup_platform p on p.platform_id = pcr.platform_id
+        where pcr.contact_id = #{contactId}
+    </select>
+
+    <select id="countContactsBySiteId" parameterType="Long" resultType="int">
+        select count(distinct c.contact_id)
+        from sup_contact c
+                 inner join sup_platform_contact_rel pcr on pcr.contact_id = c.contact_id
+                 inner join sup_platform p on p.platform_id = pcr.platform_id
+        where p.site_id = #{siteId}
+    </select>
+
+    <insert id="insertSupportContact" parameterType="SupportContact" useGeneratedKeys="true" keyProperty="contactId">
+        insert into sup_contact
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="orgId != null">org_id,</if>
+            <if test="contactName != null and contactName != ''">contact_name,</if>
+            <if test="roleType != null">role_type,</if>
+            <if test="phone != null">phone,</if>
+            <if test="email != null">email,</if>
+            <if test="wechat != null">wechat,</if>
+            <if test="isPrimary != null">is_primary,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="orgId != null">#{orgId},</if>
+            <if test="contactName != null and contactName != ''">#{contactName},</if>
+            <if test="roleType != null">#{roleType},</if>
+            <if test="phone != null">#{phone},</if>
+            <if test="email != null">#{email},</if>
+            <if test="wechat != null">#{wechat},</if>
+            <if test="isPrimary != null">#{isPrimary},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateSupportContact" parameterType="SupportContact">
+        update sup_contact
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="orgId != null">org_id = #{orgId},</if>
+            <if test="contactName != null and contactName != ''">contact_name = #{contactName},</if>
+            <if test="roleType != null">role_type = #{roleType},</if>
+            <if test="phone != null">phone = #{phone},</if>
+            <if test="email != null">email = #{email},</if>
+            <if test="wechat != null">wechat = #{wechat},</if>
+            <if test="isPrimary != null">is_primary = #{isPrimary},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where contact_id = #{contactId}
+    </update>
+
+    <delete id="deleteSupportContactByContactId" parameterType="Long">
+        delete from sup_contact where contact_id = #{contactId}
+    </delete>
+
+    <delete id="deleteSupportContactByContactIds" parameterType="String">
+        delete from sup_contact where contact_id in
+        <foreach item="contactId" collection="array" open="(" separator="," close=")">
+            #{contactId}
+        </foreach>
+    </delete>
+
+    <delete id="deleteSupportContactByOrgId" parameterType="Long">
+        delete from sup_contact where org_id = #{orgId}
+    </delete>
+</mapper>

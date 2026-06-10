@@ -1,0 +1,6 @@
+-- 说明：
+-- 你的 PostgreSQL whitelist 表已经存在，且结构不可变。
+-- 当前代码按以下既有字段进行适配：
+--   id            状态位：1=停用，2=启用
+--   vehicleplate  车牌号
+--   alarmtype     违法类型，默认写 0

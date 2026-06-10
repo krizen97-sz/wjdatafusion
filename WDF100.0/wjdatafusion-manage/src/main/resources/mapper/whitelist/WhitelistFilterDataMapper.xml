@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.WhitelistFilterDataMapper">
+
+    <resultMap id="WhitelistFilterDataResult" type="WhitelistFilterData">
+        <id property="id" column="id"/>
+        <result property="plateNo" column="plate_no"/>
+        <result property="alarmType" column="alarm_type"/>
+        <result property="channelId" column="channel_id"/>
+        <result property="channelName" column="channel_name"/>
+        <result property="dataType" column="data_type"/>
+        <result property="eventType" column="event_type"/>
+        <result property="eventDescription" column="event_description"/>
+        <result property="ipAddress" column="ip_address"/>
+        <result property="portNo" column="port_no"/>
+        <result property="sendTime" column="send_time"/>
+        <result property="recvTime" column="recv_time"/>
+        <result property="passTime" column="pass_time"/>
+        <result property="cameraName" column="camera_name"/>
+        <result property="cameraAddress" column="camera_address"/>
+        <result property="deviceName" column="device_name"/>
+        <result property="directionIndex" column="direction_index"/>
+        <result property="crossingId" column="crossing_id"/>
+        <result property="laneNo" column="lane_no"/>
+        <result property="plateColor" column="plate_color"/>
+        <result property="vehicleType" column="vehicle_type"/>
+        <result property="passId" column="pass_id"/>
+        <result property="eventUuid" column="event_uuid"/>
+        <result property="taskId" column="task_id"/>
+        <result property="targetPicUrl" column="target_pic_url"/>
+        <result property="rawJson" column="raw_json"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <sql id="selectWhitelistFilterDataVo">
+        select id, plate_no, alarm_type, channel_id, channel_name, data_type, event_type, event_description,
+               ip_address, port_no, send_time, recv_time, pass_time, camera_name, camera_address, device_name,
+               direction_index, crossing_id, lane_no, plate_color, vehicle_type, pass_id, event_uuid, task_id,
+               target_pic_url, raw_json, create_time
+        from wl_filter_data
+    </sql>
+
+    <sql id="WhitelistFilterDataWhere">
+        <where>
+            <if test="plateNo != null and plateNo != ''">and plate_no like concat('%', #{plateNo}, '%')</if>
+            <if test="alarmType != null and alarmType != ''">and alarm_type = #{alarmType}</if>
+            <if test="channelName != null and channelName != ''">and channel_name like concat('%', #{channelName}, '%')</if>
+            <if test="cameraName != null and cameraName != ''">and camera_name like concat('%', #{cameraName}, '%')</if>
+            <if test="params.beginPassTime != null and params.beginPassTime != ''">and pass_time &gt;= #{params.beginPassTime}</if>
+            <if test="params.endPassTime != null and params.endPassTime != ''">and pass_time &lt;= #{params.endPassTime}</if>
+            <if test="params.plateScopeEmpty != null and params.plateScopeEmpty">
+                and 1 = 0
+            </if>
+            <if test="params.plateScopeList != null and params.plateScopeList.size() > 0">
+                and plate_no in
+                <foreach item="plateNoItem" collection="params.plateScopeList" open="(" separator="," close=")">
+                    #{plateNoItem}
+                </foreach>
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectWhitelistFilterDataById" parameterType="Long" resultMap="WhitelistFilterDataResult">
+        <include refid="selectWhitelistFilterDataVo"/>
+        where id = #{id}
+    </select>
+
+    <select id="selectWhitelistFilterDataByIds" parameterType="Long" resultMap="WhitelistFilterDataResult">
+        <include refid="selectWhitelistFilterDataVo"/>
+        where id in
+        <foreach item="id" collection="array" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </select>
+
+    <select id="selectWhitelistFilterDataList" parameterType="WhitelistFilterData" resultMap="WhitelistFilterDataResult">
+        <include refid="selectWhitelistFilterDataVo"/>
+        <include refid="WhitelistFilterDataWhere"/>
+        order by id desc
+    </select>
+
+    <select id="countWhitelistFilterData" parameterType="WhitelistFilterData" resultType="int">
+        select count(1)
+        from wl_filter_data
+        <include refid="WhitelistFilterDataWhere"/>
+    </select>
+
+    <select id="countDistinctPlateNo" parameterType="WhitelistFilterData" resultType="int">
+        select count(distinct plate_no)
+        from wl_filter_data
+        <include refid="WhitelistFilterDataWhere"/>
+    </select>
+
+    <insert id="insertWhitelistFilterData" parameterType="WhitelistFilterData" useGeneratedKeys="true" keyProperty="id">
+        insert into wl_filter_data
+        (plate_no, alarm_type, channel_id, channel_name, data_type, event_type, event_description,
+         ip_address, port_no, send_time, recv_time, pass_time, camera_name, camera_address, device_name,
+         direction_index, crossing_id, lane_no, plate_color, vehicle_type, pass_id, event_uuid, task_id,
+         target_pic_url, raw_json, create_time)
+        values
+        (#{plateNo}, #{alarmType}, #{channelId}, #{channelName}, #{dataType}, #{eventType}, #{eventDescription},
+         #{ipAddress}, #{portNo}, #{sendTime}, #{recvTime}, #{passTime}, #{cameraName}, #{cameraAddress}, #{deviceName},
+         #{directionIndex}, #{crossingId}, #{laneNo}, #{plateColor}, #{vehicleType}, #{passId}, #{eventUuid}, #{taskId},
+         #{targetPicUrl}, #{rawJson}, #{createTime})
+    </insert>
+
+    <delete id="deleteWhitelistFilterDataByIds" parameterType="String">
+        delete from wl_filter_data where id in
+        <foreach item="id" collection="array" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+</mapper>

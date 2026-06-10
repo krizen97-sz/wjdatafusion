@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportPlatformContactRelMapper">
+
+    <insert id="insertSupportPlatformContactRel">
+        insert into sup_platform_contact_rel(platform_id, contact_id, create_by, create_time)
+        values(#{platformId}, #{contactId}, #{createBy}, #{createTime})
+    </insert>
+
+    <delete id="deleteSupportPlatformContactRel">
+        delete from sup_platform_contact_rel
+        where platform_id = #{platformId}
+          and contact_id = #{contactId}
+    </delete>
+
+    <select id="countByPlatformAndContact" resultType="int">
+        select count(1)
+        from sup_platform_contact_rel
+        where platform_id = #{platformId}
+          and contact_id = #{contactId}
+    </select>
+
+    <delete id="deleteByPlatformId">
+        delete from sup_platform_contact_rel where platform_id = #{platformId}
+    </delete>
+
+    <delete id="deleteByContactId">
+        delete from sup_platform_contact_rel where contact_id = #{contactId}
+    </delete>
+
+    <delete id="deleteByOrgId">
+        delete from sup_platform_contact_rel
+        where contact_id in (
+            select contact_id
+            from sup_contact
+            where org_id = #{orgId}
+        )
+    </delete>
+</mapper>
