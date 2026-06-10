@@ -1,5 +1,28 @@
 export const releaseNotes = [
   {
+    version: 'v2.5.0',
+    submitTime: '2026-06-10 18:44:23',
+    level: 'minor',
+    levelLabel: '小版本',
+    tagType: 'primary',
+    title: 'TIM系统巡检可配置迁入',
+    summary: '新增TIM系统巡检中心，将旧项目中写死的7项巡检改造为可开关、可配置目标、可实时生效的巡检能力。',
+    changes: [
+      '新增TIM系统巡检页面，包含巡检记录和巡检配置两个页签，可手动执行巡检、查看详情、导出Excel和生成当日Word结果。',
+      '7项巡检配置全部数据库化，支持单独启停、配置阈值、比较规则、统计窗口和超时时间。',
+      '巡检目标改为可维护清单，支持HTTP计数、FTP目录、SFTP目录、Kafka积压和复用现有服务器的磁盘巡检。',
+      '每次巡检保存当时的配置快照和目标明细结果，避免后续配置调整影响历史记录回溯。',
+      '新增Quartz任务入口，定时巡检与手动巡检共用同一套最新配置读取和结果落库逻辑。'
+    ],
+    scope: ['TIM系统巡检', '巡检配置中心', '目标配置', '巡检记录', '定时任务', '菜单权限', 'SQL脚本', '版本记录'],
+    database: '新增 sup_tim_inspection、sup_tim_inspection_item、sup_tim_inspection_item_config、sup_tim_inspection_target、sup_tim_inspection_target_result 五张表，并新增 support:timInspection:* 菜单按钮权限。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260610_tim_inspection_v2_5_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v2.4.2',
     submitTime: '2026-06-10 12:31:33',
     level: 'patch',

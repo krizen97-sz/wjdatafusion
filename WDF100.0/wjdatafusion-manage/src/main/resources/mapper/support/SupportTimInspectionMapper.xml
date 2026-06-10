@@ -1,0 +1,412 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportTimInspectionMapper">
+
+    <resultMap id="SupportTimInspectionResult" type="SupportTimInspection">
+        <result property="inspectionId" column="inspection_id"/>
+        <result property="inspectionTime" column="inspection_time"/>
+        <result property="inspectionType" column="inspection_type"/>
+        <result property="sourceType" column="source_type"/>
+        <result property="resultStatus" column="result_status"/>
+        <result property="executorName" column="executor_name"/>
+        <result property="enabledItemCount" column="enabled_item_count"/>
+        <result property="skippedItemCount" column="skipped_item_count"/>
+        <result property="summary" column="summary"/>
+        <result property="abnormalSummary" column="abnormal_summary"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <resultMap id="SupportTimInspectionItemResult" type="SupportTimInspectionItem">
+        <result property="itemId" column="item_id"/>
+        <result property="inspectionId" column="inspection_id"/>
+        <result property="itemCode" column="item_code"/>
+        <result property="itemName" column="item_name"/>
+        <result property="itemType" column="item_type"/>
+        <result property="enabledFlag" column="enabled_flag"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="thresholdValue" column="threshold_value"/>
+        <result property="thresholdUnit" column="threshold_unit"/>
+        <result property="compareRule" column="compare_rule"/>
+        <result property="timeWindowMinutes" column="time_window_minutes"/>
+        <result property="timeoutSeconds" column="timeout_seconds"/>
+        <result property="resultStatus" column="result_status"/>
+        <result property="actualValue" column="actual_value"/>
+        <result property="actualUnit" column="actual_unit"/>
+        <result property="resultSummary" column="result_summary"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <resultMap id="SupportTimInspectionItemConfigResult" type="SupportTimInspectionItemConfig">
+        <result property="configId" column="config_id"/>
+        <result property="itemCode" column="item_code"/>
+        <result property="itemName" column="item_name"/>
+        <result property="itemType" column="item_type"/>
+        <result property="enabledFlag" column="enabled_flag"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="thresholdValue" column="threshold_value"/>
+        <result property="thresholdUnit" column="threshold_unit"/>
+        <result property="compareRule" column="compare_rule"/>
+        <result property="timeWindowMinutes" column="time_window_minutes"/>
+        <result property="timeoutSeconds" column="timeout_seconds"/>
+        <result property="status" column="status"/>
+        <result property="targetCount" column="target_count"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <resultMap id="SupportTimInspectionTargetResultMap" type="SupportTimInspectionTarget">
+        <result property="targetId" column="target_id"/>
+        <result property="itemCode" column="item_code"/>
+        <result property="targetName" column="target_name"/>
+        <result property="targetType" column="target_type"/>
+        <result property="serverId" column="server_id"/>
+        <result property="serverName" column="server_name"/>
+        <result property="serverAddress" column="server_address"/>
+        <result property="host" column="host"/>
+        <result property="port" column="port"/>
+        <result property="path" column="path"/>
+        <result property="url" column="url"/>
+        <result property="httpMethod" column="http_method"/>
+        <result property="topic" column="topic"/>
+        <result property="consumerGroup" column="consumer_group"/>
+        <result property="username" column="username"/>
+        <result property="passwordCipher" column="password_cipher"/>
+        <result property="appKey" column="app_key"/>
+        <result property="secretCipher" column="secret_cipher"/>
+        <result property="resultPath" column="result_path"/>
+        <result property="extraParams" column="extra_params"/>
+        <result property="status" column="status"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <resultMap id="SupportTimInspectionTargetResultResult" type="SupportTimInspectionTargetResult">
+        <result property="resultId" column="result_id"/>
+        <result property="inspectionId" column="inspection_id"/>
+        <result property="itemId" column="item_id"/>
+        <result property="targetId" column="target_id"/>
+        <result property="targetName" column="target_name"/>
+        <result property="targetType" column="target_type"/>
+        <result property="resultStatus" column="result_status"/>
+        <result property="actualValue" column="actual_value"/>
+        <result property="actualUnit" column="actual_unit"/>
+        <result property="resultDetail" column="result_detail"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <sql id="selectInspectionVo">
+        select inspection_id, inspection_time, inspection_type, source_type, result_status, executor_name,
+               enabled_item_count, skipped_item_count, summary, abnormal_summary,
+               create_by, create_time, update_by, update_time, remark
+        from sup_tim_inspection
+    </sql>
+
+    <select id="selectInspectionList" parameterType="SupportTimInspection" resultMap="SupportTimInspectionResult">
+        <include refid="selectInspectionVo"/>
+        <where>
+            <if test="inspectionType != null and inspectionType != ''">and inspection_type = #{inspectionType}</if>
+            <if test="sourceType != null and sourceType != ''">and source_type = #{sourceType}</if>
+            <if test="resultStatus != null and resultStatus != ''">and result_status = #{resultStatus}</if>
+            <if test="executorName != null and executorName != ''">and executor_name like concat('%', #{executorName}, '%')</if>
+        </where>
+        order by inspection_time desc, inspection_id desc
+    </select>
+
+    <select id="selectInspectionById" parameterType="Long" resultMap="SupportTimInspectionResult">
+        <include refid="selectInspectionVo"/>
+        where inspection_id = #{inspectionId}
+    </select>
+
+    <insert id="insertInspection" parameterType="SupportTimInspection" useGeneratedKeys="true" keyProperty="inspectionId">
+        insert into sup_tim_inspection
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="inspectionTime != null">inspection_time,</if>
+            <if test="inspectionType != null">inspection_type,</if>
+            <if test="sourceType != null">source_type,</if>
+            <if test="resultStatus != null">result_status,</if>
+            <if test="executorName != null">executor_name,</if>
+            <if test="enabledItemCount != null">enabled_item_count,</if>
+            <if test="skippedItemCount != null">skipped_item_count,</if>
+            <if test="summary != null">summary,</if>
+            <if test="abnormalSummary != null">abnormal_summary,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="inspectionTime != null">#{inspectionTime},</if>
+            <if test="inspectionType != null">#{inspectionType},</if>
+            <if test="sourceType != null">#{sourceType},</if>
+            <if test="resultStatus != null">#{resultStatus},</if>
+            <if test="executorName != null">#{executorName},</if>
+            <if test="enabledItemCount != null">#{enabledItemCount},</if>
+            <if test="skippedItemCount != null">#{skippedItemCount},</if>
+            <if test="summary != null">#{summary},</if>
+            <if test="abnormalSummary != null">#{abnormalSummary},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateInspection" parameterType="SupportTimInspection">
+        update sup_tim_inspection
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="resultStatus != null">result_status = #{resultStatus},</if>
+            <if test="enabledItemCount != null">enabled_item_count = #{enabledItemCount},</if>
+            <if test="skippedItemCount != null">skipped_item_count = #{skippedItemCount},</if>
+            <if test="summary != null">summary = #{summary},</if>
+            <if test="abnormalSummary != null">abnormal_summary = #{abnormalSummary},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where inspection_id = #{inspectionId}
+    </update>
+
+    <select id="selectItemsByInspectionId" parameterType="Long" resultMap="SupportTimInspectionItemResult">
+        select item_id, inspection_id, item_code, item_name, item_type, enabled_flag, sort_order,
+               threshold_value, threshold_unit, compare_rule, time_window_minutes, timeout_seconds,
+               result_status, actual_value, actual_unit, result_summary,
+               create_by, create_time, update_by, update_time, remark
+        from sup_tim_inspection_item
+        where inspection_id = #{inspectionId}
+        order by sort_order asc, item_id asc
+    </select>
+
+    <insert id="insertInspectionItem" parameterType="SupportTimInspectionItem" useGeneratedKeys="true" keyProperty="itemId">
+        insert into sup_tim_inspection_item (
+            inspection_id, item_code, item_name, item_type, enabled_flag, sort_order,
+            threshold_value, threshold_unit, compare_rule, time_window_minutes, timeout_seconds,
+            result_status, actual_value, actual_unit, result_summary,
+            create_by, create_time, update_by, update_time, remark
+        ) values (
+            #{inspectionId}, #{itemCode}, #{itemName}, #{itemType}, #{enabledFlag}, #{sortOrder},
+            #{thresholdValue}, #{thresholdUnit}, #{compareRule}, #{timeWindowMinutes}, #{timeoutSeconds},
+            #{resultStatus}, #{actualValue}, #{actualUnit}, #{resultSummary},
+            #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
+        )
+    </insert>
+
+    <select id="selectTargetResultsByInspectionId" parameterType="Long" resultMap="SupportTimInspectionTargetResultResult">
+        select result_id, inspection_id, item_id, target_id, target_name, target_type, result_status,
+               actual_value, actual_unit, result_detail, error_message,
+               create_by, create_time, update_by, update_time, remark
+        from sup_tim_inspection_target_result
+        where inspection_id = #{inspectionId}
+        order by result_id asc
+    </select>
+
+    <insert id="insertTargetResult" parameterType="SupportTimInspectionTargetResult" useGeneratedKeys="true" keyProperty="resultId">
+        insert into sup_tim_inspection_target_result (
+            inspection_id, item_id, target_id, target_name, target_type, result_status,
+            actual_value, actual_unit, result_detail, error_message,
+            create_by, create_time, update_by, update_time, remark
+        ) values (
+            #{inspectionId}, #{itemId}, #{targetId}, #{targetName}, #{targetType}, #{resultStatus},
+            #{actualValue}, #{actualUnit}, #{resultDetail}, #{errorMessage},
+            #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
+        )
+    </insert>
+
+    <select id="selectItemConfigList" resultMap="SupportTimInspectionItemConfigResult">
+        select c.config_id, c.item_code, c.item_name, c.item_type, c.enabled_flag, c.sort_order,
+               c.threshold_value, c.threshold_unit, c.compare_rule, c.time_window_minutes,
+               c.timeout_seconds, c.status, c.create_by, c.create_time, c.update_by, c.update_time,
+               c.remark,
+               (select count(1) from sup_tim_inspection_target t where t.item_code = c.item_code and t.status = '0') as target_count
+        from sup_tim_inspection_item_config c
+        order by c.sort_order asc, c.config_id asc
+    </select>
+
+    <select id="selectItemConfigByCode" parameterType="String" resultMap="SupportTimInspectionItemConfigResult">
+        select config_id, item_code, item_name, item_type, enabled_flag, sort_order,
+               threshold_value, threshold_unit, compare_rule, time_window_minutes,
+               timeout_seconds, status, create_by, create_time, update_by, update_time, remark
+        from sup_tim_inspection_item_config
+        where item_code = #{itemCode}
+        limit 1
+    </select>
+
+    <insert id="insertItemConfig" parameterType="SupportTimInspectionItemConfig" useGeneratedKeys="true" keyProperty="configId">
+        insert into sup_tim_inspection_item_config (
+            item_code, item_name, item_type, enabled_flag, sort_order, threshold_value,
+            threshold_unit, compare_rule, time_window_minutes, timeout_seconds, status,
+            create_by, create_time, update_by, update_time, remark
+        ) values (
+            #{itemCode}, #{itemName}, #{itemType}, #{enabledFlag}, #{sortOrder}, #{thresholdValue},
+            #{thresholdUnit}, #{compareRule}, #{timeWindowMinutes}, #{timeoutSeconds}, #{status},
+            #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
+        )
+    </insert>
+
+    <update id="updateItemConfig" parameterType="SupportTimInspectionItemConfig">
+        update sup_tim_inspection_item_config
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="itemName != null and itemName != ''">item_name = #{itemName},</if>
+            <if test="itemType != null and itemType != ''">item_type = #{itemType},</if>
+            <if test="enabledFlag != null and enabledFlag != ''">enabled_flag = #{enabledFlag},</if>
+            <if test="sortOrder != null">sort_order = #{sortOrder},</if>
+            <if test="thresholdValue != null">threshold_value = #{thresholdValue},</if>
+            <if test="thresholdUnit != null">threshold_unit = #{thresholdUnit},</if>
+            <if test="compareRule != null and compareRule != ''">compare_rule = #{compareRule},</if>
+            <if test="timeWindowMinutes != null">time_window_minutes = #{timeWindowMinutes},</if>
+            <if test="timeoutSeconds != null">timeout_seconds = #{timeoutSeconds},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where config_id = #{configId}
+    </update>
+
+    <sql id="selectTargetVo">
+        select t.target_id, t.item_code, t.target_name, t.target_type, t.server_id,
+               s.server_name, s.server_address,
+               t.host, t.port, t.path, t.url, t.http_method, t.topic, t.consumer_group,
+               t.username, t.password_cipher, t.app_key, t.secret_cipher, t.result_path,
+               t.extra_params, t.status, t.create_by, t.create_time, t.update_by,
+               t.update_time, t.remark
+        from sup_tim_inspection_target t
+        left join sup_server s on s.server_id = t.server_id
+    </sql>
+
+    <select id="selectTargetList" parameterType="SupportTimInspectionTarget" resultMap="SupportTimInspectionTargetResultMap">
+        <include refid="selectTargetVo"/>
+        <where>
+            <if test="itemCode != null and itemCode != ''">and t.item_code = #{itemCode}</if>
+            <if test="targetName != null and targetName != ''">and t.target_name like concat('%', #{targetName}, '%')</if>
+            <if test="targetType != null and targetType != ''">and t.target_type = #{targetType}</if>
+            <if test="status != null and status != ''">and t.status = #{status}</if>
+        </where>
+        order by t.target_id desc
+    </select>
+
+    <select id="selectEnabledTargetsByItemCode" parameterType="String" resultMap="SupportTimInspectionTargetResultMap">
+        <include refid="selectTargetVo"/>
+        where t.item_code = #{itemCode} and t.status = '0'
+        order by t.target_id asc
+    </select>
+
+    <select id="selectTargetById" parameterType="Long" resultMap="SupportTimInspectionTargetResultMap">
+        <include refid="selectTargetVo"/>
+        where t.target_id = #{targetId}
+    </select>
+
+    <insert id="insertTarget" parameterType="SupportTimInspectionTarget" useGeneratedKeys="true" keyProperty="targetId">
+        insert into sup_tim_inspection_target
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="itemCode != null and itemCode != ''">item_code,</if>
+            <if test="targetName != null and targetName != ''">target_name,</if>
+            <if test="targetType != null and targetType != ''">target_type,</if>
+            <if test="serverId != null">server_id,</if>
+            <if test="host != null">host,</if>
+            <if test="port != null">port,</if>
+            <if test="path != null">path,</if>
+            <if test="url != null">url,</if>
+            <if test="httpMethod != null">http_method,</if>
+            <if test="topic != null">topic,</if>
+            <if test="consumerGroup != null">consumer_group,</if>
+            <if test="username != null">username,</if>
+            <if test="passwordCipher != null and passwordCipher != ''">password_cipher,</if>
+            <if test="appKey != null">app_key,</if>
+            <if test="secretCipher != null and secretCipher != ''">secret_cipher,</if>
+            <if test="resultPath != null">result_path,</if>
+            <if test="extraParams != null">extra_params,</if>
+            <if test="status != null and status != ''">status,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="itemCode != null and itemCode != ''">#{itemCode},</if>
+            <if test="targetName != null and targetName != ''">#{targetName},</if>
+            <if test="targetType != null and targetType != ''">#{targetType},</if>
+            <if test="serverId != null">#{serverId},</if>
+            <if test="host != null">#{host},</if>
+            <if test="port != null">#{port},</if>
+            <if test="path != null">#{path},</if>
+            <if test="url != null">#{url},</if>
+            <if test="httpMethod != null">#{httpMethod},</if>
+            <if test="topic != null">#{topic},</if>
+            <if test="consumerGroup != null">#{consumerGroup},</if>
+            <if test="username != null">#{username},</if>
+            <if test="passwordCipher != null and passwordCipher != ''">#{passwordCipher},</if>
+            <if test="appKey != null">#{appKey},</if>
+            <if test="secretCipher != null and secretCipher != ''">#{secretCipher},</if>
+            <if test="resultPath != null">#{resultPath},</if>
+            <if test="extraParams != null">#{extraParams},</if>
+            <if test="status != null and status != ''">#{status},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateTarget" parameterType="SupportTimInspectionTarget">
+        update sup_tim_inspection_target
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="itemCode != null and itemCode != ''">item_code = #{itemCode},</if>
+            <if test="targetName != null and targetName != ''">target_name = #{targetName},</if>
+            <if test="targetType != null and targetType != ''">target_type = #{targetType},</if>
+            <if test="serverId != null">server_id = #{serverId},</if>
+            <if test="host != null">host = #{host},</if>
+            <if test="port != null">port = #{port},</if>
+            <if test="path != null">path = #{path},</if>
+            <if test="url != null">url = #{url},</if>
+            <if test="httpMethod != null">http_method = #{httpMethod},</if>
+            <if test="topic != null">topic = #{topic},</if>
+            <if test="consumerGroup != null">consumer_group = #{consumerGroup},</if>
+            <if test="username != null">username = #{username},</if>
+            <if test="passwordCipher != null and passwordCipher != ''">password_cipher = #{passwordCipher},</if>
+            <if test="appKey != null">app_key = #{appKey},</if>
+            <if test="secretCipher != null and secretCipher != ''">secret_cipher = #{secretCipher},</if>
+            <if test="resultPath != null">result_path = #{resultPath},</if>
+            <if test="extraParams != null">extra_params = #{extraParams},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where target_id = #{targetId}
+    </update>
+
+    <delete id="deleteTargetById" parameterType="Long">
+        delete from sup_tim_inspection_target where target_id = #{targetId}
+    </delete>
+
+    <select id="countTargetsByItemCode" resultType="int">
+        select count(1)
+        from sup_tim_inspection_target
+        where item_code = #{itemCode} and status = '0'
+    </select>
+</mapper>
