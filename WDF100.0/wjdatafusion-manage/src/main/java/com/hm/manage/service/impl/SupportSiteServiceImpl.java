@@ -31,6 +31,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import com.hm.common.core.domain.entity.SysUser;
+import com.hm.common.core.domain.model.LoginUser;
 import com.hm.common.core.domain.BaseEntity;
 import com.hm.common.exception.ServiceException;
 import com.hm.common.utils.DateUtils;
@@ -45,8 +47,13 @@ import com.hm.manage.domain.SupportSite;
 import com.hm.manage.domain.SupportContact;
 import com.hm.manage.domain.SupportSiteMessage;
 import com.hm.manage.domain.SupportSubplatformEndpoint;
+import com.hm.manage.domain.vo.SupportSiteDashboardChangeVo;
+import com.hm.manage.domain.vo.SupportSiteDashboardSiteVo;
+import com.hm.manage.domain.vo.SupportSiteDashboardSummaryVo;
+import com.hm.manage.domain.vo.SupportSiteDashboardVo;
 import com.hm.manage.domain.vo.SupportSiteOverviewVo;
 import com.hm.manage.mapper.SupportContactMapper;
+import com.hm.manage.mapper.SupportChangeLogMapper;
 import com.hm.manage.mapper.SupportOrgMapper;
 import com.hm.manage.mapper.SupportPlatformContactRelMapper;
 import com.hm.manage.mapper.SupportPlatformMapper;
@@ -101,6 +108,9 @@ public class SupportSiteServiceImpl implements ISupportSiteService
     private SupportSiteMapper siteMapper;
 
     @Autowired
+    private SupportChangeLogMapper changeLogMapper;
+
+    @Autowired
     private SupportSiteMessageMapper siteMessageMapper;
 
     @Autowired
@@ -147,6 +157,7 @@ public class SupportSiteServiceImpl implements ISupportSiteService
     {
         prepareSiteForSave(site);
         site.setSiteCode(generateOrReuseSiteCode(site, null));
+        site.setCreateBy(resolveCurrentUsername());
         site.setCreateTime(DateUtils.getNowDate());
         int rows = siteMapper.insertSupportSite(site);
         if (rows > 0)
@@ -166,6 +177,7 @@ public class SupportSiteServiceImpl implements ISupportSiteService
         }
         prepareSiteForSave(site);
         site.setSiteCode(generateOrReuseSiteCode(site, original));
+        site.setUpdateBy(resolveCurrentUsername());
         site.setUpdateTime(DateUtils.getNowDate());
         int rows = siteMapper.updateSupportSite(site);
         if (rows > 0)
@@ -264,6 +276,40 @@ public class SupportSiteServiceImpl implements ISupportSiteService
         vo.setPlatformServers(platformServers);
         vo.setPlatformContacts(platformContacts);
         return vo;
+    }
+
+    @Override
+    public SupportSiteDashboardVo getSiteDashboard()
+    {
+        List<String> operators = resolveCurrentOperatorNames();
+        List<SupportSiteDashboardSiteVo> mySites = siteMapper.selectDashboardSites(operators);
+        List<SupportSiteDashboardChangeVo> latestChanges = changeLogMapper.selectDashboardLatestChanges(12);
+
+        int createdCount = 0;
+        int updatedCount = 0;
+        for (SupportSiteDashboardSiteVo site : mySites)
+        {
+            if (isPositive(site.getCreatedByCurrent()))
+            {
+                createdCount++;
+            }
+            if (isPositive(site.getUpdatedByCurrent()) || isPositive(site.getOperatedByCurrent()))
+            {
+                updatedCount++;
+            }
+        }
+
+        SupportSiteDashboardSummaryVo summary = new SupportSiteDashboardSummaryVo();
+        summary.setMySiteCount(mySites.size());
+        summary.setCreatedSiteCount(createdCount);
+        summary.setUpdatedSiteCount(updatedCount);
+        summary.setTodayChangeCount(changeLogMapper.countDashboardTodayChanges());
+
+        SupportSiteDashboardVo dashboard = new SupportSiteDashboardVo();
+        dashboard.setSummary(summary);
+        dashboard.setMySites(mySites);
+        dashboard.setLatestChanges(latestChanges);
+        return dashboard;
     }
 
     @Override
@@ -1001,6 +1047,45 @@ public class SupportSiteServiceImpl implements ISupportSiteService
         entity.setCreateTime(now);
         entity.setUpdateBy(null);
         entity.setUpdateTime(null);
+    }
+
+    private List<String> resolveCurrentOperatorNames()
+    {
+        LinkedHashSet<String> names = new LinkedHashSet<>();
+        try
+        {
+            LoginUser loginUser = SecurityUtils.getLoginUser();
+            addOperatorName(names, loginUser.getUsername());
+            SysUser user = loginUser.getUser();
+            if (user != null)
+            {
+                addOperatorName(names, user.getUserName());
+                addOperatorName(names, user.getNickName());
+            }
+        }
+        catch (Exception e)
+        {
+            addOperatorName(names, resolveCurrentUsername());
+        }
+        if (names.isEmpty())
+        {
+            names.add("anonymous");
+        }
+        return new ArrayList<>(names);
+    }
+
+    private void addOperatorName(Set<String> names, String name)
+    {
+        String trimmedName = StringUtils.trim(name);
+        if (StringUtils.isNotBlank(trimmedName))
+        {
+            names.add(trimmedName);
+        }
+    }
+
+    private boolean isPositive(Integer value)
+    {
+        return value != null && value > 0;
     }
 
     private String resolveCurrentUsername()

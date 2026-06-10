@@ -401,6 +401,7 @@ import { buildSiteCodePrefixPreview, formatSiteRegion, resolveSiteRegion, suppor
 import SiteConfigDialog from './SiteConfigDialog.vue'
 
 const { proxy } = getCurrentInstance()
+const route = useRoute()
 const { sys_normal_disable } = proxy.useDict('sys_normal_disable')
 
 const loading = ref(false)
@@ -418,6 +419,8 @@ const overviewSiteMeta = ref({})
 const configOpen = ref(false)
 const currentSite = ref({})
 const configFocusRequest = ref(null)
+const routeConfigHandled = ref(false)
+const routeCreateHandled = ref(false)
 const siteCodeLoading = ref(false)
 const regionPreviewSeed = ref(0)
 const siteImportUpload = reactive({
@@ -638,6 +641,8 @@ function getList() {
     siteList.value = res.rows
     total.value = res.total
     loading.value = false
+    maybeOpenRouteCreate()
+    maybeOpenRouteSiteConfig()
   })
 }
 
@@ -718,6 +723,35 @@ function handleConfig(row, focusRequest = null) {
   currentSite.value = row
   configFocusRequest.value = focusRequest ? { ...focusRequest, nonce: Date.now() } : null
   configOpen.value = true
+}
+
+function maybeOpenRouteSiteConfig() {
+  if (routeConfigHandled.value || route.query.openConfig !== '1' || !route.query.siteId) {
+    return
+  }
+  routeConfigHandled.value = true
+  const routeSiteId = Number(route.query.siteId)
+  if (!Number.isFinite(routeSiteId)) {
+    return
+  }
+  const matchedSite = siteList.value.find((site) => Number(site.siteId) === routeSiteId)
+  if (matchedSite) {
+    handleConfig(matchedSite)
+    return
+  }
+  getSite(routeSiteId).then((res) => {
+    if (res.data?.siteId) {
+      handleConfig(res.data)
+    }
+  })
+}
+
+function maybeOpenRouteCreate() {
+  if (routeCreateHandled.value || route.query.create !== '1') {
+    return
+  }
+  routeCreateHandled.value = true
+  handleAdd()
 }
 
 function openOverviewConfigFocus(focusRequest) {
@@ -832,6 +866,16 @@ watch(
     refreshSiteCodePreview()
   },
   { deep: true }
+)
+
+watch(
+  () => [route.query.siteId, route.query.openConfig, route.query.create],
+  () => {
+    routeConfigHandled.value = false
+    routeCreateHandled.value = false
+    maybeOpenRouteCreate()
+    maybeOpenRouteSiteConfig()
+  }
 )
 
 getList()

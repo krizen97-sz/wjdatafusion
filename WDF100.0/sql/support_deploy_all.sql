@@ -26,7 +26,9 @@ CREATE TABLE IF NOT EXISTS sup_site (
   update_time        DATETIME     DEFAULT NULL COMMENT '更新时间',
   remark             VARCHAR(500) DEFAULT NULL COMMENT '备注',
   PRIMARY KEY (site_id),
-  UNIQUE KEY uk_sup_site_code (site_code)
+  UNIQUE KEY uk_sup_site_code (site_code),
+  KEY idx_sup_site_create_by (create_by, site_id),
+  KEY idx_sup_site_update_by (update_by, site_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='现场信息';
 
 CREATE TABLE IF NOT EXISTS sup_platform (
@@ -160,7 +162,9 @@ CREATE TABLE IF NOT EXISTS sup_change_log (
   create_time         DATETIME     DEFAULT NULL COMMENT '操作时间',
   PRIMARY KEY (log_id),
   KEY idx_sup_change_log_site_time (site_id, create_time),
-  KEY idx_sup_change_log_target (target_type, target_id)
+  KEY idx_sup_change_log_target (target_type, target_id),
+  KEY idx_sup_change_log_operator_action_site (operator_name, action_type, site_id, log_id),
+  KEY idx_sup_change_log_action_time (action_type, create_time, log_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='现场融合用户修改记录';
 
 CREATE TABLE IF NOT EXISTS sup_site_message (

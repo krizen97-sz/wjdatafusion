@@ -60,6 +60,13 @@ public class SupportSiteController extends BaseController
     }
 
     @PreAuthorize("@ss.hasPermi('support:site:query')")
+    @GetMapping(value = "/dashboard")
+    public AjaxResult dashboard()
+    {
+        return success(supportSiteService.getSiteDashboard());
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:site:query')")
     @GetMapping(value = "/{siteId}")
     public AjaxResult getInfo(@PathVariable("siteId") Long siteId)
     {

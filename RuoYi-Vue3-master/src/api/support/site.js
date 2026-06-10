@@ -16,6 +16,10 @@ export function getSiteWorkbench(siteId) {
   return request({ url: '/support/site/workbench/' + siteId, method: 'get' })
 }
 
+export function getSiteDashboard() {
+  return request({ url: '/support/site/dashboard', method: 'get' })
+}
+
 export function listChangeLog(query) {
   return request({ url: '/support/changeLog/list', method: 'get', params: query })
 }

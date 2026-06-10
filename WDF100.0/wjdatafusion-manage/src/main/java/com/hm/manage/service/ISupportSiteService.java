@@ -4,6 +4,7 @@ import java.util.List;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.multipart.MultipartFile;
 import com.hm.manage.domain.SupportSite;
+import com.hm.manage.domain.vo.SupportSiteDashboardVo;
 import com.hm.manage.domain.vo.SupportSiteOverviewVo;
 
 public interface ISupportSiteService
@@ -21,6 +22,8 @@ public interface ISupportSiteService
     SupportSiteOverviewVo getSiteOverview(Long siteId);
 
     SupportSiteOverviewVo getSiteWorkbench(Long siteId);
+
+    SupportSiteDashboardVo getSiteDashboard();
 
     String previewSiteCode(SupportSite site);
 

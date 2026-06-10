@@ -24,6 +24,32 @@
         <result property="remark" column="remark"/>
     </resultMap>
 
+    <resultMap id="SupportSiteDashboardSiteResult" type="com.hm.manage.domain.vo.SupportSiteDashboardSiteVo">
+        <result property="siteId" column="site_id"/>
+        <result property="siteName" column="site_name"/>
+        <result property="siteCode" column="site_code"/>
+        <result property="provinceName" column="province_name"/>
+        <result property="cityName" column="city_name"/>
+        <result property="districtName" column="district_name"/>
+        <result property="location" column="location"/>
+        <result property="status" column="status"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="mainPlatformCount" column="main_platform_count"/>
+        <result property="subPlatformCount" column="sub_platform_count"/>
+        <result property="serverCount" column="server_count"/>
+        <result property="contactCount" column="contact_count"/>
+        <result property="lastActionType" column="last_action_type"/>
+        <result property="lastActionSummary" column="last_action_summary"/>
+        <result property="lastOperatorName" column="last_operator_name"/>
+        <result property="lastOperateTime" column="last_operate_time"/>
+        <result property="createdByCurrent" column="created_by_current"/>
+        <result property="updatedByCurrent" column="updated_by_current"/>
+        <result property="operatedByCurrent" column="operated_by_current"/>
+    </resultMap>
+
     <sql id="selectSupportSiteVo">
         select site_id, site_name, site_code,
                province_code, province_name, city_code, city_name, district_code, district_name,
@@ -48,6 +74,82 @@
             <if test="status != null and status != ''">and status = #{status}</if>
         </where>
         order by site_id desc
+    </select>
+
+    <select id="selectDashboardSites" resultMap="SupportSiteDashboardSiteResult">
+        select dashboard_site.*
+        from (
+            select s.site_id, s.site_name, s.site_code,
+                   s.province_name, s.city_name, s.district_name, s.location, s.status,
+                   s.create_by, s.create_time, s.update_by, s.update_time,
+                   (select count(1)
+                    from sup_platform p
+                    where p.site_id = s.site_id
+                      and p.platform_level = 'MAIN') as main_platform_count,
+                   (select count(1)
+                    from sup_platform p
+                    where p.site_id = s.site_id
+                      and p.platform_level = 'SUB') as sub_platform_count,
+                   (select count(1)
+                    from sup_server server
+                    where server.site_id = s.site_id) as server_count,
+                   (select count(distinct c.contact_id)
+                    from sup_contact c
+                             inner join sup_platform_contact_rel pcr on pcr.contact_id = c.contact_id
+                             inner join sup_platform p on p.platform_id = pcr.platform_id
+                    where p.site_id = s.site_id) as contact_count,
+                   last_log.action_type as last_action_type,
+                   last_log.summary as last_action_summary,
+                   last_log.operator_name as last_operator_name,
+                   last_log.create_time as last_operate_time,
+                   case when s.create_by in
+                       <foreach item="operator" collection="operators" open="(" separator="," close=")">
+                           #{operator}
+                       </foreach>
+                       then 1 else 0 end as created_by_current,
+                   case when s.update_by in
+                       <foreach item="operator" collection="operators" open="(" separator="," close=")">
+                           #{operator}
+                       </foreach>
+                       then 1 else 0 end as updated_by_current,
+                   case when exists (
+                       select 1
+                       from sup_change_log cl_flag
+                       where cl_flag.site_id = s.site_id
+                         and cl_flag.action_type in ('INSERT', 'UPDATE')
+                         and cl_flag.operator_name in
+                         <foreach item="operator" collection="operators" open="(" separator="," close=")">
+                             #{operator}
+                         </foreach>
+                   ) then 1 else 0 end as operated_by_current
+            from sup_site s
+                     left join sup_change_log last_log on last_log.log_id = (
+                         select max(cl_latest.log_id)
+                         from sup_change_log cl_latest
+                         where cl_latest.site_id = s.site_id
+                           and cl_latest.action_type in ('INSERT', 'UPDATE', 'DELETE')
+                     )
+            where s.create_by in
+                <foreach item="operator" collection="operators" open="(" separator="," close=")">
+                    #{operator}
+                </foreach>
+               or s.update_by in
+                <foreach item="operator" collection="operators" open="(" separator="," close=")">
+                    #{operator}
+                </foreach>
+               or exists (
+                    select 1
+                    from sup_change_log cl_op
+                    where cl_op.site_id = s.site_id
+                      and cl_op.action_type in ('INSERT', 'UPDATE')
+                      and cl_op.operator_name in
+                      <foreach item="operator" collection="operators" open="(" separator="," close=")">
+                          #{operator}
+                      </foreach>
+                )
+        ) dashboard_site
+        order by ifnull(dashboard_site.last_operate_time, ifnull(dashboard_site.update_time, dashboard_site.create_time)) desc,
+                 dashboard_site.site_id desc
     </select>
 
     <insert id="insertSupportSite" parameterType="SupportSite" useGeneratedKeys="true" keyProperty="siteId">

@@ -1,5 +1,28 @@
 export const releaseNotes = [
   {
+    version: 'v2.4.0',
+    submitTime: '2026-06-10 10:56:20',
+    level: 'minor',
+    levelLabel: '小版本',
+    tagType: 'primary',
+    title: 'Datafusion用户首页',
+    summary: '为拥有 datafusion 权限字符的用户新增现场融合工作台首页，聚焦我的现场、全站最新修改和快速配置入口。',
+    changes: [
+      '首页增加权限分流，vehiclealarm 用户继续优先展示车辆告警首页，datafusion 用户展示现场融合工作台。',
+      '新增现场融合首页聚合接口，一次返回我的相关现场、全站最新增删改动态和首页统计数据。',
+      '我的相关现场支持按现场名称、编码和地区搜索，卡片展示主平台、子平台、服务器、人员和最近操作摘要。',
+      '全站最新修改展示所有用户的新增、修改、删除记录，并支持点击查看操作详情和跳转到现场配置画布。',
+      '现场新增和修改时补充写入 createBy / updateBy，提升后续首页归属识别稳定性。'
+    ],
+    scope: ['首页', '现场融合管理', '权限分流', '现场聚合接口', '操作记录', 'SQL索引', '版本记录'],
+    database: '不新增业务表；新增 sup_site 创建/修改人索引和 sup_change_log 首页查询索引。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260610_site_dashboard_v2_4_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v2.3.1',
     submitTime: '2026-06-09 23:29:52',
     level: 'patch',

@@ -18,6 +18,21 @@
         <result property="createTime" column="create_time"/>
     </resultMap>
 
+    <resultMap id="SupportSiteDashboardChangeResult" type="com.hm.manage.domain.vo.SupportSiteDashboardChangeVo">
+        <result property="logId" column="log_id"/>
+        <result property="siteId" column="site_id"/>
+        <result property="siteName" column="site_name"/>
+        <result property="siteCode" column="site_code"/>
+        <result property="actionType" column="action_type"/>
+        <result property="targetType" column="target_type"/>
+        <result property="targetId" column="target_id"/>
+        <result property="targetName" column="target_name"/>
+        <result property="summary" column="summary"/>
+        <result property="detailContent" column="detail_content"/>
+        <result property="operatorName" column="operator_name"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
     <sql id="selectSupportChangeLogVo">
         select log_id, site_id, action_type, target_type, target_id, target_name,
                summary, detail_content, operator_name, operator_ip, create_time
@@ -39,6 +54,25 @@
             <if test="operatorName != null and operatorName != ''">and operator_name like concat('%', #{operatorName}, '%')</if>
         </where>
         order by log_id desc
+    </select>
+
+    <select id="selectDashboardLatestChanges" resultMap="SupportSiteDashboardChangeResult">
+        select cl.log_id, cl.site_id, s.site_name, s.site_code,
+               cl.action_type, cl.target_type, cl.target_id, cl.target_name,
+               cl.summary, cl.detail_content, cl.operator_name, cl.create_time
+        from sup_change_log cl
+                 left join sup_site s on s.site_id = cl.site_id
+        where cl.action_type in ('INSERT', 'UPDATE', 'DELETE')
+        order by cl.log_id desc
+        limit #{limit}
+    </select>
+
+    <select id="countDashboardTodayChanges" resultType="int">
+        select count(1)
+        from sup_change_log
+        where action_type in ('INSERT', 'UPDATE', 'DELETE')
+          and create_time &gt;= curdate()
+          and create_time &lt; date_add(curdate(), interval 1 day)
     </select>
 
     <insert id="insertSupportChangeLog" parameterType="SupportChangeLog" useGeneratedKeys="true" keyProperty="logId">
