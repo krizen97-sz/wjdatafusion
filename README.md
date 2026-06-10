@@ -1,0 +1,151 @@
+# wjdatafusion
+
+武进信息融合平台，基于 RuoYi / Spring Boot / Vue 3 改造，当前仓库以“现场融合管理”为核心业务扩展，覆盖现场、主平台、子平台、页面、服务器、组织、人员、留言和操作记录等配置数据的统一维护。
+
+## 项目结构
+
+```text
+.
+├── WDF100.0/                         # 后端工程和数据库脚本
+│   ├── wjdatafusion-admin/            # 后端启动模块
+│   ├── wjdatafusion-manage/           # 业务模块，现场融合管理主要后端代码
+│   ├── wjdatafusion-system/           # 系统、权限、用户等基础能力
+│   ├── wjdatafusion-framework/        # 安全、配置、通用框架能力
+│   ├── sql/                           # 初始化脚本和现场融合升级脚本
+│   └── doc/                           # 操作手册与截图资产
+├── RuoYi-Vue3-master/                 # Vue 3 + Element Plus 前端工程
+│   └── src/views/support/             # 现场融合管理前端页面
+├── docs/                              # 过程文档或交付文档
+└── README.md                          # 当前说明文件
+```
+
+## 核心功能
+
+- 现场管理：维护现场基础信息、行政区划、现场编码和配置画布。
+- 融合关系画布：以横向树/纵向树展示现场、主平台、子平台、页面、服务器、人员之间的关系，支持全屏操作。
+- 平台管理：区分主平台、子平台和网络环境，网络环境支持公安网、图像网、政务网、二类区、党政军、私网等内置类型。
+- 服务器管理：支持单个添加、批量添加、xlsx 模板导入、批量导出、批量删除、密码查看和子平台服务器统一管理。
+- 组织与人员：支持组织、联系人、联系人角色维护，并在画布人员标签中展示角色信息。
+- 操作记录：记录现场融合管理中的新增、修改、删除操作，并在画布侧边展示详情。
+- 现场导入导出：按选中现场导出完整 zip 数据包，每个现场一个 xlsx；导入 zip 后按新现场重建关系数据。
+- 现场留言板：支持按现场发布留言、详情列表查看、弹幕展示和轻量轮询刷新。
+- 版本记录：维护现场融合管理功能版本号、修改内容、提交时间和涉及 SQL 脚本，画布自动显示最新版本号。
+
+## 技术栈
+
+- 后端：Java 17、Spring Boot 4、Spring Security、MyBatis、Druid、PageHelper、Redis、MySQL。
+- 前端：Vue 3、Vite、Element Plus、Pinia、Axios。
+- 文档与数据包：Apache POI、xlsx、zip。
+
+## 本地启动
+
+### 1. 准备环境
+
+- JDK 17+
+- Maven 3.8+
+- Node.js 18+
+- MySQL
+- Redis
+
+### 2. 初始化数据库
+
+后端默认使用 MySQL。新环境可先导入基础若依脚本，再导入现场融合脚本：
+
+```bash
+mysql -u root -p rynew < WDF100.0/sql/ry_20260320.sql
+mysql -u root -p rynew < WDF100.0/sql/quartz.sql
+mysql -u root -p rynew < WDF100.0/sql/support_deploy_all.sql
+```
+
+如果是已有环境升级，优先按 `WDF100.0/sql/support_upgrade_*.sql` 的版本顺序执行对应升级脚本。`support_deploy_all.sql` 是现场融合管理的整合部署脚本，执行前建议先备份数据库。
+
+### 3. 后端启动
+
+按实际环境调整：
+
+- `WDF100.0/wjdatafusion-admin/src/main/resources/application.yml`
+- `WDF100.0/wjdatafusion-admin/src/main/resources/application-druid.yml`
+
+启动命令：
+
+```bash
+cd WDF100.0
+mvn -pl wjdatafusion-admin -am spring-boot:run
+```
+
+默认后端端口为 `8080`。
+
+### 4. 前端启动
+
+```bash
+cd RuoYi-Vue3-master
+npm install
+npm run dev
+```
+
+前端开发服务端口在 `RuoYi-Vue3-master/vite.config.js` 中配置，当前默认是 `80`，接口代理到 `http://localhost:8080`。
+
+## 构建验证
+
+后端编译：
+
+```bash
+cd WDF100.0
+mvn -pl wjdatafusion-manage -am -DskipTests compile
+```
+
+前端生产构建：
+
+```bash
+cd RuoYi-Vue3-master
+npm run build:prod
+```
+
+## 现场融合管理入口
+
+前端主要页面：
+
+- `RuoYi-Vue3-master/src/views/support/site/index.vue`
+- `RuoYi-Vue3-master/src/views/support/site/SiteConfigDialog.vue`
+- `RuoYi-Vue3-master/src/views/support/server/index.vue`
+- `RuoYi-Vue3-master/src/views/support/org/index.vue`
+- `RuoYi-Vue3-master/src/views/support/version/index.vue`
+
+后端主要接口：
+
+- `WDF100.0/wjdatafusion-manage/src/main/java/com/hm/manage/controller/SupportSiteController.java`
+- `WDF100.0/wjdatafusion-manage/src/main/java/com/hm/manage/controller/SupportPlatformController.java`
+- `WDF100.0/wjdatafusion-manage/src/main/java/com/hm/manage/controller/SupportServerController.java`
+- `WDF100.0/wjdatafusion-manage/src/main/java/com/hm/manage/controller/SupportOrgController.java`
+- `WDF100.0/wjdatafusion-manage/src/main/java/com/hm/manage/controller/SupportSiteMessageController.java`
+
+数据库脚本：
+
+- `WDF100.0/sql/support_v1.sql`
+- `WDF100.0/sql/support_deploy_all.sql`
+- `WDF100.0/sql/support_upgrade_*.sql`
+
+## 权限说明
+
+现场融合管理使用 `support:*` 权限字符控制菜单和按钮。拥有 `datafusion` 权限字符的用户，默认具备现场融合管理全部权限。
+
+常用权限包括：
+
+- `support:site:*`：现场查询、新增、修改、删除、导入、导出。
+- `support:platform:*`：平台查询、新增、修改、删除、导出。
+- `support:server:*`：服务器查询、新增、修改、删除、导出。
+- `support:org:*`：组织和联系人查询、新增、修改、删除、导出。
+- `support:message:list`：留言查看。
+- `support:message:add`：留言发布。
+- `support:credential:viewPlain`：敏感凭据明文查看。
+
+## 文档
+
+- 现场管理操作手册：`WDF100.0/doc/现场管理功能操作手册.md`
+- Word 版操作手册：`WDF100.0/doc/现场管理功能操作手册.docx`
+- 手册截图资产：`WDF100.0/doc/site-management-manual-assets/`
+
+## 当前版本
+
+当前已提交到 GitHub 的版本标签为 `v2.3.1`，该版本包含现场留言板修复、轮询优化、现场导入导出补充留言数据、删除现场清理留言和 SQL 索引优化。
+
