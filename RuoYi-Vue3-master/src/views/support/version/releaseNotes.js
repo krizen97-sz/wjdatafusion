@@ -1,5 +1,22 @@
 export const releaseNotes = [
   {
+    version: 'v2.4.1',
+    submitTime: '2026-06-10 12:20:14',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: 'Datafusion首页权限识别修复',
+    summary: '修复 datafusion 账号登录后仍进入通用首页的问题，兼容角色和权限两种授权数据来源。',
+    changes: [
+      '首页 datafusion 判断从仅匹配 permissions 调整为同时匹配 roles 和 permissions 中的 datafusion 标识。',
+      '保持 vehiclealarm 首页优先级不变，同时拥有 vehiclealarm 和 datafusion 的用户仍优先展示车辆告警首页。',
+      '修复角色为 datafusion、权限列表为 support:* 的账号无法看到现场融合工作台的问题。'
+    ],
+    scope: ['首页', '权限分流', 'Datafusion工作台', '版本记录'],
+    database: '无数据库结构变化。',
+    scripts: []
+  },
+  {
     version: 'v2.4.0',
     submitTime: '2026-06-10 10:56:20',
     level: 'minor',

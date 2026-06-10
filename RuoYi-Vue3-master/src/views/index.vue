@@ -288,7 +288,7 @@ const isVehicleAlarmUser = computed(() =>
   || permissionList.value.some((permission) => String(permission).toLowerCase().includes('vehiclealarm'))
 )
 const isDatafusionUser = computed(() =>
-  permissionList.value.some((permission) => String(permission) === 'datafusion')
+  hasExactAuthKey(roleList.value, 'datafusion') || hasExactAuthKey(permissionList.value, 'datafusion')
 )
 const quickLinks = computed(() => {
   const links = [
@@ -359,6 +359,11 @@ function loadSiteDashboard() {
   }).finally(() => {
     dashboardLoading.value = false
   })
+}
+
+function hasExactAuthKey(list, key) {
+  const normalizedKey = String(key).toLowerCase()
+  return list.some((item) => String(item).trim().toLowerCase() === normalizedKey)
 }
 
 function goRoute(path) {
