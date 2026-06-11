@@ -17,6 +17,10 @@ public interface ISupportTimInspectionService
 
     SupportTimInspectionDetailVo runScheduledInspection(String executorName);
 
+    SupportTimInspectionDetailVo runManualInspectionPlan(Long planId);
+
+    SupportTimInspectionDetailVo runScheduledInspectionPlan(Long planId, String executorName);
+
     void exportInspection(HttpServletResponse response, SupportTimInspection inspection);
 
     List<SupportTimInspectionItemConfig> selectConfigList();

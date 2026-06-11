@@ -45,12 +45,15 @@ import com.hm.manage.domain.SupportServer;
 import com.hm.manage.domain.SupportTimInspection;
 import com.hm.manage.domain.SupportTimInspectionItem;
 import com.hm.manage.domain.SupportTimInspectionItemConfig;
+import com.hm.manage.domain.SupportTimInspectionPlan;
+import com.hm.manage.domain.SupportTimInspectionPlanItem;
 import com.hm.manage.domain.SupportTimInspectionTarget;
 import com.hm.manage.domain.SupportTimInspectionTargetResult;
 import com.hm.manage.domain.vo.SupportTimInspectionDetailVo;
 import com.hm.manage.domain.vo.SupportTimInspectionExportVo;
 import com.hm.manage.mapper.SupportServerMapper;
 import com.hm.manage.mapper.SupportTimInspectionMapper;
+import com.hm.manage.mapper.SupportTimInspectionPlanMapper;
 import com.hm.manage.service.ISupportTimInspectionService;
 import com.hm.manage.service.support.CredentialCryptoService;
 import com.jcraft.jsch.Channel;
@@ -74,6 +77,7 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
     private static final String RULE_MIN = "MIN";
     private static final String RULE_MAX = "MAX";
     private static final int DEFAULT_TIMEOUT_SECONDS = 10;
+    private static final String REPORT_STANDARD = "STANDARD";
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     private static final List<DefaultItem> DEFAULT_ITEMS = List.of(
@@ -88,6 +92,9 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
 
     @Autowired
     private SupportTimInspectionMapper timInspectionMapper;
+
+    @Autowired
+    private SupportTimInspectionPlanMapper planMapper;
 
     @Autowired
     private SupportServerMapper serverMapper;
@@ -128,6 +135,20 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
     public SupportTimInspectionDetailVo runScheduledInspection(String executorName)
     {
         return runInspection(SOURCE_AUTO, StringUtils.defaultIfBlank(executorName, "自动巡检"));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public SupportTimInspectionDetailVo runManualInspectionPlan(Long planId)
+    {
+        return runInspection(SOURCE_MANUAL, getCurrentOperatorName(), buildPlanRunContext(planId));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public SupportTimInspectionDetailVo runScheduledInspectionPlan(Long planId, String executorName)
+    {
+        return runInspection(SOURCE_AUTO, StringUtils.defaultIfBlank(executorName, "自动巡检"), buildPlanRunContext(planId));
     }
 
     @Override
@@ -264,6 +285,11 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
 
     private SupportTimInspectionDetailVo runInspection(String sourceType, String executorName)
     {
+        return runInspection(sourceType, executorName, null);
+    }
+
+    private SupportTimInspectionDetailVo runInspection(String sourceType, String executorName, PlanRunContext planContext)
+    {
         ensureDefaultConfigs();
         Date now = DateUtils.getNowDate();
         SupportTimInspection inspection = new SupportTimInspection();
@@ -272,6 +298,12 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
         inspection.setSourceType(sourceType);
         inspection.setResultStatus(RESULT_SKIP);
         inspection.setExecutorName(executorName);
+        if (planContext != null)
+        {
+            inspection.setPlanId(planContext.plan.getPlanId());
+            inspection.setPlanName(planContext.plan.getPlanName());
+            inspection.setReportStyle(planContext.plan.getReportStyle());
+        }
         inspection.setCreateBy(getCurrentUsername());
         inspection.setCreateTime(now);
         timInspectionMapper.insertInspection(inspection);
@@ -280,7 +312,7 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
         int skippedCount = 0;
         int abnormalCount = 0;
         List<String> abnormalSummaries = new ArrayList<>();
-        List<SupportTimInspectionItemConfig> configs = timInspectionMapper.selectItemConfigList();
+        List<SupportTimInspectionItemConfig> configs = planContext == null ? timInspectionMapper.selectItemConfigList() : planContext.configs;
         for (SupportTimInspectionItemConfig config : configs)
         {
             SupportTimInspectionItem item = copyConfigToItem(config, inspection.getInspectionId(), now);
@@ -294,7 +326,9 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
             }
 
             enabledCount++;
-            List<SupportTimInspectionTarget> targets = timInspectionMapper.selectEnabledTargetsByItemCode(config.getItemCode());
+            List<SupportTimInspectionTarget> targets = planContext == null
+                    ? timInspectionMapper.selectEnabledTargetsByItemCode(config.getItemCode())
+                    : planMapper.selectEnabledTargetsByPlanAndItem(planContext.plan.getPlanId(), config.getItemCode());
             if (targets.isEmpty())
             {
                 abnormalCount++;
@@ -343,6 +377,48 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
         inspection.setUpdateTime(DateUtils.getNowDate());
         timInspectionMapper.updateInspection(inspection);
         return selectInspectionDetail(inspection.getInspectionId());
+    }
+
+    private PlanRunContext buildPlanRunContext(Long planId)
+    {
+        if (planId == null)
+        {
+            throw new ServiceException("巡检计划ID不能为空");
+        }
+        SupportTimInspectionPlan plan = planMapper.selectPlanById(planId);
+        if (plan == null)
+        {
+            throw new ServiceException("巡检计划不存在");
+        }
+        List<SupportTimInspectionPlanItem> planItems = planMapper.selectItemsByPlanId(planId);
+        if (planItems.isEmpty())
+        {
+            throw new ServiceException("巡检计划未配置巡检项目");
+        }
+        List<SupportTimInspectionItemConfig> configs = new ArrayList<>();
+        for (SupportTimInspectionPlanItem item : planItems)
+        {
+            configs.add(toItemConfig(item));
+        }
+        plan.setReportStyle(StringUtils.defaultIfBlank(plan.getReportStyle(), REPORT_STANDARD));
+        return new PlanRunContext(plan, configs);
+    }
+
+    private SupportTimInspectionItemConfig toItemConfig(SupportTimInspectionPlanItem item)
+    {
+        SupportTimInspectionItemConfig config = new SupportTimInspectionItemConfig();
+        config.setItemCode(item.getItemCode());
+        config.setItemName(item.getItemName());
+        config.setItemType(item.getItemType());
+        config.setEnabledFlag(item.getEnabledFlag());
+        config.setSortOrder(item.getSortOrder());
+        config.setThresholdValue(item.getThresholdValue());
+        config.setThresholdUnit(item.getThresholdUnit());
+        config.setCompareRule(item.getCompareRule());
+        config.setTimeWindowMinutes(item.getTimeWindowMinutes());
+        config.setTimeoutSeconds(item.getTimeoutSeconds());
+        config.setStatus(STATUS_NORMAL);
+        return config;
     }
 
     private TargetCheckResult runSingleTarget(SupportTimInspectionItemConfig config, SupportTimInspectionTarget target)
@@ -1172,6 +1248,18 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
             this.thresholdUnit = thresholdUnit;
             this.sortOrder = sortOrder;
             this.timeWindowMinutes = timeWindowMinutes;
+        }
+    }
+
+    private static class PlanRunContext
+    {
+        private final SupportTimInspectionPlan plan;
+        private final List<SupportTimInspectionItemConfig> configs;
+
+        private PlanRunContext(SupportTimInspectionPlan plan, List<SupportTimInspectionItemConfig> configs)
+        {
+            this.plan = plan;
+            this.configs = configs;
         }
     }
 

@@ -604,6 +604,9 @@ CREATE TABLE IF NOT EXISTS sup_tim_inspection (
   source_type         VARCHAR(16)  DEFAULT 'AUTO' COMMENT '执行来源（AUTO自动 MANUAL手动）',
   result_status       CHAR(1)      DEFAULT '3' COMMENT '巡检结果（1正常 2异常 3未检测）',
   executor_name       VARCHAR(64)  DEFAULT NULL COMMENT '执行人名称',
+  plan_id             BIGINT       DEFAULT NULL COMMENT '巡检计划ID',
+  plan_name           VARCHAR(120) DEFAULT NULL COMMENT '巡检计划名称',
+  report_style        VARCHAR(32)  DEFAULT 'STANDARD' COMMENT '巡检报告样式',
   enabled_item_count  INT          DEFAULT 0 COMMENT '启用项数',
   skipped_item_count  INT          DEFAULT 0 COMMENT '跳过项数',
   summary             VARCHAR(500) DEFAULT NULL COMMENT '巡检摘要',
@@ -616,7 +619,8 @@ CREATE TABLE IF NOT EXISTS sup_tim_inspection (
   PRIMARY KEY (inspection_id),
   KEY idx_sup_tim_inspection_time (inspection_time),
   KEY idx_sup_tim_inspection_result (result_status, inspection_time),
-  KEY idx_sup_tim_inspection_source (source_type, inspection_time)
+  KEY idx_sup_tim_inspection_source (source_type, inspection_time),
+  KEY idx_sup_tim_inspection_plan (plan_id, inspection_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='TIM系统巡检记录';
 
 CREATE TABLE IF NOT EXISTS sup_tim_inspection_item (
@@ -721,6 +725,62 @@ CREATE TABLE IF NOT EXISTS sup_tim_inspection_target_result (
   KEY idx_sup_tim_target_result_target (target_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='TIM系统巡检目标结果';
 
+CREATE TABLE IF NOT EXISTS sup_tim_inspection_plan (
+  plan_id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '计划ID',
+  plan_name        VARCHAR(120)  NOT NULL COMMENT '计划名称',
+  cron_expression  VARCHAR(255)  NOT NULL COMMENT 'Cron表达式',
+  job_id           BIGINT        DEFAULT NULL COMMENT '若依定时任务ID',
+  report_style     VARCHAR(32)   DEFAULT 'STANDARD' COMMENT '巡检报告样式（STANDARD标准 SIMPLE简要 DETAIL明细 EXCEPTION_ONLY异常）',
+  status           CHAR(1)       DEFAULT '0' COMMENT '状态（0正常 1暂停）',
+  create_by        VARCHAR(64)   DEFAULT '' COMMENT '创建者',
+  create_time      DATETIME      DEFAULT NULL COMMENT '创建时间',
+  update_by        VARCHAR(64)   DEFAULT '' COMMENT '更新者',
+  update_time      DATETIME      DEFAULT NULL COMMENT '更新时间',
+  remark           VARCHAR(500)  DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (plan_id),
+  KEY idx_sup_tim_plan_status (status),
+  KEY idx_sup_tim_plan_job (job_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='TIM巡检计划';
+
+CREATE TABLE IF NOT EXISTS sup_tim_inspection_plan_item (
+  plan_item_id        BIGINT        NOT NULL AUTO_INCREMENT COMMENT '计划巡检项ID',
+  plan_id             BIGINT        NOT NULL COMMENT '计划ID',
+  item_code           VARCHAR(64)   NOT NULL COMMENT '巡检项编码',
+  item_name           VARCHAR(100)  NOT NULL COMMENT '巡检项名称',
+  item_type           VARCHAR(32)   NOT NULL COMMENT '巡检项类型',
+  enabled_flag        CHAR(1)       DEFAULT 'Y' COMMENT '是否启用（Y是 N否）',
+  sort_order          INT           DEFAULT 0 COMMENT '排序',
+  threshold_value     DECIMAL(18,2) DEFAULT NULL COMMENT '告警阈值',
+  threshold_unit      VARCHAR(32)   DEFAULT NULL COMMENT '阈值单位',
+  compare_rule        VARCHAR(16)   DEFAULT 'MAX' COMMENT '比较规则（MIN最低阈值 MAX最高阈值）',
+  time_window_minutes INT           DEFAULT 0 COMMENT '统计时间窗口分钟数',
+  timeout_seconds     INT           DEFAULT 10 COMMENT '超时时间秒',
+  create_by           VARCHAR(64)   DEFAULT '' COMMENT '创建者',
+  create_time         DATETIME      DEFAULT NULL COMMENT '创建时间',
+  update_by           VARCHAR(64)   DEFAULT '' COMMENT '更新者',
+  update_time         DATETIME      DEFAULT NULL COMMENT '更新时间',
+  remark              VARCHAR(500)  DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (plan_item_id),
+  UNIQUE KEY uk_sup_tim_plan_item (plan_id, item_code),
+  KEY idx_sup_tim_plan_item_sort (plan_id, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='TIM巡检计划巡检项';
+
+CREATE TABLE IF NOT EXISTS sup_tim_inspection_plan_target (
+  plan_target_id  BIGINT       NOT NULL AUTO_INCREMENT COMMENT '计划目标关系ID',
+  plan_id         BIGINT       NOT NULL COMMENT '计划ID',
+  item_code       VARCHAR(64)  NOT NULL COMMENT '巡检项编码',
+  target_id       BIGINT       NOT NULL COMMENT '巡检目标ID',
+  create_by       VARCHAR(64)  DEFAULT '' COMMENT '创建者',
+  create_time     DATETIME     DEFAULT NULL COMMENT '创建时间',
+  update_by       VARCHAR(64)  DEFAULT '' COMMENT '更新者',
+  update_time     DATETIME     DEFAULT NULL COMMENT '更新时间',
+  remark          VARCHAR(500) DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (plan_target_id),
+  UNIQUE KEY uk_sup_tim_plan_target (plan_id, item_code, target_id),
+  KEY idx_sup_tim_plan_target_item (plan_id, item_code),
+  KEY idx_sup_tim_plan_target_target (target_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='TIM巡检计划目标关系';
+
 INSERT INTO sup_tim_inspection_item_config(item_code, item_name, item_type, enabled_flag, sort_order, threshold_value, threshold_unit, compare_rule, time_window_minutes, timeout_seconds, status, create_by, create_time, remark)
 SELECT 'VEHICLE_PASS', '过车数量', 'HTTP_COUNT', 'Y', 1, 4000000, '辆', 'MIN', 480, 10, '0', 'admin', NOW(), 'TIM巡检内置项'
 WHERE NOT EXISTS (SELECT 1 FROM sup_tim_inspection_item_config WHERE item_code = 'VEHICLE_PASS');
@@ -753,13 +813,14 @@ VALUES
 (2261, 'TIM巡检查询', 2206, 1, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:timInspection:query', '#', 'admin', NOW(), '', NULL, ''),
 (2262, 'TIM巡检执行', 2206, 2, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:timInspection:run', '#', 'admin', NOW(), '', NULL, ''),
 (2263, 'TIM巡检导出', 2206, 3, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:timInspection:export', '#', 'admin', NOW(), '', NULL, ''),
-(2264, 'TIM巡检配置', 2206, 4, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:timInspection:config', '#', 'admin', NOW(), '', NULL, '')
+(2264, 'TIM巡检配置', 2206, 4, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:timInspection:config', '#', 'admin', NOW(), '', NULL, ''),
+(2265, 'TIM巡检计划', 2206, 5, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:timInspection:plan', '#', 'admin', NOW(), '', NULL, '')
 ON DUPLICATE KEY UPDATE perms=VALUES(perms), menu_name=VALUES(menu_name);
 
 INSERT INTO sys_role_menu(role_id, menu_id)
 SELECT r.role_id, m.menu_id
 FROM sys_role r
-INNER JOIN sys_menu m ON m.menu_id IN (2206, 2261, 2262, 2263, 2264)
+INNER JOIN sys_menu m ON m.menu_id IN (2206, 2261, 2262, 2263, 2264, 2265)
 WHERE r.role_key = 'datafusion'
   AND NOT EXISTS (
     SELECT 1 FROM sys_role_menu rm WHERE rm.role_id = r.role_id AND rm.menu_id = m.menu_id

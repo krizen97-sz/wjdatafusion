@@ -1,0 +1,194 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportTimInspectionPlanMapper">
+
+    <resultMap id="SupportTimInspectionPlanResult" type="SupportTimInspectionPlan">
+        <id property="planId" column="plan_id"/>
+        <result property="planName" column="plan_name"/>
+        <result property="cronExpression" column="cron_expression"/>
+        <result property="jobId" column="job_id"/>
+        <result property="reportStyle" column="report_style"/>
+        <result property="status" column="status"/>
+        <result property="itemCount" column="item_count"/>
+        <result property="targetCount" column="target_count"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <resultMap id="SupportTimInspectionPlanItemResult" type="SupportTimInspectionPlanItem">
+        <id property="planItemId" column="plan_item_id"/>
+        <result property="planId" column="plan_id"/>
+        <result property="itemCode" column="item_code"/>
+        <result property="itemName" column="item_name"/>
+        <result property="itemType" column="item_type"/>
+        <result property="enabledFlag" column="enabled_flag"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="thresholdValue" column="threshold_value"/>
+        <result property="thresholdUnit" column="threshold_unit"/>
+        <result property="compareRule" column="compare_rule"/>
+        <result property="timeWindowMinutes" column="time_window_minutes"/>
+        <result property="timeoutSeconds" column="timeout_seconds"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <resultMap id="SupportTimInspectionPlanTargetResult" type="SupportTimInspectionPlanTarget">
+        <id property="planTargetId" column="plan_target_id"/>
+        <result property="planId" column="plan_id"/>
+        <result property="itemCode" column="item_code"/>
+        <result property="targetId" column="target_id"/>
+    </resultMap>
+
+    <resultMap id="SupportTimInspectionTargetResultMap" type="SupportTimInspectionTarget">
+        <result property="targetId" column="target_id"/>
+        <result property="itemCode" column="item_code"/>
+        <result property="targetName" column="target_name"/>
+        <result property="targetType" column="target_type"/>
+        <result property="serverId" column="server_id"/>
+        <result property="serverName" column="server_name"/>
+        <result property="serverAddress" column="server_address"/>
+        <result property="host" column="host"/>
+        <result property="port" column="port"/>
+        <result property="path" column="path"/>
+        <result property="url" column="url"/>
+        <result property="httpMethod" column="http_method"/>
+        <result property="topic" column="topic"/>
+        <result property="consumerGroup" column="consumer_group"/>
+        <result property="username" column="username"/>
+        <result property="passwordCipher" column="password_cipher"/>
+        <result property="appKey" column="app_key"/>
+        <result property="secretCipher" column="secret_cipher"/>
+        <result property="resultPath" column="result_path"/>
+        <result property="extraParams" column="extra_params"/>
+        <result property="status" column="status"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <select id="selectPlanList" parameterType="SupportTimInspectionPlan" resultMap="SupportTimInspectionPlanResult">
+        select p.plan_id, p.plan_name, p.cron_expression, p.job_id, p.report_style, p.status,
+               p.create_by, p.create_time, p.update_by, p.update_time, p.remark,
+               (select count(1) from sup_tim_inspection_plan_item i where i.plan_id = p.plan_id and i.enabled_flag = 'Y') as item_count,
+               (select count(1) from sup_tim_inspection_plan_target t where t.plan_id = p.plan_id) as target_count
+        from sup_tim_inspection_plan p
+        <where>
+            <if test="planName != null and planName != ''">and p.plan_name like concat('%', #{planName}, '%')</if>
+            <if test="status != null and status != ''">and p.status = #{status}</if>
+            <if test="reportStyle != null and reportStyle != ''">and p.report_style = #{reportStyle}</if>
+        </where>
+        order by p.plan_id desc
+    </select>
+
+    <select id="selectPlanById" parameterType="Long" resultMap="SupportTimInspectionPlanResult">
+        select plan_id, plan_name, cron_expression, job_id, report_style, status,
+               create_by, create_time, update_by, update_time, remark
+        from sup_tim_inspection_plan
+        where plan_id = #{planId}
+    </select>
+
+    <insert id="insertPlan" parameterType="SupportTimInspectionPlan" useGeneratedKeys="true" keyProperty="planId">
+        insert into sup_tim_inspection_plan(
+            plan_name, cron_expression, job_id, report_style, status,
+            create_by, create_time, update_by, update_time, remark
+        ) values (
+            #{planName}, #{cronExpression}, #{jobId}, #{reportStyle}, #{status},
+            #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
+        )
+    </insert>
+
+    <update id="updatePlan" parameterType="SupportTimInspectionPlan">
+        update sup_tim_inspection_plan
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="planName != null and planName != ''">plan_name = #{planName},</if>
+            <if test="cronExpression != null and cronExpression != ''">cron_expression = #{cronExpression},</if>
+            <if test="jobId != null">job_id = #{jobId},</if>
+            <if test="reportStyle != null and reportStyle != ''">report_style = #{reportStyle},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where plan_id = #{planId}
+    </update>
+
+    <update id="updatePlanJobId">
+        update sup_tim_inspection_plan
+        set job_id = #{jobId}
+        where plan_id = #{planId}
+    </update>
+
+    <update id="updatePlanStatus">
+        update sup_tim_inspection_plan
+        set status = #{status}, update_by = #{updateBy}, update_time = sysdate()
+        where plan_id = #{planId}
+    </update>
+
+    <delete id="deletePlanById" parameterType="Long">
+        delete from sup_tim_inspection_plan where plan_id = #{planId}
+    </delete>
+
+    <select id="selectItemsByPlanId" parameterType="Long" resultMap="SupportTimInspectionPlanItemResult">
+        select plan_item_id, plan_id, item_code, item_name, item_type, enabled_flag, sort_order,
+               threshold_value, threshold_unit, compare_rule, time_window_minutes, timeout_seconds,
+               create_by, create_time, update_by, update_time, remark
+        from sup_tim_inspection_plan_item
+        where plan_id = #{planId}
+        order by sort_order asc, plan_item_id asc
+    </select>
+
+    <insert id="insertPlanItem" parameterType="SupportTimInspectionPlanItem" useGeneratedKeys="true" keyProperty="planItemId">
+        insert into sup_tim_inspection_plan_item(
+            plan_id, item_code, item_name, item_type, enabled_flag, sort_order,
+            threshold_value, threshold_unit, compare_rule, time_window_minutes, timeout_seconds,
+            create_by, create_time, update_by, update_time, remark
+        ) values (
+            #{planId}, #{itemCode}, #{itemName}, #{itemType}, #{enabledFlag}, #{sortOrder},
+            #{thresholdValue}, #{thresholdUnit}, #{compareRule}, #{timeWindowMinutes}, #{timeoutSeconds},
+            #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
+        )
+    </insert>
+
+    <delete id="deleteItemsByPlanId" parameterType="Long">
+        delete from sup_tim_inspection_plan_item where plan_id = #{planId}
+    </delete>
+
+    <select id="selectPlanTargetsByPlanId" parameterType="Long" resultMap="SupportTimInspectionPlanTargetResult">
+        select plan_target_id, plan_id, item_code, target_id
+        from sup_tim_inspection_plan_target
+        where plan_id = #{planId}
+    </select>
+
+    <insert id="insertPlanTarget" parameterType="SupportTimInspectionPlanTarget" useGeneratedKeys="true" keyProperty="planTargetId">
+        insert into sup_tim_inspection_plan_target(plan_id, item_code, target_id, create_by, create_time)
+        values (#{planId}, #{itemCode}, #{targetId}, #{createBy}, #{createTime})
+    </insert>
+
+    <delete id="deleteTargetsByPlanId" parameterType="Long">
+        delete from sup_tim_inspection_plan_target where plan_id = #{planId}
+    </delete>
+
+    <select id="selectEnabledTargetsByPlanAndItem" resultMap="SupportTimInspectionTargetResultMap">
+        select t.target_id, t.item_code, t.target_name, t.target_type, t.server_id,
+               s.server_name, s.server_address,
+               t.host, t.port, t.path, t.url, t.http_method, t.topic, t.consumer_group,
+               t.username, t.password_cipher, t.app_key, t.secret_cipher, t.result_path,
+               t.extra_params, t.status, t.create_by, t.create_time, t.update_by,
+               t.update_time, t.remark
+        from sup_tim_inspection_plan_target pt
+        inner join sup_tim_inspection_target t on t.target_id = pt.target_id and t.status = '0'
+        left join sup_server s on s.server_id = t.server_id
+        where pt.plan_id = #{planId} and pt.item_code = #{itemCode}
+        order by pt.plan_target_id asc
+    </select>
+</mapper>

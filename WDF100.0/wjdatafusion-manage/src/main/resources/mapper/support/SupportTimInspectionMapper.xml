@@ -11,6 +11,9 @@
         <result property="sourceType" column="source_type"/>
         <result property="resultStatus" column="result_status"/>
         <result property="executorName" column="executor_name"/>
+        <result property="planId" column="plan_id"/>
+        <result property="planName" column="plan_name"/>
+        <result property="reportStyle" column="report_style"/>
         <result property="enabledItemCount" column="enabled_item_count"/>
         <result property="skippedItemCount" column="skipped_item_count"/>
         <result property="summary" column="summary"/>
@@ -117,6 +120,7 @@
 
     <sql id="selectInspectionVo">
         select inspection_id, inspection_time, inspection_type, source_type, result_status, executor_name,
+               plan_id, plan_name, report_style,
                enabled_item_count, skipped_item_count, summary, abnormal_summary,
                create_by, create_time, update_by, update_time, remark
         from sup_tim_inspection
@@ -128,6 +132,8 @@
             <if test="inspectionType != null and inspectionType != ''">and inspection_type = #{inspectionType}</if>
             <if test="sourceType != null and sourceType != ''">and source_type = #{sourceType}</if>
             <if test="resultStatus != null and resultStatus != ''">and result_status = #{resultStatus}</if>
+            <if test="planId != null">and plan_id = #{planId}</if>
+            <if test="planName != null and planName != ''">and plan_name like concat('%', #{planName}, '%')</if>
             <if test="executorName != null and executorName != ''">and executor_name like concat('%', #{executorName}, '%')</if>
         </where>
         order by inspection_time desc, inspection_id desc
@@ -146,6 +152,9 @@
             <if test="sourceType != null">source_type,</if>
             <if test="resultStatus != null">result_status,</if>
             <if test="executorName != null">executor_name,</if>
+            <if test="planId != null">plan_id,</if>
+            <if test="planName != null">plan_name,</if>
+            <if test="reportStyle != null">report_style,</if>
             <if test="enabledItemCount != null">enabled_item_count,</if>
             <if test="skippedItemCount != null">skipped_item_count,</if>
             <if test="summary != null">summary,</if>
@@ -162,6 +171,9 @@
             <if test="sourceType != null">#{sourceType},</if>
             <if test="resultStatus != null">#{resultStatus},</if>
             <if test="executorName != null">#{executorName},</if>
+            <if test="planId != null">#{planId},</if>
+            <if test="planName != null">#{planName},</if>
+            <if test="reportStyle != null">#{reportStyle},</if>
             <if test="enabledItemCount != null">#{enabledItemCount},</if>
             <if test="skippedItemCount != null">#{skippedItemCount},</if>
             <if test="summary != null">#{summary},</if>

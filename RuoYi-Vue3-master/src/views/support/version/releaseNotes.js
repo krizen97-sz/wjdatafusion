@@ -1,5 +1,28 @@
 export const releaseNotes = [
   {
+    version: 'v2.6.0',
+    submitTime: '2026-06-11 12:23:13',
+    level: 'minor',
+    levelLabel: '小版本',
+    tagType: 'primary',
+    title: 'TIM巡检计划配置',
+    summary: '将TIM巡检计划做成可配置能力，并接入若依自带定时任务，实现计划化自动巡检。',
+    changes: [
+      '新增巡检计划页签，可维护计划名称、Cron表达式、启停状态和报告样式。',
+      '每个计划可单独配置7项巡检的启用状态、告警阈值、比较规则、时间窗口、超时时间和巡检目标。',
+      '计划保存后自动同步若依sys_job定时任务，启停和删除计划时同步暂停、恢复或删除对应任务。',
+      '定时执行时按照计划快照读取巡检项目和目标，巡检记录保留计划名称、计划ID和报告样式。',
+      'Word巡检报告按计划样式生成简要、标准、明细或异常报告。'
+    ],
+    scope: ['TIM系统巡检', '巡检计划', '若依定时任务', 'Cron配置', '报告样式', 'SQL脚本', '版本记录'],
+    database: '新增 sup_tim_inspection_plan、sup_tim_inspection_plan_item、sup_tim_inspection_plan_target 三张表；sup_tim_inspection 增加 plan_id、plan_name、report_style 字段；新增 support:timInspection:plan 权限。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260611_tim_inspection_plan_v2_6_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v2.5.1',
     submitTime: '2026-06-11 10:37:13',
     level: 'patch',

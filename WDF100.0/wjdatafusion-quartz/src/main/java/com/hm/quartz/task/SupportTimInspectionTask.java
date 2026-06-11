@@ -26,4 +26,11 @@ public class SupportTimInspectionTask
         log.info("TIM系统巡检定时任务执行完成，巡检ID：{}，结果：{}",
                 result.getInspection().getInspectionId(), result.getInspection().getResultStatus());
     }
+
+    public void runPlan(Long planId)
+    {
+        SupportTimInspectionDetailVo result = timInspectionService.runScheduledInspectionPlan(planId, "计划巡检");
+        log.info("TIM系统巡检计划执行完成，计划ID：{}，巡检ID：{}，结果：{}",
+                planId, result.getInspection().getInspectionId(), result.getInspection().getResultStatus());
+    }
 }

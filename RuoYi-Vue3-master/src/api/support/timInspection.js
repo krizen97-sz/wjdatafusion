@@ -47,3 +47,35 @@ export function testTimInspectionTarget(data) {
 export function viewTimInspectionTargetPlain(targetId) {
   return request({ url: '/support/timInspection/config/target/plain/' + targetId, method: 'get' })
 }
+
+export function listTimInspectionPlan(query) {
+  return request({ url: '/support/timInspection/plan/list', method: 'get', params: query })
+}
+
+export function getTimInspectionPlan(planId) {
+  return request({ url: '/support/timInspection/plan/' + planId, method: 'get' })
+}
+
+export function getTimInspectionPlanTemplate() {
+  return request({ url: '/support/timInspection/plan/template', method: 'get' })
+}
+
+export function addTimInspectionPlan(data) {
+  return request({ url: '/support/timInspection/plan', method: 'post', data })
+}
+
+export function updateTimInspectionPlan(data) {
+  return request({ url: '/support/timInspection/plan', method: 'put', data })
+}
+
+export function changeTimInspectionPlanStatus(data) {
+  return request({ url: '/support/timInspection/plan/changeStatus', method: 'put', data })
+}
+
+export function runTimInspectionPlan(planId) {
+  return request({ url: '/support/timInspection/plan/run/' + planId, method: 'post', headers: { repeatSubmit: false, interval: 5000 } })
+}
+
+export function delTimInspectionPlan(planId) {
+  return request({ url: '/support/timInspection/plan/' + planId, method: 'delete' })
+}

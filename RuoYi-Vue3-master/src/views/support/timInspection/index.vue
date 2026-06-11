@@ -9,6 +9,7 @@
       <div class="tim-hero__stats">
         <span><strong>{{ enabledConfigCount }}</strong><em>启用项</em></span>
         <span><strong>{{ configTargetTotal }}</strong><em>目标数</em></span>
+        <span><strong>{{ planTotal }}</strong><em>计划数</em></span>
         <span><strong>{{ latestInspectionLabel }}</strong><em>最近结果</em></span>
       </div>
     </section>
@@ -31,6 +32,9 @@
           </el-form-item>
           <el-form-item label="执行人" prop="executorName">
             <el-input v-model="queryParams.executorName" placeholder="请输入执行人" clearable @keyup.enter="handleQuery" />
+          </el-form-item>
+          <el-form-item label="计划" prop="planName">
+            <el-input v-model="queryParams.planName" placeholder="请输入计划名称" clearable @keyup.enter="handleQuery" />
           </el-form-item>
           <el-form-item>
             <el-button type="primary" icon="Search" @click="handleQuery">搜索</el-button>
@@ -57,6 +61,7 @@
             <template #default="scope"><el-tag size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
           </el-table-column>
           <el-table-column label="执行人" align="center" prop="executorName" width="120" />
+          <el-table-column label="巡检计划" align="center" prop="planName" width="150" show-overflow-tooltip />
           <el-table-column label="摘要" prop="summary" min-width="220" show-overflow-tooltip />
           <el-table-column label="异常摘要" prop="abnormalSummary" min-width="260" show-overflow-tooltip />
           <el-table-column label="启用/跳过" align="center" width="110">
@@ -126,6 +131,85 @@
             </div>
           </article>
         </div>
+      </el-tab-pane>
+
+      <el-tab-pane label="巡检计划" name="plan">
+        <el-form :model="planQuery" ref="planQueryRef" :inline="true" label-width="80px" class="tim-query-bar">
+          <el-form-item label="计划名称" prop="planName">
+            <el-input v-model="planQuery.planName" placeholder="请输入计划名称" clearable @keyup.enter="handlePlanQuery" />
+          </el-form-item>
+          <el-form-item label="状态" prop="status">
+            <el-select v-model="planQuery.status" placeholder="全部状态" clearable style="width: 140px">
+              <el-option label="启用" value="0" />
+              <el-option label="暂停" value="1" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="报告样式" prop="reportStyle">
+            <el-select v-model="planQuery.reportStyle" placeholder="全部样式" clearable style="width: 150px">
+              <el-option label="标准报告" value="STANDARD" />
+              <el-option label="简要报告" value="SIMPLE" />
+              <el-option label="明细报告" value="DETAIL" />
+              <el-option label="异常报告" value="EXCEPTION_ONLY" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" icon="Search" @click="handlePlanQuery">搜索</el-button>
+            <el-button icon="Refresh" @click="resetPlanQuery">重置</el-button>
+          </el-form-item>
+        </el-form>
+
+        <el-row :gutter="10" class="mb8 tim-toolbar">
+          <el-col :span="1.5">
+            <el-button type="primary" plain icon="Plus" @click="handleAddPlan" v-hasPermi="['support:timInspection:plan']">新增计划</el-button>
+          </el-col>
+          <el-col :span="1.5">
+            <el-button icon="Refresh" @click="getPlanList">刷新</el-button>
+          </el-col>
+        </el-row>
+
+        <el-table class="tim-table plan-table" v-loading="planLoading" :data="planList">
+          <el-table-column label="计划名称" prop="planName" min-width="180" show-overflow-tooltip />
+          <el-table-column label="Cron表达式" prop="cronExpression" min-width="170" />
+          <el-table-column label="报告样式" align="center" width="110">
+            <template #default="scope">
+              <el-tag size="small" :type="reportStyleTagType(scope.row.reportStyle)">{{ getReportStyleLabel(scope.row.reportStyle) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="启用项/目标" align="center" width="120">
+            <template #default="scope">{{ scope.row.itemCount || 0 }} / {{ scope.row.targetCount || 0 }}</template>
+          </el-table-column>
+          <el-table-column label="若依任务ID" align="center" prop="jobId" width="110" />
+          <el-table-column label="状态" align="center" width="110">
+            <template #default="scope">
+              <el-switch
+                v-model="scope.row.status"
+                active-value="0"
+                inactive-value="1"
+                active-text="启用"
+                inactive-text="暂停"
+                inline-prompt
+                @change="handlePlanStatusChange(scope.row)"
+                v-hasPermi="['support:timInspection:plan']"
+              />
+            </template>
+          </el-table-column>
+          <el-table-column label="更新时间" align="center" prop="updateTime" width="170" />
+          <el-table-column label="操作" fixed="right" align="center" width="260">
+            <template #default="scope">
+              <el-button link type="primary" @click="handleUpdatePlan(scope.row)" v-hasPermi="['support:timInspection:plan']">编辑</el-button>
+              <el-button link type="success" :loading="planRunId === scope.row.planId" @click="handleRunPlan(scope.row)" v-hasPermi="['support:timInspection:run']">立即执行</el-button>
+              <el-button link type="danger" @click="handleDeletePlan(scope.row)" v-hasPermi="['support:timInspection:plan']">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <pagination
+          v-show="planTotal > 0"
+          :total="planTotal"
+          v-model:page="planQuery.pageNum"
+          v-model:limit="planQuery.pageSize"
+          @pagination="getPlanList"
+        />
       </el-tab-pane>
     </el-tabs>
 
@@ -273,6 +357,94 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="planDialogOpen" width="1080px" append-to-body class="plan-dialog">
+      <template #header>
+        <div class="dialog-title">
+          <span>{{ planForm.planId ? '编辑巡检计划' : '新增巡检计划' }}</span>
+          <strong>{{ planForm.planName || '按计划自动执行TIM巡检' }}</strong>
+        </div>
+      </template>
+      <el-form ref="planRef" :model="planForm" :rules="planRules" label-position="top" class="plan-form">
+        <div class="plan-basic-grid">
+          <el-form-item label="计划名称" prop="planName">
+            <el-input v-model="planForm.planName" placeholder="例如：每日早间TIM巡检" />
+          </el-form-item>
+          <el-form-item label="Cron表达式" prop="cronExpression">
+            <el-input v-model="planForm.cronExpression" placeholder="例如：0 0 8 * * ?" />
+          </el-form-item>
+          <el-form-item label="报告样式" prop="reportStyle">
+            <el-select v-model="planForm.reportStyle">
+              <el-option label="标准报告" value="STANDARD" />
+              <el-option label="简要报告" value="SIMPLE" />
+              <el-option label="明细报告" value="DETAIL" />
+              <el-option label="异常报告" value="EXCEPTION_ONLY" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="计划状态" prop="status">
+            <el-radio-group v-model="planForm.status">
+              <el-radio label="0">启用</el-radio>
+              <el-radio label="1">暂停</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="备注" class="plan-basic-grid__wide">
+            <el-input v-model="planForm.remark" type="textarea" :rows="2" placeholder="可记录该计划适用的网络、时段或报告接收场景" />
+          </el-form-item>
+        </div>
+
+        <div class="plan-section-head">
+          <div>
+            <span>巡检项目与目标</span>
+            <strong>每个计划可单独覆盖7项巡检的开关、阈值和目标范围</strong>
+          </div>
+          <el-tag effect="light">{{ (planForm.items || []).filter((item) => item.enabledFlag === 'Y').length }} 项启用</el-tag>
+        </div>
+
+        <div class="plan-item-grid">
+          <article v-for="item in planForm.items" :key="item.itemCode" class="plan-item-card" :class="{ 'is-disabled': item.enabledFlag !== 'Y' }">
+            <div class="plan-item-card__head">
+              <div>
+                <span>{{ item.sortOrder }}</span>
+                <strong>{{ item.itemName }}</strong>
+                <el-tag size="small" effect="plain">{{ getItemTypeLabel(item.itemType) }}</el-tag>
+              </div>
+              <el-switch v-model="item.enabledFlag" active-value="Y" inactive-value="N" active-text="启用" inactive-text="关闭" inline-prompt />
+            </div>
+            <div class="plan-item-card__body">
+              <el-form-item label="告警阈值">
+                <el-input-number v-model="item.thresholdValue" :min="0" :precision="0" controls-position="right" />
+              </el-form-item>
+              <el-form-item label="比较规则">
+                <el-select v-model="item.compareRule">
+                  <el-option label="实际值不得低于阈值" value="MIN" />
+                  <el-option label="实际值不得高于阈值" value="MAX" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="时间窗口(分钟)">
+                <el-input-number v-model="item.timeWindowMinutes" :min="0" controls-position="right" />
+              </el-form-item>
+              <el-form-item label="超时(秒)">
+                <el-input-number v-model="item.timeoutSeconds" :min="3" :max="120" controls-position="right" />
+              </el-form-item>
+              <el-form-item label="巡检目标" class="plan-item-card__wide">
+                <el-select v-model="item.targetIds" multiple collapse-tags collapse-tags-tooltip filterable placeholder="选择该计划要巡检的目标">
+                  <el-option
+                    v-for="target in planTargetOptions[item.itemCode] || []"
+                    :key="target.targetId"
+                    :label="formatTargetOption(target)"
+                    :value="target.targetId"
+                  />
+                </el-select>
+              </el-form-item>
+            </div>
+          </article>
+        </div>
+      </el-form>
+      <template #footer>
+        <el-button @click="planDialogOpen = false">取消</el-button>
+        <el-button type="primary" :loading="planSaving" @click="submitPlan">保存并同步定时任务</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="detailOpen" width="980px" append-to-body class="detail-dialog">
       <template #header>
         <div class="dialog-title">
@@ -333,7 +505,15 @@ import {
   updateTimInspectionTarget,
   delTimInspectionTarget,
   testTimInspectionTarget,
-  viewTimInspectionTargetPlain
+  viewTimInspectionTargetPlain,
+  listTimInspectionPlan,
+  getTimInspectionPlan,
+  getTimInspectionPlanTemplate,
+  addTimInspectionPlan,
+  updateTimInspectionPlan,
+  changeTimInspectionPlanStatus,
+  runTimInspectionPlan,
+  delTimInspectionPlan
 } from '@/api/support/timInspection'
 
 const { proxy } = getCurrentInstance()
@@ -341,25 +521,34 @@ const activeTab = ref('record')
 const loading = ref(false)
 const configLoading = ref(false)
 const targetLoading = ref(false)
+const planLoading = ref(false)
 const runLoading = ref(false)
 const targetTestLoading = ref(false)
+const planSaving = ref(false)
 const showSearch = ref(true)
 const total = ref(0)
+const planTotal = ref(0)
 const inspectionList = ref([])
 const configList = ref([])
 const targetList = ref([])
+const planList = ref([])
 const targetTotal = ref(0)
 const targetDrawerOpen = ref(false)
 const targetDialogOpen = ref(false)
+const planDialogOpen = ref(false)
 const detailOpen = ref(false)
 const currentConfig = ref(null)
 const serverOptions = ref([])
+const planTargetOptions = ref({})
+const planRunId = ref(null)
 const detail = ref({ inspection: null, items: [], targetResults: [] })
 
 const data = reactive({
-  queryParams: { pageNum: 1, pageSize: 10, inspectionType: 'TIM_GA_VEHICLE', sourceType: null, resultStatus: null, executorName: null },
+  queryParams: { pageNum: 1, pageSize: 10, inspectionType: 'TIM_GA_VEHICLE', sourceType: null, resultStatus: null, executorName: null, planName: null },
   targetQuery: { pageNum: 1, pageSize: 10, itemCode: null },
+  planQuery: { pageNum: 1, pageSize: 10, planName: null, status: null, reportStyle: null },
   targetForm: {},
+  planForm: {},
   targetRules: {
     targetName: [{ required: true, message: '目标名称不能为空', trigger: 'blur' }],
     url: [{ required: true, message: '接口地址不能为空', trigger: 'blur' }],
@@ -370,10 +559,15 @@ const data = reactive({
     topic: [{ required: true, message: 'Topic不能为空', trigger: 'blur' }],
     consumerGroup: [{ required: true, message: '消费组不能为空', trigger: 'blur' }],
     serverId: [{ required: true, message: '请选择服务器', trigger: 'change' }]
+  },
+  planRules: {
+    planName: [{ required: true, message: '计划名称不能为空', trigger: 'blur' }],
+    cronExpression: [{ required: true, message: 'Cron表达式不能为空', trigger: 'blur' }],
+    reportStyle: [{ required: true, message: '请选择报告样式', trigger: 'change' }]
   }
 })
 
-const { queryParams, targetQuery, targetForm, targetRules } = toRefs(data)
+const { queryParams, targetQuery, planQuery, targetForm, planForm, targetRules, planRules } = toRefs(data)
 const enabledConfigCount = computed(() => configList.value.filter((item) => item.enabledFlag === 'Y').length)
 const configTargetTotal = computed(() => configList.value.reduce((sum, item) => sum + Number(item.targetCount || 0), 0))
 const latestInspectionLabel = computed(() => inspectionList.value.length ? formatResult(inspectionList.value[0].resultStatus) : '暂无')
@@ -397,6 +591,16 @@ function getConfigList() {
   })
 }
 
+function getPlanList() {
+  planLoading.value = true
+  listTimInspectionPlan(planQuery.value).then((res) => {
+    planList.value = res.rows || []
+    planTotal.value = res.total || 0
+  }).finally(() => {
+    planLoading.value = false
+  })
+}
+
 function handleQuery() {
   queryParams.value.pageNum = 1
   getList()
@@ -405,6 +609,16 @@ function handleQuery() {
 function resetQuery() {
   proxy.resetForm('queryRef')
   handleQuery()
+}
+
+function handlePlanQuery() {
+  planQuery.value.pageNum = 1
+  getPlanList()
+}
+
+function resetPlanQuery() {
+  proxy.resetForm('planQueryRef')
+  handlePlanQuery()
 }
 
 function handleRun() {
@@ -541,6 +755,121 @@ function handleViewTargetPlain(row) {
   })
 }
 
+function resetPlanForm(plan) {
+  const source = plan || { status: '0', reportStyle: 'STANDARD', items: [] }
+  planForm.value = {
+    planId: source.planId || null,
+    planName: source.planName || null,
+    cronExpression: source.cronExpression || '0 0 8 * * ?',
+    jobId: source.jobId || null,
+    reportStyle: source.reportStyle || 'STANDARD',
+    status: source.status || '0',
+    remark: source.remark || null,
+    items: normalizePlanItems(source.items || [])
+  }
+  proxy.resetForm('planRef')
+}
+
+function normalizePlanItems(items) {
+  return items.map((item) => ({
+    ...item,
+    enabledFlag: item.enabledFlag || 'Y',
+    thresholdValue: Number(item.thresholdValue || 0),
+    timeWindowMinutes: Number(item.timeWindowMinutes || 0),
+    timeoutSeconds: Number(item.timeoutSeconds || 10),
+    targetIds: item.targetIds || []
+  }))
+}
+
+function handleAddPlan() {
+  getTimInspectionPlanTemplate().then((res) => {
+    resetPlanForm(res.data)
+    loadPlanTargetOptions(planForm.value.items)
+    planDialogOpen.value = true
+  })
+}
+
+function handleUpdatePlan(row) {
+  getTimInspectionPlan(row.planId).then((res) => {
+    resetPlanForm(res.data)
+    loadPlanTargetOptions(planForm.value.items)
+    planDialogOpen.value = true
+  })
+}
+
+function submitPlan() {
+  proxy.$refs.planRef.validate((valid) => {
+    if (!valid) return
+    planSaving.value = true
+    const payload = buildPlanPayload()
+    const req = payload.planId ? updateTimInspectionPlan(payload) : addTimInspectionPlan(payload)
+    req.then(() => {
+      proxy.$modal.msgSuccess('巡检计划已保存，并已同步若依定时任务')
+      planDialogOpen.value = false
+      getPlanList()
+      getList()
+    }).finally(() => {
+      planSaving.value = false
+    })
+  })
+}
+
+function buildPlanPayload() {
+  return {
+    ...planForm.value,
+    items: (planForm.value.items || []).map((item) => ({
+      ...item,
+      targetIds: item.targetIds || []
+    }))
+  }
+}
+
+function handlePlanStatusChange(row) {
+  const text = row.status === '0' ? '启用' : '暂停'
+  proxy.$modal.confirm('确认' + text + '巡检计划“' + row.planName + '”吗？').then(() => {
+    return changeTimInspectionPlanStatus({ planId: row.planId, status: row.status })
+  }).then(() => {
+    proxy.$modal.msgSuccess('计划状态已更新')
+    getPlanList()
+  }).catch(() => {
+    row.status = row.status === '0' ? '1' : '0'
+  })
+}
+
+function handleRunPlan(row) {
+  proxy.$modal.confirm('确认立即执行巡检计划“' + row.planName + '”吗？').then(() => {
+    planRunId.value = row.planId
+    return runTimInspectionPlan(row.planId)
+  }).then((res) => {
+    proxy.$modal.msgSuccess('计划巡检执行完成')
+    detail.value = res.data || { inspection: null, items: [], targetResults: [] }
+    detailOpen.value = true
+    getList()
+  }).finally(() => {
+    planRunId.value = null
+  }).catch(() => {
+    planRunId.value = null
+  })
+}
+
+function handleDeletePlan(row) {
+  proxy.$modal.confirm('确认删除巡检计划“' + row.planName + '”吗？对应的若依定时任务也会同步删除。').then(() => {
+    return delTimInspectionPlan(row.planId)
+  }).then(() => {
+    proxy.$modal.msgSuccess('删除成功')
+    getPlanList()
+  }).catch(() => {})
+}
+
+function loadPlanTargetOptions(items) {
+  planTargetOptions.value = {}
+  ;(items || []).forEach((item) => {
+    listTimInspectionTarget({ pageNum: 1, pageSize: 500, itemCode: item.itemCode, status: '0' }).then((res) => {
+      planTargetOptions.value[item.itemCode] = res.rows || []
+    })
+  })
+}
+
 function handleDeleteTarget(row) {
   proxy.$modal.confirm('确认删除巡检目标“' + row.targetName + '”吗？').then(() => delTimInspectionTarget(row.targetId)).then(() => {
     proxy.$modal.msgSuccess('删除成功')
@@ -559,7 +888,11 @@ function loadServerOptions() {
 function exportWord(row) {
   getTimInspection(row.inspectionId).then((res) => {
     const data = res.data
-    const rows = (data.items || []).map((item) => `
+    const reportStyle = data.inspection.reportStyle || 'STANDARD'
+    const reportItems = reportStyle === 'EXCEPTION_ONLY'
+      ? (data.items || []).filter((item) => item.resultStatus === '2')
+      : (data.items || [])
+    const rows = reportItems.map((item) => `
       <tr>
         <td>${item.itemName}</td>
         <td>${formatResult(item.resultStatus)}</td>
@@ -567,17 +900,37 @@ function exportWord(row) {
         <td>${item.actualValue ?? '-'}${item.actualUnit || ''}</td>
         <td>${item.resultSummary || ''}</td>
       </tr>`).join('')
+    const targetRows = reportStyle === 'DETAIL'
+      ? (data.targetResults || []).map((item) => `
+        <tr>
+          <td>${item.targetName || ''}</td>
+          <td>${formatResult(item.resultStatus)}</td>
+          <td>${item.actualValue ?? '-'}${item.actualUnit || ''}</td>
+          <td>${item.resultDetail || ''}</td>
+          <td>${item.errorMessage || ''}</td>
+        </tr>`).join('')
+      : ''
+    const itemTable = reportStyle === 'SIMPLE' ? '' : `
+      <table border="1" cellspacing="0" cellpadding="6">
+        <thead><tr><th>巡检项</th><th>状态</th><th>阈值</th><th>实际值</th><th>摘要</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="5">无匹配巡检项</td></tr>'}</tbody>
+      </table>`
+    const targetTable = reportStyle === 'DETAIL' ? `
+      <h3>目标明细</h3>
+      <table border="1" cellspacing="0" cellpadding="6">
+        <thead><tr><th>目标</th><th>状态</th><th>实际值</th><th>详情</th><th>异常原因</th></tr></thead>
+        <tbody>${targetRows || '<tr><td colspan="5">无目标明细</td></tr>'}</tbody>
+      </table>` : ''
     const html = `
       <html><head><meta charset="utf-8"></head><body>
       <h2>TIM系统巡检结果</h2>
       <p>巡检时间：${data.inspection.inspectionTime}</p>
-      <p>执行来源：${formatSource(data.inspection.sourceType)}；执行人：${data.inspection.executorName || '-'}</p>
+      <p>执行来源：${formatSource(data.inspection.sourceType)}；执行人：${data.inspection.executorName || '-'}；巡检计划：${data.inspection.planName || '-'}</p>
+      <p>报告样式：${getReportStyleLabel(reportStyle)}</p>
       <p>巡检结果：${formatResult(data.inspection.resultStatus)}；摘要：${data.inspection.summary || ''}</p>
       <p>异常摘要：${data.inspection.abnormalSummary || ''}</p>
-      <table border="1" cellspacing="0" cellpadding="6">
-        <thead><tr><th>巡检项</th><th>状态</th><th>阈值</th><th>实际值</th><th>摘要</th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
+      ${itemTable}
+      ${targetTable}
       </body></html>`
     saveAs(new Blob([html], { type: 'application/msword;charset=utf-8' }), 'TIM系统巡检_' + row.inspectionId + '.doc')
   })
@@ -621,8 +974,23 @@ function formatTargetAddress(row) {
   return `${row.host || '-'}:${row.port || '-'}${row.path ? ' / ' + row.path : ''}`
 }
 
+function formatTargetOption(row) {
+  return `${row.targetName || '-'}｜${formatTargetAddress(row)}`
+}
+
+function getReportStyleLabel(style) {
+  const map = { STANDARD: '标准报告', SIMPLE: '简要报告', DETAIL: '明细报告', EXCEPTION_ONLY: '异常报告' }
+  return map[style] || style || '-'
+}
+
+function reportStyleTagType(style) {
+  const map = { STANDARD: '', SIMPLE: 'info', DETAIL: 'primary', EXCEPTION_ONLY: 'danger' }
+  return map[style] || ''
+}
+
 getList()
 getConfigList()
+getPlanList()
 </script>
 
 <style scoped>
@@ -662,9 +1030,9 @@ getConfigList()
 
 .tim-hero__stats {
   display: grid;
-  grid-template-columns: repeat(3, minmax(90px, 1fr));
+  grid-template-columns: repeat(4, minmax(86px, 1fr));
   gap: 10px;
-  min-width: 340px;
+  min-width: 430px;
 }
 
 .tim-hero__stats span,
@@ -804,6 +1172,124 @@ getConfigList()
   grid-column: 1 / -1;
 }
 
+.plan-table :deep(.el-switch__label) {
+  font-size: 12px;
+}
+
+.plan-form {
+  display: grid;
+  gap: 16px;
+}
+
+.plan-basic-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 1.1fr 0.8fr 0.7fr;
+  gap: 0 14px;
+}
+
+.plan-basic-grid__wide {
+  grid-column: 1 / -1;
+}
+
+.plan-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid #dfe9f5;
+  border-radius: 8px;
+  background: #f7fbff;
+}
+
+.plan-section-head div {
+  display: grid;
+  gap: 4px;
+}
+
+.plan-section-head span {
+  font-weight: 700;
+  color: #17314d;
+}
+
+.plan-section-head strong {
+  font-size: 13px;
+  font-weight: 400;
+  color: #6c8198;
+}
+
+.plan-item-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  max-height: 54vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.plan-item-card {
+  border: 1px solid #dfe9f5;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.plan-item-card.is-disabled {
+  opacity: 0.68;
+}
+
+.plan-item-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid #edf3f9;
+  background: #fbfdff;
+}
+
+.plan-item-card__head div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.plan-item-card__head span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: #2f78ff;
+  background: #eaf3ff;
+  font-weight: 700;
+}
+
+.plan-item-card__head strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-item-card__body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
+  padding: 12px 14px 4px;
+}
+
+.plan-item-card__wide {
+  grid-column: 1 / -1;
+}
+
+.plan-item-card :deep(.el-select),
+.plan-basic-grid :deep(.el-select) {
+  width: 100%;
+}
+
 .detail-shell {
   display: grid;
   gap: 16px;
@@ -829,7 +1315,10 @@ getConfigList()
 
   .tim-hero__stats,
   .target-form,
-  .config-card__body {
+  .config-card__body,
+  .plan-basic-grid,
+  .plan-item-grid,
+  .plan-item-card__body {
     grid-template-columns: 1fr;
     min-width: 0;
   }

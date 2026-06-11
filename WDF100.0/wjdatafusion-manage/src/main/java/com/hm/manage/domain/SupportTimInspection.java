@@ -27,6 +27,15 @@ public class SupportTimInspection extends BaseEntity
     @Excel(name = "执行人")
     private String executorName;
 
+    @Excel(name = "巡检计划ID")
+    private Long planId;
+
+    @Excel(name = "巡检计划")
+    private String planName;
+
+    @Excel(name = "报告样式")
+    private String reportStyle;
+
     @Excel(name = "启用项数")
     private Integer enabledItemCount;
 
@@ -97,6 +106,36 @@ public class SupportTimInspection extends BaseEntity
     public void setExecutorName(String executorName)
     {
         this.executorName = executorName;
+    }
+
+    public Long getPlanId()
+    {
+        return planId;
+    }
+
+    public void setPlanId(Long planId)
+    {
+        this.planId = planId;
+    }
+
+    public String getPlanName()
+    {
+        return planName;
+    }
+
+    public void setPlanName(String planName)
+    {
+        this.planName = planName;
+    }
+
+    public String getReportStyle()
+    {
+        return reportStyle;
+    }
+
+    public void setReportStyle(String reportStyle)
+    {
+        this.reportStyle = reportStyle;
     }
 
     public Integer getEnabledItemCount()
