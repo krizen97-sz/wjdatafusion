@@ -91,6 +91,8 @@
                 v-model="item.enabledFlag"
                 active-value="Y"
                 inactive-value="N"
+                :loading="item.saving"
+                :disabled="item.saving"
                 @change="saveItemConfig(item)"
                 v-hasPermi="['support:timInspection:config']"
               />
@@ -120,7 +122,7 @@
               <el-tag size="small" effect="light">{{ getItemTypeLabel(item.itemType) }}</el-tag>
               <span>{{ item.targetCount || 0 }} 个目标</span>
               <el-button link type="primary" @click="openTargetDrawer(item)" v-hasPermi="['support:timInspection:config']">配置目标</el-button>
-              <el-button link type="success" @click="saveItemConfig(item)" v-hasPermi="['support:timInspection:config']">保存</el-button>
+              <el-button link type="success" :loading="item.saving" :disabled="item.saving" @click="saveItemConfig(item)" v-hasPermi="['support:timInspection:config']">保存</el-button>
             </div>
           </article>
         </div>
@@ -389,7 +391,7 @@ function getList() {
 function getConfigList() {
   configLoading.value = true
   getTimInspectionConfig().then((res) => {
-    configList.value = (res.data || []).map((item) => ({ ...item, thresholdValue: Number(item.thresholdValue || 0) }))
+    configList.value = (res.data || []).map((item) => ({ ...item, thresholdValue: Number(item.thresholdValue || 0), saving: false }))
   }).finally(() => {
     configLoading.value = false
   })
@@ -433,9 +435,15 @@ function handleDetail(row) {
 }
 
 function saveItemConfig(item) {
+  if (item.saving) return
+  item.saving = true
   updateTimInspectionItem(item).then(() => {
     proxy.$modal.msgSuccess('配置已保存')
     getConfigList()
+  }).catch(() => {
+    getConfigList()
+  }).finally(() => {
+    item.saving = false
   })
 }
 

@@ -98,7 +98,6 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
     @Override
     public List<SupportTimInspection> selectInspectionList(SupportTimInspection inspection)
     {
-        ensureDefaultConfigs();
         return timInspectionMapper.selectInspectionList(inspection);
     }
 
@@ -233,12 +232,12 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
         {
             throw new ServiceException("巡检项配置不存在");
         }
-        TargetCheckResult result = runSingleTarget(config, effectiveTarget);
+        TargetCheckResult result = runSingleTarget(config, effectiveTarget, false);
         if (RESULT_ABNORMAL.equals(result.status))
         {
             throw new ServiceException(StringUtils.defaultIfBlank(result.errorMessage, result.detail));
         }
-        return result.detail;
+        return buildTestSuccessMessage(result);
     }
 
     @Override
@@ -348,6 +347,11 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
 
     private TargetCheckResult runSingleTarget(SupportTimInspectionItemConfig config, SupportTimInspectionTarget target)
     {
+        return runSingleTarget(config, target, true);
+    }
+
+    private TargetCheckResult runSingleTarget(SupportTimInspectionItemConfig config, SupportTimInspectionTarget target, boolean thresholdEnabled)
+    {
         try
         {
             TargetCheckResult result;
@@ -370,7 +374,10 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
                     result = checkHttpCount(config, target);
                     break;
             }
-            applyThreshold(config, result);
+            if (thresholdEnabled)
+            {
+                applyThreshold(config, result);
+            }
             return result;
         }
         catch (Exception e)
@@ -803,18 +810,98 @@ public class SupportTimInspectionServiceImpl implements ISupportTimInspectionSer
             {
                 throw new ServiceException("巡检目标不存在");
             }
-            if (StringUtils.isNotBlank(target.getPassword()))
-            {
-                persisted.setPassword(target.getPassword());
-            }
-            if (StringUtils.isNotBlank(target.getSecret()))
-            {
-                persisted.setSecret(target.getSecret());
-            }
+            mergeTargetForTest(persisted, target);
+            validateAndNormalizeTarget(persisted, true);
             return withPlainSecret(persisted);
         }
         validateAndNormalizeTarget(target, false);
         return target;
+    }
+
+    private void mergeTargetForTest(SupportTimInspectionTarget persisted, SupportTimInspectionTarget form)
+    {
+        if (StringUtils.isNotBlank(form.getItemCode()))
+        {
+            persisted.setItemCode(form.getItemCode());
+        }
+        if (form.getTargetName() != null)
+        {
+            persisted.setTargetName(form.getTargetName());
+        }
+        if (form.getTargetType() != null)
+        {
+            persisted.setTargetType(form.getTargetType());
+        }
+        if (form.getServerId() != null)
+        {
+            persisted.setServerId(form.getServerId());
+        }
+        if (form.getHost() != null)
+        {
+            persisted.setHost(form.getHost());
+        }
+        if (form.getPort() != null)
+        {
+            persisted.setPort(form.getPort());
+        }
+        if (form.getPath() != null)
+        {
+            persisted.setPath(form.getPath());
+        }
+        if (form.getUrl() != null)
+        {
+            persisted.setUrl(form.getUrl());
+        }
+        if (form.getHttpMethod() != null)
+        {
+            persisted.setHttpMethod(form.getHttpMethod());
+        }
+        if (form.getTopic() != null)
+        {
+            persisted.setTopic(form.getTopic());
+        }
+        if (form.getConsumerGroup() != null)
+        {
+            persisted.setConsumerGroup(form.getConsumerGroup());
+        }
+        if (form.getUsername() != null)
+        {
+            persisted.setUsername(form.getUsername());
+        }
+        if (StringUtils.isNotBlank(form.getPassword()))
+        {
+            persisted.setPassword(form.getPassword());
+        }
+        if (form.getAppKey() != null)
+        {
+            persisted.setAppKey(form.getAppKey());
+        }
+        if (StringUtils.isNotBlank(form.getSecret()))
+        {
+            persisted.setSecret(form.getSecret());
+        }
+        if (form.getResultPath() != null)
+        {
+            persisted.setResultPath(form.getResultPath());
+        }
+        if (form.getExtraParams() != null)
+        {
+            persisted.setExtraParams(form.getExtraParams());
+        }
+        if (form.getStatus() != null)
+        {
+            persisted.setStatus(form.getStatus());
+        }
+        if (form.getRemark() != null)
+        {
+            persisted.setRemark(form.getRemark());
+        }
+    }
+
+    private String buildTestSuccessMessage(TargetCheckResult result)
+    {
+        String actual = result.actualValue == null ? "已连通" : formatDecimal(result.actualValue) + StringUtils.defaultString(result.actualUnit);
+        return "测试通过，当前取值：" + actual + "；" + StringUtils.defaultString(result.detail);
     }
 
     private SupportTimInspectionTarget withPlainSecret(SupportTimInspectionTarget target)
