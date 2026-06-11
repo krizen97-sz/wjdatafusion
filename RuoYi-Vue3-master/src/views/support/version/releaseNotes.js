@@ -1,5 +1,28 @@
 export const releaseNotes = [
   {
+    version: 'v3.0.1',
+    submitTime: '2026-06-11 15:29:29',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '自动化巡检菜单参数修复',
+    summary: '修复自动化巡检菜单 query 参数格式不符合若依前端 JSON 解析规则，导致已登录用户进入首页后页面空白的问题。',
+    changes: [
+      '将巡检模板、巡检目标、巡检计划、巡检记录四个菜单的 query 从 tab=xxx 修正为 JSON 字符串。',
+      '同步修复 v3.0.0 独立升级脚本、support_v1.sql 和 support_deploy_all.sql，避免后续部署再次写入错误菜单数据。',
+      '新增 v3.0.1 独立升级脚本，可直接修复已执行 v3.0.0 脚本的环境。',
+      '已同步修复本地 rynew 数据库 sys_menu 中 2301-2304 菜单记录。'
+    ],
+    scope: ['自动化巡检', '菜单权限', '若依动态路由', 'SQL脚本', '版本记录'],
+    database: '不改表结构，仅更新 sys_menu 中 2301、2302、2303、2304 四条自动化巡检菜单的 query 字段为合法 JSON。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260611_auto_inspection_menu_query_v3_0_1.sql',
+      'WDF100.0/sql/support_upgrade_20260611_auto_inspection_v3_0_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v3.0.0',
     submitTime: '2026-06-11 15:04:36',
     level: 'major',

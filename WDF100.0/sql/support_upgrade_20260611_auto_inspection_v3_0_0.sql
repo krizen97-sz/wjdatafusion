@@ -230,10 +230,10 @@ ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name), path=VALUES(path), route_na
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES
-(2301, '巡检模板', 2300, 1, 'template', 'support/autoInspection/index', 'tab=template', 'AutoInspectionTemplate', 1, 0, 'C', '0', '0', 'support:autoInspection:template', 'build', 'admin', NOW(), '', NULL, ''),
-(2302, '巡检目标', 2300, 2, 'target', 'support/autoInspection/index', 'tab=target', 'AutoInspectionTarget', 1, 0, 'C', '0', '0', 'support:autoInspection:target', 'server', 'admin', NOW(), '', NULL, ''),
-(2303, '巡检计划', 2300, 3, 'plan', 'support/autoInspection/index', 'tab=plan', 'AutoInspectionPlan', 1, 0, 'C', '0', '0', 'support:autoInspection:plan', 'time', 'admin', NOW(), '', NULL, ''),
-(2304, '巡检记录', 2300, 4, 'record', 'support/autoInspection/index', 'tab=record', 'AutoInspectionRecord', 1, 0, 'C', '0', '0', 'support:autoInspection:query', 'documentation', 'admin', NOW(), '', NULL, '')
+(2301, '巡检模板', 2300, 1, 'template', 'support/autoInspection/index', '{"tab":"template"}', 'AutoInspectionTemplate', 1, 0, 'C', '0', '0', 'support:autoInspection:template', 'build', 'admin', NOW(), '', NULL, ''),
+(2302, '巡检目标', 2300, 2, 'target', 'support/autoInspection/index', '{"tab":"target"}', 'AutoInspectionTarget', 1, 0, 'C', '0', '0', 'support:autoInspection:target', 'server', 'admin', NOW(), '', NULL, ''),
+(2303, '巡检计划', 2300, 3, 'plan', 'support/autoInspection/index', '{"tab":"plan"}', 'AutoInspectionPlan', 1, 0, 'C', '0', '0', 'support:autoInspection:plan', 'time', 'admin', NOW(), '', NULL, ''),
+(2304, '巡检记录', 2300, 4, 'record', 'support/autoInspection/index', '{"tab":"record"}', 'AutoInspectionRecord', 1, 0, 'C', '0', '0', 'support:autoInspection:query', 'documentation', 'admin', NOW(), '', NULL, '')
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name), parent_id=VALUES(parent_id), path=VALUES(path), component=VALUES(component), `query`=VALUES(`query`), perms=VALUES(perms), visible=VALUES(visible), status=VALUES(status);
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
