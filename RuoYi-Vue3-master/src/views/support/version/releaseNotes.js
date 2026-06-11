@@ -1,5 +1,29 @@
 export const releaseNotes = [
   {
+    version: 'v3.0.0',
+    submitTime: '2026-06-11 15:04:36',
+    level: 'major',
+    levelLabel: '大版本',
+    tagType: 'danger',
+    title: '自动化巡检抽象化重构',
+    summary: '将原TIM系统巡检升级为独立的自动化巡检一级模块，把固定7项巡检重构为工具、目标、模板、计划和报告的通用巡检体系。',
+    changes: [
+      '新增“自动化巡检”一级目录，与现场融合管理同级，包含巡检模板、巡检目标、巡检计划和巡检记录四个入口。',
+      '将Kafka积压、海康接口数量、FTP目录文件数、服务器目录文件数、服务器磁盘使用率抽象为内置巡检工具。',
+      '新增步骤式巡检模板，用户可在同一模板中多次复用同一工具，自由配置目标、参数、阈值、比较规则和展示名称。',
+      '巡检计划绑定模板，执行周期改为可视化配置，由前端生成Cron并同步若依sys_job定时任务。',
+      '每次手动或定时执行都会保存模板步骤快照、目标明细结果、异常摘要，并支持Excel和Word报告导出。',
+      '旧TIM系统巡检表不删除，旧菜单入口隐藏，避免影响历史数据。'
+    ],
+    scope: ['自动化巡检', '巡检模板', '巡检目标', '巡检计划', '巡检报告', '若依定时任务', '菜单权限', 'SQL脚本', '版本记录'],
+    database: '新增 sup_auto_inspection_tool、sup_auto_inspection_target、sup_auto_inspection_template、sup_auto_inspection_template_step、sup_auto_inspection_template_step_target、sup_auto_inspection_plan、sup_auto_inspection_record、sup_auto_inspection_step_result、sup_auto_inspection_target_result 九张表；新增 support:autoInspection:* 菜单按钮权限；隐藏旧TIM系统巡检菜单。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260611_auto_inspection_v3_0_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v2.6.1',
     submitTime: '2026-06-11 12:43:58',
     level: 'patch',

@@ -1,6 +1,6 @@
 # wjdatafusion
 
-武进信息融合平台，基于 RuoYi / Spring Boot / Vue 3 改造，当前仓库以“现场融合管理”为核心业务扩展，覆盖现场、主平台、子平台、页面、服务器、组织、人员、留言和操作记录等配置数据的统一维护。
+武进信息融合平台，基于 RuoYi / Spring Boot / Vue 3 改造，当前仓库以“现场融合管理”和“自动化巡检”为核心业务扩展，覆盖现场关系配置、服务器资产、组织人员、留言操作记录，以及可配置巡检模板、计划和报告等能力。
 
 ## 项目结构
 
@@ -8,14 +8,15 @@
 .
 ├── WDF100.0/                         # 后端工程和数据库脚本
 │   ├── wjdatafusion-admin/            # 后端启动模块
-│   ├── wjdatafusion-manage/           # 业务模块，现场融合管理主要后端代码
+│   ├── wjdatafusion-manage/           # 业务模块，现场融合管理和自动化巡检主要后端代码
 │   ├── wjdatafusion-system/           # 系统、权限、用户等基础能力
 │   ├── wjdatafusion-framework/        # 安全、配置、通用框架能力
-│   ├── sql/                           # 初始化脚本和现场融合升级脚本
+│   ├── sql/                           # 初始化脚本、现场融合和自动化巡检升级脚本
 │   └── doc/                           # 操作手册与截图资产
 ├── RuoYi-Vue3-master/                 # Vue 3 + Element Plus 前端工程
-│   └── src/views/support/             # 现场融合管理前端页面
+│   └── src/views/support/             # 现场融合管理、自动化巡检前端页面
 ├── docs/                              # 过程文档或交付文档
+├── DESIGN.md                          # 现场融合管理前端设计规范
 └── README.md                          # 当前说明文件
 ```
 
@@ -29,7 +30,8 @@
 - 操作记录：记录现场融合管理中的新增、修改、删除操作，并在画布侧边展示详情。
 - 现场导入导出：按选中现场导出完整 zip 数据包，每个现场一个 xlsx；导入 zip 后按新现场重建关系数据。
 - 现场留言板：支持按现场发布留言、详情列表查看、弹幕展示和轻量轮询刷新。
-- 版本记录：维护现场融合管理功能版本号、修改内容、提交时间和涉及 SQL 脚本，画布自动显示最新版本号。
+- 自动化巡检：以 Kafka、HTTP、FTP、服务器目录、磁盘检测等基础工具配置巡检目标、巡检模板和巡检计划，定期执行后生成详情、Excel 和 Word 报告。
+- 版本记录：维护现场融合与自动化巡检功能版本号、修改内容、提交时间和涉及 SQL 脚本，画布自动显示最新版本号。
 
 ## 技术栈
 
@@ -141,13 +143,14 @@ npm run build:prod
 
 ## 文档
 
+- 前端设计规范：`DESIGN.md`
 - 现场管理操作手册：`WDF100.0/doc/现场管理功能操作手册.md`
 - Word 版操作手册：`WDF100.0/doc/现场管理功能操作手册.docx`
 - 手册截图资产：`WDF100.0/doc/site-management-manual-assets/`
 
 ## 当前版本
 
-当前已提交版本为 `v2.4.2`，该版本按若依权限模型修复 datafusion 权限字符绑定关系，确保拥有 `datafusion` 权限字符的用户正确展示现场融合工作台。
+当前功能版本为 `v3.0.0`，该版本将原 TIM 系统巡检重构为独立“自动化巡检”一级模块，支持按巡检工具、目标、模板、可视化计划和报告进行配置化巡检。
 
 ## 版本提交规范
 
@@ -157,6 +160,7 @@ npm run build:prod
 
 - 更新 `RuoYi-Vue3-master/src/views/support/version/releaseNotes.js`，补充版本号、提交时间、版本类型、标题、概要、修改明细、影响范围、数据库说明和 SQL 脚本路径。
 - 如果涉及数据库调整，新增独立升级脚本，文件名带版本号后缀，例如 `support_upgrade_yyyyMMdd_xxx_v2_3_1.sql`，并同步维护 `support_v1.sql` 和 `support_deploy_all.sql`。
+- 如果涉及前端页面调整，按 `DESIGN.md` 检查布局、权限分流、空态、错误态、长文本、窄屏和画布交互。
 - Git commit message 写清版本或功能主题，例如 `feat: release support message board v2.3.0`、`fix: release site message fixes v2.3.1`。
 - Git tag 使用版本号，例如 `v2.3.1`，并在 GitHub Release 中补充对应描述。
 - Release 描述需要包含：功能概要、主要修改、涉及 SQL、验证结果和部署注意事项。

@@ -1,0 +1,460 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportAutoInspectionMapper">
+
+    <select id="selectToolList" resultType="java.util.HashMap">
+        select tool_code as toolCode, tool_name as toolName, tool_type as toolType,
+               value_unit as valueUnit, default_compare_rule as defaultCompareRule,
+               default_threshold_value as defaultThresholdValue,
+               default_timeout_seconds as defaultTimeoutSeconds,
+               default_time_window_minutes as defaultTimeWindowMinutes,
+               param_schema as paramSchema, built_in_flag as builtInFlag,
+               status, remark, create_time as createTime, update_time as updateTime
+        from sup_auto_inspection_tool
+        <where>
+            <if test="toolType != null and toolType != ''">and tool_type = #{toolType}</if>
+            <if test="status != null and status != ''">and status = #{status}</if>
+        </where>
+        order by built_in_flag desc, tool_code asc
+    </select>
+
+    <select id="selectToolByCode" parameterType="String" resultType="java.util.HashMap">
+        select tool_code as toolCode, tool_name as toolName, tool_type as toolType,
+               value_unit as valueUnit, default_compare_rule as defaultCompareRule,
+               default_threshold_value as defaultThresholdValue,
+               default_timeout_seconds as defaultTimeoutSeconds,
+               default_time_window_minutes as defaultTimeWindowMinutes,
+               param_schema as paramSchema, built_in_flag as builtInFlag,
+               status, remark, create_time as createTime, update_time as updateTime
+        from sup_auto_inspection_tool
+        where tool_code = #{toolCode}
+    </select>
+
+    <insert id="insertTool" parameterType="java.util.HashMap">
+        insert into sup_auto_inspection_tool(
+            tool_code, tool_name, tool_type, value_unit, default_compare_rule,
+            default_threshold_value, default_timeout_seconds, default_time_window_minutes,
+            param_schema, built_in_flag, status, create_by, create_time, remark
+        ) values (
+            #{toolCode}, #{toolName}, #{toolType}, #{valueUnit}, #{defaultCompareRule},
+            #{defaultThresholdValue}, #{defaultTimeoutSeconds}, #{defaultTimeWindowMinutes},
+            #{paramSchema}, #{builtInFlag}, #{status}, #{createBy}, #{createTime}, #{remark}
+        )
+    </insert>
+
+    <sql id="selectTargetVo">
+        select t.target_id as targetId, t.target_name as targetName, t.target_type as targetType,
+               t.server_id as serverId, s.server_name as serverName, s.server_address as serverAddress,
+               t.host, t.port, t.path, t.url, t.http_method as httpMethod,
+               t.topic, t.consumer_group as consumerGroup, t.username,
+               t.password_cipher as passwordCipher, t.app_key as appKey,
+               t.secret_cipher as secretCipher, t.result_path as resultPath,
+               t.extra_params as extraParams, t.status, t.create_by as createBy,
+               t.create_time as createTime, t.update_by as updateBy,
+               t.update_time as updateTime, t.remark
+        from sup_auto_inspection_target t
+        left join sup_server s on s.server_id = t.server_id
+    </sql>
+
+    <select id="selectTargetList" parameterType="java.util.HashMap" resultType="java.util.HashMap">
+        <include refid="selectTargetVo"/>
+        <where>
+            <if test="targetName != null and targetName != ''">and t.target_name like concat('%', #{targetName}, '%')</if>
+            <if test="targetType != null and targetType != ''">and t.target_type = #{targetType}</if>
+            <if test="status != null and status != ''">and t.status = #{status}</if>
+        </where>
+        order by t.target_id desc
+    </select>
+
+    <select id="selectTargetById" parameterType="Long" resultType="java.util.HashMap">
+        <include refid="selectTargetVo"/>
+        where t.target_id = #{targetId}
+    </select>
+
+    <select id="selectEnabledTargetsByStepId" parameterType="Long" resultType="java.util.HashMap">
+        <include refid="selectTargetVo"/>
+        inner join sup_auto_inspection_template_step_target st on st.target_id = t.target_id
+        where st.step_id = #{stepId} and t.status = '0'
+        order by st.step_target_id asc
+    </select>
+
+    <insert id="insertTarget" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="targetId">
+        insert into sup_auto_inspection_target
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="targetName != null and targetName != ''">target_name,</if>
+            <if test="targetType != null and targetType != ''">target_type,</if>
+            <if test="serverId != null">server_id,</if>
+            <if test="host != null">host,</if>
+            <if test="port != null">port,</if>
+            <if test="path != null">path,</if>
+            <if test="url != null">url,</if>
+            <if test="httpMethod != null">http_method,</if>
+            <if test="topic != null">topic,</if>
+            <if test="consumerGroup != null">consumer_group,</if>
+            <if test="username != null">username,</if>
+            <if test="passwordCipher != null and passwordCipher != ''">password_cipher,</if>
+            <if test="appKey != null">app_key,</if>
+            <if test="secretCipher != null and secretCipher != ''">secret_cipher,</if>
+            <if test="resultPath != null">result_path,</if>
+            <if test="extraParams != null">extra_params,</if>
+            <if test="status != null and status != ''">status,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="targetName != null and targetName != ''">#{targetName},</if>
+            <if test="targetType != null and targetType != ''">#{targetType},</if>
+            <if test="serverId != null">#{serverId},</if>
+            <if test="host != null">#{host},</if>
+            <if test="port != null">#{port},</if>
+            <if test="path != null">#{path},</if>
+            <if test="url != null">#{url},</if>
+            <if test="httpMethod != null">#{httpMethod},</if>
+            <if test="topic != null">#{topic},</if>
+            <if test="consumerGroup != null">#{consumerGroup},</if>
+            <if test="username != null">#{username},</if>
+            <if test="passwordCipher != null and passwordCipher != ''">#{passwordCipher},</if>
+            <if test="appKey != null">#{appKey},</if>
+            <if test="secretCipher != null and secretCipher != ''">#{secretCipher},</if>
+            <if test="resultPath != null">#{resultPath},</if>
+            <if test="extraParams != null">#{extraParams},</if>
+            <if test="status != null and status != ''">#{status},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateTarget" parameterType="java.util.HashMap">
+        update sup_auto_inspection_target
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="targetName != null and targetName != ''">target_name = #{targetName},</if>
+            <if test="targetType != null and targetType != ''">target_type = #{targetType},</if>
+            <if test="serverId != null">server_id = #{serverId},</if>
+            <if test="host != null">host = #{host},</if>
+            <if test="port != null">port = #{port},</if>
+            <if test="path != null">path = #{path},</if>
+            <if test="url != null">url = #{url},</if>
+            <if test="httpMethod != null">http_method = #{httpMethod},</if>
+            <if test="topic != null">topic = #{topic},</if>
+            <if test="consumerGroup != null">consumer_group = #{consumerGroup},</if>
+            <if test="username != null">username = #{username},</if>
+            <if test="passwordCipher != null and passwordCipher != ''">password_cipher = #{passwordCipher},</if>
+            <if test="appKey != null">app_key = #{appKey},</if>
+            <if test="secretCipher != null and secretCipher != ''">secret_cipher = #{secretCipher},</if>
+            <if test="resultPath != null">result_path = #{resultPath},</if>
+            <if test="extraParams != null">extra_params = #{extraParams},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where target_id = #{targetId}
+    </update>
+
+    <delete id="deleteTargetById" parameterType="Long">
+        delete from sup_auto_inspection_target where target_id = #{targetId}
+    </delete>
+
+    <select id="selectTemplateList" parameterType="java.util.HashMap" resultType="java.util.HashMap">
+        select t.template_id as templateId, t.template_name as templateName,
+               t.template_desc as templateDesc, t.status,
+               t.create_by as createBy, t.create_time as createTime,
+               t.update_by as updateBy, t.update_time as updateTime, t.remark,
+               (select count(1) from sup_auto_inspection_template_step s where s.template_id = t.template_id) as stepCount,
+               (select count(1) from sup_auto_inspection_template_step_target st
+                 inner join sup_auto_inspection_template_step s on s.step_id = st.step_id
+                 where s.template_id = t.template_id) as targetCount
+        from sup_auto_inspection_template t
+        <where>
+            <if test="templateName != null and templateName != ''">and t.template_name like concat('%', #{templateName}, '%')</if>
+            <if test="status != null and status != ''">and t.status = #{status}</if>
+        </where>
+        order by t.template_id desc
+    </select>
+
+    <select id="selectTemplateById" parameterType="Long" resultType="java.util.HashMap">
+        select template_id as templateId, template_name as templateName,
+               template_desc as templateDesc, status,
+               create_by as createBy, create_time as createTime,
+               update_by as updateBy, update_time as updateTime, remark
+        from sup_auto_inspection_template
+        where template_id = #{templateId}
+    </select>
+
+    <insert id="insertTemplate" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="templateId">
+        insert into sup_auto_inspection_template(
+            template_name, template_desc, status, create_by, create_time, update_by, update_time, remark
+        ) values (
+            #{templateName}, #{templateDesc}, #{status}, #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
+        )
+    </insert>
+
+    <update id="updateTemplate" parameterType="java.util.HashMap">
+        update sup_auto_inspection_template
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="templateName != null and templateName != ''">template_name = #{templateName},</if>
+            <if test="templateDesc != null">template_desc = #{templateDesc},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where template_id = #{templateId}
+    </update>
+
+    <delete id="deleteTemplateById" parameterType="Long">
+        delete from sup_auto_inspection_template where template_id = #{templateId}
+    </delete>
+
+    <select id="countPlanByTemplateId" parameterType="Long" resultType="int">
+        select count(1) from sup_auto_inspection_plan where template_id = #{templateId}
+    </select>
+
+    <select id="selectStepsByTemplateId" parameterType="Long" resultType="java.util.HashMap">
+        select s.step_id as stepId, s.template_id as templateId, s.tool_code as toolCode,
+               t.tool_name as toolName, t.tool_type as toolType,
+               s.step_name as stepName, s.enabled_flag as enabledFlag, s.sort_order as sortOrder,
+               s.threshold_value as thresholdValue, s.threshold_unit as thresholdUnit,
+               s.compare_rule as compareRule, s.time_window_minutes as timeWindowMinutes,
+               s.timeout_seconds as timeoutSeconds, s.step_params as stepParams,
+               s.create_by as createBy, s.create_time as createTime,
+               s.update_by as updateBy, s.update_time as updateTime, s.remark
+        from sup_auto_inspection_template_step s
+        left join sup_auto_inspection_tool t on t.tool_code = s.tool_code
+        where s.template_id = #{templateId}
+        order by s.sort_order asc, s.step_id asc
+    </select>
+
+    <insert id="insertStep" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="stepId">
+        insert into sup_auto_inspection_template_step(
+            template_id, tool_code, step_name, enabled_flag, sort_order,
+            threshold_value, threshold_unit, compare_rule, time_window_minutes,
+            timeout_seconds, step_params, create_by, create_time, update_by, update_time, remark
+        ) values (
+            #{templateId}, #{toolCode}, #{stepName}, #{enabledFlag}, #{sortOrder},
+            #{thresholdValue}, #{thresholdUnit}, #{compareRule}, #{timeWindowMinutes},
+            #{timeoutSeconds}, #{stepParams}, #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
+        )
+    </insert>
+
+    <delete id="deleteStepsByTemplateId" parameterType="Long">
+        delete from sup_auto_inspection_template_step where template_id = #{templateId}
+    </delete>
+
+    <select id="selectStepTargetsByTemplateId" parameterType="Long" resultType="java.util.HashMap">
+        select st.step_target_id as stepTargetId, st.step_id as stepId, st.target_id as targetId
+        from sup_auto_inspection_template_step_target st
+        inner join sup_auto_inspection_template_step s on s.step_id = st.step_id
+        where s.template_id = #{templateId}
+        order by st.step_target_id asc
+    </select>
+
+    <insert id="insertStepTarget">
+        insert into sup_auto_inspection_template_step_target(step_id, target_id, create_by, create_time)
+        values (#{stepId}, #{targetId}, #{createBy}, sysdate())
+    </insert>
+
+    <delete id="deleteStepTargetsByTemplateId" parameterType="Long">
+        delete st from sup_auto_inspection_template_step_target st
+        inner join sup_auto_inspection_template_step s on s.step_id = st.step_id
+        where s.template_id = #{templateId}
+    </delete>
+
+    <select id="selectPlanList" parameterType="java.util.HashMap" resultType="java.util.HashMap">
+        select p.plan_id as planId, p.template_id as templateId, t.template_name as templateName,
+               p.plan_name as planName, p.cron_expression as cronExpression,
+               p.cron_config as cronConfig, p.job_id as jobId, p.report_style as reportStyle,
+               p.status, p.create_by as createBy, p.create_time as createTime,
+               p.update_by as updateBy, p.update_time as updateTime, p.remark,
+               (select count(1) from sup_auto_inspection_template_step s where s.template_id = p.template_id and s.enabled_flag = 'Y') as stepCount
+        from sup_auto_inspection_plan p
+        left join sup_auto_inspection_template t on t.template_id = p.template_id
+        <where>
+            <if test="planName != null and planName != ''">and p.plan_name like concat('%', #{planName}, '%')</if>
+            <if test="templateId != null and templateId != ''">and p.template_id = #{templateId}</if>
+            <if test="status != null and status != ''">and p.status = #{status}</if>
+            <if test="reportStyle != null and reportStyle != ''">and p.report_style = #{reportStyle}</if>
+        </where>
+        order by p.plan_id desc
+    </select>
+
+    <select id="selectPlanById" parameterType="Long" resultType="java.util.HashMap">
+        select p.plan_id as planId, p.template_id as templateId, t.template_name as templateName,
+               p.plan_name as planName, p.cron_expression as cronExpression,
+               p.cron_config as cronConfig, p.job_id as jobId, p.report_style as reportStyle,
+               p.status, p.create_by as createBy, p.create_time as createTime,
+               p.update_by as updateBy, p.update_time as updateTime, p.remark
+        from sup_auto_inspection_plan p
+        left join sup_auto_inspection_template t on t.template_id = p.template_id
+        where p.plan_id = #{planId}
+    </select>
+
+    <insert id="insertPlan" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="planId">
+        insert into sup_auto_inspection_plan(
+            template_id, plan_name, cron_expression, cron_config, job_id,
+            report_style, status, create_by, create_time, update_by, update_time, remark
+        ) values (
+            #{templateId}, #{planName}, #{cronExpression}, #{cronConfig}, #{jobId},
+            #{reportStyle}, #{status}, #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
+        )
+    </insert>
+
+    <update id="updatePlan" parameterType="java.util.HashMap">
+        update sup_auto_inspection_plan
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="templateId != null">template_id = #{templateId},</if>
+            <if test="planName != null and planName != ''">plan_name = #{planName},</if>
+            <if test="cronExpression != null and cronExpression != ''">cron_expression = #{cronExpression},</if>
+            <if test="cronConfig != null">cron_config = #{cronConfig},</if>
+            <if test="jobId != null">job_id = #{jobId},</if>
+            <if test="reportStyle != null and reportStyle != ''">report_style = #{reportStyle},</if>
+            <if test="status != null and status != ''">status = #{status},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where plan_id = #{planId}
+    </update>
+
+    <update id="updatePlanJobId">
+        update sup_auto_inspection_plan set job_id = #{jobId} where plan_id = #{planId}
+    </update>
+
+    <update id="updatePlanStatus">
+        update sup_auto_inspection_plan
+        set status = #{status}, update_by = #{updateBy}, update_time = sysdate()
+        where plan_id = #{planId}
+    </update>
+
+    <delete id="deletePlanById" parameterType="Long">
+        delete from sup_auto_inspection_plan where plan_id = #{planId}
+    </delete>
+
+    <select id="selectRecordList" parameterType="java.util.HashMap" resultType="java.util.HashMap">
+        select record_id as recordId, inspection_time as inspectionTime, source_type as sourceType,
+               result_status as resultStatus, executor_name as executorName,
+               template_id as templateId, template_name as templateName,
+               plan_id as planId, plan_name as planName, report_style as reportStyle,
+               enabled_step_count as enabledStepCount, skipped_step_count as skippedStepCount,
+               target_count as targetCount, abnormal_count as abnormalCount,
+               summary, abnormal_summary as abnormalSummary,
+               create_by as createBy, create_time as createTime,
+               update_by as updateBy, update_time as updateTime, remark
+        from sup_auto_inspection_record
+        <where>
+            <if test="sourceType != null and sourceType != ''">and source_type = #{sourceType}</if>
+            <if test="resultStatus != null and resultStatus != ''">and result_status = #{resultStatus}</if>
+            <if test="templateName != null and templateName != ''">and template_name like concat('%', #{templateName}, '%')</if>
+            <if test="planName != null and planName != ''">and plan_name like concat('%', #{planName}, '%')</if>
+            <if test="executorName != null and executorName != ''">and executor_name like concat('%', #{executorName}, '%')</if>
+        </where>
+        order by inspection_time desc, record_id desc
+    </select>
+
+    <select id="selectRecordById" parameterType="Long" resultType="java.util.HashMap">
+        select record_id as recordId, inspection_time as inspectionTime, source_type as sourceType,
+               result_status as resultStatus, executor_name as executorName,
+               template_id as templateId, template_name as templateName,
+               plan_id as planId, plan_name as planName, report_style as reportStyle,
+               enabled_step_count as enabledStepCount, skipped_step_count as skippedStepCount,
+               target_count as targetCount, abnormal_count as abnormalCount,
+               summary, abnormal_summary as abnormalSummary,
+               create_by as createBy, create_time as createTime,
+               update_by as updateBy, update_time as updateTime, remark
+        from sup_auto_inspection_record
+        where record_id = #{recordId}
+    </select>
+
+    <insert id="insertRecord" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="recordId">
+        insert into sup_auto_inspection_record(
+            inspection_time, source_type, result_status, executor_name,
+            template_id, template_name, plan_id, plan_name, report_style,
+            enabled_step_count, skipped_step_count, target_count, abnormal_count,
+            summary, abnormal_summary, create_by, create_time, update_by, update_time, remark
+        ) values (
+            #{inspectionTime}, #{sourceType}, #{resultStatus}, #{executorName},
+            #{templateId}, #{templateName}, #{planId}, #{planName}, #{reportStyle},
+            #{enabledStepCount}, #{skippedStepCount}, #{targetCount}, #{abnormalCount},
+            #{summary}, #{abnormalSummary}, #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
+        )
+    </insert>
+
+    <update id="updateRecord" parameterType="java.util.HashMap">
+        update sup_auto_inspection_record
+        set result_status = #{resultStatus},
+            enabled_step_count = #{enabledStepCount},
+            skipped_step_count = #{skippedStepCount},
+            target_count = #{targetCount},
+            abnormal_count = #{abnormalCount},
+            summary = #{summary},
+            abnormal_summary = #{abnormalSummary},
+            update_by = #{updateBy},
+            update_time = #{updateTime}
+        where record_id = #{recordId}
+    </update>
+
+    <select id="selectStepResultsByRecordId" parameterType="Long" resultType="java.util.HashMap">
+        select step_result_id as stepResultId, record_id as recordId, step_id as stepId,
+               tool_code as toolCode, tool_name as toolName, tool_type as toolType,
+               step_name as stepName, enabled_flag as enabledFlag, sort_order as sortOrder,
+               threshold_value as thresholdValue, threshold_unit as thresholdUnit,
+               compare_rule as compareRule, time_window_minutes as timeWindowMinutes,
+               timeout_seconds as timeoutSeconds, step_params as stepParams,
+               result_status as resultStatus, actual_value as actualValue,
+               actual_unit as actualUnit, result_summary as resultSummary,
+               create_by as createBy, create_time as createTime,
+               update_by as updateBy, update_time as updateTime, remark
+        from sup_auto_inspection_step_result
+        where record_id = #{recordId}
+        order by sort_order asc, step_result_id asc
+    </select>
+
+    <insert id="insertStepResult" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="stepResultId">
+        insert into sup_auto_inspection_step_result(
+            record_id, step_id, tool_code, tool_name, tool_type, step_name,
+            enabled_flag, sort_order, threshold_value, threshold_unit, compare_rule,
+            time_window_minutes, timeout_seconds, step_params, result_status,
+            actual_value, actual_unit, result_summary, create_by, create_time,
+            update_by, update_time, remark
+        ) values (
+            #{recordId}, #{stepId}, #{toolCode}, #{toolName}, #{toolType}, #{stepName},
+            #{enabledFlag}, #{sortOrder}, #{thresholdValue}, #{thresholdUnit}, #{compareRule},
+            #{timeWindowMinutes}, #{timeoutSeconds}, #{stepParams}, #{resultStatus},
+            #{actualValue}, #{actualUnit}, #{resultSummary}, #{createBy}, #{createTime},
+            #{updateBy}, #{updateTime}, #{remark}
+        )
+    </insert>
+
+    <select id="selectTargetResultsByRecordId" parameterType="Long" resultType="java.util.HashMap">
+        select result_id as resultId, record_id as recordId, step_result_id as stepResultId,
+               target_id as targetId, target_name as targetName, target_type as targetType,
+               result_status as resultStatus, actual_value as actualValue,
+               actual_unit as actualUnit, result_detail as resultDetail,
+               error_message as errorMessage, create_by as createBy,
+               create_time as createTime, update_by as updateBy,
+               update_time as updateTime, remark
+        from sup_auto_inspection_target_result
+        where record_id = #{recordId}
+        order by result_id asc
+    </select>
+
+    <insert id="insertTargetResult" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="resultId">
+        insert into sup_auto_inspection_target_result(
+            record_id, step_result_id, target_id, target_name, target_type,
+            result_status, actual_value, actual_unit, result_detail, error_message,
+            create_by, create_time, update_by, update_time, remark
+        ) values (
+            #{recordId}, #{stepResultId}, #{targetId}, #{targetName}, #{targetType},
+            #{resultStatus}, #{actualValue}, #{actualUnit}, #{resultDetail}, #{errorMessage},
+            #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
+        )
+    </insert>
+</mapper>
