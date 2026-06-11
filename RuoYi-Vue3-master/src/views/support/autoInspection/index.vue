@@ -15,7 +15,28 @@
     </section>
 
     <el-tabs v-model="activeTab" class="auto-tabs" @tab-change="handleTabChange">
-      <el-tab-pane label="巡检模板" name="template">
+      <el-tab-pane label="巡检配置" name="config">
+        <div class="config-shell">
+          <div class="config-guide">
+            <button :class="{ active: configTab === 'target' }" @click="switchConfigTab('target')">
+              <span>1</span>
+              <strong>巡检目标</strong>
+              <em>先维护 Kafka、HTTP、FTP、服务器等可检测对象</em>
+            </button>
+            <button :class="{ active: configTab === 'template' }" @click="switchConfigTab('template')">
+              <span>2</span>
+              <strong>巡检模板</strong>
+              <em>把基础工具和目标编排成可复用检测流程</em>
+            </button>
+            <button :class="{ active: configTab === 'plan' }" @click="switchConfigTab('plan')">
+              <span>3</span>
+              <strong>巡检计划</strong>
+              <em>选择模板和执行周期，交给若依定时任务调度</em>
+            </button>
+          </div>
+
+          <el-tabs v-model="configTab" class="config-tabs" @tab-change="handleConfigTabChange">
+            <el-tab-pane label="巡检模板" name="template">
         <el-form :model="templateQuery" :inline="true" class="auto-query-bar">
           <el-form-item label="模板名称">
             <el-input v-model="templateQuery.templateName" clearable placeholder="搜索模板名称" @keyup.enter="getTemplateList" />
@@ -59,7 +80,7 @@
         <pagination v-show="templateTotal > 0" :total="templateTotal" v-model:page="templateQuery.pageNum" v-model:limit="templateQuery.pageSize" @pagination="getTemplateList" />
       </el-tab-pane>
 
-      <el-tab-pane label="巡检目标" name="target">
+            <el-tab-pane label="巡检目标" name="target">
         <el-form :model="targetQuery" :inline="true" class="auto-query-bar">
           <el-form-item label="目标名称">
             <el-input v-model="targetQuery.targetName" clearable placeholder="搜索目标名称" @keyup.enter="getTargetList" />
@@ -110,7 +131,7 @@
         <pagination v-show="targetTotal > 0" :total="targetTotal" v-model:page="targetQuery.pageNum" v-model:limit="targetQuery.pageSize" @pagination="getTargetList" />
       </el-tab-pane>
 
-      <el-tab-pane label="巡检计划" name="plan">
+            <el-tab-pane label="巡检计划" name="plan">
         <el-form :model="planQuery" :inline="true" class="auto-query-bar">
           <el-form-item label="计划名称">
             <el-input v-model="planQuery.planName" clearable placeholder="搜索计划名称" @keyup.enter="getPlanList" />
@@ -163,6 +184,9 @@
         </el-table>
 
         <pagination v-show="planTotal > 0" :total="planTotal" v-model:page="planQuery.pageNum" v-model:limit="planQuery.pageSize" @pagination="getPlanList" />
+            </el-tab-pane>
+          </el-tabs>
+        </div>
       </el-tab-pane>
 
       <el-tab-pane label="巡检记录" name="record">
@@ -224,35 +248,86 @@
       </el-tab-pane>
     </el-tabs>
 
-    <el-dialog v-model="targetDialogOpen" width="760px" append-to-body class="auto-dialog">
+    <el-dialog v-model="targetDialogOpen" width="860px" append-to-body class="auto-dialog target-dialog">
       <template #header><div class="dialog-title"><span>{{ targetForm.targetId ? '编辑目标' : '新增目标' }}</span><strong>巡检目标</strong></div></template>
       <el-form ref="targetRef" :model="targetForm" :rules="targetRules" label-width="110px">
-        <el-row :gutter="16">
-          <el-col :span="12"><el-form-item label="目标名称" prop="targetName"><el-input v-model="targetForm.targetName" placeholder="例如：TIM Kafka集群" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="目标类型" prop="targetType"><el-select v-model="targetForm.targetType" placeholder="请选择类型" style="width: 100%"><el-option v-for="item in targetTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item></el-col>
-          <el-col v-if="targetForm.targetType === 'SERVER'" :span="24"><el-form-item label="服务器资产" prop="serverId"><el-select v-model="targetForm.serverId" filterable placeholder="选择服务器资产" style="width: 100%"><el-option v-for="item in serverOptions" :key="item.serverId" :label="`${item.serverName || item.serverAddress}（${item.serverAddress}）`" :value="item.serverId" /></el-select></el-form-item></el-col>
-          <template v-if="targetForm.targetType !== 'SERVER'">
-            <el-col :span="12"><el-form-item label="主机/地址" prop="host"><el-input v-model="targetForm.host" placeholder="主机或Kafka bootstrap" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="端口"><el-input-number v-model="targetForm.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
-          </template>
-          <el-col v-if="targetForm.targetType === 'HTTP'" :span="24"><el-form-item label="接口URL" prop="url"><el-input v-model="targetForm.url" placeholder="https://..." /></el-form-item></el-col>
-          <el-col v-if="targetForm.targetType === 'HTTP'" :span="12"><el-form-item label="请求方法"><el-select v-model="targetForm.httpMethod" style="width: 100%"><el-option label="POST" value="POST" /><el-option label="GET" value="GET" /></el-select></el-form-item></el-col>
-          <el-col v-if="targetForm.targetType === 'HTTP'" :span="12"><el-form-item label="结果路径"><el-input v-model="targetForm.resultPath" placeholder="data.total" /></el-form-item></el-col>
-          <el-col v-if="targetForm.targetType === 'HTTP'" :span="12"><el-form-item label="AppKey"><el-input v-model="targetForm.appKey" /></el-form-item></el-col>
-          <el-col v-if="targetForm.targetType === 'HTTP'" :span="12"><el-form-item label="Secret"><el-input v-model="targetForm.secret" show-password /></el-form-item></el-col>
-          <el-col v-if="targetForm.targetType === 'HTTP'" :span="24"><el-form-item label="请求体模板"><el-input v-model="targetForm.extraParams" type="textarea" :rows="3" placeholder='可使用 ${beginTime}、${endTime}' /></el-form-item></el-col>
-          <template v-if="targetForm.targetType === 'FTP'">
-            <el-col :span="12"><el-form-item label="账号" prop="username"><el-input v-model="targetForm.username" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="密码"><el-input v-model="targetForm.password" show-password /></el-form-item></el-col>
-          </template>
-          <template v-if="targetForm.targetType === 'KAFKA'">
-            <el-col :span="12"><el-form-item label="默认Topic"><el-input v-model="targetForm.topic" placeholder="可在模板步骤覆盖" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="默认消费组"><el-input v-model="targetForm.consumerGroup" placeholder="可在模板步骤覆盖" /></el-form-item></el-col>
-          </template>
-          <el-col :span="12"><el-form-item label="默认路径"><el-input v-model="targetForm.path" placeholder="目录路径或磁盘挂载点" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="状态"><el-radio-group v-model="targetForm.status"><el-radio label="0">正常</el-radio><el-radio label="1">停用</el-radio></el-radio-group></el-form-item></el-col>
-          <el-col :span="24"><el-form-item label="备注"><el-input v-model="targetForm.remark" type="textarea" :rows="2" /></el-form-item></el-col>
-        </el-row>
+        <div class="target-form-layout">
+          <section class="target-section">
+            <header>
+              <strong>基础信息</strong>
+              <span>只描述这个目标是什么，以及它属于哪类检测对象。</span>
+            </header>
+            <el-row :gutter="16">
+              <el-col :span="12"><el-form-item label="目标名称" prop="targetName"><el-input v-model="targetForm.targetName" placeholder="例如：TIM Kafka集群" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="目标类型" prop="targetType"><el-select v-model="targetForm.targetType" placeholder="请选择类型" style="width: 100%" @change="handleTargetTypeChange"><el-option v-for="item in targetTypeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item></el-col>
+            </el-row>
+          </section>
+
+          <section v-if="targetForm.targetType === 'KAFKA'" class="target-section">
+            <header>
+              <strong>Kafka 连接</strong>
+              <span>这里只保留消费积压检测必需的 bootstrap、Topic 和消费组。</span>
+            </header>
+            <el-row :gutter="16">
+              <el-col :span="24"><el-form-item label="Bootstrap" prop="host"><el-input v-model="targetForm.host" placeholder="10.0.0.1:9092,10.0.0.2:9092" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="默认Topic"><el-input v-model="targetForm.topic" placeholder="可在模板步骤覆盖" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="默认消费组"><el-input v-model="targetForm.consumerGroup" placeholder="可在模板步骤覆盖" /></el-form-item></el-col>
+            </el-row>
+          </section>
+
+          <section v-if="targetForm.targetType === 'HTTP'" class="target-section">
+            <header>
+              <strong>接口调用</strong>
+              <span>用于海康过车、违法等统计接口；URL 和请求体都支持日期变量。</span>
+            </header>
+            <el-row :gutter="16">
+              <el-col :span="24"><el-form-item label="接口URL" prop="url"><el-input v-model="targetForm.url" placeholder="https://...，可使用 ${today} 或 ${yyyyMMdd}" /></el-form-item></el-col>
+              <el-col :span="8"><el-form-item label="请求方法"><el-select v-model="targetForm.httpMethod" style="width: 100%"><el-option label="POST" value="POST" /><el-option label="GET" value="GET" /></el-select></el-form-item></el-col>
+              <el-col :span="8"><el-form-item label="结果路径"><el-input v-model="targetForm.resultPath" placeholder="data.total" /></el-form-item></el-col>
+              <el-col :span="8"><el-form-item label="AppKey"><el-input v-model="targetForm.appKey" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="Secret"><el-input v-model="targetForm.secret" show-password /></el-form-item></el-col>
+              <el-col :span="12">
+                <div class="placeholder-panel">
+                  <span>可用日期变量</span>
+                  <el-tag v-for="item in httpDatePlaceholders" :key="item.value" size="small" effect="plain" @click="insertHttpPlaceholder(item.value)">{{ item.value }}</el-tag>
+                </div>
+              </el-col>
+              <el-col :span="24"><el-form-item label="请求体模板"><el-input v-model="targetForm.extraParams" type="textarea" :rows="4" placeholder='例如：{"beginTime":"${todayStart}","endTime":"${todayEnd}"}' /></el-form-item></el-col>
+            </el-row>
+          </section>
+
+          <section v-if="targetForm.targetType === 'FTP'" class="target-section">
+            <header>
+              <strong>FTP 目录</strong>
+              <span>用于目录文件数量检测，只需要连接信息和目录路径。</span>
+            </header>
+            <el-row :gutter="16">
+              <el-col :span="12"><el-form-item label="主机地址" prop="host"><el-input v-model="targetForm.host" placeholder="10.0.0.10" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="端口"><el-input-number v-model="targetForm.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+              <el-col :span="24"><el-form-item label="目录路径" prop="path"><el-input v-model="targetForm.path" placeholder="/data/ftp/inbox" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="账号" prop="username"><el-input v-model="targetForm.username" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="密码"><el-input v-model="targetForm.password" show-password /></el-form-item></el-col>
+            </el-row>
+          </section>
+
+          <section v-if="targetForm.targetType === 'SERVER'" class="target-section">
+            <header>
+              <strong>服务器资产</strong>
+              <span>复用服务器管理里的资产，用于目录文件数量或磁盘使用率检测。</span>
+            </header>
+            <el-row :gutter="16">
+              <el-col :span="24"><el-form-item label="服务器资产" prop="serverId"><el-select v-model="targetForm.serverId" filterable placeholder="选择服务器资产" style="width: 100%"><el-option v-for="item in serverOptions" :key="item.serverId" :label="`${item.serverName || item.serverAddress}（${item.serverAddress}）`" :value="item.serverId" /></el-select></el-form-item></el-col>
+              <el-col :span="24"><el-form-item label="默认路径"><el-input v-model="targetForm.path" placeholder="目录路径或磁盘挂载点，可在模板步骤覆盖" /></el-form-item></el-col>
+            </el-row>
+          </section>
+
+          <section class="target-section target-section--subtle">
+            <el-row :gutter="16">
+              <el-col :span="12"><el-form-item label="状态"><el-radio-group v-model="targetForm.status"><el-radio label="0">正常</el-radio><el-radio label="1">停用</el-radio></el-radio-group></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="备注"><el-input v-model="targetForm.remark" placeholder="可记录网络、用途或维护人" /></el-form-item></el-col>
+            </el-row>
+          </section>
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="targetDialogOpen = false">取消</el-button>
@@ -425,7 +500,9 @@ const route = useRoute()
 const router = useRouter()
 const { proxy } = getCurrentInstance()
 
-const activeTab = ref(route.query.tab || 'template')
+const configTabNames = ['target', 'template', 'plan']
+const activeTab = ref(resolveRouteTab(route.query.tab))
+const configTab = ref(resolveConfigTab(route.query.tab, route.query.configTab))
 const toolList = ref([])
 const serverOptions = ref([])
 const allTemplateList = ref([])
@@ -489,6 +566,14 @@ const weekOptions = [
   { label: '周五', value: 'FRI' },
   { label: '周六', value: 'SAT' }
 ]
+const httpDatePlaceholders = [
+  { value: '${today}', label: '当天日期' },
+  { value: '${todayStart}', label: '当天开始' },
+  { value: '${todayEnd}', label: '当天结束' },
+  { value: '${yyyyMMdd}', label: '紧凑日期' },
+  { value: '${beginTime}', label: '窗口开始' },
+  { value: '${endTime}', label: '窗口结束' }
+]
 
 const targetRules = {
   targetName: [{ required: true, message: '目标名称不能为空', trigger: 'blur' }],
@@ -509,11 +594,17 @@ const latestRecordLabel = computed(() => {
   return row ? formatResult(row.resultStatus) : '暂无'
 })
 
-watch(() => route.query.tab, (tab) => {
-  if (tab && tab !== activeTab.value) activeTab.value = tab
+watch(() => [route.query.tab, route.query.configTab], ([tab, subTab]) => {
+  const nextActive = resolveRouteTab(tab)
+  const nextConfig = resolveConfigTab(tab, subTab)
+  if (nextActive !== activeTab.value) activeTab.value = nextActive
+  if (nextConfig !== configTab.value) configTab.value = nextConfig
 })
 
 watch(activeTab, () => loadActiveTab())
+watch(configTab, () => {
+  if (activeTab.value === 'config') loadConfigTab()
+})
 
 onMounted(() => {
   initPage()
@@ -524,15 +615,44 @@ async function initPage() {
   await Promise.all([getTemplateList(), getTargetList(), getTemplateOptions(), getTargetOptions(), getPlanList(), getRecordList()])
 }
 
+function resolveRouteTab(tab) {
+  return tab === 'record' ? 'record' : 'config'
+}
+
+function resolveConfigTab(tab, subTab) {
+  if (configTabNames.includes(tab)) return tab
+  if (configTabNames.includes(subTab)) return subTab
+  return 'target'
+}
+
 function handleTabChange(tab) {
+  if (tab === 'record') {
+    router.replace({ path: route.path, query: { ...route.query, tab: 'record' } })
+    return
+  }
+  router.replace({ path: route.path, query: { ...route.query, tab: configTab.value } })
+}
+
+function handleConfigTabChange(tab) {
+  switchConfigTab(tab)
+}
+
+function switchConfigTab(tab) {
+  if (!configTabNames.includes(tab)) return
+  configTab.value = tab
+  if (activeTab.value !== 'config') activeTab.value = 'config'
   router.replace({ path: route.path, query: { ...route.query, tab } })
 }
 
 function loadActiveTab() {
-  if (activeTab.value === 'template') getTemplateList()
-  if (activeTab.value === 'target') getTargetList()
-  if (activeTab.value === 'plan') getPlanList()
+  if (activeTab.value === 'config') loadConfigTab()
   if (activeTab.value === 'record') getRecordList()
+}
+
+function loadConfigTab(tab = configTab.value) {
+  if (tab === 'template') getTemplateList()
+  if (tab === 'target') getTargetList()
+  if (tab === 'plan') getPlanList()
 }
 
 function getTools() {
@@ -616,6 +736,13 @@ function handleAddTarget() {
   targetDialogOpen.value = true
 }
 
+function handleTargetTypeChange(type) {
+  const current = { ...targetForm.value, targetType: type }
+  targetForm.value = cleanTargetPayload(current)
+  if (type === 'FTP' && !targetForm.value.port) targetForm.value.port = 21
+  if (type === 'HTTP' && !targetForm.value.resultPath) targetForm.value.resultPath = 'data.total'
+}
+
 function handleUpdateTarget(row) {
   getAutoInspectionTarget(row.targetId).then((res) => {
     targetForm.value = { ...defaultTargetForm(), ...res.data }
@@ -626,9 +753,14 @@ function handleUpdateTarget(row) {
 function submitTarget() {
   proxy.$refs.targetRef.validate((valid) => {
     if (!valid) return
+    const warning = validateTargetBusiness(targetForm.value)
+    if (warning) {
+      proxy.$modal.msgWarning(warning)
+      return
+    }
     targetSubmitLoading.value = true
     const request = targetForm.value.targetId ? updateAutoInspectionTarget : addAutoInspectionTarget
-    request(targetForm.value).then(() => {
+    request(cleanTargetPayload(targetForm.value)).then(() => {
       proxy.$modal.msgSuccess('保存成功')
       targetDialogOpen.value = false
       getTargetList()
@@ -646,14 +778,91 @@ function handleDeleteTarget(row) {
 }
 
 function handleTestTarget(row) {
+  const payload = cleanTargetPayload(row)
+  const warning = validateTargetBusiness(payload)
+  if (warning) {
+    proxy.$modal.msgWarning(warning)
+    return Promise.resolve()
+  }
   targetTesting.value = true
   targetTestId.value = row.targetId
-  return testAutoInspectionTarget(row).then((res) => {
+  return testAutoInspectionTarget(payload).then((res) => {
     proxy.$modal.msgSuccess(res.message || res.msg || res.data?.message || '测试通过')
   }).finally(() => {
     targetTesting.value = false
     targetTestId.value = null
   })
+}
+
+function validateTargetBusiness(target) {
+  if (!target?.targetType) return '请选择目标类型'
+  if (target.targetType === 'KAFKA' && !String(target.host || '').trim()) return '请填写 Kafka Bootstrap 地址'
+  if (target.targetType === 'HTTP' && !String(target.url || '').trim()) return '请填写接口 URL'
+  if (target.targetType === 'FTP') {
+    if (!String(target.host || '').trim()) return '请填写 FTP 主机地址'
+    if (!String(target.path || '').trim()) return '请填写 FTP 目录路径'
+    if (!String(target.username || '').trim()) return '请填写 FTP 账号'
+  }
+  if (target.targetType === 'SERVER' && !target.serverId) return '请选择服务器资产'
+  return ''
+}
+
+function cleanTargetPayload(target) {
+  const payload = { ...defaultTargetForm(), ...target }
+  if (payload.targetType === 'KAFKA') {
+    payload.port = undefined
+    payload.path = ''
+    payload.url = ''
+    payload.httpMethod = 'POST'
+    payload.username = ''
+    payload.password = ''
+    payload.appKey = ''
+    payload.secret = ''
+    payload.resultPath = ''
+    payload.extraParams = ''
+    payload.serverId = undefined
+  }
+  if (payload.targetType === 'HTTP') {
+    payload.host = ''
+    payload.port = undefined
+    payload.path = ''
+    payload.topic = ''
+    payload.consumerGroup = ''
+    payload.username = ''
+    payload.password = ''
+    payload.serverId = undefined
+  }
+  if (payload.targetType === 'FTP') {
+    payload.url = ''
+    payload.httpMethod = 'POST'
+    payload.topic = ''
+    payload.consumerGroup = ''
+    payload.appKey = ''
+    payload.secret = ''
+    payload.resultPath = ''
+    payload.extraParams = ''
+    payload.serverId = undefined
+  }
+  if (payload.targetType === 'SERVER') {
+    payload.host = ''
+    payload.port = undefined
+    payload.url = ''
+    payload.httpMethod = 'POST'
+    payload.topic = ''
+    payload.consumerGroup = ''
+    payload.username = ''
+    payload.password = ''
+    payload.appKey = ''
+    payload.secret = ''
+    payload.resultPath = ''
+    payload.extraParams = ''
+  }
+  return payload
+}
+
+function insertHttpPlaceholder(value) {
+  const current = targetForm.value.extraParams || ''
+  targetForm.value.extraParams = current ? `${current}${value}` : value
 }
 
 function handleViewTargetPlain(row) {
@@ -751,6 +960,7 @@ function handleRunTemplate(row) {
   runAutoInspectionTemplate(row.templateId).then((res) => {
     proxy.$modal.msgSuccess(`执行完成：${formatResult(res.data?.resultStatus)}`)
     activeTab.value = 'record'
+    router.replace({ path: route.path, query: { ...route.query, tab: 'record' } })
     getRecordList()
   }).finally(() => { templateRunId.value = null })
 }
@@ -799,6 +1009,7 @@ function handleRunPlan(row) {
   runAutoInspectionPlan(row.planId).then((res) => {
     proxy.$modal.msgSuccess(`执行完成：${formatResult(res.data?.resultStatus)}`)
     activeTab.value = 'record'
+    router.replace({ path: route.path, query: { ...route.query, tab: 'record' } })
     getRecordList()
   }).finally(() => { planRunId.value = null })
 }
@@ -990,6 +1201,67 @@ function resultTagType(value) {
   padding: 14px;
 }
 
+.config-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.config-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+
+  button {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 3px 10px;
+    align-items: center;
+    min-height: 74px;
+    padding: 12px 14px;
+    border: 1px solid #dfeaf6;
+    border-radius: 8px;
+    background: #fbfdff;
+    text-align: left;
+    cursor: pointer;
+
+    &.active {
+      border-color: #409eff;
+      background: #f2f8ff;
+      box-shadow: 0 0 0 2px rgba(64, 158, 255, .1);
+    }
+
+    span {
+      grid-row: span 2;
+      width: 28px;
+      height: 28px;
+      line-height: 28px;
+      border-radius: 50%;
+      background: #e8f3ff;
+      color: #2f80ed;
+      text-align: center;
+      font-weight: 700;
+    }
+
+    strong {
+      color: #1d3554;
+      font-size: 15px;
+    }
+
+    em {
+      color: #7488a0;
+      font-style: normal;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+  }
+}
+
+.config-tabs {
+  :deep(.el-tabs__header) {
+    margin-bottom: 12px;
+  }
+}
+
 .auto-query-bar {
   padding: 12px 12px 0;
   border: 1px solid #e5edf7;
@@ -1007,6 +1279,59 @@ function resultTagType(value) {
 .auto-table {
   border: 1px solid #e3ecf7;
   border-radius: 8px;
+}
+
+.target-form-layout {
+  display: grid;
+  gap: 12px;
+}
+
+.target-section {
+  padding: 14px 14px 0;
+  border: 1px solid #e2ebf7;
+  border-radius: 8px;
+  background: #fbfdff;
+
+  header {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 12px;
+
+    strong {
+      color: #1d3554;
+      font-size: 15px;
+    }
+
+    span {
+      color: #7890aa;
+      font-size: 12px;
+    }
+  }
+}
+
+.target-section--subtle {
+  background: #fff;
+}
+
+.placeholder-panel {
+  min-height: 58px;
+  padding: 8px 10px;
+  border: 1px dashed #cfe0f3;
+  border-radius: 8px;
+  background: #fff;
+
+  span {
+    display: block;
+    margin-bottom: 6px;
+    color: #6d8199;
+    font-size: 12px;
+  }
+
+  .el-tag {
+    margin: 0 6px 6px 0;
+    cursor: pointer;
+  }
 }
 
 .dialog-title {
@@ -1152,6 +1477,10 @@ function resultTagType(value) {
   }
 
   .step-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .config-guide {
     grid-template-columns: 1fr;
   }
 }

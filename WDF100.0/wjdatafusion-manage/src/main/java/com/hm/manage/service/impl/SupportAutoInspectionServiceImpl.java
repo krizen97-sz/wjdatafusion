@@ -515,9 +515,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         int timeout = resolveTimeout(step);
         LocalDateTime end = LocalDateTime.now();
         LocalDateTime begin = end.minusMinutes(toInt(step.get("timeWindowMinutes"), 0));
+        String url = replaceTimePlaceholders(str(target, "url"), begin, end);
         String body = replaceTimePlaceholders(StringUtils.defaultString(str(target, "extraParams")), begin, end);
         HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(timeout)).build();
-        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(str(target, "url")))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(timeout))
                 .header("Content-Type", "application/json");
         if (StringUtils.isNotBlank(str(target, "appKey")))
@@ -1271,10 +1272,18 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         String endTime = end.format(DATE_TIME_FORMATTER);
         String beginIso = begin.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
         String endIso = end.atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        String today = end.toLocalDate().toString();
+        String todayStart = end.toLocalDate().atStartOfDay().format(DATE_TIME_FORMATTER);
+        String todayEnd = end.toLocalDate().atTime(23, 59, 59).format(DATE_TIME_FORMATTER);
+        String yyyyMMdd = end.format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         return text.replace("${beginTime}", beginTime)
                 .replace("${endTime}", endTime)
                 .replace("${beginTimeIso}", beginIso)
-                .replace("${endTimeIso}", endIso);
+                .replace("${endTimeIso}", endIso)
+                .replace("${today}", today)
+                .replace("${todayStart}", todayStart)
+                .replace("${todayEnd}", todayEnd)
+                .replace("${yyyyMMdd}", yyyyMMdd);
     }
 
     private String resolvePath(Map<String, Object> step, Map<String, Object> target)

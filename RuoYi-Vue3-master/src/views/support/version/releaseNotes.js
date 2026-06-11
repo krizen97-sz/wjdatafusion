@@ -1,5 +1,29 @@
 export const releaseNotes = [
   {
+    version: 'v3.0.2',
+    submitTime: '2026-06-11 16:00:10',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '自动化巡检配置入口优化',
+    summary: '将巡检目标、巡检模板和巡检计划收敛到同一个配置入口，按目标类型精简配置表单，并为HTTP接口参数补充当天日期变量。',
+    changes: [
+      '一级菜单从“巡检模板、巡检目标、巡检计划、巡检记录”调整为“巡检配置、巡检记录”，配置页内再维护目标、模板和计划。',
+      '巡检目标弹窗按 Kafka、HTTP接口、FTP目录、服务器资产分区展示，只保留当前类型必需的连接、路径、认证和默认参数。',
+      '新增目标保存和测试前的类型校验，避免服务器目标缺少资产、HTTP目标缺少URL、FTP目标缺少目录等脏配置进入数据库。',
+      'HTTP接口目标的URL和请求体模板支持 ${today}、${todayStart}、${todayEnd}、${yyyyMMdd} 等日期变量，并保留原有时间窗口变量。',
+      '同步更新自动化巡检菜单SQL，隐藏旧目标和计划独立入口，保留历史菜单和权限数据不删除。'
+    ],
+    scope: ['自动化巡检', '巡检配置', '巡检目标', 'HTTP接口变量', '菜单权限', 'SQL脚本', '版本记录'],
+    database: '不改业务表结构，仅更新 sys_menu 中自动化巡检菜单展示入口和按钮父级关系。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260611_auto_inspection_config_entry_v3_0_2.sql',
+      'WDF100.0/sql/support_upgrade_20260611_auto_inspection_v3_0_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v3.0.1',
     submitTime: '2026-06-11 15:29:29',
     level: 'patch',
