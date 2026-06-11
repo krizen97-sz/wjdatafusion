@@ -394,49 +394,99 @@
         <div class="plan-section-head">
           <div>
             <span>巡检项目与目标</span>
-            <strong>每个计划可单独覆盖7项巡检的开关、阈值和目标范围</strong>
+            <strong>左侧选择巡检项，右侧配置该项的开关、阈值、目标和超时策略</strong>
           </div>
-          <el-tag effect="light">{{ (planForm.items || []).filter((item) => item.enabledFlag === 'Y').length }} 项启用</el-tag>
+          <div class="plan-section-head__stats">
+            <el-tag effect="light">{{ planEnabledItemCount }} 项启用</el-tag>
+            <el-tag effect="light" type="success">{{ planSelectedTargetCount }} 个目标</el-tag>
+          </div>
         </div>
 
-        <div class="plan-item-grid">
-          <article v-for="item in planForm.items" :key="item.itemCode" class="plan-item-card" :class="{ 'is-disabled': item.enabledFlag !== 'Y' }">
-            <div class="plan-item-card__head">
-              <div>
-                <span>{{ item.sortOrder }}</span>
+        <div class="plan-editor">
+          <aside class="plan-item-list">
+            <button
+              v-for="item in planForm.items"
+              :key="item.itemCode"
+              type="button"
+              class="plan-item-option"
+              :class="{ 'is-active': activePlanItemCode === item.itemCode, 'is-disabled': item.enabledFlag !== 'Y' }"
+              @click="setActivePlanItem(item.itemCode)"
+            >
+              <span class="plan-item-option__index">{{ item.sortOrder }}</span>
+              <span class="plan-item-option__main">
                 <strong>{{ item.itemName }}</strong>
-                <el-tag size="small" effect="plain">{{ getItemTypeLabel(item.itemType) }}</el-tag>
+                <em>{{ getItemTypeLabel(item.itemType) }} · {{ item.targetIds?.length || 0 }} 个目标</em>
+              </span>
+              <el-tag size="small" :type="item.enabledFlag === 'Y' ? 'success' : 'info'">{{ item.enabledFlag === 'Y' ? '启用' : '关闭' }}</el-tag>
+            </button>
+          </aside>
+
+          <section v-if="activePlanItem" class="plan-item-detail">
+            <div class="plan-item-detail__head">
+              <div>
+                <span>{{ activePlanItem.sortOrder }} / 7</span>
+                <strong>{{ activePlanItem.itemName }}</strong>
+                <em>{{ getPlanItemHint(activePlanItem) }}</em>
               </div>
-              <el-switch v-model="item.enabledFlag" active-value="Y" inactive-value="N" active-text="启用" inactive-text="关闭" inline-prompt />
+              <el-switch v-model="activePlanItem.enabledFlag" active-value="Y" inactive-value="N" active-text="启用" inactive-text="关闭" inline-prompt />
             </div>
-            <div class="plan-item-card__body">
+
+            <el-alert
+              v-if="activePlanItem.enabledFlag === 'Y' && !activePlanItem.targetIds?.length"
+              title="当前巡检项已启用，但还没有选择巡检目标。保存后执行计划时，该项会被判定为配置异常。"
+              type="warning"
+              show-icon
+              :closable="false"
+              class="plan-item-warning"
+            />
+
+            <div class="plan-item-detail__target">
+              <div class="plan-field-title">
+                <span>巡检目标</span>
+                <em>{{ activePlanItem.targetIds?.length || 0 }} / {{ getPlanItemTargetOptions(activePlanItem.itemCode).length }}</em>
+              </div>
+              <el-select
+                v-model="activePlanItem.targetIds"
+                multiple
+                collapse-tags
+                collapse-tags-tooltip
+                filterable
+                placeholder="选择该计划要巡检的目标"
+              >
+                <el-option
+                  v-for="target in getPlanItemTargetOptions(activePlanItem.itemCode)"
+                  :key="target.targetId"
+                  :label="formatTargetOption(target)"
+                  :value="target.targetId"
+                />
+              </el-select>
+              <el-button link type="primary" icon="Refresh" @click="loadPlanTargetOption(activePlanItem)">刷新目标</el-button>
+            </div>
+
+            <div class="plan-item-detail__grid">
               <el-form-item label="告警阈值">
-                <el-input-number v-model="item.thresholdValue" :min="0" :precision="0" controls-position="right" />
+                <el-input-number v-model="activePlanItem.thresholdValue" :min="0" :precision="0" controls-position="right" />
               </el-form-item>
               <el-form-item label="比较规则">
-                <el-select v-model="item.compareRule">
+                <el-select v-model="activePlanItem.compareRule">
                   <el-option label="实际值不得低于阈值" value="MIN" />
                   <el-option label="实际值不得高于阈值" value="MAX" />
                 </el-select>
               </el-form-item>
               <el-form-item label="时间窗口(分钟)">
-                <el-input-number v-model="item.timeWindowMinutes" :min="0" controls-position="right" />
+                <el-input-number v-model="activePlanItem.timeWindowMinutes" :min="0" controls-position="right" />
               </el-form-item>
               <el-form-item label="超时(秒)">
-                <el-input-number v-model="item.timeoutSeconds" :min="3" :max="120" controls-position="right" />
-              </el-form-item>
-              <el-form-item label="巡检目标" class="plan-item-card__wide">
-                <el-select v-model="item.targetIds" multiple collapse-tags collapse-tags-tooltip filterable placeholder="选择该计划要巡检的目标">
-                  <el-option
-                    v-for="target in planTargetOptions[item.itemCode] || []"
-                    :key="target.targetId"
-                    :label="formatTargetOption(target)"
-                    :value="target.targetId"
-                  />
-                </el-select>
+                <el-input-number v-model="activePlanItem.timeoutSeconds" :min="3" :max="120" controls-position="right" />
               </el-form-item>
             </div>
-          </article>
+
+            <div class="plan-item-detail__summary">
+              <span>执行逻辑</span>
+              <strong>{{ activePlanItem.compareRule === 'MIN' ? '实际值低于阈值时告警' : '实际值高于阈值时告警' }}</strong>
+              <em>当前阈值：{{ activePlanItem.thresholdValue || 0 }}{{ activePlanItem.thresholdUnit || '' }}；统计窗口：{{ activePlanItem.timeWindowMinutes || 0 }} 分钟</em>
+            </div>
+          </section>
         </div>
       </el-form>
       <template #footer>
@@ -541,6 +591,7 @@ const currentConfig = ref(null)
 const serverOptions = ref([])
 const planTargetOptions = ref({})
 const planRunId = ref(null)
+const activePlanItemCode = ref(null)
 const detail = ref({ inspection: null, items: [], targetResults: [] })
 
 const data = reactive({
@@ -571,6 +622,9 @@ const { queryParams, targetQuery, planQuery, targetForm, planForm, targetRules, 
 const enabledConfigCount = computed(() => configList.value.filter((item) => item.enabledFlag === 'Y').length)
 const configTargetTotal = computed(() => configList.value.reduce((sum, item) => sum + Number(item.targetCount || 0), 0))
 const latestInspectionLabel = computed(() => inspectionList.value.length ? formatResult(inspectionList.value[0].resultStatus) : '暂无')
+const activePlanItem = computed(() => (planForm.value.items || []).find((item) => item.itemCode === activePlanItemCode.value) || (planForm.value.items || [])[0] || null)
+const planEnabledItemCount = computed(() => (planForm.value.items || []).filter((item) => item.enabledFlag === 'Y').length)
+const planSelectedTargetCount = computed(() => (planForm.value.items || []).reduce((sum, item) => sum + (item.targetIds?.length || 0), 0))
 
 function getList() {
   loading.value = true
@@ -757,6 +811,7 @@ function handleViewTargetPlain(row) {
 
 function resetPlanForm(plan) {
   const source = plan || { status: '0', reportStyle: 'STANDARD', items: [] }
+  const items = normalizePlanItems(source.items || [])
   planForm.value = {
     planId: source.planId || null,
     planName: source.planName || null,
@@ -765,8 +820,9 @@ function resetPlanForm(plan) {
     reportStyle: source.reportStyle || 'STANDARD',
     status: source.status || '0',
     remark: source.remark || null,
-    items: normalizePlanItems(source.items || [])
+    items
   }
+  activePlanItemCode.value = items[0]?.itemCode || null
   proxy.resetForm('planRef')
 }
 
@@ -864,10 +920,19 @@ function handleDeletePlan(row) {
 function loadPlanTargetOptions(items) {
   planTargetOptions.value = {}
   ;(items || []).forEach((item) => {
-    listTimInspectionTarget({ pageNum: 1, pageSize: 500, itemCode: item.itemCode, status: '0' }).then((res) => {
-      planTargetOptions.value[item.itemCode] = res.rows || []
-    })
+    loadPlanTargetOption(item)
   })
+}
+
+function loadPlanTargetOption(item) {
+  if (!item?.itemCode) return
+  listTimInspectionTarget({ pageNum: 1, pageSize: 500, itemCode: item.itemCode, status: '0' }).then((res) => {
+    planTargetOptions.value = { ...planTargetOptions.value, [item.itemCode]: res.rows || [] }
+  })
+}
+
+function setActivePlanItem(itemCode) {
+  activePlanItemCode.value = itemCode
 }
 
 function handleDeleteTarget(row) {
@@ -976,6 +1041,16 @@ function formatTargetAddress(row) {
 
 function formatTargetOption(row) {
   return `${row.targetName || '-'}｜${formatTargetAddress(row)}`
+}
+
+function getPlanItemTargetOptions(itemCode) {
+  return planTargetOptions.value[itemCode] || []
+}
+
+function getPlanItemHint(item) {
+  if (!item) return ''
+  const rule = item.compareRule === 'MIN' ? '低于阈值告警' : '高于阈值告警'
+  return `${getItemTypeLabel(item.itemType)} · ${rule} · ${item.targetIds?.length || 0} 个目标`
 }
 
 function getReportStyleLabel(style) {
@@ -1176,9 +1251,27 @@ getPlanList()
   font-size: 12px;
 }
 
+:deep(.plan-dialog.el-dialog),
+:deep(.plan-dialog .el-dialog) {
+  max-width: calc(100vw - 48px);
+  margin-top: 4vh !important;
+}
+
+:deep(.plan-dialog .el-dialog__body) {
+  padding: 10px 20px 0;
+  overflow: hidden;
+}
+
+:deep(.plan-dialog .el-dialog__footer) {
+  padding: 12px 20px 18px;
+}
+
 .plan-form {
   display: grid;
-  gap: 16px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  max-height: calc(100vh - 184px);
+  overflow: hidden;
 }
 
 .plan-basic-grid {
@@ -1207,6 +1300,13 @@ getPlanList()
   gap: 4px;
 }
 
+.plan-section-head__stats {
+  display: flex !important;
+  align-items: center;
+  gap: 8px !important;
+  white-space: nowrap;
+}
+
 .plan-section-head span {
   font-weight: 700;
   color: #17314d;
@@ -1218,74 +1318,200 @@ getPlanList()
   color: #6c8198;
 }
 
-.plan-item-grid {
+.plan-editor {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  max-height: 54vh;
-  overflow: auto;
-  padding-right: 4px;
-}
-
-.plan-item-card {
+  grid-template-columns: 310px minmax(0, 1fr);
+  min-height: 330px;
+  max-height: calc(100vh - 410px);
   border: 1px solid #dfe9f5;
   border-radius: 8px;
   background: #fff;
   overflow: hidden;
 }
 
-.plan-item-card.is-disabled {
-  opacity: 0.68;
-}
-
-.plan-item-card__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 12px 14px;
-  border-bottom: 1px solid #edf3f9;
-  background: #fbfdff;
-}
-
-.plan-item-card__head div {
-  display: flex;
-  align-items: center;
+.plan-item-list {
+  display: grid;
+  align-content: start;
   gap: 8px;
-  min-width: 0;
+  padding: 12px;
+  overflow: auto;
+  border-right: 1px solid #e7eff8;
+  background: #f8fbff;
 }
 
-.plan-item-card__head span {
+.plan-item-option {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #17314d;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.plan-item-option:hover,
+.plan-item-option.is-active {
+  border-color: #bcd6ff;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(47, 120, 255, 0.08);
+}
+
+.plan-item-option.is-disabled {
+  opacity: 0.62;
+}
+
+.plan-item-option__index {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   color: #2f78ff;
   background: #eaf3ff;
   font-weight: 700;
 }
 
-.plan-item-card__head strong {
+.plan-item-option__main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.plan-item-option__main strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 14px;
 }
 
-.plan-item-card__body {
+.plan-item-option__main em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: normal;
+  font-size: 12px;
+  color: #7b8fa5;
+}
+
+.plan-item-detail {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 12px;
-  padding: 12px 14px 4px;
+  align-content: start;
+  gap: 14px;
+  padding: 16px;
+  overflow: auto;
 }
 
-.plan-item-card__wide {
+.plan-item-detail__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #edf3f9;
+}
+
+.plan-item-detail__head div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.plan-item-detail__head span {
+  font-size: 12px;
+  color: #2f78ff;
+  font-weight: 700;
+}
+
+.plan-item-detail__head strong {
+  font-size: 18px;
+  color: #17314d;
+}
+
+.plan-item-detail__head em {
+  font-style: normal;
+  color: #6d8299;
+  font-size: 13px;
+}
+
+.plan-item-warning {
+  margin: -2px 0;
+}
+
+.plan-item-detail__target {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 12px;
+  padding: 12px;
+  border: 1px solid #e4eef8;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.plan-field-title {
   grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
-.plan-item-card :deep(.el-select),
+.plan-field-title span {
+  font-weight: 700;
+  color: #17314d;
+}
+
+.plan-field-title em {
+  font-style: normal;
+  font-size: 12px;
+  color: #718499;
+}
+
+.plan-item-detail__target :deep(.el-select) {
+  width: 100%;
+}
+
+.plan-item-detail__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0 12px;
+}
+
+.plan-item-detail__grid :deep(.el-select),
+.plan-item-detail__grid :deep(.el-input-number) {
+  width: 100%;
+}
+
+.plan-item-detail__summary {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f6f9fd;
+  color: #657b92;
+}
+
+.plan-item-detail__summary span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2f78ff;
+}
+
+.plan-item-detail__summary strong {
+  color: #17314d;
+  font-size: 14px;
+}
+
+.plan-item-detail__summary em {
+  font-style: normal;
+  font-size: 13px;
+}
+
 .plan-basic-grid :deep(.el-select) {
   width: 100%;
 }
@@ -1317,10 +1543,15 @@ getPlanList()
   .target-form,
   .config-card__body,
   .plan-basic-grid,
-  .plan-item-grid,
-  .plan-item-card__body {
+  .plan-editor,
+  .plan-item-detail__grid,
+  .plan-item-detail__target {
     grid-template-columns: 1fr;
     min-width: 0;
+  }
+
+  .plan-editor {
+    max-height: calc(100vh - 360px);
   }
 }
 </style>
