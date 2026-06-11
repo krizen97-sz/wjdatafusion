@@ -7,6 +7,13 @@
 START TRANSACTION;
 
 UPDATE sys_menu
+SET component = 'Layout',
+    update_by = 'admin',
+    update_time = NOW()
+WHERE menu_id = 2300
+  AND (component IS NULL OR component = '');
+
+UPDATE sys_menu
 SET menu_name = '巡检配置',
     order_num = 1,
     path = 'config',

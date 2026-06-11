@@ -1,5 +1,29 @@
 export const releaseNotes = [
   {
+    version: 'v3.0.4',
+    submitTime: '2026-06-11 17:00:36',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'danger',
+    title: '自动化巡检动态路由修复',
+    summary: '修复自动化巡检一级目录 component 为空导致 Vue 动态路由渲染时报 Cannot read properties of null (reading component) 的问题。',
+    changes: [
+      '将自动化巡检一级菜单 sys_menu.menu_id=2300 的 component 从空值修正为 Layout，符合若依前后端分离动态路由规范。',
+      '新增前端动态路由兜底逻辑：后端返回有子路由但 component 为空的目录时，自动按 Layout 处理，避免空组件进入路由树。',
+      '同步修正 v3.0.0 初始化脚本、support_v1.sql、support_deploy_all.sql 和 v3.0.3 独立脚本中的自动化巡检一级目录配置。',
+      '新增 v3.0.4 独立升级脚本，线上环境可直接执行以修复已落库的菜单数据。'
+    ],
+    scope: ['自动化巡检', '若依动态路由', '菜单权限', 'SQL脚本', '版本记录'],
+    database: '不改业务表结构，仅更新 sys_menu 中自动化巡检一级菜单 component 字段为 Layout。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260611_auto_inspection_route_layout_v3_0_4.sql',
+      'WDF100.0/sql/support_upgrade_20260611_auto_inspection_template_steps_v3_0_3.sql',
+      'WDF100.0/sql/support_upgrade_20260611_auto_inspection_v3_0_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v3.0.3',
     submitTime: '2026-06-11 16:44:28',
     level: 'patch',

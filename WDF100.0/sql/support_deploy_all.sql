@@ -1057,7 +1057,7 @@ WHERE menu_id = 2206;
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES
-(2300, '自动化巡检', 0, 6, 'autoInspection', NULL, '', 'AutoInspection', 1, 0, 'M', '0', '0', '', 'monitor', 'admin', NOW(), '', NULL, '可配置自动化巡检中心')
+(2300, '自动化巡检', 0, 6, 'autoInspection', 'Layout', '', 'AutoInspection', 1, 0, 'M', '0', '0', '', 'monitor', 'admin', NOW(), '', NULL, '可配置自动化巡检中心')
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name), path=VALUES(path), route_name=VALUES(route_name), visible=VALUES(visible), status=VALUES(status), remark=VALUES(remark);
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
