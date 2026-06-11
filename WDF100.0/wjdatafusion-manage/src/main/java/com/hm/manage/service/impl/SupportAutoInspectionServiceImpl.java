@@ -848,6 +848,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             case "KAFKA":
                 requireText(str(target, "host"), "Kafka bootstrap不能为空");
+                requireText(str(target, "topic"), "Kafka topic不能为空");
+                requireText(str(target, "consumerGroup"), "Kafka消费组不能为空");
                 break;
             case "HTTP":
                 requireText(str(target, "url"), "HTTP接口地址不能为空");
@@ -857,6 +859,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             case "FTP":
                 requireText(str(target, "host"), "FTP主机不能为空");
                 requireText(str(target, "username"), "FTP账号不能为空");
+                requireText(str(target, "path"), "FTP目录不能为空");
                 target.put("port", toInt(target.get("port"), 21));
                 break;
             case "SERVER":
@@ -864,6 +867,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 {
                     throw new ServiceException("请选择服务器资产");
                 }
+                requireText(str(target, "path"), "检测路径不能为空");
                 break;
             default:
                 throw new ServiceException("不支持的目标类型：" + targetType);
@@ -909,13 +913,84 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             step.put("createTime", DateUtils.getNowDate());
             step.put("updateBy", getCurrentUsername());
             step.put("updateTime", DateUtils.getNowDate());
+            List<Long> targetIds = resolveStepTargetIds(step, tool);
             autoInspectionMapper.insertStep(step);
             Long stepId = toLong(step.get("stepId"));
-            for (Long targetId : toLongList(step.get("targetIds")))
+            for (Long targetId : targetIds)
             {
                 autoInspectionMapper.insertStepTarget(stepId, targetId, getCurrentUsername());
             }
         }
+    }
+
+    private List<Long> resolveStepTargetIds(Map<String, Object> step, Map<String, Object> tool)
+    {
+        Map<String, Object> inlineTarget = castMap(step.get("target"));
+        if (!inlineTarget.isEmpty())
+        {
+            return Collections.singletonList(saveInlineStepTarget(step, tool, inlineTarget));
+        }
+        return toLongList(step.get("targetIds"));
+    }
+
+    private Long saveInlineStepTarget(Map<String, Object> step, Map<String, Object> tool, Map<String, Object> target)
+    {
+        target.put("targetType", StringUtils.defaultIfBlank(str(target, "targetType"), resolveTargetTypeByTool(str(step, "toolCode"))));
+        target.put("targetName", StringUtils.defaultIfBlank(str(target, "targetName"), str(step, "stepName") + "目标"));
+        target.put("status", STATUS_DISABLED.equals(str(target, "status")) ? STATUS_DISABLED : STATUS_NORMAL);
+        mergeStepParamsToTarget(step, target);
+        Long targetId = toLong(target.get("targetId"));
+        if (targetId == null)
+        {
+            normalizeTarget(target, false);
+            encryptTargetSecret(target);
+            target.put("createBy", getCurrentUsername());
+            target.put("createTime", DateUtils.getNowDate());
+            target.put("updateBy", getCurrentUsername());
+            target.put("updateTime", DateUtils.getNowDate());
+            autoInspectionMapper.insertTarget(target);
+            return toLong(target.get("targetId"));
+        }
+        updateTarget(target);
+        return targetId;
+    }
+
+    private void mergeStepParamsToTarget(Map<String, Object> step, Map<String, Object> target)
+    {
+        Map<String, Object> params = readParams(step);
+        if (TOOL_KAFKA_LAG.equals(str(step, "toolCode")))
+        {
+            if (StringUtils.isBlank(str(target, "topic")) && StringUtils.isNotBlank(str(params, "topic")))
+            {
+                target.put("topic", params.get("topic"));
+            }
+            if (StringUtils.isBlank(str(target, "consumerGroup")) && StringUtils.isNotBlank(str(params, "consumerGroup")))
+            {
+                target.put("consumerGroup", params.get("consumerGroup"));
+            }
+        }
+        if ((TOOL_FTP_FILE_COUNT.equals(str(step, "toolCode")) || TOOL_SERVER_FILE_COUNT.equals(str(step, "toolCode")) || TOOL_SERVER_DISK.equals(str(step, "toolCode")))
+                && StringUtils.isBlank(str(target, "path")) && StringUtils.isNotBlank(str(params, "path")))
+        {
+            target.put("path", params.get("path"));
+        }
+    }
+
+    private String resolveTargetTypeByTool(String toolCode)
+    {
+        if (TOOL_KAFKA_LAG.equals(toolCode))
+        {
+            return "KAFKA";
+        }
+        if (TOOL_HTTP_COUNT.equals(toolCode))
+        {
+            return "HTTP";
+        }
+        if (TOOL_FTP_FILE_COUNT.equals(toolCode))
+        {
+            return "FTP";
+        }
+        return "SERVER";
     }
 
     private void normalizePlan(Map<String, Object> plan)
@@ -954,7 +1029,17 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         }
         for (Map<String, Object> step : steps)
         {
-            step.put("targetIds", targetMap.getOrDefault(toLong(step.get("stepId")), new ArrayList<>()));
+            List<Long> targetIds = targetMap.getOrDefault(toLong(step.get("stepId")), new ArrayList<>());
+            step.put("targetIds", targetIds);
+            if (!targetIds.isEmpty())
+            {
+                Map<String, Object> target = autoInspectionMapper.selectTargetById(targetIds.get(0));
+                if (target != null)
+                {
+                    maskTargetSecret(target);
+                    step.put("target", target);
+                }
+            }
         }
         template.put("steps", steps);
     }

@@ -1062,8 +1062,8 @@ ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name), path=VALUES(path), route_na
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES
-(2301, '巡检配置', 2300, 1, 'config', 'support/autoInspection/index', '{"tab":"target"}', 'AutoInspectionConfig', 1, 0, 'C', '0', '0', '', 'setting', 'admin', NOW(), '', NULL, '统一维护巡检目标、模板和计划'),
-(2302, '巡检目标', 2300, 2, 'target', 'support/autoInspection/index', '{"tab":"target"}', 'AutoInspectionTarget', 1, 0, 'C', '1', '0', 'support:autoInspection:target', 'server', 'admin', NOW(), '', NULL, '已合并到巡检配置入口'),
+(2301, '巡检配置', 2300, 1, 'config', 'support/autoInspection/index', '{"tab":"template"}', 'AutoInspectionConfig', 1, 0, 'C', '0', '0', '', 'setting', 'admin', NOW(), '', NULL, '在模板步骤中选择巡检工具并配置目标、阈值和参数'),
+(2302, '巡检目标', 2300, 2, 'target', 'support/autoInspection/index', '{"tab":"target"}', 'AutoInspectionTarget', 1, 0, 'C', '1', '0', 'support:autoInspection:target', 'server', 'admin', NOW(), '', NULL, '旧目标独立入口已隐藏，目标在巡检模板步骤内配置'),
 (2303, '巡检计划', 2300, 3, 'plan', 'support/autoInspection/index', '{"tab":"plan"}', 'AutoInspectionPlan', 1, 0, 'C', '1', '0', 'support:autoInspection:plan', 'time', 'admin', NOW(), '', NULL, '已合并到巡检配置入口'),
 (2304, '巡检记录', 2300, 2, 'record', 'support/autoInspection/index', '{"tab":"record"}', 'AutoInspectionRecord', 1, 0, 'C', '0', '0', 'support:autoInspection:query', 'documentation', 'admin', NOW(), '', NULL, '')
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name), parent_id=VALUES(parent_id), order_num=VALUES(order_num), path=VALUES(path), component=VALUES(component), `query`=VALUES(`query`), route_name=VALUES(route_name), perms=VALUES(perms), icon=VALUES(icon), visible=VALUES(visible), status=VALUES(status), remark=VALUES(remark);

@@ -8,7 +8,7 @@
       </div>
       <div class="auto-hero__stats">
         <span><strong>{{ templateTotal }}</strong><em>模板</em></span>
-        <span><strong>{{ targetTotal }}</strong><em>目标</em></span>
+        <span><strong>{{ toolList.length }}</strong><em>工具</em></span>
         <span><strong>{{ planTotal }}</strong><em>计划</em></span>
         <span><strong>{{ latestRecordLabel }}</strong><em>最近结果</em></span>
       </div>
@@ -18,18 +18,13 @@
       <el-tab-pane label="巡检配置" name="config">
         <div class="config-shell">
           <div class="config-guide">
-            <button :class="{ active: configTab === 'target' }" @click="switchConfigTab('target')">
-              <span>1</span>
-              <strong>巡检目标</strong>
-              <em>先维护 Kafka、HTTP、FTP、服务器等可检测对象</em>
-            </button>
             <button :class="{ active: configTab === 'template' }" @click="switchConfigTab('template')">
-              <span>2</span>
+              <span>1</span>
               <strong>巡检模板</strong>
-              <em>把基础工具和目标编排成可复用检测流程</em>
+              <em>添加步骤、选择工具，并在步骤里配置目标和阈值</em>
             </button>
             <button :class="{ active: configTab === 'plan' }" @click="switchConfigTab('plan')">
-              <span>3</span>
+              <span>2</span>
               <strong>巡检计划</strong>
               <em>选择模板和执行周期，交给若依定时任务调度</em>
             </button>
@@ -61,8 +56,8 @@
         <el-table v-loading="templateLoading" :data="templateList" class="auto-table">
           <el-table-column label="模板名称" prop="templateName" min-width="180" show-overflow-tooltip />
           <el-table-column label="说明" prop="templateDesc" min-width="240" show-overflow-tooltip />
-          <el-table-column label="步骤/目标" width="120" align="center">
-            <template #default="scope">{{ scope.row.stepCount || 0 }} / {{ scope.row.targetCount || 0 }}</template>
+          <el-table-column label="步骤数" width="100" align="center">
+            <template #default="scope">{{ scope.row.stepCount || 0 }}</template>
           </el-table-column>
           <el-table-column label="状态" width="90" align="center">
             <template #default="scope"><el-tag size="small" :type="scope.row.status === '1' ? 'info' : 'success'">{{ scope.row.status === '1' ? '停用' : '正常' }}</el-tag></template>
@@ -78,57 +73,6 @@
         </el-table>
 
         <pagination v-show="templateTotal > 0" :total="templateTotal" v-model:page="templateQuery.pageNum" v-model:limit="templateQuery.pageSize" @pagination="getTemplateList" />
-      </el-tab-pane>
-
-            <el-tab-pane label="巡检目标" name="target">
-        <el-form :model="targetQuery" :inline="true" class="auto-query-bar">
-          <el-form-item label="目标名称">
-            <el-input v-model="targetQuery.targetName" clearable placeholder="搜索目标名称" @keyup.enter="getTargetList" />
-          </el-form-item>
-          <el-form-item label="目标类型">
-            <el-select v-model="targetQuery.targetType" clearable placeholder="全部类型" style="width: 150px">
-              <el-option v-for="item in targetTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="状态">
-            <el-select v-model="targetQuery.status" clearable placeholder="全部状态" style="width: 140px">
-              <el-option label="正常" value="0" />
-              <el-option label="停用" value="1" />
-            </el-select>
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" icon="Search" @click="getTargetList">搜索</el-button>
-            <el-button icon="Refresh" @click="resetTargetQuery">重置</el-button>
-          </el-form-item>
-        </el-form>
-
-        <div class="auto-toolbar">
-          <el-button type="primary" plain icon="Plus" @click="handleAddTarget" v-hasPermi="['support:autoInspection:target']">新增目标</el-button>
-          <el-button icon="Refresh" @click="getTargetList">刷新</el-button>
-        </div>
-
-        <el-table v-loading="targetLoading" :data="targetList" class="auto-table">
-          <el-table-column label="目标名称" prop="targetName" min-width="160" />
-          <el-table-column label="类型" width="110" align="center">
-            <template #default="scope"><el-tag size="small">{{ getTargetTypeLabel(scope.row.targetType) }}</el-tag></template>
-          </el-table-column>
-          <el-table-column label="目标地址" min-width="260" show-overflow-tooltip>
-            <template #default="scope">{{ formatTargetAddress(scope.row) }}</template>
-          </el-table-column>
-          <el-table-column label="状态" width="90" align="center">
-            <template #default="scope"><el-tag size="small" :type="scope.row.status === '1' ? 'info' : 'success'">{{ scope.row.status === '1' ? '停用' : '正常' }}</el-tag></template>
-          </el-table-column>
-          <el-table-column label="操作" width="280" fixed="right" align="center">
-            <template #default="scope">
-              <el-button link type="primary" @click="handleUpdateTarget(scope.row)" v-hasPermi="['support:autoInspection:target']">编辑</el-button>
-              <el-button link type="success" :loading="targetTestId === scope.row.targetId" @click="handleTestTarget(scope.row)" v-hasPermi="['support:autoInspection:target']">测试</el-button>
-              <el-button link type="warning" @click="handleViewTargetPlain(scope.row)" v-hasPermi="['support:credential:viewPlain']">显示密码</el-button>
-              <el-button link type="danger" @click="handleDeleteTarget(scope.row)" v-hasPermi="['support:autoInspection:target']">删除</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-
-        <pagination v-show="targetTotal > 0" :total="targetTotal" v-model:page="targetQuery.pageNum" v-model:limit="targetQuery.pageSize" @pagination="getTargetList" />
       </el-tab-pane>
 
             <el-tab-pane label="巡检计划" name="plan">
@@ -350,38 +294,109 @@
           <button v-for="(step, index) in templateForm.steps" :key="index" :class="{ active: activeStepIndex === index }" @click="activeStepIndex = index">
             <span>{{ index + 1 }}</span>
             <strong>{{ step.stepName || '未命名步骤' }}</strong>
-            <em>{{ getToolLabel(step.toolCode) }}</em>
+            <em>{{ getToolLabel(step.toolCode) }} · {{ formatStepTarget(step) }}</em>
           </button>
-          <el-button type="primary" plain icon="Plus" @click="addTemplateStep">添加步骤</el-button>
+          <el-button type="primary" plain icon="Plus" @click="openStepDialog()">添加步骤</el-button>
         </aside>
-        <section v-if="activeStep" class="step-editor">
-          <el-row :gutter="16">
-            <el-col :span="12"><label>步骤名称<el-input v-model="activeStep.stepName" placeholder="例如：原始Kafka积压" /></label></el-col>
-            <el-col :span="12"><label>巡检工具<el-select v-model="activeStep.toolCode" placeholder="选择工具" style="width: 100%" @change="applyToolDefaults(activeStep)"><el-option v-for="tool in toolList" :key="tool.toolCode" :label="tool.toolName" :value="tool.toolCode" /></el-select></label></el-col>
-            <el-col :span="24"><label>巡检目标<el-select v-model="activeStep.targetIds" multiple filterable collapse-tags collapse-tags-tooltip placeholder="选择一个或多个目标" style="width: 100%"><el-option v-for="target in compatibleTargets(activeStep)" :key="target.targetId" :label="`${target.targetName}（${getTargetTypeLabel(target.targetType)}）`" :value="target.targetId" /></el-select></label></el-col>
-            <el-col :span="6"><label>启用<el-switch v-model="activeStep.enabledFlag" active-value="Y" inactive-value="N" /></label></el-col>
-            <el-col :span="6"><label>阈值<el-input-number v-model="activeStep.thresholdValue" :min="0" controls-position="right" style="width: 100%" /></label></el-col>
-            <el-col :span="6"><label>单位<el-input v-model="activeStep.thresholdUnit" /></label></el-col>
-            <el-col :span="6"><label>规则<el-select v-model="activeStep.compareRule" style="width: 100%"><el-option label="不得低于阈值" value="MIN" /><el-option label="不得高于阈值" value="MAX" /></el-select></label></el-col>
-            <el-col :span="6"><label>时间窗口(分钟)<el-input-number v-model="activeStep.timeWindowMinutes" :min="0" controls-position="right" style="width: 100%" /></label></el-col>
-            <el-col :span="6"><label>超时(秒)<el-input-number v-model="activeStep.timeoutSeconds" :min="3" :max="120" controls-position="right" style="width: 100%" /></label></el-col>
-            <el-col :span="12"><label>排序<el-input-number v-model="activeStep.sortOrder" :min="1" controls-position="right" style="width: 100%" /></label></el-col>
-            <el-col v-if="activeStep.toolCode === 'KAFKA_LAG'" :span="12"><label>Topic<el-input v-model="activeStep.stepParams.topic" placeholder="覆盖目标默认Topic" /></label></el-col>
-            <el-col v-if="activeStep.toolCode === 'KAFKA_LAG'" :span="12"><label>消费组<el-input v-model="activeStep.stepParams.consumerGroup" placeholder="覆盖目标默认消费组" /></label></el-col>
-            <el-col v-if="['FTP_FILE_COUNT','SERVER_FILE_COUNT','SERVER_DISK'].includes(activeStep.toolCode)" :span="12"><label>路径<el-input v-model="activeStep.stepParams.path" placeholder="目录路径或磁盘挂载点" /></label></el-col>
-            <el-col v-if="activeStep.toolCode === 'SERVER_FILE_COUNT'" :span="6"><label>递归<el-switch v-model="activeStep.stepParams.recursive" active-value="true" inactive-value="false" /></label></el-col>
-            <el-col v-if="activeStep.toolCode === 'SERVER_FILE_COUNT'" :span="6"><label>文件匹配<el-input v-model="activeStep.stepParams.filePattern" placeholder="*.dat" /></label></el-col>
-          </el-row>
-          <div class="step-actions">
-            <el-alert v-if="!activeStep.targetIds?.length" title="当前步骤未选择目标，执行时会记录为配置缺失异常。" type="warning" show-icon :closable="false" />
-            <el-button type="danger" plain icon="Delete" @click="removeTemplateStep(activeStepIndex)">删除当前步骤</el-button>
+        <section v-if="activeStep" class="step-editor step-summary-panel">
+          <div class="step-summary-head">
+            <div>
+              <span>当前步骤</span>
+              <strong>{{ activeStep.stepName || '未命名步骤' }}</strong>
+              <em>{{ getToolLabel(activeStep.toolCode) }}</em>
+            </div>
+            <div class="step-summary-actions">
+              <el-button type="primary" plain icon="Edit" @click="openStepDialog(activeStepIndex)">编辑步骤</el-button>
+              <el-button type="danger" plain icon="Delete" @click="removeTemplateStep(activeStepIndex)">删除</el-button>
+            </div>
           </div>
+          <div class="step-summary-grid">
+            <span><label>目标</label><strong>{{ formatStepTarget(activeStep) }}</strong></span>
+            <span><label>阈值</label><strong>{{ activeStep.compareRule === 'MIN' ? '不低于' : '不高于' }} {{ activeStep.thresholdValue ?? '-' }}{{ activeStep.thresholdUnit || '' }}</strong></span>
+            <span><label>窗口/超时</label><strong>{{ activeStep.timeWindowMinutes || 0 }} 分钟 / {{ activeStep.timeoutSeconds || 10 }} 秒</strong></span>
+            <span><label>状态</label><strong>{{ activeStep.enabledFlag === 'Y' ? '启用' : '停用' }}</strong></span>
+          </div>
+          <el-alert v-if="!activeStep.target" title="当前步骤还没有配置巡检目标，执行时会记录为配置缺失异常。" type="warning" show-icon :closable="false" />
         </section>
         <el-empty v-else description="请添加巡检步骤" />
       </div>
       <template #footer>
         <el-button @click="templateDialogOpen = false">取消</el-button>
         <el-button type="primary" :loading="templateSubmitLoading" @click="submitTemplate">保存模板</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="stepDialogOpen" width="960px" append-to-body class="template-dialog step-dialog">
+      <template #header><div class="dialog-title"><span>{{ stepEditingIndex === null ? '新增步骤' : '编辑步骤' }}</span><strong>选择工具并配置巡检细节</strong></div></template>
+      <el-form ref="stepRef" :model="stepDraft" label-width="110px">
+        <section class="target-section">
+          <header>
+            <strong>巡检工具</strong>
+            <span>工具决定检测方式，目标信息在当前步骤里一并配置。</span>
+          </header>
+          <el-row :gutter="16">
+            <el-col :span="12"><el-form-item label="步骤名称" required><el-input v-model="stepDraft.stepName" placeholder="例如：原始Kafka积压" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="巡检工具" required><el-select v-model="stepDraft.toolCode" placeholder="选择工具" style="width: 100%" @change="handleStepToolChange"><el-option v-for="tool in toolList" :key="tool.toolCode" :label="tool.toolName" :value="tool.toolCode" /></el-select></el-form-item></el-col>
+            <el-col :span="6"><el-form-item label="启用"><el-switch v-model="stepDraft.enabledFlag" active-value="Y" inactive-value="N" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item label="告警阈值"><el-input-number v-model="stepDraft.thresholdValue" :min="0" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item label="单位"><el-input v-model="stepDraft.thresholdUnit" /></el-form-item></el-col>
+            <el-col :span="6"><el-form-item label="比较规则"><el-select v-model="stepDraft.compareRule" style="width: 100%"><el-option label="不得低于阈值" value="MIN" /><el-option label="不得高于阈值" value="MAX" /></el-select></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="时间窗口"><el-input-number v-model="stepDraft.timeWindowMinutes" :min="0" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="超时秒数"><el-input-number v-model="stepDraft.timeoutSeconds" :min="3" :max="120" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="排序"><el-input-number v-model="stepDraft.sortOrder" :min="1" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+          </el-row>
+        </section>
+
+        <section class="target-section">
+          <header>
+            <strong>{{ stepTargetSectionTitle }}</strong>
+            <span>{{ stepTargetSectionHint }}</span>
+          </header>
+          <el-row v-if="stepTargetType === 'KAFKA'" :gutter="16">
+            <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：原始Kafka消费组" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="Bootstrap" required><el-input v-model="stepDraft.target.host" placeholder="10.0.0.1:9092,10.0.0.2:9092" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="Topic" required><el-input v-model="stepDraft.target.topic" placeholder="例如：tim-pass-record" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="消费组" required><el-input v-model="stepDraft.target.consumerGroup" placeholder="例如：tim-analysis-group" /></el-form-item></el-col>
+          </el-row>
+          <el-row v-if="stepTargetType === 'HTTP'" :gutter="16">
+            <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：海康过车数量接口" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="请求方法"><el-select v-model="stepDraft.target.httpMethod" style="width: 100%"><el-option label="POST" value="POST" /><el-option label="GET" value="GET" /></el-select></el-form-item></el-col>
+            <el-col :span="24"><el-form-item label="接口URL" required><el-input v-model="stepDraft.target.url" placeholder="https://host/api/count?date=${today}" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="结果路径"><el-input v-model="stepDraft.target.resultPath" placeholder="例如：data.total" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="AppKey"><el-input v-model="stepDraft.target.appKey" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="Secret"><el-input v-model="stepDraft.target.secret" show-password /></el-form-item></el-col>
+            <el-col :span="12">
+              <div class="placeholder-panel placeholder-panel--examples">
+                <span>可用日期变量和效果示例</span>
+                <button v-for="item in httpDatePlaceholders" :key="item.value" type="button" @click="insertStepHttpPlaceholder(item.value)">
+                  <strong>{{ item.value }}</strong>
+                  <em>{{ item.example }}</em>
+                </button>
+              </div>
+            </el-col>
+            <el-col :span="24"><el-form-item label="请求体模板"><el-input v-model="stepDraft.target.extraParams" type="textarea" :rows="4" placeholder='例如：{"startTime":"${todayStart}","endTime":"${todayEnd}"}' /></el-form-item></el-col>
+          </el-row>
+          <el-row v-if="stepTargetType === 'FTP'" :gutter="16">
+            <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：FTP入库目录" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="主机地址" required><el-input v-model="stepDraft.target.host" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="端口"><el-input-number v-model="stepDraft.target.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+            <el-col :span="16"><el-form-item label="目录路径" required><el-input v-model="stepDraft.target.path" placeholder="/data/ftp/inbox" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="账号" required><el-input v-model="stepDraft.target.username" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="密码"><el-input v-model="stepDraft.target.password" show-password /></el-form-item></el-col>
+          </el-row>
+          <el-row v-if="stepTargetType === 'SERVER'" :gutter="16">
+            <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：大数据服务器磁盘" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="服务器资产" required><el-select v-model="stepDraft.target.serverId" filterable placeholder="选择服务器资产" style="width: 100%"><el-option v-for="item in serverOptions" :key="item.serverId" :label="`${item.serverName || item.serverAddress}（${item.serverAddress}）`" :value="item.serverId" /></el-select></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="检测路径" required><el-input v-model="stepDraft.target.path" placeholder="目录路径或磁盘挂载点" /></el-form-item></el-col>
+            <el-col v-if="stepDraft.toolCode === 'SERVER_FILE_COUNT'" :span="6"><el-form-item label="递归"><el-switch v-model="stepDraft.stepParams.recursive" active-value="true" inactive-value="false" /></el-form-item></el-col>
+            <el-col v-if="stepDraft.toolCode === 'SERVER_FILE_COUNT'" :span="6"><el-form-item label="文件匹配"><el-input v-model="stepDraft.stepParams.filePattern" placeholder="*.dat" /></el-form-item></el-col>
+          </el-row>
+        </section>
+      </el-form>
+      <template #footer>
+        <el-button @click="stepDialogOpen = false">取消</el-button>
+        <el-button :loading="targetTesting" @click="handleTestTarget(stepDraft.target)">测试目标</el-button>
+        <el-button type="primary" @click="submitStepDraft">保存步骤</el-button>
       </template>
     </el-dialog>
 
@@ -500,7 +515,7 @@ const route = useRoute()
 const router = useRouter()
 const { proxy } = getCurrentInstance()
 
-const configTabNames = ['target', 'template', 'plan']
+const configTabNames = ['template', 'plan']
 const activeTab = ref(resolveRouteTab(route.query.tab))
 const configTab = ref(resolveConfigTab(route.query.tab, route.query.configTab))
 const toolList = ref([])
@@ -539,6 +554,9 @@ const templateDialogOpen = ref(false)
 const templateSubmitLoading = ref(false)
 const templateForm = ref(defaultTemplateForm())
 const activeStepIndex = ref(0)
+const stepDialogOpen = ref(false)
+const stepEditingIndex = ref(null)
+const stepDraft = ref(defaultStepForm())
 const planDialogOpen = ref(false)
 const planSubmitLoading = ref(false)
 const planForm = ref(defaultPlanForm())
@@ -567,12 +585,12 @@ const weekOptions = [
   { label: '周六', value: 'SAT' }
 ]
 const httpDatePlaceholders = [
-  { value: '${today}', label: '当天日期' },
-  { value: '${todayStart}', label: '当天开始' },
-  { value: '${todayEnd}', label: '当天结束' },
-  { value: '${yyyyMMdd}', label: '紧凑日期' },
-  { value: '${beginTime}', label: '窗口开始' },
-  { value: '${endTime}', label: '窗口结束' }
+  { value: '${today}', label: '当天日期', example: '2026-06-11' },
+  { value: '${todayStart}', label: '当天开始', example: '2026-06-11 00:00:00' },
+  { value: '${todayEnd}', label: '当天结束', example: '2026-06-11 23:59:59' },
+  { value: '${yyyyMMdd}', label: '紧凑日期', example: '20260611' },
+  { value: '${beginTime}', label: '窗口开始', example: '按步骤时间窗口计算' },
+  { value: '${endTime}', label: '窗口结束', example: '当前执行时间' }
 ]
 
 const targetRules = {
@@ -589,6 +607,19 @@ const planRules = {
 
 const activeStep = computed(() => templateForm.value.steps?.[activeStepIndex.value])
 const templateOptions = computed(() => allTemplateList.value.filter((item) => item.status !== '1'))
+const stepTargetType = computed(() => getTargetTypeByTool(stepDraft.value.toolCode))
+const stepTargetSectionTitle = computed(() => {
+  if (stepTargetType.value === 'KAFKA') return 'Kafka 目标'
+  if (stepTargetType.value === 'HTTP') return 'HTTP 接口目标'
+  if (stepTargetType.value === 'FTP') return 'FTP 目录目标'
+  return '服务器资产目标'
+})
+const stepTargetSectionHint = computed(() => {
+  if (stepTargetType.value === 'KAFKA') return '消费积压检测只需要 bootstrap、topic 和消费组。'
+  if (stepTargetType.value === 'HTTP') return '接口数量检测关注请求地址、参数模板、认证信息和结果取值路径。'
+  if (stepTargetType.value === 'FTP') return 'FTP 文件数量检测只需要连接信息和目录路径。'
+  return '服务器目录或磁盘检测复用服务器资产，并配置检测路径。'
+})
 const latestRecordLabel = computed(() => {
   const row = recordList.value?.[0]
   return row ? formatResult(row.resultStatus) : '暂无'
@@ -612,7 +643,7 @@ onMounted(() => {
 
 async function initPage() {
   await Promise.all([getTools(), getServerOptions()])
-  await Promise.all([getTemplateList(), getTargetList(), getTemplateOptions(), getTargetOptions(), getPlanList(), getRecordList()])
+  await Promise.all([getTemplateList(), getTemplateOptions(), getPlanList(), getRecordList()])
 }
 
 function resolveRouteTab(tab) {
@@ -622,7 +653,7 @@ function resolveRouteTab(tab) {
 function resolveConfigTab(tab, subTab) {
   if (configTabNames.includes(tab)) return tab
   if (configTabNames.includes(subTab)) return subTab
-  return 'target'
+  return 'template'
 }
 
 function handleTabChange(tab) {
@@ -651,7 +682,6 @@ function loadActiveTab() {
 
 function loadConfigTab(tab = configTab.value) {
   if (tab === 'template') getTemplateList()
-  if (tab === 'target') getTargetList()
   if (tab === 'plan') getPlanList()
 }
 
@@ -796,14 +826,21 @@ function handleTestTarget(row) {
 
 function validateTargetBusiness(target) {
   if (!target?.targetType) return '请选择目标类型'
-  if (target.targetType === 'KAFKA' && !String(target.host || '').trim()) return '请填写 Kafka Bootstrap 地址'
+  if (target.targetType === 'KAFKA') {
+    if (!String(target.host || '').trim()) return '请填写 Kafka Bootstrap 地址'
+    if (!String(target.topic || '').trim()) return '请填写 Kafka Topic'
+    if (!String(target.consumerGroup || '').trim()) return '请填写 Kafka 消费组'
+  }
   if (target.targetType === 'HTTP' && !String(target.url || '').trim()) return '请填写接口 URL'
   if (target.targetType === 'FTP') {
     if (!String(target.host || '').trim()) return '请填写 FTP 主机地址'
     if (!String(target.path || '').trim()) return '请填写 FTP 目录路径'
     if (!String(target.username || '').trim()) return '请填写 FTP 账号'
   }
-  if (target.targetType === 'SERVER' && !target.serverId) return '请选择服务器资产'
+  if (target.targetType === 'SERVER') {
+    if (!target.serverId) return '请选择服务器资产'
+    if (!String(target.path || '').trim()) return '请填写服务器检测路径'
+  }
   return ''
 }
 
@@ -874,7 +911,6 @@ function handleViewTargetPlain(row) {
 function handleAddTemplate() {
   templateForm.value = defaultTemplateForm()
   activeStepIndex.value = 0
-  addTemplateStep()
   templateDialogOpen.value = true
 }
 
@@ -888,34 +924,70 @@ function handleUpdateTemplate(row) {
   })
 }
 
-function addTemplateStep() {
+function openStepDialog(index = null) {
+  stepEditingIndex.value = index
+  stepDraft.value = index === null ? defaultStepForm(templateForm.value.steps.length + 1) : cloneStep(templateForm.value.steps[index])
+  if (!stepDraft.value.toolCode && toolList.value.length) handleStepToolChange(toolList.value[0].toolCode)
+  stepDialogOpen.value = true
+}
+
+function handleStepToolChange(toolCode) {
+  const draft = stepDraft.value
+  draft.toolCode = toolCode
+  applyToolDefaults(draft, true)
+  draft.target = normalizeStepTarget({}, toolCode, draft.stepName)
+}
+
+function submitStepDraft() {
+  const warning = validateStepDraft(stepDraft.value)
+  if (warning) {
+    proxy.$modal.msgWarning(warning)
+    return
+  }
+  const step = normalizeStepForSave(stepDraft.value)
+  if (stepEditingIndex.value === null) {
+    templateForm.value.steps.push(step)
+    activeStepIndex.value = templateForm.value.steps.length - 1
+  } else {
+    templateForm.value.steps.splice(stepEditingIndex.value, 1, step)
+    activeStepIndex.value = stepEditingIndex.value
+  }
+  stepDialogOpen.value = false
+}
+
+function cloneStep(step) {
+  return JSON.parse(JSON.stringify(step || defaultStepForm()))
+}
+
+function defaultStepForm(order) {
   const tool = toolList.value[0]
+  const stepName = tool?.toolName || ''
   const step = {
-    stepName: tool?.toolName || '',
+    stepName,
     toolCode: tool?.toolCode,
     enabledFlag: 'Y',
-    sortOrder: templateForm.value.steps.length + 1,
+    sortOrder: order || 1,
     thresholdValue: tool?.defaultThresholdValue ?? 0,
     thresholdUnit: tool?.valueUnit || '',
     compareRule: tool?.defaultCompareRule || 'MAX',
     timeWindowMinutes: tool?.defaultTimeWindowMinutes || 0,
     timeoutSeconds: tool?.defaultTimeoutSeconds || 10,
     targetIds: [],
+    target: normalizeStepTarget({}, tool?.toolCode, stepName),
     stepParams: {}
   }
-  templateForm.value.steps.push(step)
-  activeStepIndex.value = templateForm.value.steps.length - 1
+  return step
 }
 
 function removeTemplateStep(index) {
   templateForm.value.steps.splice(index, 1)
-  activeStepIndex.value = Math.max(0, index - 1)
+  activeStepIndex.value = Math.max(0, Math.min(index - 1, templateForm.value.steps.length - 1))
 }
 
-function applyToolDefaults(step) {
+function applyToolDefaults(step, forceName = false) {
   const tool = toolList.value.find((item) => item.toolCode === step.toolCode)
   if (!tool) return
-  step.stepName = step.stepName || tool.toolName
+  if (forceName || !step.stepName) step.stepName = tool.toolName
   step.thresholdValue = tool.defaultThresholdValue
   step.thresholdUnit = tool.valueUnit
   step.compareRule = tool.defaultCompareRule
@@ -925,6 +997,59 @@ function applyToolDefaults(step) {
   step.stepParams = {}
 }
 
+function normalizeStepTarget(target = {}, toolCode = stepDraft.value.toolCode, fallbackName = '') {
+  const targetType = getTargetTypeByTool(toolCode)
+  const next = cleanTargetPayload({ ...defaultTargetForm(), ...target, targetType, status: '0' })
+  if (!next.targetName) next.targetName = fallbackName || stepDraft.value?.stepName || getToolLabel(toolCode)
+  if (targetType === 'FTP' && !next.port) next.port = 21
+  if (targetType === 'HTTP') {
+    next.httpMethod = next.httpMethod || 'POST'
+    next.resultPath = next.resultPath || 'data.total'
+  }
+  return next
+}
+
+function normalizeStepForSave(step) {
+  const next = cloneStep(step)
+  next.target = normalizeStepTarget(next.target, next.toolCode, next.stepName)
+  next.targetIds = next.target?.targetId ? [next.target.targetId] : []
+  if (next.toolCode !== 'SERVER_FILE_COUNT') {
+    next.stepParams = {}
+  } else {
+    next.stepParams = {
+      recursive: next.stepParams?.recursive || 'false',
+      filePattern: next.stepParams?.filePattern || ''
+    }
+  }
+  return next
+}
+
+function validateStepDraft(step) {
+  if (!String(step?.stepName || '').trim()) return '请填写步骤名称'
+  if (!step?.toolCode) return '请选择巡检工具'
+  const target = normalizeStepTarget(step.target, step.toolCode, step.stepName)
+  return validateTargetBusiness(target)
+}
+
+function getTargetTypeByTool(toolCode) {
+  if (toolCode === 'KAFKA_LAG') return 'KAFKA'
+  if (toolCode === 'HTTP_COUNT') return 'HTTP'
+  if (toolCode === 'FTP_FILE_COUNT') return 'FTP'
+  return 'SERVER'
+}
+
+function formatStepTarget(step) {
+  const target = step?.target || {}
+  if (!target.targetName && step?.targetIds?.length) return `已绑定 ${step.targetIds.length} 个目标`
+  if (target.targetName) return target.targetName
+  return '未配置目标'
+}
+
+function insertStepHttpPlaceholder(value) {
+  const current = stepDraft.value.target?.extraParams || ''
+  stepDraft.value.target.extraParams = current ? `${current}${value}` : value
+}
+
 function submitTemplate() {
   proxy.$refs.templateRef.validate((valid) => {
     if (!valid) return
@@ -932,10 +1057,15 @@ function submitTemplate() {
       proxy.$modal.msgWarning('请至少添加一个巡检步骤')
       return
     }
+    const invalidStep = templateForm.value.steps.find((step) => validateStepDraft(step))
+    if (invalidStep) {
+      proxy.$modal.msgWarning(`${invalidStep.stepName || '未命名步骤'}：${validateStepDraft(invalidStep)}`)
+      return
+    }
     templateSubmitLoading.value = true
     const payload = {
       ...templateForm.value,
-      steps: templateForm.value.steps.map((step, index) => ({ ...step, sortOrder: step.sortOrder || index + 1 }))
+      steps: templateForm.value.steps.map((step, index) => ({ ...normalizeStepForSave(step), sortOrder: step.sortOrder || index + 1 }))
     }
     const request = payload.templateId ? updateAutoInspectionTemplate : addAutoInspectionTemplate
     request(payload).then(() => {
@@ -1072,7 +1202,8 @@ function normalizeStepFromServer(step) {
   return {
     ...step,
     stepParams: parseCronConfig(step.stepParams) || {},
-    targetIds: step.targetIds || []
+    targetIds: step.targetIds || [],
+    target: normalizeStepTarget(step.target || {}, step.toolCode, step.stepName)
   }
 }
 
@@ -1208,7 +1339,7 @@ function resultTagType(value) {
 
 .config-guide {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
 
   button {
@@ -1287,7 +1418,7 @@ function resultTagType(value) {
 }
 
 .target-section {
-  padding: 14px 14px 0;
+  padding: 14px;
   border: 1px solid #e2ebf7;
   border-radius: 8px;
   background: #fbfdff;
@@ -1331,6 +1462,44 @@ function resultTagType(value) {
   .el-tag {
     margin: 0 6px 6px 0;
     cursor: pointer;
+  }
+
+  &--examples {
+    display: grid;
+    gap: 6px;
+
+    button {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 7px 9px;
+      border: 1px solid #dce8f6;
+      border-radius: 6px;
+      background: #fff;
+      cursor: pointer;
+      text-align: left;
+
+      &:hover {
+        border-color: #409eff;
+        background: #f2f8ff;
+      }
+
+      strong {
+        color: #2167b2;
+        font-size: 12px;
+      }
+
+      em {
+        overflow: hidden;
+        color: #7288a3;
+        font-size: 12px;
+        font-style: normal;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    }
   }
 }
 
@@ -1440,6 +1609,82 @@ function resultTagType(value) {
   gap: 12px;
 }
 
+.step-summary-panel {
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+
+.step-summary-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #edf3fa;
+
+  div:first-child {
+    display: grid;
+    gap: 4px;
+  }
+
+  span,
+  em {
+    color: #7890aa;
+    font-size: 12px;
+    font-style: normal;
+  }
+
+  strong {
+    color: #1d3554;
+    font-size: 18px;
+  }
+}
+
+.step-summary-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.step-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+
+  span {
+    display: grid;
+    gap: 6px;
+    min-height: 72px;
+    padding: 12px;
+    border: 1px solid #e2ebf7;
+    border-radius: 8px;
+    background: #fbfdff;
+  }
+
+  label {
+    margin: 0;
+    color: #7890aa;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  strong {
+    overflow: hidden;
+    color: #1d3554;
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.step-dialog {
+  :deep(.el-dialog__body) {
+    max-height: 68vh;
+    overflow-y: auto;
+  }
+}
+
 .schedule-box {
   width: 100%;
   display: grid;
@@ -1478,6 +1723,10 @@ function resultTagType(value) {
 
   .step-layout {
     grid-template-columns: 1fr;
+  }
+
+  .step-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .config-guide {

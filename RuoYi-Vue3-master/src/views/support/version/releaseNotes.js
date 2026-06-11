@@ -1,5 +1,31 @@
 export const releaseNotes = [
   {
+    version: 'v3.0.3',
+    submitTime: '2026-06-11 16:44:28',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '自动化巡检模板步骤化配置',
+    summary: '将巡检目标从独立配置入口收敛到巡检模板步骤中，用户添加步骤时直接选择巡检工具并完成目标、阈值和参数配置。',
+    changes: [
+      '巡检配置页仅保留“巡检模板”和“巡检计划”两个主入口，移除主流程中的独立“巡检目标”页签。',
+      '新增模板步骤弹窗，先选择 Kafka、HTTP接口、FTP目录、服务器目录或磁盘等巡检工具，再按工具类型展示必要配置项。',
+      '模板步骤保存时携带内联目标，后端自动新增或更新巡检目标并绑定到步骤，编辑模板时可完整回显目标配置。',
+      '移除选择目标后仍重复展示 Topic、消费组、路径等二次配置的问题，Kafka、FTP、服务器字段统一放到目标配置区。',
+      '重新排布 HTTP 接口配置，突出接口 URL、请求方法、认证、结果路径和请求体模板，并补充日期变量的效果示例。',
+      '巡检配置菜单默认进入模板页，旧目标独立入口继续隐藏，避免用户进入已废弃的目标管理心智。'
+    ],
+    scope: ['自动化巡检', '巡检模板', '巡检步骤', 'HTTP接口变量', '菜单权限', 'SQL脚本', '版本记录'],
+    database: '不改业务表结构，仅更新 sys_menu 菜单默认入口和备注；业务目标数据仍保存在 sup_auto_inspection_target，用于执行器复用。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260611_auto_inspection_template_steps_v3_0_3.sql',
+      'WDF100.0/sql/support_upgrade_20260611_auto_inspection_config_entry_v3_0_2.sql',
+      'WDF100.0/sql/support_upgrade_20260611_auto_inspection_v3_0_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v3.0.2',
     submitTime: '2026-06-11 16:00:10',
     level: 'patch',
