@@ -30,8 +30,7 @@
             </button>
           </div>
 
-          <el-tabs v-model="configTab" class="config-tabs" @tab-change="handleConfigTabChange">
-            <el-tab-pane label="巡检模板" name="template">
+          <section v-show="configTab === 'template'" class="config-panel">
         <el-form :model="templateQuery" :inline="true" class="auto-query-bar">
           <el-form-item label="模板名称">
             <el-input v-model="templateQuery.templateName" clearable placeholder="搜索模板名称" @keyup.enter="getTemplateList" />
@@ -73,9 +72,9 @@
         </el-table>
 
         <pagination v-show="templateTotal > 0" :total="templateTotal" v-model:page="templateQuery.pageNum" v-model:limit="templateQuery.pageSize" @pagination="getTemplateList" />
-      </el-tab-pane>
+          </section>
 
-            <el-tab-pane label="巡检计划" name="plan">
+          <section v-show="configTab === 'plan'" class="config-panel">
         <el-form :model="planQuery" :inline="true" class="auto-query-bar">
           <el-form-item label="计划名称">
             <el-input v-model="planQuery.planName" clearable placeholder="搜索计划名称" @keyup.enter="getPlanList" />
@@ -108,15 +107,14 @@
           <el-table-column label="执行周期" min-width="200" show-overflow-tooltip>
             <template #default="scope">{{ formatCronConfig(scope.row) }}</template>
           </el-table-column>
-          <el-table-column label="报告样式" width="110" align="center">
-            <template #default="scope"><el-tag size="small">{{ getReportStyleLabel(scope.row.reportStyle) }}</el-tag></template>
-          </el-table-column>
           <el-table-column label="状态" width="110" align="center">
             <template #default="scope">
               <el-switch v-model="scope.row.status" active-value="0" inactive-value="1" active-text="启用" inactive-text="暂停" inline-prompt @change="handlePlanStatusChange(scope.row)" v-hasPermi="['support:autoInspection:plan']" />
             </template>
           </el-table-column>
-          <el-table-column label="若依任务" prop="jobId" width="100" align="center" />
+          <el-table-column label="任务编码" width="190" align="center">
+            <template #default="scope">{{ formatJobCode(scope.row) }}</template>
+          </el-table-column>
           <el-table-column label="更新时间" prop="updateTime" width="170" align="center" />
           <el-table-column label="操作" width="260" fixed="right" align="center">
             <template #default="scope">
@@ -128,8 +126,7 @@
         </el-table>
 
         <pagination v-show="planTotal > 0" :total="planTotal" v-model:page="planQuery.pageNum" v-model:limit="planQuery.pageSize" @pagination="getPlanList" />
-            </el-tab-pane>
-          </el-tabs>
+          </section>
         </div>
       </el-tab-pane>
 
@@ -257,11 +254,28 @@
           <section v-if="targetForm.targetType === 'SERVER'" class="target-section">
             <header>
               <strong>服务器资产</strong>
-              <span>复用服务器管理里的资产，用于目录文件数量或磁盘使用率检测。</span>
+              <span>按现场、平台和服务器选择资产；SSH 登录信息以这里填写的账号密码为准。</span>
             </header>
             <el-row :gutter="16">
-              <el-col :span="24"><el-form-item label="服务器资产" prop="serverId"><el-select v-model="targetForm.serverId" filterable placeholder="选择服务器资产" style="width: 100%"><el-option v-for="item in serverOptions" :key="item.serverId" :label="`${item.serverName || item.serverAddress}（${item.serverAddress}）`" :value="item.serverId" /></el-select></el-form-item></el-col>
+              <el-col :span="24">
+                <el-form-item label="服务器资产" prop="serverId">
+                  <el-tree-select
+                    v-model="targetForm.serverId"
+                    :data="serverAssetTree"
+                    :props="serverTreeProps"
+                    node-key="id"
+                    filterable
+                    clearable
+                    check-strictly
+                    placeholder="按现场 / 平台 / 服务器搜索选择"
+                    class="server-asset-picker"
+                    @change="handleTargetServerChange"
+                  />
+                </el-form-item>
+              </el-col>
               <el-col :span="24"><el-form-item label="默认路径"><el-input v-model="targetForm.path" placeholder="目录路径或磁盘挂载点，可在模板步骤覆盖" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="SSH账号" required><el-input v-model="targetForm.username" placeholder="本次巡检使用的登录账号" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="SSH密码" required><el-input v-model="targetForm.password" show-password placeholder="本次巡检使用的登录密码" /></el-form-item></el-col>
             </el-row>
           </section>
 
@@ -306,6 +320,9 @@
               <em>{{ getToolLabel(activeStep.toolCode) }}</em>
             </div>
             <div class="step-summary-actions">
+              <el-button plain icon="Top" :disabled="activeStepIndex <= 0" @click="moveTemplateStep(activeStepIndex, -1)">上移</el-button>
+              <el-button plain icon="Bottom" :disabled="activeStepIndex >= templateForm.steps.length - 1" @click="moveTemplateStep(activeStepIndex, 1)">下移</el-button>
+              <el-button type="success" plain icon="CopyDocument" @click="duplicateTemplateStep(activeStepIndex)">复制步骤</el-button>
               <el-button type="primary" plain icon="Edit" @click="openStepDialog(activeStepIndex)">编辑步骤</el-button>
               <el-button type="danger" plain icon="Delete" @click="removeTemplateStep(activeStepIndex)">删除</el-button>
             </div>
@@ -315,6 +332,10 @@
             <span><label>阈值</label><strong>{{ activeStep.compareRule === 'MIN' ? '不低于' : '不高于' }} {{ activeStep.thresholdValue ?? '-' }}{{ activeStep.thresholdUnit || '' }}</strong></span>
             <span><label>窗口/超时</label><strong>{{ activeStep.timeWindowMinutes || 0 }} 分钟 / {{ activeStep.timeoutSeconds || 10 }} 秒</strong></span>
             <span><label>状态</label><strong>{{ activeStep.enabledFlag === 'Y' ? '启用' : '停用' }}</strong></span>
+          </div>
+          <div class="step-detail-lines">
+            <p><label>调用目标</label><span>{{ formatTargetAddress(activeStep.target || {}) }}</span></p>
+            <p v-for="item in getStepDetailItems(activeStep)" :key="item.label"><label>{{ item.label }}</label><span>{{ item.value }}</span></p>
           </div>
           <el-alert v-if="!activeStep.target" title="当前步骤还没有配置巡检目标，执行时会记录为配置缺失异常。" type="warning" show-icon :closable="false" />
         </section>
@@ -337,14 +358,37 @@
           <el-row :gutter="16">
             <el-col :span="12"><el-form-item label="步骤名称" required><el-input v-model="stepDraft.stepName" placeholder="例如：原始Kafka积压" /></el-form-item></el-col>
             <el-col :span="12"><el-form-item label="巡检工具" required><el-select v-model="stepDraft.toolCode" placeholder="选择工具" style="width: 100%" @change="handleStepToolChange"><el-option v-for="tool in toolList" :key="tool.toolCode" :label="tool.toolName" :value="tool.toolCode" /></el-select></el-form-item></el-col>
-            <el-col :span="6"><el-form-item label="启用"><el-switch v-model="stepDraft.enabledFlag" active-value="Y" inactive-value="N" /></el-form-item></el-col>
-            <el-col :span="6"><el-form-item label="告警阈值"><el-input-number v-model="stepDraft.thresholdValue" :min="0" controls-position="right" style="width: 100%" /></el-form-item></el-col>
-            <el-col :span="6"><el-form-item label="单位"><el-input v-model="stepDraft.thresholdUnit" /></el-form-item></el-col>
-            <el-col :span="6"><el-form-item label="比较规则"><el-select v-model="stepDraft.compareRule" style="width: 100%"><el-option label="不得低于阈值" value="MIN" /><el-option label="不得高于阈值" value="MAX" /></el-select></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="时间窗口"><el-input-number v-model="stepDraft.timeWindowMinutes" :min="0" controls-position="right" style="width: 100%" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="超时秒数"><el-input-number v-model="stepDraft.timeoutSeconds" :min="3" :max="120" controls-position="right" style="width: 100%" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="排序"><el-input-number v-model="stepDraft.sortOrder" :min="1" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="启用状态"><el-switch v-model="stepDraft.enabledFlag" active-value="Y" inactive-value="N" active-text="启用" inactive-text="停用" inline-prompt /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="步骤排序"><el-input-number v-model="stepDraft.sortOrder" :min="1" controls-position="right" style="width: 100%" /></el-form-item></el-col>
           </el-row>
+        </section>
+
+        <section class="target-section">
+          <header>
+            <strong>判定规则</strong>
+            <span>定义本步骤什么情况下算异常，阈值、窗口和超时时间集中在这里维护。</span>
+          </header>
+          <div class="step-rule-grid">
+            <el-form-item label="比较规则">
+              <el-select v-model="stepDraft.compareRule" style="width: 100%">
+                <el-option label="实际值不得低于阈值" value="MIN" />
+                <el-option label="实际值不得高于阈值" value="MAX" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="告警阈值">
+              <el-input-number v-model="stepDraft.thresholdValue" :min="0" controls-position="right" style="width: 100%" />
+            </el-form-item>
+            <el-form-item label="阈值单位">
+              <el-input v-model="stepDraft.thresholdUnit" placeholder="条 / 个 / %" />
+            </el-form-item>
+            <el-form-item label="统计窗口">
+              <el-input-number v-model="stepDraft.timeWindowMinutes" :min="0" controls-position="right" style="width: 100%" />
+              <small>分钟，0 表示按当前目标实时取值。</small>
+            </el-form-item>
+            <el-form-item label="超时秒数">
+              <el-input-number v-model="stepDraft.timeoutSeconds" :min="3" :max="120" controls-position="right" style="width: 100%" />
+            </el-form-item>
+          </div>
         </section>
 
         <section class="target-section">
@@ -386,10 +430,32 @@
           </el-row>
           <el-row v-if="stepTargetType === 'SERVER'" :gutter="16">
             <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：大数据服务器磁盘" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="服务器资产" required><el-select v-model="stepDraft.target.serverId" filterable placeholder="选择服务器资产" style="width: 100%"><el-option v-for="item in serverOptions" :key="item.serverId" :label="`${item.serverName || item.serverAddress}（${item.serverAddress}）`" :value="item.serverId" /></el-select></el-form-item></el-col>
+            <el-col :span="12">
+              <el-form-item label="服务器资产" required>
+                <el-tree-select
+                  v-model="stepDraft.target.serverId"
+                  :data="serverAssetTree"
+                  :props="serverTreeProps"
+                  node-key="id"
+                  filterable
+                  clearable
+                  check-strictly
+                  placeholder="按现场 / 平台 / 服务器搜索选择"
+                  class="server-asset-picker"
+                  @change="handleStepServerChange"
+                />
+              </el-form-item>
+            </el-col>
             <el-col :span="12"><el-form-item label="检测路径" required><el-input v-model="stepDraft.target.path" placeholder="目录路径或磁盘挂载点" /></el-form-item></el-col>
-            <el-col v-if="stepDraft.toolCode === 'SERVER_FILE_COUNT'" :span="6"><el-form-item label="递归"><el-switch v-model="stepDraft.stepParams.recursive" active-value="true" inactive-value="false" /></el-form-item></el-col>
-            <el-col v-if="stepDraft.toolCode === 'SERVER_FILE_COUNT'" :span="6"><el-form-item label="文件匹配"><el-input v-model="stepDraft.stepParams.filePattern" placeholder="*.dat" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="SSH账号" required><el-input v-model="stepDraft.target.username" placeholder="本次巡检使用的登录账号" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="SSH密码" required><el-input v-model="stepDraft.target.password" show-password placeholder="本次巡检使用的登录密码" /></el-form-item></el-col>
+            <el-col v-if="stepDraft.toolCode === 'SERVER_FILE_COUNT'" :span="8">
+              <el-form-item label="递归查询">
+                <el-switch v-model="stepDraft.stepParams.recursive" active-value="true" inactive-value="false" />
+                <small class="field-hint">开启后会统计当前目录及所有子目录；关闭后只统计当前目录第一层文件。</small>
+              </el-form-item>
+            </el-col>
+            <el-col v-if="stepDraft.toolCode === 'SERVER_FILE_COUNT'" :span="8"><el-form-item label="文件匹配"><el-input v-model="stepDraft.stepParams.filePattern" placeholder="*.dat" /></el-form-item></el-col>
           </el-row>
         </section>
       </el-form>
@@ -406,7 +472,6 @@
         <el-row :gutter="16">
           <el-col :span="12"><el-form-item label="计划名称" prop="planName"><el-input v-model="planForm.planName" /></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="巡检模板" prop="templateId"><el-select v-model="planForm.templateId" filterable style="width: 100%"><el-option v-for="item in templateOptions" :key="item.templateId" :label="item.templateName" :value="item.templateId" /></el-select></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="报告样式"><el-select v-model="planForm.reportStyle" style="width: 100%"><el-option v-for="item in reportStyleOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="状态"><el-radio-group v-model="planForm.status"><el-radio label="0">启用</el-radio><el-radio label="1">暂停</el-radio></el-radio-group></el-form-item></el-col>
           <el-col :span="24">
             <el-form-item label="执行周期">
@@ -471,11 +536,16 @@
       </el-table>
       <h4>目标明细</h4>
       <el-table :data="detail.targetResults || []" class="auto-table">
+        <el-table-column label="步骤" prop="stepName" min-width="150" show-overflow-tooltip />
         <el-table-column label="目标" prop="targetName" min-width="160" />
         <el-table-column label="类型" width="100"><template #default="scope">{{ getTargetTypeLabel(scope.row.targetType) }}</template></el-table-column>
         <el-table-column label="结果" width="90" align="center"><template #default="scope"><el-tag size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template></el-table-column>
         <el-table-column label="实际值" width="110" align="center"><template #default="scope">{{ scope.row.actualValue ?? '-' }}{{ scope.row.actualUnit || '' }}</template></el-table-column>
-        <el-table-column label="详情" prop="resultDetail" min-width="260" show-overflow-tooltip />
+        <el-table-column label="调用信息" min-width="360">
+          <template #default="scope">
+            <div class="target-call-info">{{ scope.row.resultDetail || '-' }}</div>
+          </template>
+        </el-table-column>
         <el-table-column label="异常原因" prop="errorMessage" min-width="220" show-overflow-tooltip />
       </el-table>
     </el-drawer>
@@ -498,6 +568,7 @@ import {
   getAutoInspectionTemplate,
   listAutoInspectionPlan,
   listAutoInspectionRecord,
+  listAutoInspectionServerAssetTree,
   listAutoInspectionTarget,
   listAutoInspectionTemplate,
   listAutoInspectionTool,
@@ -509,17 +580,17 @@ import {
   updateAutoInspectionTemplate,
   viewAutoInspectionTargetPlain
 } from '@/api/support/autoInspection'
-import { listServer } from '@/api/support/server'
 
 const route = useRoute()
 const router = useRouter()
 const { proxy } = getCurrentInstance()
 
 const configTabNames = ['template', 'plan']
-const activeTab = ref(resolveRouteTab(route.query.tab))
-const configTab = ref(resolveConfigTab(route.query.tab, route.query.configTab))
+const activeTab = ref(resolveRouteTab(route.query.tab, route.path))
+const configTab = ref(resolveConfigTab(route.query.tab, route.query.configTab, route.path))
 const toolList = ref([])
-const serverOptions = ref([])
+const serverAssetTree = ref([])
+const serverAssetMap = ref({})
 const allTemplateList = ref([])
 const targetOptions = ref([])
 
@@ -569,12 +640,12 @@ const targetTypeOptions = [
   { label: 'FTP目录', value: 'FTP' },
   { label: '服务器资产', value: 'SERVER' }
 ]
-const reportStyleOptions = [
-  { label: '标准报告', value: 'STANDARD' },
-  { label: '简要报告', value: 'SIMPLE' },
-  { label: '明细报告', value: 'DETAIL' },
-  { label: '异常报告', value: 'EXCEPTION_ONLY' }
-]
+const serverTreeProps = {
+  label: 'label',
+  value: 'value',
+  children: 'children',
+  disabled: 'disabled'
+}
 const weekOptions = [
   { label: '周日', value: 'SUN' },
   { label: '周一', value: 'MON' },
@@ -625,9 +696,9 @@ const latestRecordLabel = computed(() => {
   return row ? formatResult(row.resultStatus) : '暂无'
 })
 
-watch(() => [route.query.tab, route.query.configTab], ([tab, subTab]) => {
-  const nextActive = resolveRouteTab(tab)
-  const nextConfig = resolveConfigTab(tab, subTab)
+watch(() => [route.query.tab, route.query.configTab, route.path], ([tab, subTab, path]) => {
+  const nextActive = resolveRouteTab(tab, path)
+  const nextConfig = resolveConfigTab(tab, subTab, path)
   if (nextActive !== activeTab.value) activeTab.value = nextActive
   if (nextConfig !== configTab.value) configTab.value = nextConfig
 })
@@ -642,37 +713,48 @@ onMounted(() => {
 })
 
 async function initPage() {
-  await Promise.all([getTools(), getServerOptions()])
+  await Promise.all([getTools(), getServerAssetTree()])
   await Promise.all([getTemplateList(), getTemplateOptions(), getPlanList(), getRecordList()])
 }
 
-function resolveRouteTab(tab) {
-  return tab === 'record' ? 'record' : 'config'
+function resolveRouteTab(tab, path = '') {
+  if (tab === 'record') return 'record'
+  if (tab === 'config' || configTabNames.includes(tab)) return 'config'
+  return String(path).endsWith('/record') ? 'record' : 'config'
 }
 
-function resolveConfigTab(tab, subTab) {
+function resolveConfigTab(tab, subTab, path = '') {
   if (configTabNames.includes(tab)) return tab
   if (configTabNames.includes(subTab)) return subTab
+  if (String(path).endsWith('/plan')) return 'plan'
   return 'template'
 }
 
 function handleTabChange(tab) {
-  if (tab === 'record') {
-    router.replace({ path: route.path, query: { ...route.query, tab: 'record' } })
-    return
-  }
-  router.replace({ path: route.path, query: { ...route.query, tab: configTab.value } })
-}
-
-function handleConfigTabChange(tab) {
-  switchConfigTab(tab)
+  navigateAutoInspection(tab === 'record' ? 'record' : 'config', configTab.value)
 }
 
 function switchConfigTab(tab) {
   if (!configTabNames.includes(tab)) return
   configTab.value = tab
   if (activeTab.value !== 'config') activeTab.value = 'config'
-  router.replace({ path: route.path, query: { ...route.query, tab } })
+  navigateAutoInspection('config', tab)
+}
+
+function navigateAutoInspection(tab, config = configTab.value) {
+  const nextQuery = { ...route.query }
+  delete nextQuery.configTab
+  nextQuery.tab = tab === 'record' ? 'record' : config
+  router.replace({ path: resolveAutoInspectionPath(tab), query: nextQuery })
+}
+
+function resolveAutoInspectionPath(tab) {
+  const path = String(route.path || '')
+  const targetLeaf = tab === 'record' ? 'record' : 'config'
+  if (/\/(config|record|plan|target)$/.test(path)) {
+    return path.replace(/\/(config|record|plan|target)$/, `/${targetLeaf}`)
+  }
+  return path
 }
 
 function loadActiveTab() {
@@ -691,10 +773,43 @@ function getTools() {
   })
 }
 
-function getServerOptions() {
-  return listServer({ pageNum: 1, pageSize: 1000 }).then((res) => {
-    serverOptions.value = res.rows || []
+function getServerAssetTree() {
+  return listAutoInspectionServerAssetTree().then((res) => {
+    serverAssetTree.value = res.data || []
+    serverAssetMap.value = indexServerAssetTree(serverAssetTree.value)
   })
+}
+
+function indexServerAssetTree(nodes = []) {
+  const result = {}
+  const visit = (items = []) => {
+    items.forEach((item) => {
+      if (item.type === 'SERVER' && item.serverId) {
+        result[item.serverId] = item
+      }
+      visit(item.children || [])
+    })
+  }
+  visit(nodes)
+  return result
+}
+
+function handleTargetServerChange(serverId) {
+  applySelectedServerAsset(targetForm.value, serverId)
+}
+
+function handleStepServerChange(serverId) {
+  applySelectedServerAsset(stepDraft.value.target, serverId)
+}
+
+function applySelectedServerAsset(target, serverId) {
+  const server = serverAssetMap.value?.[serverId]
+  if (!target || !server) return
+  if (!target.targetName || target.targetName === getToolLabel(stepDraft.value?.toolCode)) {
+    target.targetName = server.serverName || server.serverAddress || target.targetName
+  }
+  target.username = ''
+  target.password = ''
 }
 
 function getTemplateList() {
@@ -840,6 +955,8 @@ function validateTargetBusiness(target) {
   if (target.targetType === 'SERVER') {
     if (!target.serverId) return '请选择服务器资产'
     if (!String(target.path || '').trim()) return '请填写服务器检测路径'
+    if (!String(target.username || '').trim()) return '请填写 SSH 登录账号'
+    if (!String(target.password || '').trim()) return '请填写 SSH 登录密码'
   }
   return ''
 }
@@ -887,8 +1004,6 @@ function cleanTargetPayload(target) {
     payload.httpMethod = 'POST'
     payload.topic = ''
     payload.consumerGroup = ''
-    payload.username = ''
-    payload.password = ''
     payload.appKey = ''
     payload.secret = ''
     payload.resultPath = ''
@@ -952,6 +1067,7 @@ function submitStepDraft() {
     templateForm.value.steps.splice(stepEditingIndex.value, 1, step)
     activeStepIndex.value = stepEditingIndex.value
   }
+  sortTemplateStepsByOrder(step)
   stepDialogOpen.value = false
 }
 
@@ -981,7 +1097,65 @@ function defaultStepForm(order) {
 
 function removeTemplateStep(index) {
   templateForm.value.steps.splice(index, 1)
+  resequenceTemplateSteps()
   activeStepIndex.value = Math.max(0, Math.min(index - 1, templateForm.value.steps.length - 1))
+}
+
+function moveTemplateStep(index, offset) {
+  const nextIndex = index + offset
+  if (nextIndex < 0 || nextIndex >= templateForm.value.steps.length) return
+  const steps = templateForm.value.steps
+  const current = steps[index]
+  steps.splice(index, 1)
+  steps.splice(nextIndex, 0, current)
+  resequenceTemplateSteps()
+  activeStepIndex.value = nextIndex
+}
+
+function duplicateTemplateStep(index) {
+  const source = templateForm.value.steps[index]
+  if (!source) return
+  const copy = cloneStep(source)
+  stripStepIdentity(copy)
+  resetCopiedStepCredentials(copy)
+  copy.stepName = `${copy.stepName || '未命名步骤'} 副本`
+  copy.sortOrder = index + 2
+  templateForm.value.steps.splice(index + 1, 0, copy)
+  resequenceTemplateSteps()
+  activeStepIndex.value = index + 1
+  proxy.$modal.msgWarning('已复制步骤，密码和密钥已清空，请重新填写后保存')
+}
+
+function stripStepIdentity(step) {
+  delete step.stepId
+  step.targetIds = []
+  if (step.target) {
+    delete step.target.targetId
+  }
+}
+
+function resetCopiedStepCredentials(step) {
+  if (!step?.target) return
+  step.target.password = ''
+  step.target.secret = ''
+  step.target.passwordCipher = ''
+  step.target.secretCipher = ''
+}
+
+function sortTemplateStepsByOrder(activeStepRef) {
+  const active = activeStepRef || templateForm.value.steps[activeStepIndex.value]
+  templateForm.value.steps = templateForm.value.steps
+    .map((step, index) => ({ step, index }))
+    .sort((a, b) => Number(a.step.sortOrder || a.index + 1) - Number(b.step.sortOrder || b.index + 1) || a.index - b.index)
+    .map((item) => item.step)
+  resequenceTemplateSteps()
+  activeStepIndex.value = Math.max(0, templateForm.value.steps.indexOf(active))
+}
+
+function resequenceTemplateSteps() {
+  templateForm.value.steps.forEach((step, index) => {
+    step.sortOrder = index + 1
+  })
 }
 
 function applyToolDefaults(step, forceName = false) {
@@ -997,10 +1171,10 @@ function applyToolDefaults(step, forceName = false) {
   step.stepParams = {}
 }
 
-function normalizeStepTarget(target = {}, toolCode = stepDraft.value.toolCode, fallbackName = '') {
+function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
   const targetType = getTargetTypeByTool(toolCode)
   const next = cleanTargetPayload({ ...defaultTargetForm(), ...target, targetType, status: '0' })
-  if (!next.targetName) next.targetName = fallbackName || stepDraft.value?.stepName || getToolLabel(toolCode)
+  if (!next.targetName) next.targetName = fallbackName || getToolLabel(toolCode)
   if (targetType === 'FTP' && !next.port) next.port = 21
   if (targetType === 'HTTP') {
     next.httpMethod = next.httpMethod || 'POST'
@@ -1065,7 +1239,7 @@ function submitTemplate() {
     templateSubmitLoading.value = true
     const payload = {
       ...templateForm.value,
-      steps: templateForm.value.steps.map((step, index) => ({ ...normalizeStepForSave(step), sortOrder: step.sortOrder || index + 1 }))
+      steps: templateForm.value.steps.map((step, index) => ({ ...normalizeStepForSave(step), sortOrder: index + 1 }))
     }
     const request = payload.templateId ? updateAutoInspectionTemplate : addAutoInspectionTemplate
     request(payload).then(() => {
@@ -1159,15 +1333,15 @@ function handleRecordDetail(row) {
 }
 
 function handleExportRecord() {
-  proxy.download('/support/autoInspection/record/export', { ...recordQuery.value }, `自动化巡检记录_${Date.now()}.xlsx`)
+  proxy.download('/support/autoInspection/record/export', { ...recordQuery.value }, `自动化巡检记录_${formatFileDate(new Date())}.xlsx`)
 }
 
 function exportWord(row) {
   getAutoInspectionRecord(row.recordId).then((res) => {
     const data = res.data || {}
     const steps = (data.steps || []).map((item) => `<tr><td>${escapeHtml(item.stepName)}</td><td>${escapeHtml(item.toolName)}</td><td>${formatResult(item.resultStatus)}</td><td>${escapeHtml(item.actualValue ?? '-')}${escapeHtml(item.actualUnit || '')}</td><td>${escapeHtml(item.resultSummary || '')}</td></tr>`).join('')
-    const targets = (data.targetResults || []).map((item) => `<tr><td>${escapeHtml(item.targetName)}</td><td>${escapeHtml(getTargetTypeLabel(item.targetType))}</td><td>${formatResult(item.resultStatus)}</td><td>${escapeHtml(item.actualValue ?? '-')}${escapeHtml(item.actualUnit || '')}</td><td>${escapeHtml(item.resultDetail || '')}</td><td>${escapeHtml(item.errorMessage || '')}</td></tr>`).join('')
-    const html = `<html><head><meta charset="utf-8"><style>body{font-family:Microsoft YaHei;color:#1f3554}table{border-collapse:collapse;width:100%;margin-top:12px}td,th{border:1px solid #d8e3f3;padding:8px;text-align:left}h2,h3{margin:12px 0}</style></head><body><h2>自动化巡检报告</h2><p>巡检时间：${escapeHtml(data.inspectionTime || '')}</p><p>模板：${escapeHtml(data.templateName || '')}</p><p>计划：${escapeHtml(data.planName || '-')}</p><p>结果：${formatResult(data.resultStatus)}</p><p>摘要：${escapeHtml(data.summary || '')}</p><p>异常摘要：${escapeHtml(data.abnormalSummary || '')}</p><h3>步骤结果</h3><table><tr><th>步骤</th><th>工具</th><th>结果</th><th>实际值</th><th>摘要</th></tr>${steps}</table><h3>目标明细</h3><table><tr><th>目标</th><th>类型</th><th>结果</th><th>实际值</th><th>详情</th><th>异常原因</th></tr>${targets}</table></body></html>`
+    const targets = (data.targetResults || []).map((item) => `<tr><td>${escapeHtml(item.stepName)}</td><td>${escapeHtml(item.targetName)}</td><td>${escapeHtml(getTargetTypeLabel(item.targetType))}</td><td>${formatResult(item.resultStatus)}</td><td>${escapeHtml(item.actualValue ?? '-')}${escapeHtml(item.actualUnit || '')}</td><td>${escapeHtml(item.resultDetail || '')}</td><td>${escapeHtml(item.errorMessage || '')}</td></tr>`).join('')
+    const html = `<html><head><meta charset="utf-8"><style>body{font-family:Microsoft YaHei;color:#1f3554}table{border-collapse:collapse;width:100%;margin-top:12px}td,th{border:1px solid #d8e3f3;padding:8px;text-align:left}h2,h3{margin:12px 0}</style></head><body><h2>自动化巡检报告</h2><p>巡检时间：${escapeHtml(data.inspectionTime || '')}</p><p>模板：${escapeHtml(data.templateName || '')}</p><p>计划：${escapeHtml(data.planName || '-')}</p><p>结果：${formatResult(data.resultStatus)}</p><p>摘要：${escapeHtml(data.summary || '')}</p><p>异常摘要：${escapeHtml(data.abnormalSummary || '')}</p><h3>步骤结果</h3><table><tr><th>步骤</th><th>工具</th><th>结果</th><th>实际值</th><th>摘要</th></tr>${steps}</table><h3>目标明细</h3><table><tr><th>步骤</th><th>目标</th><th>类型</th><th>结果</th><th>实际值</th><th>调用信息</th><th>异常原因</th></tr>${targets}</table></body></html>`
     saveAs(new Blob([html], { type: 'application/msword;charset=utf-8' }), `自动化巡检_${row.recordId}.doc`)
   })
 }
@@ -1243,15 +1417,43 @@ function getToolLabel(value) {
   return toolList.value.find((item) => item.toolCode === value)?.toolName || value || '-'
 }
 
-function getReportStyleLabel(value) {
-  return reportStyleOptions.find((item) => item.value === value)?.label || value || '标准报告'
-}
-
 function formatTargetAddress(row) {
+  if (!row || !row.targetType) return '-'
   if (row.targetType === 'SERVER') return `${row.serverName || '服务器'}（${row.serverAddress || row.serverId || '-'}）${row.path ? ' ' + row.path : ''}`
   if (row.targetType === 'HTTP') return row.url || '-'
   if (row.targetType === 'KAFKA') return `${row.host || '-'} ${row.topic || ''} ${row.consumerGroup || ''}`
   return `${row.host || '-'}:${row.port || ''}${row.path ? ' ' + row.path : ''}`
+}
+
+function formatJobCode(row) {
+  return row.jobId ? `AUTO_INSPECTION_PLAN_${row.planId || row.jobId}` : '未生成'
+}
+
+function getStepDetailItems(step) {
+  if (!step) return []
+  const target = step.target || {}
+  const items = [
+    { label: '工具类型', value: getTargetTypeLabel(target.targetType || getTargetTypeByTool(step.toolCode)) },
+    { label: '排序', value: step.sortOrder || '-' }
+  ]
+  if (target.targetType === 'KAFKA') {
+    items.push({ label: 'Topic', value: target.topic || '-' }, { label: '消费组', value: target.consumerGroup || '-' })
+  } else if (target.targetType === 'HTTP') {
+    items.push({ label: '请求方法', value: target.httpMethod || 'POST' }, { label: '结果路径', value: target.resultPath || '-' })
+  } else if (target.targetType === 'FTP') {
+    items.push({ label: '目录路径', value: target.path || '-' }, { label: '端口', value: target.port || 21 })
+  } else if (target.targetType === 'SERVER') {
+    items.push({ label: '检测路径', value: target.path || '-' }, { label: 'SSH账号', value: target.username || '-' })
+  }
+  if (step.toolCode === 'SERVER_FILE_COUNT') {
+    items.push({ label: '递归/匹配', value: `${step.stepParams?.recursive === 'true' ? '递归' : '不递归'}${step.stepParams?.filePattern ? ' · ' + step.stepParams.filePattern : ''}` })
+  }
+  return items
+}
+
+function formatFileDate(date) {
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
 }
 
 function formatResult(value) {
@@ -1326,15 +1528,23 @@ function resultTagType(value) {
 }
 
 .auto-tabs {
+  width: 100%;
+  min-width: 0;
   background: #fff;
   border: 1px solid #e2ebf7;
   border-radius: 10px;
   padding: 14px;
+
+  :deep(.el-tabs__content),
+  :deep(.el-tab-pane) {
+    min-width: 0;
+  }
 }
 
 .config-shell {
   display: grid;
-  gap: 14px;
+  gap: 16px;
+  min-width: 0;
 }
 
 .config-guide {
@@ -1387,10 +1597,8 @@ function resultTagType(value) {
   }
 }
 
-.config-tabs {
-  :deep(.el-tabs__header) {
-    margin-bottom: 12px;
-  }
+.config-panel {
+  min-width: 0;
 }
 
 .auto-query-bar {
@@ -1408,8 +1616,14 @@ function resultTagType(value) {
 }
 
 .auto-table {
+  width: 100%;
+  max-width: 100%;
   border: 1px solid #e3ecf7;
   border-radius: 8px;
+}
+
+.server-asset-picker {
+  width: 100%;
 }
 
 .target-form-layout {
@@ -1519,17 +1733,28 @@ function resultTagType(value) {
   }
 }
 
+.template-dialog {
+  :deep(.el-dialog__body) {
+    max-height: 72vh;
+    overflow: hidden;
+  }
+}
+
 .step-layout {
   display: grid;
   grid-template-columns: 250px minmax(0, 1fr);
   gap: 16px;
-  min-height: 460px;
+  height: min(62vh, 640px);
+  min-height: 420px;
+  min-width: 0;
 }
 
 .step-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
   padding: 10px;
   border: 1px solid #e2ebf7;
   border-radius: 8px;
@@ -1583,6 +1808,9 @@ function resultTagType(value) {
 }
 
 .step-editor {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
   padding: 14px;
   border: 1px solid #e2ebf7;
   border-radius: 8px;
@@ -1600,6 +1828,45 @@ function resultTagType(value) {
       margin-top: 6px;
     }
   }
+}
+
+.step-rule-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+
+  :deep(.el-form-item) {
+    display: block;
+    min-width: 0;
+    margin-bottom: 0;
+  }
+
+  :deep(.el-form-item__label) {
+    justify-content: flex-start;
+    width: auto !important;
+    margin-bottom: 6px;
+    color: #51677f;
+    font-weight: 600;
+  }
+
+  :deep(.el-form-item__content) {
+    display: grid;
+    gap: 4px;
+    margin-left: 0 !important;
+  }
+
+  small {
+    color: #7b8fa8;
+    line-height: 1.4;
+  }
+}
+
+.field-hint {
+  display: block;
+  margin-top: 6px;
+  color: #7b8fa8;
+  line-height: 1.45;
 }
 
 .step-actions {
@@ -1644,6 +1911,8 @@ function resultTagType(value) {
   display: flex;
   flex-shrink: 0;
   align-items: flex-start;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 8px;
 }
 
@@ -1676,6 +1945,43 @@ function resultTagType(value) {
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+}
+
+.step-detail-lines {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e6eef8;
+  border-radius: 8px;
+  background: #f8fbff;
+
+  p {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    margin: 0;
+  }
+
+  label {
+    margin: 0;
+    color: #7890aa;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  span {
+    overflow-wrap: anywhere;
+    color: #1d3554;
+    line-height: 1.5;
+  }
+}
+
+.target-call-info {
+  color: #1d3554;
+  line-height: 1.6;
+  white-space: normal;
+  word-break: break-word;
 }
 
 .step-dialog {
@@ -1723,10 +2029,17 @@ function resultTagType(value) {
 
   .step-layout {
     grid-template-columns: 1fr;
+    height: auto;
+    max-height: 68vh;
   }
 
   .step-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .step-rule-grid,
+  .step-detail-lines {
+    grid-template-columns: 1fr;
   }
 
   .config-guide {

@@ -1,5 +1,91 @@
 export const releaseNotes = [
   {
+    version: 'v3.2.0',
+    submitTime: '2026-06-12 23:55:26',
+    level: 'minor',
+    levelLabel: '小版本',
+    tagType: 'primary',
+    title: '服务器与硬件资产统一管理',
+    summary: '将现场里的服务器管理和硬件资产管理整合为统一设备资产清单，保留服务器原有密码、批量导入和自动化巡检配置方式，同时支持网闸等新设备登记。',
+    changes: [
+      '现场画布中的硬件资产入口升级为设备资产清单，服务器、解码器、终端、交换机、网闸统一展示、筛选、导出和批量删除。',
+      '新增设备时先选择设备类型，服务器继续进入原服务器管理流程，非服务器设备继续进入硬件资产表单，避免破坏原有数据和配置习惯。',
+      '新增后端 /support/equipment/list 和 /support/equipment/export 聚合接口，统一返回服务器与硬件资产的来源、类型、网络环境、绑定范围和状态。',
+      '新增网闸设备类型，补充网闸模式、数据流向、带宽和安全域说明字段，方便现场按网络边界登记安全隔离设备。',
+      '统一设备清单导出不包含服务器明文密码，服务器密码仍通过原服务器导出和显示密码能力控制。'
+    ],
+    scope: ['现场融合管理', '现场画布', '设备资产清单', '服务器管理', '硬件资产', '网闸', '权限', 'SQL脚本', '版本记录'],
+    database: '不迁移、不修改 sup_server 现有数据；sup_hardware_asset 新增网闸字段；support_hardware_type 新增 GATEWAY；新增 support:equipment:query/export 按钮权限。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260612_equipment_asset_unification_v3_2_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
+    version: 'v3.1.0',
+    submitTime: '2026-06-12 23:21:29',
+    level: 'minor',
+    levelLabel: '小版本',
+    tagType: 'primary',
+    title: '现场硬件资产管理扩展',
+    summary: '把现场画布中的服务器视角扩展为硬件资产视角，在不迁移原服务器表的前提下新增解码器、终端、交换机等设备登记和平台绑定能力。',
+    changes: [
+      '现场画布将服务器层升级为硬件资产层，主平台和子平台节点展示服务器、解码器、终端、交换机等类型汇总数量。',
+      '新增硬件资产管理弹窗，支持按网络环境、资产类型、状态和关键词筛选，并可新增、编辑、删除、批量删除和导出非服务器硬件资产。',
+      '服务器继续沿用原有 sup_server、密码、批量导入和自动化巡检能力，硬件资产弹窗中提供“管理服务器”入口保持原流程。',
+      '新增平台硬件关系，资产可绑定主平台、子平台，也可作为现场公共资产按网络环境归类。',
+      '硬件资产新增、修改、删除继续写入现场融合操作记录，便于在画布右侧查看资产变更。'
+    ],
+    scope: ['现场融合管理', '现场画布', '硬件资产', '网络环境', '操作记录', 'SQL脚本', '版本记录'],
+    database: '新增 sup_hardware_asset、sup_platform_asset_rel 两张表；新增 support_hardware_type 字典；新增 support:hardwareAsset:* 菜单权限。不迁移、不修改 sup_server 现有数据。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260612_hardware_asset_v3_1_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
+    version: 'v3.0.6',
+    submitTime: '2026-06-12 18:11:23',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '版本记录中心独立化',
+    summary: '将版本记录从现场融合管理中抽离为独立顶级模块，并按“本次重点、详细说明、影响范围、部署脚本”的结构重新组织展示。',
+    changes: [
+      '版本记录菜单从现场融合管理子菜单调整为顶级模块，后续现场融合、自动化巡检和首页工作台等变更统一在版本中心查看。',
+      '版本页重新设计为左侧版本列表、右侧版本详情的工作台布局，支持按模块筛选和关键词搜索。',
+      '每条历史记录统一展示“本次重点”，下方再展示详细修改说明、影响范围、数据库说明和 SQL 脚本，降低长记录阅读成本。',
+      '同步更新首页快捷入口、support_v1.sql、support_deploy_all.sql 和独立升级脚本，保证新环境和已部署环境菜单位置一致。'
+    ],
+    scope: ['版本中心', '菜单权限', '前端展示', 'SQL脚本', '版本记录'],
+    database: '不改业务表结构；仅调整 sys_menu 中版本记录菜单的 parent_id、order_num、path、remark 等菜单展示字段。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260612_version_center_top_module_v3_0_6.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
+    version: 'v3.0.5',
+    submitTime: '2026-06-12 17:54:19',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '自动化巡检模板交互优化',
+    summary: '优化自动化巡检模板步骤编辑体验，修复步骤复制后的敏感字段显示问题，并提升长模板配置时的可用性。',
+    changes: [
+      '复制模板步骤时自动清空密码和密钥等敏感字段，避免复制后的新步骤沿用原步骤脱敏值导致密码显示或保存不正确。',
+      '将步骤基础信息和判定规则拆分展示，比较规则、告警阈值、阈值单位、统计窗口和超时秒数集中在“判定规则”区域维护。',
+      '服务器目录文件数量检测的“递归查询”增加业务解释，明确开启后统计当前目录及所有子目录，关闭后只统计当前目录第一层文件。',
+      '模板步骤较多时，模板编辑弹窗改为内部滚动布局，左侧步骤列表和右侧编辑区独立滚动，避免页面被过长模板撑开。'
+    ],
+    scope: ['自动化巡检', '巡检模板', '巡检步骤', '敏感字段', '前端交互', '版本记录'],
+    database: '无数据库结构变化。',
+    scripts: []
+  },
+  {
     version: 'v3.0.4',
     submitTime: '2026-06-11 17:00:36',
     level: 'patch',

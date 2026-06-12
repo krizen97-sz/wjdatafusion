@@ -105,7 +105,7 @@ public class SupportAutoInspectionPlanScheduleService
     {
         SysJob job = new SysJob();
         Long planId = toLong(plan.get("planId"));
-        job.setJobName(buildJobName(String.valueOf(plan.get("planName"))));
+        job.setJobName(buildJobCode(planId));
         job.setJobGroup(JOB_GROUP);
         job.setInvokeTarget("supportAutoInspectionTask.runPlan(" + planId + "L)");
         job.setCronExpression(String.valueOf(plan.get("cronExpression")));
@@ -116,10 +116,9 @@ public class SupportAutoInspectionPlanScheduleService
         return job;
     }
 
-    private String buildJobName(String planName)
+    private String buildJobCode(Long planId)
     {
-        String name = "自动化巡检-" + StringUtils.defaultIfBlank(planName, "未命名计划");
-        return name.length() > 64 ? name.substring(0, 64) : name;
+        return "AUTO_INSPECTION_PLAN_" + planId;
     }
 
     private void validateCron(Map<String, Object> plan)

@@ -13,7 +13,7 @@
           <div class="fusion-hero__actions">
             <el-button type="primary" icon="Plus" @click="openSiteCreate">新增现场</el-button>
             <el-button type="success" icon="Monitor" plain @click="goRoute('/support/site')">进入现场管理</el-button>
-            <el-button icon="Document" plain @click="goRoute('/support/version')">版本记录</el-button>
+            <el-button icon="Document" plain @click="goRoute('/version')">版本记录</el-button>
             <el-button icon="Refresh" plain :loading="dashboardLoading" @click="loadSiteDashboard">刷新</el-button>
           </div>
         </div>

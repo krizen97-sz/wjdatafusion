@@ -60,6 +60,15 @@
             <artifactId>wjdatafusion-manage</artifactId>
         </dependency>
 
+        <!-- 海康 Artemis OpenAPI SDK，使用项目内置 jar，避免生产打包依赖外部 Maven 仓库 -->
+        <dependency>
+            <groupId>com.hikvision.ga</groupId>
+            <artifactId>artemis-http-client</artifactId>
+            <version>1.1.15.RELEASE</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/../wjdatafusion-manage/src/main/resources/lib/artemis-http-client-1.1.15.RELEASE.jar</systemPath>
+        </dependency>
+
     </dependencies>
 
     <build>
@@ -69,6 +78,7 @@
                 <artifactId>spring-boot-maven-plugin</artifactId>
                 <configuration>
                     <addResources>true</addResources>
+                    <includeSystemScope>true</includeSystemScope>
                 </configuration>
                 <executions>
                     <execution>

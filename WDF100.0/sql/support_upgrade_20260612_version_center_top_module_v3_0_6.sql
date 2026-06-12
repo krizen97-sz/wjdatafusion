@@ -1,5 +1,5 @@
--- 平台版本记录中心页面菜单
--- 说明：仅新增菜单入口，不新增业务表，不影响已有业务数据。
+-- v3.0.6 版本记录中心独立顶级模块
+-- 说明：仅调整 sys_menu 菜单展示位置，不修改业务表结构，不影响已有业务数据。
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES
@@ -15,4 +15,17 @@ ON DUPLICATE KEY UPDATE
   status = VALUES(status),
   perms = VALUES(perms),
   icon = VALUES(icon),
-  remark = VALUES(remark);
+  remark = VALUES(remark),
+  update_by = 'admin',
+  update_time = NOW();
+
+INSERT INTO sys_role_menu(role_id, menu_id)
+SELECT r.role_id, 2205
+FROM sys_role r
+WHERE r.role_key = 'datafusion'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM sys_role_menu rm
+    WHERE rm.role_id = r.role_id
+      AND rm.menu_id = 2205
+  );

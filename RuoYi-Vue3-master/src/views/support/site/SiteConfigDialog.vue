@@ -29,7 +29,7 @@
         ref="fusionWorkbenchRef"
         class="fusion-workbench"
         :class="{ 'is-fullscreen': siteCanvasFullscreen }"
-        v-loading="platformLoading || serverLoading || orgLoading || contactLoading"
+        v-loading="platformLoading || serverLoading || hardwareAssetLoading || orgLoading || contactLoading"
       >
         <header class="fusion-workbench__toolbar">
           <div class="fusion-workbench__title">
@@ -42,7 +42,7 @@
             <div class="fusion-workbench__meta">
               <span>{{ platformWindowLabel }}</span>
               <span v-if="hasPlatformKeyword">匹配 {{ filteredMainPlatforms.length }} / {{ mainPlatforms.length }}</span>
-              <span v-else>{{ serverList.length }} 台服务器 · {{ contactPoolList.length }} 位人员</span>
+              <span v-else>{{ totalHardwareAssetCount }} 项设备 · {{ contactPoolList.length }} 位人员</span>
             </div>
           </div>
           <div class="fusion-workbench__actions">
@@ -227,7 +227,7 @@
                   >
                     <span>主平台</span>
                     <strong>{{ main.platformName }}</strong>
-                    <small>{{ getNetworkEnvLabel(main.networkEnv) }} · {{ getSubPlatforms(main.platformId).length }} 子平台 · {{ getPlatformContacts(main.platformId).length }} 人员 · {{ getPlatformServers(main.platformId).length }} 服务器</small>
+                    <small>{{ getNetworkEnvLabel(main.networkEnv) }} · {{ getSubPlatforms(main.platformId).length }} 子平台 · {{ getPlatformContacts(main.platformId).length }} 人员 · {{ getPlatformHardwareTotal(main.platformId) }} 设备</small>
                   </button>
 
                   <div class="fusion-layer fusion-layer--contact">
@@ -265,7 +265,7 @@
                         <div class="fusion-sub-node__head">
                           <span>子平台</span>
                           <strong>{{ sub.platformName }}</strong>
-                          <small>{{ getEndpointCount(sub.platformId) }} 页面 · {{ getPlatformServers(sub.platformId).length }} 服务器</small>
+                          <small>{{ getEndpointCount(sub.platformId) }} 页面 · {{ getPlatformHardwareTotal(sub.platformId) }} 设备</small>
                         </div>
                         <div class="fusion-page-row">
                           <button
@@ -281,11 +281,12 @@
                           <button class="fusion-page-node fusion-page-node--add" @click.stop="handleEndpointAddFor(sub)">+ 页面</button>
                         </div>
                         <div class="fusion-server-row">
-                          <button class="fusion-server-summary" @click.stop="openPlatformBindServerDialog(sub)">
-                            <strong>{{ getPlatformServers(sub.platformId).length }}</strong>
-                            <span>台服务器</span>
+                          <button class="fusion-server-summary fusion-hardware-summary" @click.stop="openHardwareAssetDialog(sub)">
+                            <strong>{{ getPlatformHardwareTotal(sub.platformId) }}</strong>
+                            <span>项设备</span>
+                            <small>{{ getPlatformHardwareSummaryText(sub.platformId) }}</small>
                           </button>
-                          <button class="fusion-server-pill fusion-server-pill--add" @click.stop="openPlatformBindServerDialog(sub)">管理服务器</button>
+                          <button class="fusion-server-pill fusion-server-pill--add" @click.stop="openHardwareAssetDialog(sub)">管理设备</button>
                         </div>
                       </article>
                       <button class="fusion-add-node" @click.stop="handlePlatformAdd(main)">+ 新增子平台</button>
@@ -293,14 +294,14 @@
                   </div>
 
                   <div class="fusion-layer fusion-layer--server">
-                    <span class="fusion-layer__label">子平台服务器汇总</span>
+                    <span class="fusion-layer__label">设备资产层</span>
                     <div class="fusion-layer__nodes">
-                      <button class="fusion-node fusion-node--server fusion-node--server-summary" @click.stop="openPlatformBindServerDialog(main)">
-                        <span>服务器汇总</span>
-                        <strong>{{ getPlatformServers(main.platformId).length }} 台</strong>
-                        <small>统一管理子平台服务器</small>
+                      <button class="fusion-node fusion-node--server fusion-node--server-summary" @click.stop="openHardwareAssetDialog(main)">
+                        <span>设备资产汇总</span>
+                        <strong>{{ getPlatformHardwareTotal(main.platformId) }} 项</strong>
+                        <small>{{ getPlatformHardwareSummaryText(main.platformId) }}</small>
                       </button>
-                      <button class="fusion-add-node" @click.stop="openPlatformBindServerDialog(main)">统一管理</button>
+                      <button class="fusion-add-node" @click.stop="openHardwareAssetDialog(main)">统一管理</button>
                     </div>
                   </div>
                 </article>
@@ -365,7 +366,7 @@
                   <el-button v-if="inspectorActions.edit" type="primary" plain @click="inspectorActions.edit">
                     {{ inspectorEditOpen ? '继续编辑' : '编辑信息' }}
                   </el-button>
-                  <el-button v-if="inspectorActions.bindServer" plain @click="inspectorActions.bindServer">管理服务器</el-button>
+                  <el-button v-if="inspectorActions.bindServer" plain @click="inspectorActions.bindServer">设备资产</el-button>
                   <el-button v-if="inspectorActions.bindContact" plain @click="inspectorActions.bindContact">关联人员</el-button>
                   <el-button v-if="inspectorActions.addChild" plain @click="inspectorActions.addChild">新增子平台</el-button>
                   <el-button v-if="inspectorActions.addPage" plain @click="inspectorActions.addPage">新增页面</el-button>
@@ -636,7 +637,7 @@
                           <el-tag type="success" size="small">主平台</el-tag>
                         </div>
                         <div class="platform-node__meta">
-                          <span>{{ getPlatformServers(main.platformId).length }} 台服务器</span>
+                          <span>{{ getPlatformHardwareTotal(main.platformId) }} 项设备</span>
                           <span>{{ getSubPlatforms(main.platformId).length }} 个子平台</span>
                         </div>
                       </button>
@@ -694,7 +695,7 @@
                                   <el-tag type="warning" size="small">子平台</el-tag>
                                 </div>
                                 <div class="platform-node__meta">
-                                  <span>{{ getPlatformServers(sub.platformId).length }} 台服务器</span>
+                                  <span>{{ getPlatformHardwareTotal(sub.platformId) }} 项设备</span>
                                   <span>{{ getEndpointCount(sub.platformId) }} 个页面</span>
                                 </div>
                               </button>
@@ -734,13 +735,13 @@
                             </div>
                             <div class="subplatform-card__relations">
                               <div class="chip-row">
-	                                <span class="chip-row__label">服务器</span>
+	                                <span class="chip-row__label">设备资产</span>
 	                                <div class="chip-row__content">
-	                                  <button class="server-count-chip" @click.stop="openPlatformBindServerDialog(sub)">
-	                                    <strong>{{ getPlatformServers(sub.platformId).length }}</strong>
-	                                    <span>台服务器</span>
+	                                  <button class="server-count-chip" @click.stop="openHardwareAssetDialog(sub)">
+	                                    <strong>{{ getPlatformHardwareTotal(sub.platformId) }}</strong>
+	                                    <span>项设备</span>
 	                                  </button>
-	                                  <button class="chip-add-button" @click.stop="openPlatformBindServerDialog(sub)">管理服务器</button>
+	                                  <button class="chip-add-button" @click.stop="openHardwareAssetDialog(sub)">管理设备</button>
 	                                </div>
 	                              </div>
                             </div>
@@ -753,14 +754,14 @@
                     </div>
 
                     <div class="lane-track">
-                      <span class="lane-track__label">服务器层</span>
+                      <span class="lane-track__label">设备资产层</span>
 	                      <div class="lane-track__body">
 	                        <div class="platform-server-row">
-	                          <button class="server-count-chip server-count-chip--large" @click.stop="openPlatformBindServerDialog(main)">
-	                            <strong>{{ getPlatformServers(main.platformId).length }}</strong>
-	                            <span>台服务器</span>
+	                          <button class="server-count-chip server-count-chip--large" @click.stop="openHardwareAssetDialog(main)">
+	                            <strong>{{ getPlatformHardwareTotal(main.platformId) }}</strong>
+	                            <span>项设备</span>
 	                          </button>
-	                          <button class="lane-action-node" @click.stop="openPlatformBindServerDialog(main)">管理服务器</button>
+	                          <button class="lane-action-node" @click.stop="openHardwareAssetDialog(main)">管理设备</button>
 	                        </div>
 	                      </div>
                     </div>
@@ -773,14 +774,14 @@
                 <div class="resource-canvas__head">
                   <div>
                     <h4>现场资源池</h4>
-                    <p>服务器资源从这里统一维护，组织和联系人在下方专属配置台集中配置</p>
+                    <p>服务器和硬件资产从这里统一维护，组织和联系人在下方专属配置台集中配置</p>
                   </div>
                 </div>
                 <div class="resource-canvas__grid">
                   <article class="resource-pool">
                     <div class="resource-pool__head">
-                      <span>服务器池</span>
-                      <button class="pool-node pool-node--add" @click="openSelectedPlatformServerManager">管理选中平台服务器</button>
+                      <span>设备资产池</span>
+                      <button class="pool-node pool-node--add" @click="openSelectedPlatformServerManager">管理选中平台设备</button>
                     </div>
                     <div class="resource-pool__body">
                       <article
@@ -1064,7 +1065,7 @@
               >
                 <span class="canvas-node__kicker">主平台</span>
                 <strong>{{ canvasRootPlatform.platformName }}</strong>
-                <small>{{ canvasSubPlatforms.length }} 个子平台 · {{ canvasRootServers.length }} 台服务器 · {{ canvasRootContacts.length }} 位人员</small>
+                <small>{{ canvasSubPlatforms.length }} 个子平台 · {{ getPlatformHardwareTotal(canvasRootPlatform.platformId) }} 项设备 · {{ canvasRootContacts.length }} 位人员</small>
               </button>
             </div>
 
@@ -1098,7 +1099,7 @@
             <div class="canvas-layer canvas-layer--sub">
               <div class="canvas-layer__head">
                 <span>子平台层</span>
-                <small>页面与子平台服务器在这里展开</small>
+                <small>页面与子平台设备资产在这里展开</small>
               </div>
               <div class="canvas-layer__body canvas-layer__body--sub">
                 <article
@@ -1112,7 +1113,7 @@
                     <div>
                       <span class="canvas-node__kicker">子平台</span>
                       <strong>{{ sub.platformName }}</strong>
-                      <small>{{ getEndpointCount(sub.platformId) }} 个页面 · {{ getPlatformServers(sub.platformId).length }} 台服务器</small>
+                      <small>{{ getEndpointCount(sub.platformId) }} 个页面 · {{ getPlatformHardwareTotal(sub.platformId) }} 项设备</small>
                     </div>
                     <el-tag type="warning" size="small">右键维护</el-tag>
                   </div>
@@ -1132,12 +1133,12 @@
                     </div>
                   </div>
 	                  <div class="canvas-sub-card__section">
-	                    <span class="canvas-sub-card__label">服务器</span>
+	                    <span class="canvas-sub-card__label">设备资产</span>
 	                    <div class="canvas-mini-list">
-	                      <button class="canvas-server-pill canvas-server-pill--summary" @click.stop="openPlatformBindServerDialog(sub)">
-	                        {{ getPlatformServers(sub.platformId).length }} 台服务器
+	                      <button class="canvas-server-pill canvas-server-pill--summary" @click.stop="openHardwareAssetDialog(sub)">
+	                        {{ getPlatformHardwareTotal(sub.platformId) }} 项设备
 	                      </button>
-	                      <button class="canvas-server-pill canvas-server-pill--add" @click.stop="openPlatformBindServerDialog(sub)">管理服务器</button>
+	                      <button class="canvas-server-pill canvas-server-pill--add" @click.stop="openHardwareAssetDialog(sub)">管理设备</button>
 	                    </div>
 	                  </div>
                 </article>
@@ -1153,16 +1154,16 @@
 
             <div class="canvas-layer canvas-layer--server">
               <div class="canvas-layer__head">
-                <span>服务器层</span>
-                <small>主平台直接部署服务器</small>
+                <span>设备资产层</span>
+                <small>统一查看服务器和硬件设备</small>
 	              </div>
 	              <div class="canvas-layer__body">
 	                <button
 	                  class="canvas-add-node canvas-add-node--server-summary"
-	                  @click.stop="openPlatformBindServerDialog(canvasRootPlatform)"
+	                  @click.stop="openHardwareAssetDialog(canvasRootPlatform)"
 	                  @contextmenu.prevent.stop="openCanvasContextMenu($event, 'main', canvasRootPlatform)"
 	                >
-	                  {{ canvasRootServers.length }} 台服务器 · 管理服务器
+	                  {{ getPlatformHardwareTotal(canvasRootPlatform.platformId) }} 项设备 · 统一管理
 	                </button>
 	              </div>
             </div>
@@ -1192,6 +1193,285 @@
         <div class="canvas-editor-footer">
           <span>右键画布和节点可快速新增、编辑、关联。</span>
           <el-button @click="platformCanvasOpen = false">关闭画布</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="hardwareAssetDialogOpen" width="1180px" append-to-body class="support-hardware-asset-dialog">
+      <template #header>
+        <div class="transfer-dialog-hero transfer-dialog-hero--hardware">
+          <div class="transfer-dialog-hero__copy">
+            <span class="transfer-dialog-hero__eyebrow">设备资产清单</span>
+            <h3>{{ hardwareAssetDialogTitle }}</h3>
+            <p>服务器、解码器、终端、交换机、网闸在一个清单里查看；服务器仍沿用原密码、导入和巡检配置能力。</p>
+          </div>
+          <div class="server-manager-hero__stats">
+            <strong>{{ hardwareAssetDialogStats.total }}</strong>
+            <span>{{ hardwareAssetDialogStats.text }}</span>
+          </div>
+        </div>
+      </template>
+
+      <div class="hardware-asset-shell" v-loading="hardwareAssetLoading">
+        <aside class="hardware-asset-filter">
+          <div class="hardware-asset-filter__head">
+            <strong>筛选条件</strong>
+            <span>{{ filteredEquipmentRows.length }} / {{ equipmentRows.length }} 项设备</span>
+          </div>
+          <label>关键词</label>
+          <el-input v-model="hardwareAssetKeyword" placeholder="名称、IP、型号、位置" clearable />
+          <label>网络环境</label>
+          <el-select v-model="hardwareAssetFilter.networkEnv" placeholder="全部网络" clearable filterable>
+            <el-option v-for="dict in support_network_env" :key="dict.value" :label="dict.label" :value="dict.value" />
+          </el-select>
+          <label>资产类型</label>
+          <el-select v-model="hardwareAssetFilter.assetType" placeholder="全部类型" clearable>
+            <el-option v-for="item in equipmentTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+          <label>绑定范围</label>
+          <el-select v-model="hardwareAssetFilter.bindingScope" placeholder="全部范围" clearable>
+            <el-option label="平台设备" value="PLATFORM" />
+            <el-option label="现场公共设备" value="PUBLIC" />
+            <el-option label="未关联服务器" value="UNBOUND" />
+          </el-select>
+          <label>运行状态</label>
+          <el-select v-model="hardwareAssetFilter.status" placeholder="全部状态" clearable>
+            <el-option label="正常" value="0" />
+            <el-option label="停用" value="1" />
+          </el-select>
+          <div class="hardware-asset-filter__summary">
+            <strong>{{ managedHardwareServers.length }}</strong>
+            <span>台服务器保留原维护方式</span>
+            <el-button plain size="small" @click="openServerManagerFromHardwareDialog">管理服务器</el-button>
+          </div>
+        </aside>
+
+        <section class="hardware-asset-table-panel">
+          <div class="hardware-asset-toolbar">
+            <div>
+              <strong>设备明细</strong>
+              <span>{{ hardwareAssetDialogPlatform ? getHardwareAssetPlatformLabel({ platformId: hardwareAssetDialogPlatform.platformId, platformLevel: hardwareAssetDialogPlatform.platformLevel, platformName: hardwareAssetDialogPlatform.platformName }) : '现场全部设备资产' }}</span>
+            </div>
+            <div>
+              <el-button type="primary" icon="Plus" @click="handleEquipmentAdd">新增设备</el-button>
+              <el-button plain icon="Download" @click="handleEquipmentExport">导出设备清单</el-button>
+              <el-button type="danger" plain :disabled="!equipmentSelectedRows.length" @click="handleEquipmentBatchDelete">
+                批量删除
+              </el-button>
+            </div>
+          </div>
+
+          <el-table
+            :data="filteredEquipmentRows"
+            height="420"
+            row-key="rowKey"
+            @selection-change="handleEquipmentSelectionChange"
+          >
+            <el-table-column type="selection" width="42" />
+            <el-table-column label="设备" min-width="210">
+              <template #default="{ row }">
+                <div class="hardware-asset-cell">
+                  <strong>{{ row.assetName || '未命名设备' }}</strong>
+                  <span>{{ row.assetTypeLabel }} · {{ getEquipmentPrimaryAddress(row) }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="网络" width="110">
+              <template #default="{ row }">
+                <span class="hardware-network-chip" :class="getNetworkEnvClass(row.networkEnv)" :style="getNetworkEnvStyle(row.networkEnv)">
+                  {{ getNetworkEnvLabel(row.networkEnv) }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="厂商型号" min-width="150">
+              <template #default="{ row }">
+                {{ [row.manufacturer, row.assetModel].filter(Boolean).join(' / ') || '-' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="位置" prop="installLocation" min-width="130" show-overflow-tooltip />
+            <el-table-column label="绑定平台" min-width="150">
+              <template #default="{ row }">{{ row.bindingLabel || getHardwareAssetPlatformLabel(row) }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="78">
+              <template #default="{ row }">
+                <el-tag :type="row.status === '1' ? 'info' : 'success'" size="small">{{ getStatusLabel(row.status) }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="190" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="handleEquipmentEdit(row)">编辑</el-button>
+                <el-button v-if="row.sourceType === EQUIPMENT_SOURCE_SERVER && canViewPlain" link type="primary" @click="handleServerPlain(row.raw)">显示密码</el-button>
+                <el-button link type="danger" @click="handleEquipmentDelete(row)">{{ row.sourceType === EQUIPMENT_SOURCE_SERVER ? '删除服务器' : '删除设备' }}</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </section>
+      </div>
+
+      <template #footer>
+        <div class="transfer-dialog-footer">
+          <span>统一清单负责查看和入口整合；服务器与非服务器设备仍按各自原有能力保存和维护。</span>
+          <el-button @click="hardwareAssetDialogOpen = false">关闭</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="equipmentAddTypeOpen" title="选择新增设备类型" width="760px" append-to-body class="equipment-type-dialog">
+      <div class="equipment-type-grid">
+        <button
+          v-for="item in equipmentCreateOptions"
+          :key="item.value"
+          type="button"
+          class="equipment-type-card"
+          @click="handleEquipmentTypeSelect(item.value)"
+        >
+          <strong>{{ item.label }}</strong>
+          <span>{{ item.description }}</span>
+        </button>
+      </div>
+    </el-dialog>
+
+    <el-dialog v-model="hardwareAssetFormOpen" :title="hardwareAssetTitle" width="780px" append-to-body class="hardware-asset-form-dialog">
+      <el-form ref="hardwareAssetRef" :model="hardwareAssetForm" :rules="hardwareAssetRules" label-width="104px">
+        <div class="hardware-form-section">
+          <strong>基础信息</strong>
+          <div class="hardware-form-grid">
+            <el-form-item label="资产名称" prop="assetName">
+              <el-input v-model="hardwareAssetForm.assetName" placeholder="请输入资产名称" />
+            </el-form-item>
+            <el-form-item label="资产类型" prop="assetType">
+              <el-select v-model="hardwareAssetForm.assetType" placeholder="请选择资产类型">
+                <el-option v-for="item in hardwareTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="网络环境" prop="networkEnv">
+              <el-select v-model="hardwareAssetForm.networkEnv" placeholder="请选择网络环境" filterable>
+                <el-option v-for="dict in support_network_env" :key="dict.value" :label="dict.label" :value="dict.value" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="绑定平台">
+              <el-select v-model="hardwareAssetForm.platformId" placeholder="现场公共资产" clearable filterable>
+                <el-option
+                  v-for="platform in platformList"
+                  :key="platform.platformId"
+                  :label="`${getPlatformLevelLabel(platform.platformLevel)}｜${platform.platformName}`"
+                  :value="platform.platformId"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="IP地址" prop="ipAddress">
+              <el-input v-model="hardwareAssetForm.ipAddress" placeholder="请输入设备IP" />
+            </el-form-item>
+            <el-form-item label="管理地址">
+              <el-input v-model="hardwareAssetForm.manageIp" placeholder="可选，交换机管理地址等" />
+            </el-form-item>
+            <el-form-item label="运行状态">
+              <el-radio-group v-model="hardwareAssetForm.status">
+                <el-radio label="0">正常</el-radio>
+                <el-radio label="1">停用</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="MAC地址">
+              <el-input v-model="hardwareAssetForm.macAddress" placeholder="可选" />
+            </el-form-item>
+          </div>
+        </div>
+
+        <div class="hardware-form-section">
+          <strong>设备档案</strong>
+          <div class="hardware-form-grid">
+            <el-form-item label="厂商">
+              <el-input v-model="hardwareAssetForm.manufacturer" placeholder="例如：海康、大华、华三" />
+            </el-form-item>
+            <el-form-item label="型号">
+              <el-input v-model="hardwareAssetForm.assetModel" placeholder="请输入型号" />
+            </el-form-item>
+            <el-form-item label="序列号">
+              <el-input v-model="hardwareAssetForm.serialNo" placeholder="请输入序列号" />
+            </el-form-item>
+            <el-form-item label="安装位置">
+              <el-input v-model="hardwareAssetForm.installLocation" placeholder="机房、机柜、屏幕区域等" />
+            </el-form-item>
+            <el-form-item label="归属组织">
+              <el-input v-model="hardwareAssetForm.ownerOrg" placeholder="可选" />
+            </el-form-item>
+            <el-form-item label="责任人">
+              <el-input v-model="hardwareAssetForm.ownerContact" placeholder="可选" />
+            </el-form-item>
+          </div>
+        </div>
+
+        <div v-if="hardwareAssetForm.assetType === 'DECODER'" class="hardware-form-section">
+          <strong>解码器信息</strong>
+          <div class="hardware-form-grid">
+            <el-form-item label="通道数">
+              <el-input-number v-model="hardwareAssetForm.channelCount" :min="0" controls-position="right" />
+            </el-form-item>
+            <el-form-item label="输出类型">
+              <el-input v-model="hardwareAssetForm.outputType" placeholder="HDMI / DP / 混合输出" />
+            </el-form-item>
+          </div>
+        </div>
+
+        <div v-if="hardwareAssetForm.assetType === 'TERMINAL'" class="hardware-form-section">
+          <strong>终端信息</strong>
+          <div class="hardware-form-grid">
+            <el-form-item label="终端类型">
+              <el-input v-model="hardwareAssetForm.terminalType" placeholder="操作终端 / 查询终端 / 展示终端" />
+            </el-form-item>
+            <el-form-item label="使用部门">
+              <el-input v-model="hardwareAssetForm.department" placeholder="请输入使用部门" />
+            </el-form-item>
+            <el-form-item label="使用位置">
+              <el-input v-model="hardwareAssetForm.useLocation" placeholder="请输入使用位置" />
+            </el-form-item>
+          </div>
+        </div>
+
+        <div v-if="hardwareAssetForm.assetType === 'SWITCH'" class="hardware-form-section">
+          <strong>交换机信息</strong>
+          <div class="hardware-form-grid">
+            <el-form-item label="交换层级">
+              <el-input v-model="hardwareAssetForm.switchLevel" placeholder="核心 / 汇聚 / 接入" />
+            </el-form-item>
+            <el-form-item label="端口数">
+              <el-input-number v-model="hardwareAssetForm.portCount" :min="0" controls-position="right" />
+            </el-form-item>
+            <el-form-item label="上联设备">
+              <el-input v-model="hardwareAssetForm.uplinkDevice" placeholder="请输入上联设备" />
+            </el-form-item>
+            <el-form-item label="VLAN说明">
+              <el-input v-model="hardwareAssetForm.vlanInfo" placeholder="简要说明 VLAN 规划" />
+            </el-form-item>
+          </div>
+        </div>
+
+        <div v-if="hardwareAssetForm.assetType === 'GATEWAY'" class="hardware-form-section">
+          <strong>网闸信息</strong>
+          <div class="hardware-form-grid">
+            <el-form-item label="网闸模式">
+              <el-input v-model="hardwareAssetForm.gatewayMode" placeholder="单向 / 双向 / 安全隔离" />
+            </el-form-item>
+            <el-form-item label="数据流向">
+              <el-input v-model="hardwareAssetForm.gatewayDirection" placeholder="内到外 / 外到内 / 双向" />
+            </el-form-item>
+            <el-form-item label="带宽">
+              <el-input v-model="hardwareAssetForm.gatewayBandwidth" placeholder="例如：100Mbps / 1Gbps" />
+            </el-form-item>
+            <el-form-item label="安全域">
+              <el-input v-model="hardwareAssetForm.securityZone" placeholder="例如：公安网到图像网边界" />
+            </el-form-item>
+          </div>
+        </div>
+
+        <el-form-item label="备注">
+          <el-input v-model="hardwareAssetForm.remark" type="textarea" :rows="3" placeholder="补充资产说明" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="hardwareAssetFormOpen = false">取消</el-button>
+          <el-button type="primary" @click="submitHardwareAssetForm">保存</el-button>
         </div>
       </template>
     </el-dialog>
@@ -2163,6 +2443,7 @@ import { getSiteWorkbench, listChangeLog } from '@/api/support/site'
 import { addSiteMessage, latestSiteMessage, listSiteMessage } from '@/api/support/siteMessage'
 import { addPlatform, bindContact, bindServer, delPlatform, getPlatform, listPlatform, listPlatformContacts, listPlatformServers, unbindContact, updatePlatform } from '@/api/support/platform'
 import { addServer, delServer, getServer, listServer, previewServerImport, updateServer, viewServerPlain } from '@/api/support/server'
+import { addHardwareAsset, delHardwareAsset, getHardwareAsset, listHardwareAsset, updateHardwareAsset } from '@/api/support/hardwareAsset'
 import { addOrg, delOrg, getOrg, listOrg, updateOrg } from '@/api/support/org'
 import { addContact, delContact, getContact, listContact, updateContact } from '@/api/support/contact'
 import { addEndpoint, delEndpoint, getEndpoint, listEndpoint, updateEndpoint, viewEndpointPlain } from '@/api/support/endpoint'
@@ -2191,7 +2472,7 @@ const props = defineProps({
 
 const emit = defineEmits(['update:visible'])
 const { proxy } = getCurrentInstance()
-const { support_network_env, support_contact_role } = proxy.useDict('support_network_env', 'support_contact_role')
+const { support_network_env, support_contact_role, support_hardware_type } = proxy.useDict('support_network_env', 'support_contact_role', 'support_hardware_type')
 const canViewPlain = computed(() => !!proxy?.$auth?.hasPermi(['support:credential:viewPlain']))
 const canListMessage = computed(() => !!proxy?.$auth?.hasPermi(['support:message:list']))
 const canAddMessage = computed(() => !!proxy?.$auth?.hasPermi(['support:message:add']))
@@ -2329,11 +2610,44 @@ const serverRules = {
   sshPort: [{ required: true, message: 'SSH端口不能为空', trigger: 'blur' }]
 }
 const SERVER_BATCH_LIMIT = 512
+const HARDWARE_SERVER_TYPE = 'SERVER'
+const EQUIPMENT_SOURCE_SERVER = 'SERVER'
+const EQUIPMENT_SOURCE_HARDWARE = 'HARDWARE'
+const HARDWARE_TYPE_FALLBACKS = [
+  { label: '解码器', value: 'DECODER' },
+  { label: '终端', value: 'TERMINAL' },
+  { label: '交换机', value: 'SWITCH' },
+  { label: '网闸', value: 'GATEWAY' }
+]
 const SUB_PLATFORM_CARD_WIDTH = 216
 const SUB_PLATFORM_GRID_GAP = 9
 const SUB_PLATFORM_MAX_COLUMNS = 4
 const SUB_PLATFORM_VERTICAL_MAX_COLUMNS = 2
 const SERVER_IMPORT_HEADERS = ['服务器名称', '服务器IP', 'SSH端口', '操作系统', '系统账号', '系统密码', '运行状态']
+
+const hardwareAssetLoading = ref(false)
+const hardwareAssetList = ref([])
+const hardwareAssetDialogOpen = ref(false)
+const equipmentAddTypeOpen = ref(false)
+const hardwareAssetFormOpen = ref(false)
+const hardwareAssetTitle = ref('')
+const hardwareAssetDialogPlatformId = ref(null)
+const hardwareAssetKeyword = ref('')
+const hardwareAssetSelectedIds = ref([])
+const equipmentSelectedRows = ref([])
+const hardwareAssetFilter = reactive({
+  assetType: null,
+  networkEnv: null,
+  status: null,
+  bindingScope: null
+})
+const hardwareAssetForm = ref({})
+const hardwareAssetRules = {
+  assetName: [{ required: true, message: '资产名称不能为空', trigger: 'blur' }],
+  assetType: [{ required: true, message: '请选择资产类型', trigger: 'change' }],
+  networkEnv: [{ required: true, message: '请选择网络环境', trigger: 'change' }],
+  ipAddress: [{ required: true, message: 'IP地址不能为空', trigger: 'blur' }]
+}
 
 const orgLoading = ref(false)
 const orgList = ref([])
@@ -2406,7 +2720,7 @@ const canvasContextMenuItems = computed(() => {
     return [
       { label: '编辑子平台', action: 'editSub' },
       { label: '新增页面', action: 'addEndpoint' },
-      { label: '管理服务器', action: 'bindSubServer' },
+      { label: '管理设备', action: 'bindSubServer' },
       { label: '删除子平台', action: 'deleteSub', danger: true }
     ]
   }
@@ -2437,7 +2751,7 @@ const canvasContextMenuItems = computed(() => {
     { label: '新增子平台', action: 'addSub' },
     { label: '关联人员', action: 'bindContact' },
     { label: '新增人员', action: 'addContact' },
-    { label: '统一管理服务器', action: 'bindMainServer' }
+    { label: '统一管理设备', action: 'bindMainServer' }
   ]
 })
 
@@ -2519,11 +2833,35 @@ const filteredMainPlatforms = computed(() => {
   })
 })
 const subPlatformCount = computed(() => platformList.value.filter((item) => item.platformLevel === 'SUB').length)
+const totalHardwareAssetCount = computed(() => serverList.value.length + hardwareAssetList.value.length)
 const workbenchStats = computed(() => [
   { label: '主平台', value: mainPlatforms.value.length },
   { label: '子平台', value: subPlatformCount.value },
-  { label: '服务器', value: serverList.value.length },
+  { label: '设备', value: totalHardwareAssetCount.value },
   { label: '组织', value: orgList.value.length }
+])
+const hardwareTypeOptions = computed(() => {
+  const dictRows = support_hardware_type.value?.length ? support_hardware_type.value : []
+  const merged = [...dictRows]
+  HARDWARE_TYPE_FALLBACKS.forEach((fallback) => {
+    if (!merged.some((item) => item.value === fallback.value)) {
+      merged.push(fallback)
+    }
+  })
+  const rows = merged.length ? merged : HARDWARE_TYPE_FALLBACKS
+  return rows.filter((item) => item.value !== HARDWARE_SERVER_TYPE)
+})
+const equipmentTypeOptions = computed(() => [
+  { label: '服务器', value: HARDWARE_SERVER_TYPE },
+  ...hardwareTypeOptions.value
+])
+const equipmentCreateOptions = computed(() => [
+  { label: '服务器', value: HARDWARE_SERVER_TYPE, description: '沿用服务器原有单个添加、批量添加、导入和密码维护方式' },
+  ...hardwareTypeOptions.value.map((item) => ({
+    label: item.label,
+    value: item.value,
+    description: `${item.label}作为现场硬件资产登记，可绑定现场、主平台或子平台`
+  }))
 ])
 const supportFeatureVersion = computed(() => latestSupportRelease.version)
 const siteMessagePreviewList = computed(() => siteMessageList.value.slice(0, SITE_MESSAGE_PREVIEW_SIZE))
@@ -2589,6 +2927,59 @@ const serverBatchPreviewText = computed(() => {
 const managedPlatformServers = computed(() =>
   selectedPlatform.value ? getPlatformServers(selectedPlatform.value.platformId) : []
 )
+const hardwareAssetDialogPlatform = computed(() =>
+  platformList.value.find((item) => item.platformId === hardwareAssetDialogPlatformId.value) || null
+)
+const hardwareAssetDialogTitle = computed(() => {
+  if (!hardwareAssetDialogPlatform.value) return '设备资产池'
+  return hardwareAssetDialogPlatform.value.platformLevel === 'MAIN'
+    ? `设备资产池 - ${hardwareAssetDialogPlatform.value.platformName}`
+    : `设备资产管理 - ${hardwareAssetDialogPlatform.value.platformName}`
+})
+const managedHardwareAssets = computed(() => {
+  const platform = hardwareAssetDialogPlatform.value
+  if (!platform) return hardwareAssetList.value
+  return getPlatformHardwareAssets(platform.platformId)
+})
+const managedHardwareServers = computed(() => {
+  const platform = hardwareAssetDialogPlatform.value
+  if (!platform) return serverList.value
+  return getPlatformServers(platform.platformId)
+})
+const equipmentRows = computed(() => [
+  ...managedHardwareServers.value.map(createEquipmentServerRow),
+  ...managedHardwareAssets.value.map(createEquipmentHardwareRow)
+])
+const filteredEquipmentRows = computed(() => {
+  const keyword = hardwareAssetKeyword.value.trim().toLowerCase()
+  return equipmentRows.value.filter((asset) => {
+    if (hardwareAssetFilter.assetType && asset.assetType !== hardwareAssetFilter.assetType) return false
+    if (hardwareAssetFilter.networkEnv && asset.networkEnv !== hardwareAssetFilter.networkEnv) return false
+    if (hardwareAssetFilter.status && asset.status !== hardwareAssetFilter.status) return false
+    if (hardwareAssetFilter.bindingScope && asset.bindingScope !== hardwareAssetFilter.bindingScope) return false
+    if (!keyword) return true
+    const searchText = [
+      asset.assetName,
+      asset.ipAddress,
+      asset.manageIp,
+      asset.manufacturer,
+      asset.assetModel,
+      asset.serialNo,
+      asset.installLocation,
+      asset.bindingLabel,
+      asset.assetTypeLabel,
+      getNetworkEnvLabel(asset.networkEnv)
+    ].filter(Boolean).join(' ').toLowerCase()
+    return searchText.includes(keyword)
+  })
+})
+const hardwareAssetDialogStats = computed(() => {
+  const counts = getHardwareSummaryFromRows(managedHardwareServers.value, managedHardwareAssets.value)
+  return {
+    total: managedHardwareServers.value.length + managedHardwareAssets.value.length,
+    text: counts.length ? counts.map((item) => `${item.label} ${item.count}`).join(' / ') : '暂无设备资产'
+  }
+})
 const filteredManagedServers = computed(() => {
   const keyword = serverManagerKeyword.value.trim().toLowerCase()
   if (!keyword) return managedPlatformServers.value
@@ -2677,7 +3068,7 @@ const platformParentName = computed(() => {
 const platformPreviewCopy = computed(() =>
   platformForm.value.platformLevel === 'SUB'
     ? `保存后会挂载到 ${platformParentName.value} 下，作为当前现场的二级平台节点展示。`
-    : '保存后会成为当前现场的一级平台泳道，并承载人员层、子平台层和服务器层。'
+    : '保存后会成为当前现场的一级平台泳道，并承载人员层、子平台层和设备资产层。'
 )
 const endpointDialogLead = computed(() => '页面信息会直接显示在子平台卡片内，建议名称简短、URL 稳定，便于值守快速识别。')
 const endpointPlatformName = computed(() => {
@@ -2853,7 +3244,7 @@ const inspectorActions = computed(() => {
   if (selectedPlatform.value) {
     return {
       edit: () => openInspectorEdit('platform', selectedPlatform.value),
-      bindServer: () => openPlatformBindServerDialog(selectedPlatform.value),
+      bindServer: () => openHardwareAssetDialog(selectedPlatform.value),
       bindContact: selectedPlatform.value.platformLevel === 'MAIN' ? () => openPlatformBindContactDialog(selectedPlatform.value) : null,
       addChild: selectedPlatform.value.platformLevel === 'MAIN' ? () => handlePlatformAdd(selectedPlatform.value) : null,
       addPage: selectedPlatform.value.platformLevel === 'SUB' ? () => handleEndpointAddFor(selectedPlatform.value) : null,
@@ -3004,15 +3395,18 @@ async function loadWorkbench() {
   if (!props.site?.siteId) return
   platformLoading.value = true
   serverLoading.value = true
+  hardwareAssetLoading.value = true
   orgLoading.value = true
   contactLoading.value = true
   try {
     const res = await getSiteWorkbench(props.site.siteId)
     applyWorkbenchData(res.data || {})
+    await loadHardwareAssets()
     await loadChangeLogs()
   } finally {
     platformLoading.value = false
     serverLoading.value = false
+    hardwareAssetLoading.value = false
     orgLoading.value = false
     contactLoading.value = false
   }
@@ -3954,6 +4348,108 @@ function getPlatformServers(platformId) {
   return platformServerMap.value[platformId] || []
 }
 
+function getPlatformHardwareAssets(platformId) {
+  const platform = platformList.value.find((item) => item.platformId === platformId)
+  if (!platform) return []
+  if (platform.platformLevel === 'MAIN') {
+    return hardwareAssetList.value.filter((asset) =>
+      asset.platformId === platformId ||
+      asset.mainPlatformId === platformId ||
+      (!asset.platformId && asset.networkEnv === platform.networkEnv)
+    )
+  }
+  return hardwareAssetList.value.filter((asset) => asset.platformId === platformId)
+}
+
+function createEquipmentServerRow(server = {}) {
+  const relatedPlatforms = getServerRelatedPlatforms(server.serverId)
+  const firstPlatform = relatedPlatforms[0] || null
+  const mainPlatform = firstPlatform?.parentPlatformId
+    ? platformList.value.find((item) => item.platformId === firstPlatform.parentPlatformId)
+    : null
+  return {
+    rowKey: `${EQUIPMENT_SOURCE_SERVER}-${server.serverId}`,
+    sourceType: EQUIPMENT_SOURCE_SERVER,
+    sourceId: server.serverId,
+    assetType: HARDWARE_SERVER_TYPE,
+    assetTypeLabel: '服务器',
+    assetName: server.serverName || server.serverAddress || '未命名服务器',
+    networkEnv: mainPlatform?.networkEnv || null,
+    ipAddress: server.serverAddress,
+    manageIp: null,
+    manufacturer: null,
+    assetModel: server.osType,
+    serialNo: null,
+    installLocation: null,
+    status: server.status || '0',
+    platformId: firstPlatform?.platformId || null,
+    platformName: firstPlatform?.platformName || null,
+    platformLevel: firstPlatform?.platformLevel || null,
+    mainPlatformId: mainPlatform?.platformId || null,
+    mainPlatformName: mainPlatform?.platformName || null,
+    bindingScope: relatedPlatforms.length ? 'PLATFORM' : 'UNBOUND',
+    bindingLabel: formatServerScopeLabel(relatedPlatforms),
+    raw: server
+  }
+}
+
+function createEquipmentHardwareRow(asset = {}) {
+  return {
+    rowKey: `${EQUIPMENT_SOURCE_HARDWARE}-${asset.assetId}`,
+    sourceType: EQUIPMENT_SOURCE_HARDWARE,
+    sourceId: asset.assetId,
+    assetType: asset.assetType,
+    assetTypeLabel: getHardwareTypeLabel(asset.assetType),
+    assetName: asset.assetName,
+    networkEnv: asset.networkEnv,
+    ipAddress: asset.ipAddress,
+    manageIp: asset.manageIp,
+    manufacturer: asset.manufacturer,
+    assetModel: asset.assetModel,
+    serialNo: asset.serialNo,
+    installLocation: asset.installLocation,
+    status: asset.status || '0',
+    platformId: asset.platformId,
+    platformName: asset.platformName,
+    platformLevel: asset.platformLevel,
+    mainPlatformId: asset.mainPlatformId,
+    mainPlatformName: asset.mainPlatformName,
+    bindingScope: asset.platformId ? 'PLATFORM' : 'PUBLIC',
+    bindingLabel: getHardwareAssetPlatformLabel(asset),
+    raw: asset
+  }
+}
+
+function getHardwareSummaryFromRows(servers = [], assets = []) {
+  const countMap = new Map()
+  if (servers.length) {
+    countMap.set(HARDWARE_SERVER_TYPE, servers.length)
+  }
+  assets.forEach((asset) => {
+    const type = asset.assetType || 'UNKNOWN'
+    countMap.set(type, (countMap.get(type) || 0) + 1)
+  })
+  return Array.from(countMap.entries()).map(([type, count]) => ({
+    type,
+    count,
+    label: getHardwareTypeLabel(type)
+  }))
+}
+
+function getPlatformHardwareSummary(platformId) {
+  return getHardwareSummaryFromRows(getPlatformServers(platformId), getPlatformHardwareAssets(platformId))
+}
+
+function getPlatformHardwareTotal(platformId) {
+  return getPlatformServers(platformId).length + getPlatformHardwareAssets(platformId).length
+}
+
+function getPlatformHardwareSummaryText(platformId) {
+  const rows = getPlatformHardwareSummary(platformId)
+  if (!rows.length) return '暂无设备资产'
+  return rows.map((item) => `${item.label} ${item.count}`).join(' / ')
+}
+
 function getPlatformContacts(platformId) {
   return platformContactMap.value[platformId] || []
 }
@@ -3988,6 +4484,10 @@ function getManagedServerPlatforms(serverId) {
 
 function getServerManagedScopeLabel(server) {
   const platforms = getManagedServerPlatforms(server.serverId)
+  return formatServerScopeLabel(platforms)
+}
+
+function formatServerScopeLabel(platforms = []) {
   if (!platforms.length) return '未归属子平台'
   if (platforms.length === 1) return `所属 ${platforms[0].platformName}`
   return `分布 ${platforms.length} 个子平台`
@@ -4113,6 +4613,31 @@ function getOrgRelatedPlatforms(orgId) {
 
 function getPlatformLevelLabel(level) {
   return level === 'SUB' ? '子平台' : '主平台'
+}
+
+function getHardwareTypeLabel(type) {
+  if (type === HARDWARE_SERVER_TYPE) return '服务器'
+  const dict = hardwareTypeOptions.value.find((item) => item.value === type)
+  return dict?.label || type || '硬件'
+}
+
+function getHardwareAssetPlatformLabel(asset = {}) {
+  if (!asset.platformId) return '现场公共资产'
+  return `${getPlatformLevelLabel(asset.platformLevel)} · ${asset.platformName || '未命名平台'}`
+}
+
+function getHardwareAssetPrimaryAddress(asset = {}) {
+  if (asset.manageIp && asset.manageIp !== asset.ipAddress) {
+    return `${asset.ipAddress} / 管理 ${asset.manageIp}`
+  }
+  return asset.ipAddress || asset.manageIp || '未填写'
+}
+
+function getEquipmentPrimaryAddress(row = {}) {
+  if (row.sourceType === EQUIPMENT_SOURCE_SERVER) {
+    return formatServerAddress(row.raw || row)
+  }
+  return getHardwareAssetPrimaryAddress(row)
 }
 
 function getNetworkEnvLabel(value) {
@@ -4426,7 +4951,7 @@ function runCanvasContextAction(action) {
     return
   }
   if (action === 'bindMainServer') {
-    openPlatformBindServerDialog(payload || canvasRootPlatform.value)
+    openHardwareAssetDialog(payload || canvasRootPlatform.value)
     return
   }
   if (!payload) return
@@ -4440,7 +4965,7 @@ function runCanvasContextAction(action) {
     return
   }
   if (action === 'bindSubServer') {
-    openPlatformBindServerDialog(payload)
+    openHardwareAssetDialog(payload)
     return
   }
   if (action === 'deleteSub') {
@@ -4570,7 +5095,7 @@ function openSelectedPlatformServerManager() {
     proxy.$modal.msgWarning('请先选择一个主平台或子平台')
     return
   }
-  openPlatformBindServerDialog(selectedPlatform.value)
+  openHardwareAssetDialog(selectedPlatform.value)
 }
 
 function resetServerManageForms() {
@@ -5377,6 +5902,227 @@ function handleServerPlain(row) {
   viewServerPlain(row.serverId).then((res) => {
     proxy.$modal.alert('服务器密码：' + (res.plain || ''), '敏感信息', { confirmButtonText: '我知道了' })
   })
+}
+
+async function loadHardwareAssets() {
+  if (!props.site?.siteId) return
+  hardwareAssetLoading.value = true
+  try {
+    const res = await listHardwareAsset({ pageNum: 1, pageSize: 10000, siteId: props.site.siteId })
+    hardwareAssetList.value = res.rows || []
+    hardwareAssetSelectedIds.value = hardwareAssetSelectedIds.value.filter((id) =>
+      hardwareAssetList.value.some((asset) => asset.assetId === id)
+    )
+  } finally {
+    hardwareAssetLoading.value = false
+  }
+}
+
+function openHardwareAssetDialog(platform = selectedPlatform.value) {
+  if (platform?.platformId) {
+    selectedPlatformId.value = platform.platformId
+    syncPlatformWindow(platform)
+  }
+  hardwareAssetDialogPlatformId.value = platform?.platformId || null
+  hardwareAssetKeyword.value = ''
+  hardwareAssetFilter.assetType = null
+  hardwareAssetFilter.networkEnv = null
+  hardwareAssetFilter.status = null
+  hardwareAssetFilter.bindingScope = null
+  hardwareAssetSelectedIds.value = []
+  equipmentSelectedRows.value = []
+  hardwareAssetDialogOpen.value = true
+  loadHardwareAssets()
+}
+
+function resetHardwareAssetForm(assetType = null) {
+  const platform = hardwareAssetDialogPlatform.value
+  hardwareAssetForm.value = {
+    assetId: null,
+    siteId: props.site.siteId,
+    assetName: null,
+    assetType: assetType || hardwareTypeOptions.value[0]?.value || 'DECODER',
+    networkEnv: getDefaultHardwareNetworkEnv(platform),
+    ipAddress: null,
+    manageIp: null,
+    macAddress: null,
+    manufacturer: null,
+    assetModel: null,
+    serialNo: null,
+    installLocation: null,
+    ownerOrg: null,
+    ownerContact: null,
+    status: '0',
+    channelCount: null,
+    outputType: null,
+    terminalType: null,
+    department: null,
+    useLocation: null,
+    switchLevel: null,
+    portCount: null,
+    uplinkDevice: null,
+    vlanInfo: null,
+    gatewayMode: null,
+    gatewayDirection: null,
+    gatewayBandwidth: null,
+    securityZone: null,
+    platformId: platform?.platformId || null,
+    remark: null
+  }
+  proxy.resetForm('hardwareAssetRef')
+}
+
+function getDefaultHardwareNetworkEnv(platform) {
+  if (!platform) return support_network_env.value[0]?.value || null
+  if (platform.platformLevel === 'MAIN') return platform.networkEnv || support_network_env.value[0]?.value || null
+  const mainPlatform = platformList.value.find((item) => item.platformId === platform.parentPlatformId)
+  return mainPlatform?.networkEnv || platform.networkEnv || support_network_env.value[0]?.value || null
+}
+
+function handleHardwareAssetAdd() {
+  resetHardwareAssetForm()
+  hardwareAssetTitle.value = '新增设备资产'
+  hardwareAssetFormOpen.value = true
+}
+
+function handleEquipmentAdd() {
+  equipmentAddTypeOpen.value = true
+}
+
+function handleEquipmentTypeSelect(type) {
+  equipmentAddTypeOpen.value = false
+  if (type === HARDWARE_SERVER_TYPE) {
+    openServerManagerFromHardwareDialog()
+    return
+  }
+  resetHardwareAssetForm(type)
+  hardwareAssetTitle.value = `新增${getHardwareTypeLabel(type)}`
+  hardwareAssetFormOpen.value = true
+}
+
+function handleHardwareAssetEdit(row) {
+  getHardwareAsset(row.assetId).then((res) => {
+    hardwareAssetForm.value = {
+      ...res.data,
+      platformId: res.data?.platformId || hardwareAssetDialogPlatform.value?.platformId || null
+    }
+    hardwareAssetTitle.value = '修改设备资产'
+    hardwareAssetFormOpen.value = true
+  })
+}
+
+function submitHardwareAssetForm() {
+  proxy.$refs.hardwareAssetRef.validate((valid) => {
+    if (!valid) return
+    hardwareAssetForm.value.siteId = props.site.siteId
+    const req = hardwareAssetForm.value.assetId ? updateHardwareAsset(hardwareAssetForm.value) : addHardwareAsset(hardwareAssetForm.value)
+    req.then(async () => {
+      proxy.$modal.msgSuccess(hardwareAssetForm.value.assetId ? '修改成功' : '新增成功')
+      hardwareAssetFormOpen.value = false
+      await loadHardwareAssets()
+      await loadChangeLogs()
+      rebuildTopologyTree()
+    })
+  })
+}
+
+function handleHardwareAssetDelete(row) {
+  proxy.$modal.confirm('确认删除硬件资产 "' + (row.assetName || row.ipAddress || '未命名资产') + '" 吗？删除后不可恢复。').then(() => delHardwareAsset(row.assetId)).then(async () => {
+    proxy.$modal.msgSuccess('硬件资产已删除')
+    hardwareAssetSelectedIds.value = hardwareAssetSelectedIds.value.filter((id) => id !== row.assetId)
+    equipmentSelectedRows.value = equipmentSelectedRows.value.filter((item) => item.rowKey !== `${EQUIPMENT_SOURCE_HARDWARE}-${row.assetId}`)
+    await loadHardwareAssets()
+    await loadChangeLogs()
+    rebuildTopologyTree()
+  }).catch(() => {})
+}
+
+function handleEquipmentSelectionChange(rows) {
+  equipmentSelectedRows.value = rows
+  hardwareAssetSelectedIds.value = rows
+    .filter((row) => row.sourceType === EQUIPMENT_SOURCE_HARDWARE)
+    .map((row) => row.sourceId)
+}
+
+function handleEquipmentEdit(row) {
+  if (row.sourceType === EQUIPMENT_SOURCE_SERVER) {
+    handleServerEdit(row.raw)
+    return
+  }
+  handleHardwareAssetEdit(row.raw || row)
+}
+
+function handleEquipmentDelete(row) {
+  if (row.sourceType === EQUIPMENT_SOURCE_SERVER) {
+    handleServerDelete(row.raw)
+    return
+  }
+  handleHardwareAssetDelete(row.raw || row)
+}
+
+function handleEquipmentBatchDelete() {
+  const rows = equipmentSelectedRows.value.slice()
+  if (!rows.length) {
+    proxy.$modal.msgWarning('请选择需要删除的设备')
+    return
+  }
+  const serverIds = rows.filter((row) => row.sourceType === EQUIPMENT_SOURCE_SERVER).map((row) => row.sourceId)
+  const assetIds = rows.filter((row) => row.sourceType === EQUIPMENT_SOURCE_HARDWARE).map((row) => row.sourceId)
+  const summary = [
+    serverIds.length ? `${serverIds.length} 台服务器` : '',
+    assetIds.length ? `${assetIds.length} 项硬件设备` : ''
+  ].filter(Boolean).join('、')
+  proxy.$modal.confirm(`确认删除选中的 ${summary} 吗？删除后不可恢复。`).then(async () => {
+    if (serverIds.length) {
+      await delServer(serverIds)
+    }
+    if (assetIds.length) {
+      await delHardwareAsset(assetIds)
+    }
+    proxy.$modal.msgSuccess('设备已批量删除')
+    hardwareAssetSelectedIds.value = []
+    equipmentSelectedRows.value = []
+    await refreshServerWorkspaceAfterMutation()
+    await loadHardwareAssets()
+    await loadChangeLogs()
+    rebuildTopologyTree()
+  }).catch(() => {})
+}
+
+function handleEquipmentExport() {
+  const platform = hardwareAssetDialogPlatform.value
+  proxy.download('/support/equipment/export', {
+    siteId: props.site.siteId,
+    platformId: platform?.platformLevel === 'SUB' ? platform.platformId : null,
+    mainPlatformId: platform?.platformLevel === 'MAIN' ? platform.platformId : null,
+    assetType: hardwareAssetFilter.assetType,
+    networkEnv: hardwareAssetFilter.networkEnv || (platform?.platformLevel === 'MAIN' ? platform.networkEnv : null),
+    status: hardwareAssetFilter.status,
+    bindingScope: hardwareAssetFilter.bindingScope,
+    assetName: hardwareAssetKeyword.value
+  }, `设备资产清单_${props.site?.siteName || '现场'}_${Date.now()}.xlsx`)
+}
+
+function handleHardwareAssetBatchDelete() {
+  const rows = filteredEquipmentRows.value.filter((row) =>
+    row.sourceType === EQUIPMENT_SOURCE_HARDWARE && hardwareAssetSelectedIds.value.includes(row.sourceId)
+  )
+  equipmentSelectedRows.value = rows
+  handleEquipmentBatchDelete()
+}
+
+function handleHardwareAssetExport() {
+  handleEquipmentExport()
+}
+
+function openServerManagerFromHardwareDialog() {
+  const platform = hardwareAssetDialogPlatform.value || selectedPlatform.value
+  if (!platform) {
+    proxy.$modal.msgWarning('请选择主平台或子平台后再管理服务器')
+    return
+  }
+  hardwareAssetDialogOpen.value = false
+  openPlatformBindServerDialog(platform)
 }
 
 async function loadOrgs() {
@@ -9566,6 +10312,27 @@ onBeforeUnmount(() => {
   gap: 8px;
 }
 
+.fusion-hardware-summary {
+  min-width: 132px;
+  height: auto;
+  min-height: 54px;
+  padding: 8px 12px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fusion-hardware-summary small {
+  display: block;
+  max-width: 132px;
+  overflow: hidden;
+  color: #6f8195;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .org-focus-card {
   display: flex;
   flex-direction: column;
@@ -9830,7 +10597,8 @@ onBeforeUnmount(() => {
 }
 
 .support-transfer-dialog :deep(.el-dialog),
-.support-server-manager-dialog :deep(.el-dialog) {
+.support-server-manager-dialog :deep(.el-dialog),
+.support-hardware-asset-dialog :deep(.el-dialog) {
   overflow: hidden;
   max-width: calc(100vw - 24px);
   border-radius: 30px;
@@ -9838,24 +10606,28 @@ onBeforeUnmount(() => {
 }
 
 .support-transfer-dialog :deep(.el-dialog__header),
-.support-server-manager-dialog :deep(.el-dialog__header) {
+.support-server-manager-dialog :deep(.el-dialog__header),
+.support-hardware-asset-dialog :deep(.el-dialog__header) {
   margin-right: 0;
   padding: 0;
 }
 
 .support-transfer-dialog :deep(.el-dialog__headerbtn),
-.support-server-manager-dialog :deep(.el-dialog__headerbtn) {
+.support-server-manager-dialog :deep(.el-dialog__headerbtn),
+.support-hardware-asset-dialog :deep(.el-dialog__headerbtn) {
   top: 18px;
   right: 18px;
 }
 
 .support-transfer-dialog :deep(.el-dialog__body),
-.support-server-manager-dialog :deep(.el-dialog__body) {
+.support-server-manager-dialog :deep(.el-dialog__body),
+.support-hardware-asset-dialog :deep(.el-dialog__body) {
   padding: 0 24px 24px;
 }
 
 .support-transfer-dialog :deep(.el-dialog__footer),
-.support-server-manager-dialog :deep(.el-dialog__footer) {
+.support-server-manager-dialog :deep(.el-dialog__footer),
+.support-hardware-asset-dialog :deep(.el-dialog__footer) {
   padding: 0 24px 24px;
 }
 
@@ -9870,6 +10642,12 @@ onBeforeUnmount(() => {
 
 .transfer-dialog-hero--server {
   background: linear-gradient(135deg, #edf6ff 0%, #f6fbff 54%, #eef7ff 100%);
+}
+
+.transfer-dialog-hero--hardware {
+  background:
+    linear-gradient(135deg, rgba(45, 126, 247, 0.12), transparent 42%),
+    linear-gradient(135deg, #f7fbff 0%, #ffffff 56%, #eef7f4 100%);
 }
 
 .transfer-dialog-hero--contact {
@@ -9941,6 +10719,194 @@ onBeforeUnmount(() => {
 .server-manager-hero__stats span {
   margin-top: 5px;
   font-size: 12px;
+  text-align: center;
+}
+
+.hardware-asset-shell {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 14px;
+  padding-top: 18px;
+}
+
+.hardware-asset-filter,
+.hardware-asset-table-panel {
+  border: 1px solid #dce8f4;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.hardware-asset-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+
+.hardware-asset-filter__head {
+  display: grid;
+  gap: 4px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #edf2f8;
+}
+
+.hardware-asset-filter__head strong,
+.hardware-asset-toolbar strong {
+  color: #193a5f;
+  font-size: 15px;
+}
+
+.hardware-asset-filter__head span,
+.hardware-asset-toolbar span {
+  color: #73869d;
+  font-size: 12px;
+}
+
+.hardware-asset-filter label {
+  color: #536b83;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hardware-asset-filter__summary {
+  display: grid;
+  gap: 6px;
+  margin-top: auto;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px dashed #cddbeb;
+  background: #f7fbff;
+}
+
+.hardware-asset-filter__summary strong {
+  color: #1d5fbf;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.hardware-asset-filter__summary span {
+  color: #6f8195;
+  font-size: 12px;
+}
+
+.hardware-asset-table-panel {
+  min-width: 0;
+  padding: 14px;
+}
+
+.hardware-asset-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.hardware-asset-toolbar > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.hardware-asset-cell {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.hardware-asset-cell strong {
+  overflow: hidden;
+  color: #1e354f;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hardware-asset-cell span {
+  overflow: hidden;
+  color: #718398;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hardware-network-chip {
+  display: inline-flex;
+  max-width: 92px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--network-border, #c8d8ea);
+  background: var(--network-chip-bg, #eef5ff);
+  color: var(--network-text, #315d93);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.equipment-type-dialog :deep(.el-dialog) {
+  border-radius: 18px;
+}
+
+.equipment-type-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.equipment-type-card {
+  display: grid;
+  gap: 8px;
+  min-height: 112px;
+  padding: 16px;
+  text-align: left;
+  border: 1px solid #dbe7f3;
+  border-radius: 14px;
+  background: #fbfdff;
+  cursor: pointer;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.equipment-type-card:hover {
+  border-color: #2d7ef7;
+  box-shadow: 0 10px 24px rgba(45, 126, 247, 0.12);
+  transform: translateY(-1px);
+}
+
+.equipment-type-card strong {
+  color: #173657;
+  font-size: 15px;
+}
+
+.equipment-type-card span {
+  color: #6f8195;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.hardware-asset-form-dialog :deep(.el-dialog) {
+  border-radius: 18px;
+}
+
+.hardware-form-section {
+  margin-bottom: 14px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid #e1ebf5;
+  background: #fbfdff;
+}
+
+.hardware-form-section > strong {
+  display: block;
+  margin-bottom: 12px;
+  color: #193a5f;
+  font-size: 14px;
+}
+
+.hardware-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 12px;
 }
 
 .server-manager-shell {

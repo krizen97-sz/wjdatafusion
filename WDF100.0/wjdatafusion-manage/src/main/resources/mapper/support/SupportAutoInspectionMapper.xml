@@ -80,6 +80,32 @@
         order by st.step_target_id asc
     </select>
 
+    <select id="selectServerAssetTreeRows" resultType="java.util.HashMap">
+        select si.site_id as siteId,
+               si.site_name as siteName,
+               si.site_code as siteCode,
+               case when p.platform_level = 'MAIN' then p.platform_id else mp.platform_id end as mainPlatformId,
+               case when p.platform_level = 'MAIN' then p.platform_name else mp.platform_name end as mainPlatformName,
+               case when p.platform_level = 'SUB' then p.platform_id else null end as subPlatformId,
+               case when p.platform_level = 'SUB' then p.platform_name else null end as subPlatformName,
+               s.server_id as serverId,
+               s.server_name as serverName,
+               s.server_address as serverAddress,
+               s.ssh_port as sshPort,
+               s.os_type as osType,
+               s.status as status
+        from sup_server s
+        left join sup_site si on si.site_id = s.site_id
+        left join sup_platform_server_rel psr on psr.server_id = s.server_id
+        left join sup_platform p on p.platform_id = psr.platform_id
+        left join sup_platform mp on mp.platform_id = p.parent_platform_id
+        where s.status = '0'
+        order by si.site_name asc, si.site_id asc,
+                 mainPlatformName asc, mainPlatformId asc,
+                 subPlatformName asc, subPlatformId asc,
+                 s.server_address asc, s.server_id asc
+    </select>
+
     <insert id="insertTarget" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="targetId">
         insert into sup_auto_inspection_target
         <trim prefix="(" suffix=")" suffixOverrides=",">
@@ -434,16 +460,18 @@
     </insert>
 
     <select id="selectTargetResultsByRecordId" parameterType="Long" resultType="java.util.HashMap">
-        select result_id as resultId, record_id as recordId, step_result_id as stepResultId,
-               target_id as targetId, target_name as targetName, target_type as targetType,
-               result_status as resultStatus, actual_value as actualValue,
-               actual_unit as actualUnit, result_detail as resultDetail,
-               error_message as errorMessage, create_by as createBy,
-               create_time as createTime, update_by as updateBy,
-               update_time as updateTime, remark
-        from sup_auto_inspection_target_result
-        where record_id = #{recordId}
-        order by result_id asc
+        select tr.result_id as resultId, tr.record_id as recordId, tr.step_result_id as stepResultId,
+               sr.step_name as stepName, sr.tool_code as toolCode, sr.tool_name as toolName,
+               sr.sort_order as sortOrder, tr.target_id as targetId, tr.target_name as targetName,
+               tr.target_type as targetType, tr.result_status as resultStatus, tr.actual_value as actualValue,
+               tr.actual_unit as actualUnit, tr.result_detail as resultDetail,
+               tr.error_message as errorMessage, tr.create_by as createBy,
+               tr.create_time as createTime, tr.update_by as updateBy,
+               tr.update_time as updateTime, tr.remark
+        from sup_auto_inspection_target_result tr
+        left join sup_auto_inspection_step_result sr on sr.step_result_id = tr.step_result_id
+        where tr.record_id = #{recordId}
+        order by sr.sort_order asc, tr.result_id asc
     </select>
 
     <insert id="insertTargetResult" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="resultId">

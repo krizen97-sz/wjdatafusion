@@ -10,6 +10,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.SecureRandom;
+import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -19,9 +21,15 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 import jakarta.servlet.http.HttpServletResponse;
 import org.apache.commons.net.ftp.FTPClient;
 import org.apache.commons.net.ftp.FTPFile;
@@ -29,6 +37,8 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -49,10 +59,15 @@ import com.jcraft.jsch.Channel;
 import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.Session;
+import com.hikvision.artemis.sdk.ArtemisHttpUtil;
+import com.hikvision.artemis.sdk.config.ArtemisConfig;
+import com.hikvision.artemis.sdk.constant.ContentType;
 
 @Service
 public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionService
 {
+    private static final Logger log = LoggerFactory.getLogger(SupportAutoInspectionServiceImpl.class);
+
     private static final String SOURCE_MANUAL = "MANUAL";
     private static final String SOURCE_AUTO = "AUTO";
     private static final String RESULT_NORMAL = "1";
@@ -106,6 +121,64 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         Map<String, Object> target = requireTarget(targetId);
         maskTargetSecret(target);
         return target;
+    }
+
+    @Override
+    public List<Map<String, Object>> selectServerAssetTree()
+    {
+        List<Map<String, Object>> rows = autoInspectionMapper.selectServerAssetTreeRows();
+        Map<String, Map<String, Object>> siteMap = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> platformMap = new HashMap<>();
+        for (Map<String, Object> row : rows)
+        {
+            Long siteId = toLong(row.get("siteId"));
+            String siteKey = "site-" + (siteId == null ? "unknown" : siteId);
+            Map<String, Object> siteNode = siteMap.computeIfAbsent(siteKey, key ->
+                    treeNode(key, StringUtils.defaultIfBlank(str(row, "siteName"), "未归属现场"), "SITE", null, true));
+            siteNode.put("siteId", siteId);
+            siteNode.put("siteCode", row.get("siteCode"));
+
+            Long mainPlatformId = toLong(row.get("mainPlatformId"));
+            String mainKey = siteKey + "-main-" + (mainPlatformId == null ? "none" : mainPlatformId);
+            Map<String, Object> mainNode = platformMap.computeIfAbsent(mainKey, key ->
+            {
+                Map<String, Object> node = treeNode(key,
+                        mainPlatformId == null ? "未关联平台" : StringUtils.defaultIfBlank(str(row, "mainPlatformName"), "未命名主平台"),
+                        "MAIN_PLATFORM", null, true);
+                node.put("platformId", mainPlatformId);
+                children(siteNode).add(node);
+                return node;
+            });
+
+            Long subPlatformId = toLong(row.get("subPlatformId"));
+            Map<String, Object> parentNode = mainNode;
+            if (subPlatformId != null)
+            {
+                String subKey = mainKey + "-sub-" + subPlatformId;
+                parentNode = platformMap.computeIfAbsent(subKey, key ->
+                {
+                    Map<String, Object> node = treeNode(key, StringUtils.defaultIfBlank(str(row, "subPlatformName"), "未命名子平台"),
+                            "SUB_PLATFORM", null, true);
+                    node.put("platformId", subPlatformId);
+                    children(mainNode).add(node);
+                    return node;
+                });
+            }
+
+            Long serverId = toLong(row.get("serverId"));
+            if (serverId != null)
+            {
+                Map<String, Object> serverNode = treeNode("server-" + serverId,
+                        buildServerAssetLabel(row), "SERVER", serverId, false);
+                serverNode.put("serverId", serverId);
+                serverNode.put("serverName", row.get("serverName"));
+                serverNode.put("serverAddress", row.get("serverAddress"));
+                serverNode.put("sshPort", row.get("sshPort"));
+                serverNode.put("osType", row.get("osType"));
+                children(parentNode).add(serverNode);
+            }
+        }
+        return new ArrayList<>(siteMap.values());
     }
 
     @Override
@@ -357,7 +430,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             exportList.add(toExportVo(selectRecordDetail(toLong(item.get("recordId")))));
         }
         ExcelUtil<SupportAutoInspectionExportVo> util = new ExcelUtil<>(SupportAutoInspectionExportVo.class);
-        util.exportExcel(response, exportList, "自动化巡检记录");
+        util.exportExcel(response, exportList, "自动化巡检记录_" + DateTimeFormatter.ofPattern("yyyyMMdd").format(LocalDateTime.now()));
     }
 
     private Map<String, Object> runInspection(Long templateId, Map<String, Object> plan, String sourceType, String executorName)
@@ -517,7 +590,100 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         LocalDateTime begin = end.minusMinutes(toInt(step.get("timeWindowMinutes"), 0));
         String url = replaceTimePlaceholders(str(target, "url"), begin, end);
         String body = replaceTimePlaceholders(StringUtils.defaultString(str(target, "extraParams")), begin, end);
-        HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(timeout)).build();
+        boolean useHik = StringUtils.isNotBlank(str(target, "appKey")) && StringUtils.isNotBlank(str(target, "secret"));
+        if (useHik)
+        {
+            return checkHttpCountByHikHttpClient(step, target, url, body, timeout);
+        }
+        return checkHttpCountByHttpClient(step, target, url, body, timeout);
+    }
+
+    private TargetCheckResult checkHttpCountByHikHttpClient(Map<String, Object> step, Map<String, Object> target, String url, String body, int timeout) throws Exception
+    {
+        String method = StringUtils.defaultIfBlank(str(target, "httpMethod"), "POST").toUpperCase();
+        HttpEndpoint endpoint = resolveHikEndpoint(url, str(target, "host"));
+        ArtemisConfig config = new ArtemisConfig();
+        config.setHost(endpoint.host);
+        config.setAppKey(str(target, "appKey"));
+        config.setAppSecret(str(target, "secret"));
+        if (timeout > 0)
+        {
+            com.hikvision.artemis.sdk.constant.Constants.DEFAULT_TIMEOUT = timeout * 1000;
+            //com.hikvision.artemis.sdk.constant.Constants.SOCKET_TIMEOUT = timeout * 1000;
+        }
+
+        String endpointPath = StringUtils.defaultIfBlank(endpoint.path, "/");
+        Map<String, String> path = new HashMap<>();
+        path.put(endpoint.schema, endpointPath);
+        Map<String, String> headers = parseExtraHeaders(target);
+        Map<String, String> queryParams = parseQueryParamsToMap(endpoint.queryString);
+        Map<String, Object> queryParamsForGet = new HashMap<>();
+        queryParamsForGet.putAll(queryParams);
+        String contentType = getHeaderValue(headers, "Content-Type", "content-type");
+        String accept = getHeaderValue(headers, "Accept", "accept");
+        if (StringUtils.isBlank(contentType))
+        {
+            contentType = ContentType.CONTENT_TYPE_JSON;
+        }
+        if (StringUtils.isBlank(accept))
+        {
+            accept = "*/*";
+        }
+        String responseBody;
+        try
+        {
+            if ("GET".equalsIgnoreCase(method))
+            {
+                responseBody = ArtemisHttpUtil.doGetArtemis(config, path, queryParamsForGet, accept, contentType, headers);
+            }
+            else
+            {
+                if (StringUtils.isBlank(body))
+                {
+                    body = "{}";
+                }
+                if (isFormContentType(contentType))
+                {
+                    Map<String, String> bodyParams = parseBodyParams(body);
+                    responseBody = ArtemisHttpUtil.doPostFormArtemis(config, path, bodyParams, queryParams, accept, contentType, headers);
+                }
+                else
+                {
+                    responseBody = ArtemisHttpUtil.doPostStringArtemis(config, path, body, queryParams, accept, contentType, headers);
+                }
+            }
+            if (StringUtils.isBlank(responseBody))
+            {
+                throw new ServiceException("接口返回空响应");
+            }
+        }
+        catch (Exception e)
+        {
+            log.error("海康HTTP巡检调用失败, url={}, method={}, error={}", endpoint.originalUrl, method, e.getMessage(), e);
+            throw e;
+        }
+
+        String resultPath = str(target, "resultPath");
+        BigDecimal value;
+        try
+        {
+            value = extractNumber(responseBody, resultPath);
+        }
+        catch (ServiceException e)
+        {
+            String responsePreview = abbreviate(responseBody);
+            log.error("HTTP巡检计数解析失败, url={}, resultPath={}, responseBody={}", endpoint.originalUrl, resultPath, responsePreview, e);
+            throw e;
+        }
+        return TargetCheckResult.normal(target, value, str(step, "thresholdUnit"),
+                "调用方式：海康Artemis " + method + "；接口路径：" + endpointPath
+                        + "；结果路径：" + StringUtils.defaultIfBlank(resultPath, "-")
+                        + "；返回计数：" + formatDecimal(value));
+    }
+
+    private TargetCheckResult checkHttpCountByHttpClient(Map<String, Object> step, Map<String, Object> target, String url, String body, int timeout) throws Exception
+    {
+        HttpClient client = buildHttpClient(timeout, false);
         HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofSeconds(timeout))
                 .header("Content-Type", "application/json");
@@ -537,13 +703,354 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             builder.GET();
         }
-        HttpResponse<String> response = client.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        HttpRequest request = builder.build();
+        HttpResponse<String> response;
+        boolean trustedInternalCertificate = false;
+        try
+        {
+            response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        }
+        catch (Exception e)
+        {
+            if (!isSslCertificateException(e))
+            {
+                throw e;
+            }
+            response = buildHttpClient(timeout, true).send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            trustedInternalCertificate = true;
+        }
         if (response.statusCode() < 200 || response.statusCode() >= 300)
         {
             throw new ServiceException("HTTP状态码异常：" + response.statusCode());
         }
-        BigDecimal value = extractNumber(response.body(), str(target, "resultPath"));
-        return TargetCheckResult.normal(target, value, str(step, "thresholdUnit"), "接口返回计数 " + formatDecimal(value));
+        String responseBody = response.body();
+        String resultPath = str(target, "resultPath");
+        BigDecimal value;
+        try
+        {
+            value = extractNumber(responseBody, resultPath);
+        }
+        catch (ServiceException e)
+        {
+            String responsePreview = abbreviate(responseBody);
+            log.error("HTTP巡检计数解析失败, url={}, resultPath={}, responseBody={}", url, resultPath, responsePreview, e);
+            throw e;
+        }
+        String certNote = trustedInternalCertificate ? "（已兼容内网自签名证书）" : "";
+        return TargetCheckResult.normal(target, value, str(step, "thresholdUnit"),
+                "调用方式：HTTP " + StringUtils.defaultIfBlank(str(target, "httpMethod"), "POST").toUpperCase()
+                        + "；接口地址：" + url
+                        + "；结果路径：" + StringUtils.defaultIfBlank(resultPath, "-")
+                        + "；返回计数：" + formatDecimal(value) + certNote);
+    }
+
+    private HttpEndpoint resolveHikEndpoint(String requestUrl, String hostInput)
+    {
+        String trimmedUrl = StringUtils.trimToEmpty(requestUrl);
+        if (StringUtils.isBlank(trimmedUrl))
+        {
+            throw new ServiceException("HTTP目标URL不能为空");
+        }
+        String schema;
+        String host;
+        String path;
+        String query = null;
+        String originalUrl = trimmedUrl;
+
+        if (trimmedUrl.startsWith("http://") || trimmedUrl.startsWith("https://"))
+        {
+            URI uri = URI.create(trimmedUrl);
+            schema = uri.getScheme() + "://";
+            host = StringUtils.trimToEmpty(uri.getHost());
+            if (uri.getPort() > 0)
+            {
+                host = host + ":" + uri.getPort();
+            }
+            path = StringUtils.defaultIfBlank(uri.getRawPath(), "/");
+            query = uri.getRawQuery();
+            if (StringUtils.isBlank(host))
+            {
+                host = sanitizeHikHost(hostInput);
+            }
+        }
+        else
+        {
+            schema = "https://";
+            String candidateHost = sanitizeHikHost(hostInput);
+            if (StringUtils.isNotBlank(candidateHost))
+            {
+                schema = "https://";
+            }
+            if (StringUtils.isBlank(candidateHost))
+            {
+                throw new ServiceException("HTTP目标主机不能为空");
+            }
+            host = candidateHost;
+            String[] pair = trimmedUrl.split("\\?", 2);
+            path = pair[0];
+            if (pair.length > 1)
+            {
+                query = pair[1];
+            }
+            if (!path.startsWith("/"))
+            {
+                path = "/" + path;
+            }
+        }
+
+        if (StringUtils.isBlank(path))
+        {
+            path = "/";
+        }
+        if (StringUtils.isBlank(schema))
+        {
+            schema = "https://";
+        }
+        if (StringUtils.isBlank(host))
+        {
+            throw new ServiceException("HTTP目标主机不能为空");
+        }
+
+        return new HttpEndpoint(originalUrl, schema, host, path, query);
+    }
+
+    private String sanitizeHikHost(String host)
+    {
+        String normalized = StringUtils.trimToEmpty(host);
+        if (StringUtils.isBlank(normalized))
+        {
+            return normalized;
+        }
+        if (normalized.startsWith("http://"))
+        {
+            return normalized.substring(7).trim();
+        }
+        if (normalized.startsWith("https://"))
+        {
+            return normalized.substring(8).trim();
+        }
+        return normalized;
+    }
+
+    private Map<String, String> parseExtraHeaders(Map<String, Object> target)
+    {
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Accept", "*/*");
+        Object extra = target.get("extraParams");
+        if (extra == null)
+        {
+            return headers;
+        }
+        try
+        {
+            Map<String, Object> extraMap = JSON.parseObject(extra.toString(), Map.class);
+            if (extraMap == null)
+            {
+                return headers;
+            }
+            Object headersObj = extraMap.get("headers");
+            if (headersObj instanceof Map)
+            {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> typedHeaders = (Map<String, Object>) headersObj;
+                typedHeaders.forEach((k, v) ->
+                {
+                    if (StringUtils.isBlank(k) || v == null)
+                    {
+                        return;
+                    }
+                    headers.put(k, v.toString());
+                });
+            }
+            if (extraMap.get("x-ca-path") != null)
+            {
+                headers.put("x-ca-path", extraMap.get("x-ca-path").toString());
+            }
+            if (extraMap.get("xCaPath") != null)
+            {
+                headers.put("x-ca-path", extraMap.get("xCaPath").toString());
+            }
+        }
+        catch (Exception ignored)
+        {
+            // 仅按字符串体提交，不做额外 header 注入
+        }
+        return headers;
+    }
+
+    private Map<String, String> parseQueryParamsToMap(String queryString)
+    {
+        Map<String, String> query = new HashMap<>();
+        if (StringUtils.isBlank(queryString))
+        {
+            return query;
+        }
+        String[] pairs = queryString.split("&");
+        for (String pair : pairs)
+        {
+            if (StringUtils.isBlank(pair))
+            {
+                continue;
+            }
+            String[] kv = pair.split("=", 2);
+            if (kv.length == 1)
+            {
+                query.put(kv[0], StringUtils.EMPTY);
+            }
+            else
+            {
+                query.put(kv[0], kv[1]);
+            }
+        }
+        return query;
+    }
+
+    private boolean isFormContentType(String contentType)
+    {
+        return StringUtils.containsIgnoreCase(contentType, "application/x-www-form-urlencoded")
+                || StringUtils.containsIgnoreCase(contentType, "multipart/form-data");
+    }
+
+    private String getHeaderValue(Map<String, String> map, String... keys)
+    {
+        if (map == null || map.isEmpty() || keys == null)
+        {
+            return StringUtils.EMPTY;
+        }
+        for (String key : keys)
+        {
+            if (StringUtils.isBlank(key))
+            {
+                continue;
+            }
+            if (map.containsKey(key))
+            {
+                return StringUtils.trimToEmpty(map.remove(key));
+            }
+            String lower = key.toLowerCase();
+            if (map.containsKey(lower))
+            {
+                return StringUtils.trimToEmpty(map.remove(lower));
+            }
+        }
+        return StringUtils.EMPTY;
+    }
+
+    private Map<String, String> parseBodyParams(String body)
+    {
+        if (StringUtils.isBlank(body))
+        {
+            return new HashMap<>();
+        }
+        String trimBody = body.trim();
+        if (trimBody.startsWith("{") || trimBody.startsWith("["))
+        {
+            try
+            {
+                Map<String, Object> jsonMap = JSON.parseObject(trimBody, Map.class);
+                if (jsonMap == null)
+                {
+                    return new HashMap<>();
+                }
+                Map<String, String> params = new HashMap<>();
+                jsonMap.forEach((k, v) ->
+                {
+                    params.put(k, v == null ? StringUtils.EMPTY : String.valueOf(v));
+                });
+                return params;
+            }
+            catch (Exception ignored)
+            {
+                // 继续按 key1=value1&key2=value2 解析
+            }
+        }
+        Map<String, String> params = new HashMap<>();
+        String[] pairs = trimBody.split("&");
+        for (String pair : pairs)
+        {
+            if (StringUtils.isBlank(pair))
+            {
+                continue;
+            }
+            String[] kv = pair.split("=", 2);
+            if (kv.length == 1)
+            {
+                params.put(kv[0], StringUtils.EMPTY);
+            }
+            else
+            {
+                params.put(kv[0], kv[1]);
+            }
+        }
+        return params;
+    }
+
+    private static class HttpEndpoint
+    {
+        private final String originalUrl;
+        private final String schema;
+        private final String host;
+        private final String path;
+        private final String queryString;
+
+        private HttpEndpoint(String originalUrl, String schema, String host, String path, String queryString)
+        {
+            this.originalUrl = originalUrl;
+            this.schema = schema;
+            this.host = host;
+            this.path = path;
+            this.queryString = StringUtils.defaultString(queryString);
+        }
+    }
+
+    private HttpClient buildHttpClient(int timeout, boolean trustInternalCertificate) throws Exception
+    {
+        HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(timeout));
+        if (!trustInternalCertificate)
+        {
+            return builder.build();
+        }
+        SSLContext sslContext = SSLContext.getInstance("TLS");
+        sslContext.init(null, new TrustManager[] { new X509TrustManager()
+        {
+            @Override
+            public void checkClientTrusted(X509Certificate[] chain, String authType)
+            {
+            }
+
+            @Override
+            public void checkServerTrusted(X509Certificate[] chain, String authType)
+            {
+            }
+
+            @Override
+            public X509Certificate[] getAcceptedIssuers()
+            {
+                return new X509Certificate[0];
+            }
+        } }, new SecureRandom());
+        SSLParameters sslParameters = new SSLParameters();
+        sslParameters.setEndpointIdentificationAlgorithm(null);
+        return builder.sslContext(sslContext).sslParameters(sslParameters).build();
+    }
+
+    private boolean isSslCertificateException(Throwable throwable)
+    {
+        Throwable current = throwable;
+        while (current != null)
+        {
+            if (current instanceof SSLException)
+            {
+                return true;
+            }
+            String message = current.getMessage();
+            if (StringUtils.containsAnyIgnoreCase(message, "PKIX", "certification path", "valid certification", "unable to find valid certification path", "No subject alternative names", "hostname"))
+            {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private TargetCheckResult checkFtpFileCount(Map<String, Object> step, Map<String, Object> target) throws Exception
@@ -578,7 +1085,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                     }
                 }
             }
-            return TargetCheckResult.normal(target, new BigDecimal(count), "个", "文件数量 " + count);
+            return TargetCheckResult.normal(target, new BigDecimal(count), "个",
+                    "调用方式：FTP目录统计；主机：" + str(target, "host") + ":" + toInt(target.get("port"), 21)
+                            + "；目录：" + StringUtils.defaultIfBlank(path, "/")
+                            + "；文件数量：" + count);
         }
         finally
         {
@@ -600,15 +1110,20 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         String filePattern = str(params, "filePattern");
         String command = "find " + shellQuote(path) + (recursive ? "" : " -maxdepth 1") + " -type f"
                 + (StringUtils.isBlank(filePattern) ? "" : " -name " + shellQuote(filePattern)) + " | wc -l";
-        String output = executeServerCommand(server, command, resolveTimeout(step)).trim();
+        String output = executeServerCommand(server, target, command, resolveTimeout(step)).trim();
         BigDecimal value = new BigDecimal(output.replaceAll("[^0-9]", ""));
-        return TargetCheckResult.normal(target, value, "个", "目录 " + path + " 文件数量 " + value.toPlainString());
+        return TargetCheckResult.normal(target, value, "个",
+                "调用方式：SSH目录统计；服务器：" + StringUtils.defaultIfBlank(server.getServerName(), server.getServerAddress())
+                        + "；目录：" + path
+                        + "；递归：" + (recursive ? "是" : "否")
+                        + (StringUtils.isBlank(filePattern) ? "" : "；文件匹配：" + filePattern)
+                        + "；文件数量：" + value.toPlainString());
     }
 
     private TargetCheckResult checkServerDisk(Map<String, Object> step, Map<String, Object> target) throws Exception
     {
         SupportServer server = requireServer(target);
-        String output = executeServerCommand(server, "df -P", resolveTimeout(step));
+        String output = executeServerCommand(server, target, "df -P", resolveTimeout(step));
         String targetPath = resolvePath(step, target);
         List<DiskLine> lines = readDiskLines(output);
         BigDecimal maxUsage = BigDecimal.ZERO;
@@ -637,7 +1152,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             throw new ServiceException("未匹配到可检测磁盘挂载点");
         }
-        return TargetCheckResult.normal(target, maxUsage, "%", detail.toString());
+        return TargetCheckResult.normal(target, maxUsage, "%",
+                "调用方式：SSH磁盘检测；服务器：" + StringUtils.defaultIfBlank(server.getServerName(), server.getServerAddress())
+                        + "；挂载点：" + StringUtils.defaultIfBlank(targetPath, "全部")
+                        + "；检测结果：" + detail);
     }
 
     private TargetCheckResult checkKafkaLag(Map<String, Object> step, Map<String, Object> target)
@@ -684,7 +1202,13 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             }
         }
         BigDecimal average = partitionCount == 0 ? BigDecimal.ZERO : new BigDecimal(sumLag).divide(new BigDecimal(partitionCount), 2, RoundingMode.HALF_UP);
-        return TargetCheckResult.normal(target, new BigDecimal(maxLag), "条", "最大积压 " + maxLag + "，平均积压 " + average);
+        return TargetCheckResult.normal(target, new BigDecimal(maxLag), "条",
+                "调用方式：Kafka消费积压；Bootstrap：" + str(target, "host")
+                        + "；Topic：" + topic
+                        + "；消费组：" + group
+                        + "；分区数：" + partitionCount
+                        + "；最大积压：" + maxLag
+                        + "；平均积压：" + average);
     }
 
     private TargetCheckResult testKafkaTarget(Map<String, Object> target)
@@ -726,7 +1250,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         try
         {
             SupportServer server = requireServer(target);
-            String output = executeServerCommand(server, "echo ok", DEFAULT_TIMEOUT_SECONDS).trim();
+            String output = executeServerCommand(server, target, "echo ok", DEFAULT_TIMEOUT_SECONDS).trim();
             return TargetCheckResult.normal(target, null, "", "服务器连接可用：" + output);
         }
         catch (Exception e)
@@ -866,6 +1390,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 if (toLong(target.get("serverId")) == null)
                 {
                     throw new ServiceException("请选择服务器资产");
+                }
+                requireText(str(target, "username"), "SSH账号不能为空");
+                if (!update)
+                {
+                    requireText(str(target, "password"), "SSH密码不能为空");
                 }
                 requireText(str(target, "path"), "检测路径不能为空");
                 break;
@@ -1044,6 +1573,35 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         template.put("steps", steps);
     }
 
+    private Map<String, Object> treeNode(String id, String label, String type, Long value, boolean disabled)
+    {
+        Map<String, Object> node = new LinkedHashMap<>();
+        node.put("id", id);
+        node.put("value", value == null ? id : value);
+        node.put("label", label);
+        node.put("type", type);
+        node.put("disabled", disabled);
+        node.put("children", new ArrayList<Map<String, Object>>());
+        return node;
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> children(Map<String, Object> node)
+    {
+        return (List<Map<String, Object>>) node.get("children");
+    }
+
+    private String buildServerAssetLabel(Map<String, Object> row)
+    {
+        String name = StringUtils.defaultIfBlank(str(row, "serverName"), str(row, "serverAddress"));
+        String address = str(row, "serverAddress");
+        if (StringUtils.isBlank(address) || name.equals(address))
+        {
+            return name;
+        }
+        return name + "（" + address + "）";
+    }
+
     private void ensureBuiltinTools()
     {
         insertBuiltinTool(TOOL_KAFKA_LAG, "Kafka消费积压检测", TOOL_KAFKA_LAG, "条", RULE_MAX, new BigDecimal("2000"), 10, 0,
@@ -1151,11 +1709,17 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return server;
     }
 
-    private String executeServerCommand(SupportServer server, String command, int timeoutSeconds) throws Exception
+    private String executeServerCommand(SupportServer server, Map<String, Object> target, String command, int timeoutSeconds) throws Exception
     {
-        String password = cryptoService.decrypt(server.getOsPasswordCipher());
+        withPlainSecret(target);
+        String username = StringUtils.defaultIfBlank(str(target, "username"), server.getOsUsername());
+        String password = str(target, "password");
+        if (StringUtils.isBlank(password) && StringUtils.isNotBlank(server.getOsPasswordCipher()))
+        {
+            password = cryptoService.decrypt(server.getOsPasswordCipher());
+        }
         Session session = createSshSession(server.getServerAddress(), server.getSshPort() == null ? 22 : server.getSshPort(),
-                server.getOsUsername(), password, timeoutSeconds);
+                username, password, timeoutSeconds);
         ChannelExec channel = null;
         try
         {
@@ -1301,23 +1865,22 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             throw new ServiceException("接口响应为空");
         }
+        String candidate = responseBody.trim();
+        if ((candidate.startsWith("{") || candidate.startsWith("[")) && (candidate.endsWith("}") || candidate.endsWith("]")))
+        {
+            try
+            {
+                return extractJsonNumber(JSON.parseObject(responseBody), resultPath);
+            }
+            catch (ServiceException e)
+            {
+                String preview = abbreviate(responseBody);
+                throw new ServiceException("无法从响应中解析计数字段：" + resultPath + "。响应内容: " + preview);
+            }
+        }
         try
         {
-            JSONObject json = JSON.parseObject(responseBody);
-            Object value = findJsonValue(json, StringUtils.defaultIfBlank(resultPath, "data.total"));
-            if (value == null)
-            {
-                value = findJsonValue(json, "total");
-            }
-            if (value == null)
-            {
-                value = findJsonValue(json, "data");
-            }
-            if (value == null)
-            {
-                throw new ServiceException("无法从响应中解析计数字段：" + resultPath);
-            }
-            return new BigDecimal(value.toString());
+            return extractJsonNumber(JSON.parseObject(responseBody), resultPath);
         }
         catch (ServiceException e)
         {
@@ -1325,8 +1888,46 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         }
         catch (Exception e)
         {
-            return new BigDecimal(responseBody.trim());
+            return parsePlainNumber(responseBody, resultPath);
         }
+    }
+
+    private BigDecimal extractJsonNumber(JSONObject json, String resultPath)
+    {
+        Object value = findJsonValue(json, StringUtils.defaultIfBlank(resultPath, "data.total"));
+        if (value == null)
+        {
+            value = findJsonValue(json, "total");
+        }
+        if (value == null)
+        {
+            value = findJsonValue(json, "data");
+        }
+        if (value == null)
+        {
+            throw new ServiceException("无法从响应中解析计数字段：" + resultPath);
+        }
+        return new BigDecimal(value.toString());
+    }
+
+    private BigDecimal parsePlainNumber(String responseBody, String resultPath)
+    {
+        String trimmed = responseBody.trim();
+        if (StringUtils.isNumeric(trimmed) || (trimmed.startsWith("-") && StringUtils.isNumeric(trimmed.substring(1))))
+        {
+            return new BigDecimal(trimmed);
+        }
+        String preview = abbreviate(responseBody);
+        throw new ServiceException("无法从响应中解析计数字段：" + resultPath + "，响应内容: " + preview);
+    }
+
+    private String abbreviate(String value)
+    {
+        if (StringUtils.isBlank(value))
+        {
+            return StringUtils.EMPTY;
+        }
+        return StringUtils.abbreviate(value.replaceAll("\\r?\\n", "\\\\n"), 2048);
     }
 
     private Object findJsonValue(JSONObject json, String path)
@@ -1429,7 +2030,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         List<String> targetSummaries = new ArrayList<>();
         for (Map<String, Object> target : castList(detail.get("targetResults")))
         {
-            targetSummaries.add(str(target, "targetName") + "：" + str(target, "resultDetail") + StringUtils.defaultIfBlank(str(target, "errorMessage"), ""));
+            String error = StringUtils.isBlank(str(target, "errorMessage")) ? "" : "；异常原因：" + str(target, "errorMessage");
+            targetSummaries.add("步骤：" + str(target, "stepName")
+                    + "；目标：" + str(target, "targetName")
+                    + "；调用信息：" + str(target, "resultDetail") + error);
         }
         vo.setStepSummary(StringUtils.join(stepSummaries, "；"));
         vo.setTargetSummary(StringUtils.join(targetSummaries, "；"));

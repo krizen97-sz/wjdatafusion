@@ -18,6 +18,8 @@ public interface SupportAutoInspectionMapper
 
     List<Map<String, Object>> selectEnabledTargetsByStepId(Long stepId);
 
+    List<Map<String, Object>> selectServerAssetTreeRows();
+
     int insertTarget(Map<String, Object> target);
 
     int updateTarget(Map<String, Object> target);

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportPlatformAssetRelMapper">
+
+    <insert id="insertSupportPlatformAssetRel" parameterType="SupportPlatformAssetRel" useGeneratedKeys="true" keyProperty="relId">
+        insert into sup_platform_asset_rel(platform_id, asset_id, create_by, create_time)
+        values(#{platformId}, #{assetId}, #{createBy}, #{createTime})
+    </insert>
+
+    <delete id="deleteSupportPlatformAssetRel">
+        delete from sup_platform_asset_rel where platform_id = #{platformId} and asset_id = #{assetId}
+    </delete>
+
+    <select id="countByPlatformAndAsset" resultType="int">
+        select count(1) from sup_platform_asset_rel where platform_id = #{platformId} and asset_id = #{assetId}
+    </select>
+
+    <delete id="deleteByPlatformId" parameterType="Long">
+        delete from sup_platform_asset_rel where platform_id = #{platformId}
+    </delete>
+
+    <delete id="deleteByAssetId" parameterType="Long">
+        delete from sup_platform_asset_rel where asset_id = #{assetId}
+    </delete>
+
+    <delete id="deleteBySiteIds" parameterType="String">
+        delete from sup_platform_asset_rel
+        where asset_id in (
+            select asset_id from sup_hardware_asset where site_id in
+            <foreach item="siteId" collection="array" open="(" separator="," close=")">
+                #{siteId}
+            </foreach>
+        )
+    </delete>
+</mapper>

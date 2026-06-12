@@ -72,6 +72,11 @@ public abstract class AbstractQuartzJob implements Job
         Date startTime = threadLocal.get();
         threadLocal.remove();
 
+        if (startTime == null)
+        {
+            startTime = new Date();
+        }
+
         final SysJobLog sysJobLog = new SysJobLog();
         sysJobLog.setJobName(sysJob.getJobName());
         sysJobLog.setJobGroup(sysJob.getJobGroup());
@@ -91,8 +96,15 @@ public abstract class AbstractQuartzJob implements Job
             sysJobLog.setStatus(Constants.SUCCESS);
         }
 
-        // 写入数据库当中
-        SpringUtils.getBean(ISysJobLogService.class).addJobLog(sysJobLog);
+        try
+        {
+            // 写入数据库当中
+            SpringUtils.getBean(ISysJobLogService.class).addJobLog(sysJobLog);
+        }
+        catch (Exception ex)
+        {
+            log.error("Quartz任务执行日志写入失败，任务：{}，异常：{}", sysJob.getJobName(), ex.getMessage(), ex);
+        }
     }
 
     /**

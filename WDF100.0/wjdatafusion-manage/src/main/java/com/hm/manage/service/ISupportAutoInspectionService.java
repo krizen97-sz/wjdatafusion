@@ -12,6 +12,8 @@ public interface ISupportAutoInspectionService
 
     Map<String, Object> selectTargetById(Long targetId);
 
+    List<Map<String, Object>> selectServerAssetTree();
+
     int insertTarget(Map<String, Object> target);
 
     int updateTarget(Map<String, Object> target);

@@ -13,6 +13,13 @@
 
     <dependencies>
         <dependency>
+            <groupId>com.hikvision.ga</groupId>
+            <artifactId>artemis-http-client</artifactId>
+            <version>1.1.15.RELEASE</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/src/main/resources/lib/artemis-http-client-1.1.15.RELEASE.jar</systemPath>
+        </dependency>
+        <dependency>
             <groupId>com.hm</groupId>
             <artifactId>wjdatafusion-framework</artifactId>
         </dependency>
@@ -45,6 +52,23 @@
             <groupId>com.jcraft</groupId>
             <artifactId>jsch</artifactId>
         </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpclient</artifactId>
+            <version>4.5.14</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpmime</artifactId>
+            <version>4.5.14</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.12.0</version>
+        </dependency>
+
+
     </dependencies>
 
     <properties>

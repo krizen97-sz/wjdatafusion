@@ -1,0 +1,222 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportHardwareAssetMapper">
+
+    <resultMap id="SupportHardwareAssetResult" type="SupportHardwareAsset">
+        <result property="assetId" column="asset_id"/>
+        <result property="siteId" column="site_id"/>
+        <result property="assetName" column="asset_name"/>
+        <result property="assetType" column="asset_type"/>
+        <result property="networkEnv" column="network_env"/>
+        <result property="ipAddress" column="ip_address"/>
+        <result property="manageIp" column="manage_ip"/>
+        <result property="macAddress" column="mac_address"/>
+        <result property="manufacturer" column="manufacturer"/>
+        <result property="assetModel" column="asset_model"/>
+        <result property="serialNo" column="serial_no"/>
+        <result property="installLocation" column="install_location"/>
+        <result property="ownerOrg" column="owner_org"/>
+        <result property="ownerContact" column="owner_contact"/>
+        <result property="status" column="status"/>
+        <result property="channelCount" column="channel_count"/>
+        <result property="outputType" column="output_type"/>
+        <result property="terminalType" column="terminal_type"/>
+        <result property="department" column="department"/>
+        <result property="useLocation" column="use_location"/>
+        <result property="switchLevel" column="switch_level"/>
+        <result property="portCount" column="port_count"/>
+        <result property="uplinkDevice" column="uplink_device"/>
+        <result property="vlanInfo" column="vlan_info"/>
+        <result property="gatewayMode" column="gateway_mode"/>
+        <result property="gatewayDirection" column="gateway_direction"/>
+        <result property="gatewayBandwidth" column="gateway_bandwidth"/>
+        <result property="securityZone" column="security_zone"/>
+        <result property="platformId" column="platform_id"/>
+        <result property="platformName" column="platform_name"/>
+        <result property="platformLevel" column="platform_level"/>
+        <result property="mainPlatformId" column="main_platform_id"/>
+        <result property="mainPlatformName" column="main_platform_name"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <sql id="selectSupportHardwareAssetVo">
+        select a.asset_id, a.site_id, a.asset_name, a.asset_type, a.network_env, a.ip_address, a.manage_ip,
+               a.mac_address, a.manufacturer, a.asset_model, a.serial_no, a.install_location, a.owner_org,
+               a.owner_contact, a.status, a.channel_count, a.output_type, a.terminal_type, a.department,
+               a.use_location, a.switch_level, a.port_count, a.uplink_device, a.vlan_info,
+               a.gateway_mode, a.gateway_direction, a.gateway_bandwidth, a.security_zone,
+               rel.platform_id, p.platform_name, p.platform_level,
+               case when p.platform_level = 'MAIN' then p.platform_id else mp.platform_id end as main_platform_id,
+               case when p.platform_level = 'MAIN' then p.platform_name else mp.platform_name end as main_platform_name,
+               a.create_by, a.create_time, a.update_by, a.update_time, a.remark
+        from sup_hardware_asset a
+                 left join sup_platform_asset_rel rel on rel.asset_id = a.asset_id
+                 left join sup_platform p on p.platform_id = rel.platform_id
+                 left join sup_platform mp on mp.platform_id = p.parent_platform_id
+    </sql>
+
+    <select id="selectSupportHardwareAssetByAssetId" parameterType="Long" resultMap="SupportHardwareAssetResult">
+        <include refid="selectSupportHardwareAssetVo"/>
+        where a.asset_id = #{assetId}
+    </select>
+
+    <select id="selectSupportHardwareAssetBySiteAndIp" resultMap="SupportHardwareAssetResult">
+        <include refid="selectSupportHardwareAssetVo"/>
+        where a.site_id = #{siteId}
+          and a.ip_address = #{ipAddress}
+        <if test="assetId != null">
+          and a.asset_id &lt;&gt; #{assetId}
+        </if>
+        limit 1
+    </select>
+
+    <select id="selectSupportHardwareAssetList" parameterType="SupportHardwareAsset" resultMap="SupportHardwareAssetResult">
+        <include refid="selectSupportHardwareAssetVo"/>
+        <where>
+            <if test="siteId != null">and a.site_id = #{siteId}</if>
+            <if test="assetName != null and assetName != ''">and a.asset_name like concat('%', #{assetName}, '%')</if>
+            <if test="assetType != null and assetType != ''">and a.asset_type = #{assetType}</if>
+            <if test="networkEnv != null and networkEnv != ''">and a.network_env = #{networkEnv}</if>
+            <if test="ipAddress != null and ipAddress != ''">and (a.ip_address like concat('%', #{ipAddress}, '%') or a.manage_ip like concat('%', #{ipAddress}, '%'))</if>
+            <if test="status != null and status != ''">and a.status = #{status}</if>
+            <if test="platformId != null">and rel.platform_id = #{platformId}</if>
+            <if test="mainPlatformId != null">and (p.platform_id = #{mainPlatformId} or p.parent_platform_id = #{mainPlatformId})</if>
+        </where>
+        order by a.asset_id desc
+    </select>
+
+    <insert id="insertSupportHardwareAsset" parameterType="SupportHardwareAsset" useGeneratedKeys="true" keyProperty="assetId">
+        insert into sup_hardware_asset
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="siteId != null">site_id,</if>
+            <if test="assetName != null">asset_name,</if>
+            <if test="assetType != null">asset_type,</if>
+            <if test="networkEnv != null">network_env,</if>
+            <if test="ipAddress != null">ip_address,</if>
+            <if test="manageIp != null">manage_ip,</if>
+            <if test="macAddress != null">mac_address,</if>
+            <if test="manufacturer != null">manufacturer,</if>
+            <if test="assetModel != null">asset_model,</if>
+            <if test="serialNo != null">serial_no,</if>
+            <if test="installLocation != null">install_location,</if>
+            <if test="ownerOrg != null">owner_org,</if>
+            <if test="ownerContact != null">owner_contact,</if>
+            <if test="status != null">status,</if>
+            <if test="channelCount != null">channel_count,</if>
+            <if test="outputType != null">output_type,</if>
+            <if test="terminalType != null">terminal_type,</if>
+            <if test="department != null">department,</if>
+            <if test="useLocation != null">use_location,</if>
+            <if test="switchLevel != null">switch_level,</if>
+            <if test="portCount != null">port_count,</if>
+            <if test="uplinkDevice != null">uplink_device,</if>
+            <if test="vlanInfo != null">vlan_info,</if>
+            <if test="gatewayMode != null">gateway_mode,</if>
+            <if test="gatewayDirection != null">gateway_direction,</if>
+            <if test="gatewayBandwidth != null">gateway_bandwidth,</if>
+            <if test="securityZone != null">security_zone,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="siteId != null">#{siteId},</if>
+            <if test="assetName != null">#{assetName},</if>
+            <if test="assetType != null">#{assetType},</if>
+            <if test="networkEnv != null">#{networkEnv},</if>
+            <if test="ipAddress != null">#{ipAddress},</if>
+            <if test="manageIp != null">#{manageIp},</if>
+            <if test="macAddress != null">#{macAddress},</if>
+            <if test="manufacturer != null">#{manufacturer},</if>
+            <if test="assetModel != null">#{assetModel},</if>
+            <if test="serialNo != null">#{serialNo},</if>
+            <if test="installLocation != null">#{installLocation},</if>
+            <if test="ownerOrg != null">#{ownerOrg},</if>
+            <if test="ownerContact != null">#{ownerContact},</if>
+            <if test="status != null">#{status},</if>
+            <if test="channelCount != null">#{channelCount},</if>
+            <if test="outputType != null">#{outputType},</if>
+            <if test="terminalType != null">#{terminalType},</if>
+            <if test="department != null">#{department},</if>
+            <if test="useLocation != null">#{useLocation},</if>
+            <if test="switchLevel != null">#{switchLevel},</if>
+            <if test="portCount != null">#{portCount},</if>
+            <if test="uplinkDevice != null">#{uplinkDevice},</if>
+            <if test="vlanInfo != null">#{vlanInfo},</if>
+            <if test="gatewayMode != null">#{gatewayMode},</if>
+            <if test="gatewayDirection != null">#{gatewayDirection},</if>
+            <if test="gatewayBandwidth != null">#{gatewayBandwidth},</if>
+            <if test="securityZone != null">#{securityZone},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateSupportHardwareAsset" parameterType="SupportHardwareAsset">
+        update sup_hardware_asset
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="siteId != null">site_id = #{siteId},</if>
+            <if test="assetName != null">asset_name = #{assetName},</if>
+            <if test="assetType != null">asset_type = #{assetType},</if>
+            <if test="networkEnv != null">network_env = #{networkEnv},</if>
+            <if test="ipAddress != null">ip_address = #{ipAddress},</if>
+            <if test="manageIp != null">manage_ip = #{manageIp},</if>
+            <if test="macAddress != null">mac_address = #{macAddress},</if>
+            <if test="manufacturer != null">manufacturer = #{manufacturer},</if>
+            <if test="assetModel != null">asset_model = #{assetModel},</if>
+            <if test="serialNo != null">serial_no = #{serialNo},</if>
+            <if test="installLocation != null">install_location = #{installLocation},</if>
+            <if test="ownerOrg != null">owner_org = #{ownerOrg},</if>
+            <if test="ownerContact != null">owner_contact = #{ownerContact},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="channelCount != null">channel_count = #{channelCount},</if>
+            <if test="channelCount == null">channel_count = null,</if>
+            <if test="outputType != null">output_type = #{outputType},</if>
+            <if test="terminalType != null">terminal_type = #{terminalType},</if>
+            <if test="department != null">department = #{department},</if>
+            <if test="useLocation != null">use_location = #{useLocation},</if>
+            <if test="switchLevel != null">switch_level = #{switchLevel},</if>
+            <if test="portCount != null">port_count = #{portCount},</if>
+            <if test="portCount == null">port_count = null,</if>
+            <if test="uplinkDevice != null">uplink_device = #{uplinkDevice},</if>
+            <if test="vlanInfo != null">vlan_info = #{vlanInfo},</if>
+            <if test="gatewayMode != null">gateway_mode = #{gatewayMode},</if>
+            <if test="gatewayDirection != null">gateway_direction = #{gatewayDirection},</if>
+            <if test="gatewayBandwidth != null">gateway_bandwidth = #{gatewayBandwidth},</if>
+            <if test="securityZone != null">security_zone = #{securityZone},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where asset_id = #{assetId}
+    </update>
+
+    <delete id="deleteSupportHardwareAssetByAssetId" parameterType="Long">
+        delete from sup_hardware_asset where asset_id = #{assetId}
+    </delete>
+
+    <delete id="deleteSupportHardwareAssetByAssetIds" parameterType="String">
+        delete from sup_hardware_asset where asset_id in
+        <foreach item="assetId" collection="array" open="(" separator="," close=")">
+            #{assetId}
+        </foreach>
+    </delete>
+
+    <delete id="deleteSupportHardwareAssetBySiteIds" parameterType="String">
+        delete from sup_hardware_asset where site_id in
+        <foreach item="siteId" collection="array" open="(" separator="," close=")">
+            #{siteId}
+        </foreach>
+    </delete>
+</mapper>

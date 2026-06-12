@@ -12,6 +12,10 @@ export function getAutoInspectionTarget(targetId) {
   return request({ url: '/support/autoInspection/target/' + targetId, method: 'get' })
 }
 
+export function listAutoInspectionServerAssetTree() {
+  return request({ url: '/support/autoInspection/target/serverAssetTree', method: 'get' })
+}
+
 export function addAutoInspectionTarget(data) {
   return request({ url: '/support/autoInspection/target', method: 'post', data })
 }

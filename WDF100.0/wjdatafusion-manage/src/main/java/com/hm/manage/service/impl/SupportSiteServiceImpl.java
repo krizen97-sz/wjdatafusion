@@ -54,7 +54,9 @@ import com.hm.manage.domain.vo.SupportSiteDashboardVo;
 import com.hm.manage.domain.vo.SupportSiteOverviewVo;
 import com.hm.manage.mapper.SupportContactMapper;
 import com.hm.manage.mapper.SupportChangeLogMapper;
+import com.hm.manage.mapper.SupportHardwareAssetMapper;
 import com.hm.manage.mapper.SupportOrgMapper;
+import com.hm.manage.mapper.SupportPlatformAssetRelMapper;
 import com.hm.manage.mapper.SupportPlatformContactRelMapper;
 import com.hm.manage.mapper.SupportPlatformMapper;
 import com.hm.manage.mapper.SupportPlatformServerRelMapper;
@@ -130,6 +132,12 @@ public class SupportSiteServiceImpl implements ISupportSiteService
 
     @Autowired
     private SupportPlatformServerRelMapper platformServerRelMapper;
+
+    @Autowired
+    private SupportPlatformAssetRelMapper platformAssetRelMapper;
+
+    @Autowired
+    private SupportHardwareAssetMapper hardwareAssetMapper;
 
     @Autowired
     private SupportPlatformContactRelMapper platformContactRelMapper;
@@ -208,6 +216,8 @@ public class SupportSiteServiceImpl implements ISupportSiteService
         int rows = siteMapper.deleteSupportSiteBySiteIds(siteIds);
         if (rows > 0)
         {
+            platformAssetRelMapper.deleteBySiteIds(siteIds);
+            hardwareAssetMapper.deleteSupportHardwareAssetBySiteIds(siteIds);
             siteMessageMapper.deleteSupportSiteMessagesBySiteIds(siteIds);
             for (SupportSite site : deletedSites)
             {

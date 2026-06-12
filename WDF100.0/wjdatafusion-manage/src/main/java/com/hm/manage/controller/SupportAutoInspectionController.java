@@ -52,6 +52,13 @@ public class SupportAutoInspectionController extends BaseController
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:target')")
+    @GetMapping("/target/serverAssetTree")
+    public AjaxResult serverAssetTree()
+    {
+        return success(autoInspectionService.selectServerAssetTree());
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:autoInspection:target')")
     @Log(title = "自动化巡检目标", businessType = BusinessType.INSERT)
     @PostMapping("/target")
     public AjaxResult addTarget(@RequestBody Map<String, Object> target)

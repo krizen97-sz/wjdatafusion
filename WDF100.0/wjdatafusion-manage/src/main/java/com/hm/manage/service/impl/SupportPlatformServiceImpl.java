@@ -16,6 +16,7 @@ import com.hm.manage.domain.SupportPlatform;
 import com.hm.manage.domain.SupportPlatformServerRel;
 import com.hm.manage.domain.SupportServer;
 import com.hm.manage.mapper.SupportContactMapper;
+import com.hm.manage.mapper.SupportPlatformAssetRelMapper;
 import com.hm.manage.mapper.SupportPlatformContactRelMapper;
 import com.hm.manage.mapper.SupportPlatformMapper;
 import com.hm.manage.mapper.SupportPlatformOrgRelMapper;
@@ -41,6 +42,9 @@ public class SupportPlatformServiceImpl implements ISupportPlatformService
 
     @Autowired
     private SupportPlatformServerRelMapper platformServerRelMapper;
+
+    @Autowired
+    private SupportPlatformAssetRelMapper platformAssetRelMapper;
 
     @Autowired
     private SupportPlatformOrgRelMapper platformOrgRelMapper;
@@ -112,6 +116,7 @@ public class SupportPlatformServiceImpl implements ISupportPlatformService
                 deletedPlatforms.add(platform);
             }
             platformServerRelMapper.deleteByPlatformId(platformId);
+            platformAssetRelMapper.deleteByPlatformId(platformId);
             platformOrgRelMapper.deleteByPlatformId(platformId);
             platformContactRelMapper.deleteByPlatformId(platformId);
         }

@@ -139,6 +139,13 @@ npm run build:prod
 - `support:org:*`：组织和联系人查询、新增、修改、删除、导出。
 - `support:message:list`：留言查看。
 - `support:message:add`：留言发布。
+- `support:hardwareAsset:query`：硬件资产查询。
+- `support:hardwareAsset:add`：硬件资产新增。
+- `support:hardwareAsset:edit`：硬件资产修改。
+- `support:hardwareAsset:remove`：硬件资产删除。
+- `support:hardwareAsset:export`：硬件资产导出。
+- `support:equipment:query`：统一设备资产清单查询。
+- `support:equipment:export`：统一设备资产清单导出。
 - `support:credential:viewPlain`：敏感凭据明文查看。
 
 ## 文档
@@ -150,7 +157,7 @@ npm run build:prod
 
 ## 当前版本
 
-当前功能版本为 `v3.0.4`，该版本修复自动化巡检一级菜单动态路由 Layout 配置，避免后端返回空组件导致页面打开时报 `Cannot read properties of null (reading component)`。
+当前功能版本为 `v3.2.0`，该版本将服务器管理和硬件资产管理整合为统一设备资产清单，保留服务器原有数据和配置方式，同时新增网闸等设备登记能力。
 
 ## 版本提交规范
 
