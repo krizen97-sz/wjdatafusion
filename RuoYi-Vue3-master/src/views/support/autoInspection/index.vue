@@ -507,7 +507,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="bigDataServerSelectOpen" width="920px" append-to-body class="auto-dialog asset-transfer-dialog">
+    <el-dialog v-model="bigDataServerSelectOpen" width="1040px" append-to-body class="auto-dialog asset-transfer-dialog">
       <template #header>
         <div class="dialog-title">
           <span>从现场管理服务器中选择</span>
@@ -516,16 +516,65 @@
       </template>
       <div class="asset-transfer-panel">
         <p>可按现场、平台、服务器名称或 IP 搜索，多选后会自动带出服务器 IP、SSH 端口、系统账号和密码；后续仍可在步骤里单独调整登录信息。</p>
-        <el-transfer
-          v-model="bigDataSelectedServerIds"
-          :data="bigDataServerTransferData"
-          :titles="['现场服务器', '已选择']"
-          :props="{ key: 'key', label: 'label', disabled: 'disabled' }"
-          filterable
-          filter-placeholder="搜索现场 / 平台 / IP"
-          target-order="push"
-          class="asset-transfer"
-        />
+        <div class="tree-transfer">
+          <section class="tree-transfer-panel">
+            <header>
+              <div>
+                <strong>现场服务器</strong>
+                <span>{{ checkedBigDataServerCount }}/{{ bigDataServerTotal }}</span>
+              </div>
+              <el-checkbox :model-value="isAllBigDataServersChecked" :indeterminate="isBigDataServerIndeterminate" @change="toggleAllBigDataServers">全选服务器</el-checkbox>
+            </header>
+            <el-input v-model="bigDataServerTreeKeyword" clearable prefix-icon="Search" placeholder="搜索现场 / 平台 / 服务器 / IP" />
+            <div class="server-tree-box">
+              <el-tree
+                ref="bigDataServerTreeRef"
+                :data="serverAssetTree"
+                :props="bigDataServerTreeProps"
+                node-key="id"
+                show-checkbox
+                check-strictly
+                default-expand-all
+                :filter-node-method="filterBigDataServerTree"
+                @check="handleBigDataServerTreeCheck"
+              >
+                <template #default="{ data }">
+                  <span class="server-tree-node" :class="`server-tree-node--${String(data.type || '').toLowerCase()}`">
+                    <strong>{{ data.label }}</strong>
+                    <em v-if="data.type === 'SERVER'">{{ data.serverAddress || '-' }}:{{ data.sshPort || BIG_DATA_DEFAULT_SSH_PORT }}</em>
+                  </span>
+                </template>
+              </el-tree>
+            </div>
+          </section>
+
+          <div class="tree-transfer-actions">
+            <strong>&gt;</strong>
+            <span>勾选后自动加入</span>
+          </div>
+
+          <section class="tree-transfer-panel tree-transfer-panel--selected">
+            <header>
+              <div>
+                <strong>已选择</strong>
+                <span>{{ selectedBigDataServerAssets.length }} 台</span>
+              </div>
+              <el-button link type="danger" :disabled="!selectedBigDataServerAssets.length" @click="clearBigDataServerSelection">清空</el-button>
+            </header>
+            <el-input v-model="bigDataSelectedServerKeyword" clearable prefix-icon="Search" placeholder="搜索已选服务器 / IP" />
+            <div class="selected-server-box">
+              <el-empty v-if="!filteredSelectedBigDataServerAssets.length" description="暂无已选服务器" :image-size="90" />
+              <div v-for="server in filteredSelectedBigDataServerAssets" :key="server.serverId" class="selected-server-item">
+                <div>
+                  <strong>{{ server.serverName || server.serverAddress || '未命名服务器' }}</strong>
+                  <span>{{ server.serverAddress || '-' }}:{{ server.sshPort || BIG_DATA_DEFAULT_SSH_PORT }}</span>
+                  <em>{{ server.osUsername || BIG_DATA_DEFAULT_USERNAME }}</em>
+                </div>
+                <el-button link type="danger" icon="Close" @click="removeBigDataServerSelection(server.serverId)">移除</el-button>
+              </div>
+            </div>
+          </section>
+        </div>
       </div>
       <template #footer>
         <el-button @click="bigDataServerSelectOpen = false">取消</el-button>
@@ -701,6 +750,9 @@ const stepDraft = ref(defaultStepForm())
 const bigDataServerSelectOpen = ref(false)
 const bigDataServerSelectLoading = ref(false)
 const bigDataSelectedServerIds = ref([])
+const bigDataServerTreeRef = ref(null)
+const bigDataServerTreeKeyword = ref('')
+const bigDataSelectedServerKeyword = ref('')
 const planDialogOpen = ref(false)
 const planSubmitLoading = ref(false)
 const planForm = ref(defaultPlanForm())
@@ -753,7 +805,34 @@ const planRules = {
 const activeStep = computed(() => templateForm.value.steps?.[activeStepIndex.value])
 const templateOptions = computed(() => allTemplateList.value.filter((item) => item.status !== '1'))
 const bigDataStepTargets = computed(() => stepDraft.value?.stepParams?.serverTargets || [])
-const bigDataServerTransferData = computed(() => flattenServerAssetTransferData(serverAssetTree.value))
+const bigDataServerIds = computed(() => Object.keys(serverAssetMap.value || {}).map((id) => Number(id)).filter(Boolean))
+const bigDataServerTotal = computed(() => bigDataServerIds.value.length)
+const checkedBigDataServerCount = computed(() => bigDataSelectedServerIds.value.length)
+const selectedBigDataServerAssets = computed(() => {
+  return bigDataSelectedServerIds.value
+    .map((serverId) => serverAssetMap.value?.[serverId])
+    .filter(Boolean)
+})
+const filteredSelectedBigDataServerAssets = computed(() => {
+  const keyword = normalizeSearchText(bigDataSelectedServerKeyword.value)
+  if (!keyword) return selectedBigDataServerAssets.value
+  return selectedBigDataServerAssets.value.filter((server) => {
+    return normalizeSearchText([
+      server.serverName,
+      server.serverAddress,
+      server.sshPort,
+      server.osUsername,
+      server.label
+    ].filter(Boolean).join(' ')).includes(keyword)
+  })
+})
+const isAllBigDataServersChecked = computed(() => bigDataServerTotal.value > 0 && checkedBigDataServerCount.value === bigDataServerTotal.value)
+const isBigDataServerIndeterminate = computed(() => checkedBigDataServerCount.value > 0 && checkedBigDataServerCount.value < bigDataServerTotal.value)
+const bigDataServerTreeProps = {
+  label: 'label',
+  children: 'children',
+  disabled: 'disabled'
+}
 const stepTargetType = computed(() => getTargetTypeByTool(stepDraft.value.toolCode))
 const stepTargetSectionTitle = computed(() => {
   if (stepTargetType.value === 'KAFKA') return 'Kafka 目标'
@@ -784,6 +863,10 @@ watch(() => [route.query.tab, route.query.configTab, route.path], ([tab, subTab,
 watch(activeTab, () => loadActiveTab())
 watch(configTab, () => {
   if (activeTab.value === 'config') loadConfigTab()
+})
+
+watch(bigDataServerTreeKeyword, (value) => {
+  bigDataServerTreeRef.value?.filter(value)
 })
 
 onMounted(() => {
@@ -872,29 +955,62 @@ function indexServerAssetTree(nodes = []) {
   return result
 }
 
-function flattenServerAssetTransferData(nodes = []) {
-  const result = []
-  const seen = new Set()
-  const visit = (items = [], path = []) => {
-    items.forEach((item) => {
-      const nextPath = item.type === 'SERVER' ? path : [...path, item.label].filter(Boolean)
-      if (item.type === 'SERVER' && item.serverId && !seen.has(item.serverId)) {
-        seen.add(item.serverId)
-        const address = item.serverAddress || '-'
-        const port = item.sshPort || BIG_DATA_DEFAULT_SSH_PORT
-        const serverName = item.serverName || item.serverAddress || '未命名服务器'
-        const pathLabel = path.length ? `${path.join(' / ')} / ` : ''
-        result.push({
-          key: item.serverId,
-          label: `${pathLabel}${serverName}（${address}:${port}）`,
-          disabled: false
-        })
-      }
-      visit(item.children || [], nextPath)
-    })
-  }
-  visit(nodes)
-  return result
+function normalizeSearchText(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function getServerTreeNodeKey(serverId) {
+  return `server-${serverId}`
+}
+
+function getServerIdFromTreeNodeKey(key) {
+  const match = String(key || '').match(/^server-(\d+)$/)
+  return match ? Number(match[1]) : null
+}
+
+function syncBigDataServerTreeCheckedKeys() {
+  setTimeout(() => {
+    const keys = bigDataSelectedServerIds.value.map(getServerTreeNodeKey)
+    bigDataServerTreeRef.value?.setCheckedKeys(keys)
+  }, 0)
+}
+
+function filterBigDataServerTree(keyword, data) {
+  const normalized = normalizeSearchText(keyword)
+  if (!normalized) return true
+  const text = normalizeSearchText([
+    data.label,
+    data.serverName,
+    data.serverAddress,
+    data.sshPort,
+    data.osUsername,
+    data.siteCode
+  ].filter(Boolean).join(' '))
+  if (text.includes(normalized)) return true
+  return (data.children || []).some((child) => filterBigDataServerTree(normalized, child))
+}
+
+function handleBigDataServerTreeCheck() {
+  const keys = bigDataServerTreeRef.value?.getCheckedKeys(false) || []
+  const ids = keys
+    .map(getServerIdFromTreeNodeKey)
+    .filter((serverId) => serverId && serverAssetMap.value?.[serverId])
+  bigDataSelectedServerIds.value = Array.from(new Set(ids))
+}
+
+function toggleAllBigDataServers(checked) {
+  bigDataSelectedServerIds.value = checked === true ? bigDataServerIds.value.slice() : []
+  syncBigDataServerTreeCheckedKeys()
+}
+
+function clearBigDataServerSelection() {
+  bigDataSelectedServerIds.value = []
+  syncBigDataServerTreeCheckedKeys()
+}
+
+function removeBigDataServerSelection(serverId) {
+  bigDataSelectedServerIds.value = bigDataSelectedServerIds.value.filter((id) => Number(id) !== Number(serverId))
+  syncBigDataServerTreeCheckedKeys()
 }
 
 function handleTargetServerChange(serverId) {
@@ -1200,7 +1316,10 @@ function openBigDataServerAssetPicker() {
   bigDataSelectedServerIds.value = (stepDraft.value.stepParams.serverTargets || [])
     .map((server) => Number(server.sourceServerId || 0))
     .filter(Boolean)
+  bigDataServerTreeKeyword.value = ''
+  bigDataSelectedServerKeyword.value = ''
   bigDataServerSelectOpen.value = true
+  syncBigDataServerTreeCheckedKeys()
 }
 
 async function confirmBigDataServerAssetSelection() {
@@ -2264,18 +2383,161 @@ function resultTagType(value) {
   }
 }
 
-.asset-transfer {
-  display: flex;
-  justify-content: center;
-  gap: 16px;
+.tree-transfer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 74px 360px;
+  gap: 14px;
+  align-items: stretch;
+}
 
-  :deep(.el-transfer-panel) {
-    width: 360px;
-  }
+.tree-transfer-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+  min-width: 0;
+  min-height: 480px;
+  padding: 14px;
+  border: 1px solid #dfeaf6;
+  border-radius: 8px;
+  background: #fbfdff;
 
-  :deep(.el-transfer-panel__item) {
+  header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 30px;
+
+    div {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    strong {
+      color: #1d3554;
+      font-size: 15px;
+    }
+
+    span {
+      color: #7b8fa8;
+      font-size: 12px;
+    }
+  }
+}
+
+.tree-transfer-actions {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  color: #6d8199;
+  font-size: 12px;
+  text-align: center;
+
+  strong {
+    width: 34px;
+    height: 34px;
+    line-height: 32px;
+    border: 1px solid #cfe3fb;
+    border-radius: 50%;
+    background: #eef7ff;
+    color: #2f80ed;
+    font-size: 20px;
+    font-weight: 700;
+  }
+}
+
+.server-tree-box,
+.selected-server-box {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+  border: 1px solid #e6eef8;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.server-tree-box {
+  :deep(.el-tree) {
+    min-width: max-content;
+  }
+
+  :deep(.el-tree-node__content) {
+    height: 34px;
+    border-radius: 6px;
+  }
+
+  :deep(.el-tree-node__content:hover) {
+    background: #f2f8ff;
+  }
+}
+
+.server-tree-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+
+  strong {
+    color: #1d3554;
+    font-weight: 600;
+  }
+
+  em {
+    color: #8797aa;
+    font-style: normal;
+    font-size: 12px;
+  }
+
+  &--server strong {
+    color: #2167b2;
+  }
+}
+
+.selected-server-box {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.selected-server-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #e3edf8;
+  border-radius: 8px;
+  background: #fff;
+
+  div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  strong,
+  span,
+  em {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: #1d3554;
+  }
+
+  span {
+    color: #2167b2;
+    font-size: 12px;
+  }
+
+  em {
+    color: #7b8fa8;
+    font-style: normal;
+    font-size: 12px;
   }
 }
 
