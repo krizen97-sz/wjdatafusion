@@ -1,11 +1,17 @@
 package com.hm.manage.service.impl;
 
 import java.io.BufferedReader;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.net.Socket;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -1912,6 +1918,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         session.setPassword(password);
         session.setConfig("StrictHostKeyChecking", "no");
         session.setConfig("PreferredAuthentications", "password");
+        session.setSocketFactory(new DirectSocketFactory(timeoutSeconds * 1000));
         session.connect(timeoutSeconds * 1000);
         return session;
     }
@@ -2399,6 +2406,36 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             this.availableKb = availableKb;
             this.mountPoint = mountPoint;
             this.usePercent = usePercent;
+        }
+    }
+
+    private static class DirectSocketFactory implements com.jcraft.jsch.SocketFactory
+    {
+        private final int timeoutMillis;
+
+        private DirectSocketFactory(int timeoutMillis)
+        {
+            this.timeoutMillis = timeoutMillis;
+        }
+
+        @Override
+        public Socket createSocket(String host, int port) throws IOException, UnknownHostException
+        {
+            Socket socket = new Socket(Proxy.NO_PROXY);
+            socket.connect(new InetSocketAddress(host, port), timeoutMillis);
+            return socket;
+        }
+
+        @Override
+        public InputStream getInputStream(Socket socket) throws IOException
+        {
+            return socket.getInputStream();
+        }
+
+        @Override
+        public OutputStream getOutputStream(Socket socket) throws IOException
+        {
+            return socket.getOutputStream();
         }
     }
 

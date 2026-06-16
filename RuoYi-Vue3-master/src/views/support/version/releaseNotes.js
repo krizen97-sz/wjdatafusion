@@ -1,5 +1,22 @@
 export const releaseNotes = [
   {
+    version: 'v3.3.1',
+    submitTime: '2026-06-16 10:15:12',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '自动化巡检 SSH 直连修复',
+    summary: "修复大数据服务器爆盘检测点击“测试目标”时被 JVM SOCKS 代理配置劫持，导致内网 SSH 连接报 Can't connect to SOCKS proxy 的问题。",
+    changes: [
+      '自动化巡检 SSH 建连改为使用直连 SocketFactory，强制绕过 JVM 全局 SOCKS 代理配置。',
+      '大数据服务器爆盘检测、服务器目录文件数量检测、服务器磁盘使用率检测统一受益，内网服务器检测不再依赖本机代理端口状态。',
+      '保留 HTTP/海康接口原有网络调用逻辑，本次仅调整 SSH 类巡检目标的连接方式。'
+    ],
+    scope: ['自动化巡检', '大数据服务器爆盘检测', 'SSH检测', '目标测试', '版本记录'],
+    database: '无数据库结构变化，无需执行 SQL。',
+    scripts: []
+  },
+  {
     version: 'v3.3.0',
     submitTime: '2026-06-16 09:35:42',
     level: 'minor',
