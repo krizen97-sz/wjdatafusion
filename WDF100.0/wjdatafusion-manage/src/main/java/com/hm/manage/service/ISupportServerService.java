@@ -4,6 +4,7 @@ import java.util.List;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.multipart.MultipartFile;
 import com.hm.manage.domain.SupportServer;
+import com.hm.manage.domain.SupportServerCredential;
 
 public interface ISupportServerService
 {
@@ -18,6 +19,16 @@ public interface ISupportServerService
     int deleteSupportServerByServerIds(Long[] serverIds);
 
     String getServerPasswordPlain(Long serverId);
+
+    List<SupportServerCredential> selectServerCredentialList(Long serverId);
+
+    int insertServerCredential(SupportServerCredential credential);
+
+    int updateServerCredential(SupportServerCredential credential);
+
+    int deleteServerCredentialById(Long credentialId);
+
+    String getServerCredentialPasswordPlain(Long credentialId);
 
     void exportImportTemplate(HttpServletResponse response) throws Exception;
 

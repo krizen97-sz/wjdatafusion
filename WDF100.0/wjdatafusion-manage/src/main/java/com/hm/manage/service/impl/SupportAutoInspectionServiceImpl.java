@@ -2039,15 +2039,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         String host = StringUtils.defaultIfBlank(str(target, "host"), server == null ? null : server.getServerAddress());
         int fallbackPort = server == null ? SERVER_DEFAULT_SSH_PORT : (server.getSshPort() == null ? SERVER_DEFAULT_SSH_PORT : server.getSshPort());
         int port = toInt(target.get("port"), fallbackPort);
-        String username = StringUtils.defaultIfBlank(str(target, "username"), server == null ? null : server.getOsUsername());
+        String username = str(target, "username");
         String password = str(target, "password");
-        if (StringUtils.isBlank(password) && server != null && StringUtils.isNotBlank(server.getOsPasswordCipher()))
-        {
-            password = cryptoService.decrypt(server.getOsPasswordCipher());
-        }
         requireText(host, "服务器IP不能为空");
-        requireText(username, "SSH账号不能为空");
-        requireText(password, "SSH密码不能为空");
+        requireText(username, "请在巡检配置中填写 SSH 登录账号和密码");
+        requireText(password, "请在巡检配置中填写 SSH 登录账号和密码");
         return executeSshCommand(host, port, username, password, command, timeoutSeconds);
     }
 

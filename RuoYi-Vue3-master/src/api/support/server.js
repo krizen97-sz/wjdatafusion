@@ -24,6 +24,26 @@ export function viewServerPlain(serverId) {
   return request({ url: '/support/server/plain/' + serverId, method: 'get' })
 }
 
+export function listServerCredentials(serverId) {
+  return request({ url: '/support/server/credential/list/' + serverId, method: 'get' })
+}
+
+export function addServerCredential(data) {
+  return request({ url: '/support/server/credential', method: 'post', data })
+}
+
+export function updateServerCredential(data) {
+  return request({ url: '/support/server/credential', method: 'put', data })
+}
+
+export function delServerCredential(credentialId) {
+  return request({ url: '/support/server/credential/' + credentialId, method: 'delete' })
+}
+
+export function viewServerCredentialPlain(credentialId) {
+  return request({ url: '/support/server/credential/plain/' + credentialId, method: 'get' })
+}
+
 export function previewServerImport(file) {
   const data = new FormData()
   data.append('file', file)

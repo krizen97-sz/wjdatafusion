@@ -274,8 +274,8 @@
                 </el-form-item>
               </el-col>
               <el-col :span="24"><el-form-item label="默认路径"><el-input v-model="targetForm.path" placeholder="目录路径或磁盘挂载点，可在模板步骤覆盖" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="SSH账号" required><el-input v-model="targetForm.username" placeholder="本次巡检使用的登录账号" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="SSH密码" required><el-input v-model="targetForm.password" show-password placeholder="本次巡检使用的登录密码" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="巡检登录账号" required><el-input v-model="targetForm.username" placeholder="本次巡检使用的登录账号" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="巡检登录密码" required><el-input v-model="targetForm.password" show-password placeholder="本次巡检使用的登录密码" /></el-form-item></el-col>
             </el-row>
           </section>
 
@@ -288,8 +288,8 @@
               <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="targetForm.targetName" placeholder="例如：大数据节点01" /></el-form-item></el-col>
               <el-col :span="12"><el-form-item label="服务器IP" required><el-input v-model="targetForm.host" placeholder="172.18.16.172" /></el-form-item></el-col>
               <el-col :span="8"><el-form-item label="SSH端口"><el-input-number v-model="targetForm.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
-              <el-col :span="8"><el-form-item label="SSH账号" required><el-input v-model="targetForm.username" /></el-form-item></el-col>
-              <el-col :span="8"><el-form-item label="SSH密码" required><el-input v-model="targetForm.password" show-password /></el-form-item></el-col>
+              <el-col :span="8"><el-form-item label="巡检登录账号" required><el-input v-model="targetForm.username" /></el-form-item></el-col>
+              <el-col :span="8"><el-form-item label="巡检登录密码" required><el-input v-model="targetForm.password" show-password /></el-form-item></el-col>
             </el-row>
           </section>
 
@@ -492,9 +492,10 @@
                   <el-col :span="8"><el-form-item label="服务器IP" required><el-input v-model="server.host" placeholder="10.0.0.10" /></el-form-item></el-col>
                   <el-col :span="8"><el-form-item label="SSH端口"><el-input-number v-model="server.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
                   <el-col :span="12"><el-form-item label="检测路径" required><el-input v-model="server.path" placeholder="/data/inbox" /></el-form-item></el-col>
-                  <el-col :span="6"><el-form-item label="SSH账号" required><el-input v-model="server.username" /></el-form-item></el-col>
-                  <el-col :span="6"><el-form-item label="SSH密码" required><el-input v-model="server.password" show-password /></el-form-item></el-col>
+                  <el-col :span="6"><el-form-item label="巡检登录账号" required><el-input v-model="server.username" placeholder="本次巡检使用的账号" /></el-form-item></el-col>
+                  <el-col :span="6"><el-form-item label="巡检登录密码" required><el-input v-model="server.password" show-password placeholder="本次巡检使用的密码" /></el-form-item></el-col>
                 </el-row>
+                <p v-if="server.sourceType === 'SITE_SERVER'" class="credential-source-tip">已带出现场服务器 IP、端口和账号提示；实际连接只使用这里填写的巡检账号和密码。</p>
               </div>
             </div>
           </div>
@@ -517,8 +518,8 @@
               </el-form-item>
             </el-col>
             <el-col :span="12"><el-form-item label="检测路径" required><el-input v-model="stepDraft.target.path" placeholder="目录路径或磁盘挂载点" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="SSH账号" required><el-input v-model="stepDraft.target.username" placeholder="本次巡检使用的登录账号" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="SSH密码" required><el-input v-model="stepDraft.target.password" show-password placeholder="本次巡检使用的登录密码" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="巡检登录账号" required><el-input v-model="stepDraft.target.username" placeholder="本次巡检使用的登录账号" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="巡检登录密码" required><el-input v-model="stepDraft.target.password" show-password placeholder="本次巡检使用的登录密码" /></el-form-item></el-col>
           </el-row>
           <div v-if="stepTargetType === 'BIG_DATA_SERVER'" class="bigdata-server-config">
             <div class="bigdata-server-toolbar">
@@ -541,9 +542,10 @@
                   <el-col :span="8"><el-form-item label="目标名称"><el-input v-model="server.targetName" placeholder="大数据节点01" /></el-form-item></el-col>
                   <el-col :span="8"><el-form-item label="服务器IP" required><el-input v-model="server.host" placeholder="172.18.16.172" /></el-form-item></el-col>
                   <el-col :span="8"><el-form-item label="SSH端口"><el-input-number v-model="server.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
-                  <el-col :span="12"><el-form-item label="SSH账号" required><el-input v-model="server.username" /></el-form-item></el-col>
-                  <el-col :span="12"><el-form-item label="SSH密码" required><el-input v-model="server.password" show-password /></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="巡检登录账号" required><el-input v-model="server.username" placeholder="本次巡检使用的账号" /></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="巡检登录密码" required><el-input v-model="server.password" show-password placeholder="本次巡检使用的密码" /></el-form-item></el-col>
                 </el-row>
+                <p v-if="server.sourceType === 'SITE_SERVER'" class="credential-source-tip">已带出现场服务器 IP、端口和账号提示；实际连接只使用这里填写的巡检账号和密码。</p>
               </div>
             </div>
           </div>
@@ -745,7 +747,6 @@ import {
   updateAutoInspectionTemplate,
   viewAutoInspectionTargetPlain
 } from '@/api/support/autoInspection'
-import { viewServerPlain } from '@/api/support/server'
 
 const route = useRoute()
 const router = useRouter()
@@ -1564,7 +1565,6 @@ async function confirmBigDataServerAssetSelection() {
   const manualTargets = currentTargets.filter((server) => !server.sourceServerId)
   const currentAssetTargets = currentTargets.filter((server) => server.sourceServerId)
   const nextAssetTargets = []
-  let plainFailedCount = 0
 
   bigDataServerSelectLoading.value = true
   try {
@@ -1576,34 +1576,23 @@ async function confirmBigDataServerAssetSelection() {
       }
       const asset = serverAssetMap.value?.[serverId]
       if (!asset) continue
-      let password = ''
-      try {
-        const plainRes = await viewServerPlain(serverId)
-        password = plainRes?.plain || ''
-      } catch (e) {
-        plainFailedCount += 1
-      }
       const index = manualTargets.length + nextAssetTargets.length + 1
       nextAssetTargets.push(isServerFileMode
-        ? buildServerFileTargetFromAsset(asset, password, index)
-        : buildBigDataServerTargetFromAsset(asset, password, index))
+        ? buildServerFileTargetFromAsset(asset, index)
+        : buildBigDataServerTargetFromAsset(asset, index))
     }
     stepDraft.value.stepParams.serverTargets = [
       ...nextAssetTargets,
       ...manualTargets.filter((server) => !selectedIdSet.has(Number(server.sourceServerId || 0)))
     ]
     bigDataServerSelectOpen.value = false
-    if (plainFailedCount) {
-      proxy.$modal.msgWarning(`已添加 ${nextAssetTargets.length} 台现场服务器，其中 ${plainFailedCount} 台未能自动带出密码，请手动补充`)
-    } else {
-      proxy.$modal.msgSuccess(`已选择 ${nextAssetTargets.length} 台现场服务器`)
-    }
+    proxy.$modal.msgWarning(`已选择 ${nextAssetTargets.length} 台现场服务器，请为每台服务器填写本次巡检使用的登录密码`)
   } finally {
     bigDataServerSelectLoading.value = false
   }
 }
 
-function buildServerFileTargetFromAsset(asset, password = '', index = 1) {
+function buildServerFileTargetFromAsset(asset, index = 1) {
   const address = asset.serverAddress || ''
   const serverName = asset.serverName || address || `目录检测服务器${index}`
   return {
@@ -1613,7 +1602,7 @@ function buildServerFileTargetFromAsset(asset, password = '', index = 1) {
     port: asset.sshPort || SERVER_FILE_DEFAULT_SSH_PORT,
     path: '',
     username: asset.osUsername || SERVER_FILE_DEFAULT_USERNAME,
-    password,
+    password: '',
     serverId: asset.serverId,
     sourceType: 'SITE_SERVER',
     sourceServerId: asset.serverId,
@@ -1622,7 +1611,7 @@ function buildServerFileTargetFromAsset(asset, password = '', index = 1) {
   }
 }
 
-function buildBigDataServerTargetFromAsset(asset, password = '', index = 1) {
+function buildBigDataServerTargetFromAsset(asset, index = 1) {
   const address = asset.serverAddress || ''
   const serverName = asset.serverName || address || `大数据节点${index}`
   return {
@@ -1631,7 +1620,7 @@ function buildBigDataServerTargetFromAsset(asset, password = '', index = 1) {
     host: address,
     port: asset.sshPort || BIG_DATA_DEFAULT_SSH_PORT,
     username: asset.osUsername || BIG_DATA_DEFAULT_USERNAME,
-    password,
+    password: '',
     serverId: asset.serverId,
     sourceType: 'SITE_SERVER',
     sourceServerId: asset.serverId,
@@ -2794,6 +2783,13 @@ function resultTagType(value) {
   border: 1px solid #dfeaf6;
   border-radius: 8px;
   background: #fff;
+}
+
+.credential-source-tip {
+  margin: 4px 0 0;
+  color: #7a8da3;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .target-card-actions {

@@ -1331,9 +1331,10 @@
                 <el-tag :type="row.status === '1' ? 'info' : 'success'" size="small">{{ getStatusLabel(row.status) }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="190" fixed="right">
+            <el-table-column label="操作" width="250" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="handleEquipmentEdit(row)">编辑</el-button>
+                <el-button v-if="row.sourceType === EQUIPMENT_SOURCE_SERVER" link type="primary" @click="openServerCredentialDialog(row.raw)">凭据档案</el-button>
                 <el-button v-if="row.sourceType === EQUIPMENT_SOURCE_SERVER && canViewPlain" link type="primary" @click="handleServerPlain(row.raw)">显示密码</el-button>
                 <el-button v-else-if="row.sourceType === EQUIPMENT_SOURCE_HARDWARE && canViewPlain" link type="primary" @click="handleHardwareAssetPlain(row.raw || row)">显示密码</el-button>
                 <el-button link type="danger" @click="handleEquipmentDelete(row)">删除设备</el-button>
@@ -1483,6 +1484,7 @@
                     </div>
                     <div class="server-manager-card__actions">
                       <el-button link type="primary" @click="handleServerEdit(server)">编辑</el-button>
+                      <el-button link type="primary" @click="openServerCredentialDialog(server)">凭据档案</el-button>
                       <el-button v-if="canViewPlain" link type="primary" @click="handleServerPlain(server)">显示密码</el-button>
                       <el-button link type="danger" @click="handleServerDelete(server)">删除设备</el-button>
                     </div>
@@ -1511,6 +1513,83 @@
           <span>所有设备在这里统一查看、筛选、新增、编辑、导出和删除。</span>
           <el-button @click="hardwareAssetDialogOpen = false">关闭</el-button>
         </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="serverCredentialDialogOpen" width="860px" append-to-body class="server-credential-dialog">
+      <template #header>
+        <div class="dialog-title">
+          <span>服务器凭据档案</span>
+          <strong>{{ serverCredentialServer?.serverName || serverCredentialServer?.serverAddress || '未选择服务器' }}</strong>
+        </div>
+      </template>
+      <div v-loading="serverCredentialLoading" class="server-credential-panel">
+        <div class="server-credential-head">
+          <div>
+            <strong>多账号密码记录</strong>
+            <span>用于记录运维账号、巡检账号、root账号等；自动化巡检执行不会自动读取这里的密码。</span>
+          </div>
+          <el-button type="primary" icon="Plus" @click="handleServerCredentialAdd">新增凭据</el-button>
+        </div>
+        <el-table :data="serverCredentialList" height="320" row-key="credentialId">
+          <el-table-column label="凭据名称" prop="credentialName" min-width="140" show-overflow-tooltip />
+          <el-table-column label="登录账号" prop="username" min-width="130" show-overflow-tooltip />
+          <el-table-column label="用途" prop="purpose" min-width="130" show-overflow-tooltip />
+          <el-table-column label="默认" width="72">
+            <template #default="{ row }">
+              <el-tag v-if="row.isDefault === '1'" size="small" type="success">默认</el-tag>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="80">
+            <template #default="{ row }">
+              <el-tag :type="row.status === '1' ? 'info' : 'success'" size="small">{{ getStatusLabel(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="210" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" @click="handleServerCredentialEdit(row)">编辑</el-button>
+              <el-button v-if="canViewPlain" link type="primary" @click="handleServerCredentialPlain(row)">显示密码</el-button>
+              <el-button link type="danger" @click="handleServerCredentialDelete(row)">删除</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <template #footer>
+        <el-button @click="serverCredentialDialogOpen = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="serverCredentialFormOpen" :title="serverCredentialTitle" width="560px" append-to-body class="server-credential-form-dialog">
+      <el-form ref="serverCredentialRef" :model="serverCredentialForm" :rules="serverCredentialRules" label-position="top">
+        <el-form-item label="凭据名称" prop="credentialName">
+          <el-input v-model="serverCredentialForm.credentialName" placeholder="例如：巡检账号 / 运维账号 / root账号" />
+        </el-form-item>
+        <el-form-item label="登录账号" prop="username">
+          <el-input v-model="serverCredentialForm.username" placeholder="请输入登录账号" />
+        </el-form-item>
+        <el-form-item label="登录密码" prop="password">
+          <el-input v-model="serverCredentialForm.password" type="password" show-password placeholder="新增时必填；修改时留空表示不变" />
+        </el-form-item>
+        <el-form-item label="用途">
+          <el-input v-model="serverCredentialForm.purpose" placeholder="例如：日常运维 / 自动化巡检 / 应急 root" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-radio-group v-model="serverCredentialForm.status">
+            <el-radio label="0">正常</el-radio>
+            <el-radio label="1">停用</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="默认凭据">
+          <el-switch v-model="serverCredentialForm.isDefault" active-value="1" inactive-value="0" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="serverCredentialForm.remark" type="textarea" :rows="3" placeholder="补充凭据说明" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="serverCredentialFormOpen = false">取消</el-button>
+        <el-button type="primary" @click="submitServerCredentialForm">保存</el-button>
       </template>
     </el-dialog>
 
@@ -2655,7 +2734,7 @@ import useDictStore from '@/store/modules/dict'
 import { getSiteWorkbench, listChangeLog } from '@/api/support/site'
 import { addSiteMessage, latestSiteMessage, listSiteMessage } from '@/api/support/siteMessage'
 import { addPlatform, bindContact, bindServer, delPlatform, getPlatform, listPlatform, listPlatformContacts, listPlatformServers, unbindContact, updatePlatform } from '@/api/support/platform'
-import { addServer, delServer, getServer, listServer, previewServerImport, updateServer, viewServerPlain } from '@/api/support/server'
+import { addServer, addServerCredential, delServer, delServerCredential, getServer, listServer, listServerCredentials, previewServerImport, updateServer, updateServerCredential, viewServerCredentialPlain, viewServerPlain } from '@/api/support/server'
 import { addHardwareAsset, delHardwareAsset, getHardwareAsset, listHardwareAsset, updateHardwareAsset, viewHardwareAssetPlain } from '@/api/support/hardwareAsset'
 import { addOrg, delOrg, getOrg, listOrg, updateOrg } from '@/api/support/org'
 import { addContact, delContact, getContact, listContact, updateContact } from '@/api/support/contact'
@@ -2822,10 +2901,31 @@ const serverImportFileRef = ref(null)
 const serverFormOpen = ref(false)
 const serverTitle = ref('')
 const serverForm = ref({})
+const serverCredentialDialogOpen = ref(false)
+const serverCredentialLoading = ref(false)
+const serverCredentialList = ref([])
+const serverCredentialServer = ref(null)
+const serverCredentialFormOpen = ref(false)
+const serverCredentialTitle = ref('')
+const serverCredentialForm = ref({})
 const serverRules = {
   serverName: [{ required: true, message: '服务器名称不能为空', trigger: 'blur' }],
   serverAddress: [{ required: true, message: '服务器地址不能为空', trigger: 'blur' }],
   sshPort: [{ required: true, message: 'SSH端口不能为空', trigger: 'blur' }]
+}
+const serverCredentialRules = {
+  credentialName: [{ required: true, message: '凭据名称不能为空', trigger: 'blur' }],
+  username: [{ required: true, message: '登录账号不能为空', trigger: 'blur' }],
+  password: [{
+    validator: (_rule, value, callback) => {
+      if (!serverCredentialForm.value?.credentialId && !String(value || '').trim()) {
+        callback(new Error('登录密码不能为空'))
+        return
+      }
+      callback()
+    },
+    trigger: 'blur'
+  }]
 }
 const SERVER_BATCH_LIMIT = 512
 const HARDWARE_SERVER_TYPE = 'SERVER'
@@ -6063,6 +6163,90 @@ async function refreshServerWorkspaceAfterMutation() {
   await loadServers()
   await loadPlatforms()
   rebuildTopologyTree()
+}
+
+function resetServerCredentialForm() {
+  serverCredentialForm.value = {
+    credentialId: null,
+    serverId: serverCredentialServer.value?.serverId || null,
+    credentialName: null,
+    username: null,
+    password: null,
+    purpose: null,
+    isDefault: '0',
+    status: '0',
+    remark: null
+  }
+  proxy.resetForm('serverCredentialRef')
+}
+
+async function openServerCredentialDialog(server) {
+  if (!server?.serverId) {
+    proxy.$modal.msgWarning('请选择服务器后再维护凭据档案')
+    return
+  }
+  serverCredentialServer.value = server
+  serverCredentialDialogOpen.value = true
+  await loadServerCredentials()
+}
+
+async function loadServerCredentials() {
+  if (!serverCredentialServer.value?.serverId) return
+  serverCredentialLoading.value = true
+  try {
+    const res = await listServerCredentials(serverCredentialServer.value.serverId)
+    serverCredentialList.value = res.data || []
+  } finally {
+    serverCredentialLoading.value = false
+  }
+}
+
+function handleServerCredentialAdd() {
+  resetServerCredentialForm()
+  serverCredentialTitle.value = '新增服务器凭据'
+  serverCredentialFormOpen.value = true
+}
+
+function handleServerCredentialEdit(row) {
+  serverCredentialForm.value = {
+    ...row,
+    password: null
+  }
+  serverCredentialTitle.value = '修改服务器凭据'
+  serverCredentialFormOpen.value = true
+}
+
+function submitServerCredentialForm() {
+  proxy.$refs.serverCredentialRef.validate((valid) => {
+    if (!valid) return
+    serverCredentialForm.value.serverId = serverCredentialServer.value?.serverId
+    const req = serverCredentialForm.value.credentialId
+      ? updateServerCredential(serverCredentialForm.value)
+      : addServerCredential(serverCredentialForm.value)
+    req.then(async () => {
+      proxy.$modal.msgSuccess(serverCredentialForm.value.credentialId ? '修改成功' : '新增成功')
+      serverCredentialFormOpen.value = false
+      await loadServerCredentials()
+      await loadChangeLogs()
+    })
+  })
+}
+
+function handleServerCredentialDelete(row) {
+  proxy.$modal.confirm('确认删除凭据档案 "' + (row.credentialName || row.username || '未命名凭据') + '" 吗？删除后不可恢复。')
+    .then(() => delServerCredential(row.credentialId))
+    .then(async () => {
+      proxy.$modal.msgSuccess('凭据档案已删除')
+      await loadServerCredentials()
+      await loadChangeLogs()
+    })
+    .catch(() => {})
+}
+
+function handleServerCredentialPlain(row) {
+  viewServerCredentialPlain(row.credentialId).then((res) => {
+    proxy.$modal.alert('凭据明文密码：' + (res.plain || ''), '敏感信息', { confirmButtonText: '我知道了' })
+  })
 }
 
 function handleServerDelete(row) {
@@ -10860,7 +11044,9 @@ onBeforeUnmount(() => {
 
 .support-transfer-dialog :deep(.el-dialog),
 .support-server-manager-dialog :deep(.el-dialog),
-.support-hardware-asset-dialog :deep(.el-dialog) {
+.support-hardware-asset-dialog :deep(.el-dialog),
+.server-credential-dialog :deep(.el-dialog),
+.server-credential-form-dialog :deep(.el-dialog) {
   overflow: hidden;
   max-width: calc(100vw - 24px);
   border-radius: 30px;
@@ -10874,22 +11060,34 @@ onBeforeUnmount(() => {
   padding: 0;
 }
 
+.server-credential-dialog :deep(.el-dialog__header),
+.server-credential-form-dialog :deep(.el-dialog__header) {
+  margin-right: 0;
+  padding: 18px 24px 0;
+}
+
 .support-transfer-dialog :deep(.el-dialog__headerbtn),
 .support-server-manager-dialog :deep(.el-dialog__headerbtn),
-.support-hardware-asset-dialog :deep(.el-dialog__headerbtn) {
+.support-hardware-asset-dialog :deep(.el-dialog__headerbtn),
+.server-credential-dialog :deep(.el-dialog__headerbtn),
+.server-credential-form-dialog :deep(.el-dialog__headerbtn) {
   top: 18px;
   right: 18px;
 }
 
 .support-transfer-dialog :deep(.el-dialog__body),
 .support-server-manager-dialog :deep(.el-dialog__body),
-.support-hardware-asset-dialog :deep(.el-dialog__body) {
+.support-hardware-asset-dialog :deep(.el-dialog__body),
+.server-credential-dialog :deep(.el-dialog__body),
+.server-credential-form-dialog :deep(.el-dialog__body) {
   padding: 0 24px 24px;
 }
 
 .support-transfer-dialog :deep(.el-dialog__footer),
 .support-server-manager-dialog :deep(.el-dialog__footer),
-.support-hardware-asset-dialog :deep(.el-dialog__footer) {
+.support-hardware-asset-dialog :deep(.el-dialog__footer),
+.server-credential-dialog :deep(.el-dialog__footer),
+.server-credential-form-dialog :deep(.el-dialog__footer) {
   padding: 0 24px 24px;
 }
 
@@ -11823,6 +12021,36 @@ onBeforeUnmount(() => {
 
 .server-manager-empty {
   min-height: 180px;
+}
+
+.server-credential-panel {
+  display: grid;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.server-credential-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #dce8f4;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.server-credential-head strong {
+  display: block;
+  color: #16324f;
+  font-size: 15px;
+}
+
+.server-credential-head p {
+  margin: 4px 0 0;
+  color: #6f8398;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .transfer-stage {

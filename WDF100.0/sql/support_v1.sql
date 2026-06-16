@@ -62,6 +62,25 @@ CREATE TABLE IF NOT EXISTS sup_server (
   KEY idx_sup_server_site_address (site_id, server_address)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='服务器信息';
 
+CREATE TABLE IF NOT EXISTS sup_server_credential (
+  credential_id     BIGINT        NOT NULL AUTO_INCREMENT COMMENT '凭据ID',
+  server_id         BIGINT        NOT NULL COMMENT '服务器ID',
+  credential_name   VARCHAR(120)  NOT NULL COMMENT '凭据名称',
+  username          VARCHAR(128)  NOT NULL COMMENT '登录账号',
+  password_cipher   VARCHAR(1024) DEFAULT NULL COMMENT '登录密码密文',
+  purpose           VARCHAR(120)  DEFAULT NULL COMMENT '用途',
+  is_default        CHAR(1)       DEFAULT '0' COMMENT '是否默认（0否 1是）',
+  status            CHAR(1)       DEFAULT '0' COMMENT '状态（0正常 1停用）',
+  create_by         VARCHAR(64)   DEFAULT '' COMMENT '创建者',
+  create_time       DATETIME      DEFAULT NULL COMMENT '创建时间',
+  update_by         VARCHAR(64)   DEFAULT '' COMMENT '更新者',
+  update_time       DATETIME      DEFAULT NULL COMMENT '更新时间',
+  remark            VARCHAR(500)  DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (credential_id),
+  KEY idx_sup_server_credential_server (server_id),
+  KEY idx_sup_server_credential_status (server_id, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='服务器多凭据档案';
+
 CREATE TABLE IF NOT EXISTS sup_subplatform_endpoint (
   endpoint_id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '页面ID',
   sub_platform_id        BIGINT       NOT NULL COMMENT '子平台ID',

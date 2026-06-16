@@ -1,5 +1,25 @@
 export const releaseNotes = [
   {
+    version: 'v3.4.0',
+    submitTime: '2026-06-16 19:41:34',
+    level: 'minor',
+    levelLabel: '小版本',
+    tagType: 'warning',
+    title: '服务器多凭据与巡检凭据隔离',
+    summary: '将现场服务器资产账号与自动化巡检执行账号彻底分离，解决同一服务器需要记录运维、巡检、root等多套凭据时的配置混乱和误用风险。',
+    changes: [
+      '现场服务器新增“凭据档案”管理入口，同一台服务器可维护多个账号密码档案，并支持新增、修改、停用、删除和按权限查看明文。',
+      '自动化巡检的服务器目录、服务器磁盘和大数据服务器爆盘等 SSH 类检测只使用巡检步骤中填写保存的账号密码，不再回退读取现场服务器资产密码。',
+      '从现场服务器树状选择巡检目标时仅带出服务器名称、IP、SSH端口和账号提示，密码必须在巡检配置中单独填写，避免 root 或混合账号被误用于巡检执行。',
+      '操作记录脱敏范围补充 passwordCipher、secretCipher 等敏感字段，防止凭据档案和巡检目标的加密值进入变更详情。'
+    ],
+    scope: ['现场融合管理', '服务器管理', '设备资产清单', '自动化巡检', 'SSH凭据', 'SQL脚本', '版本记录'],
+    database: '新增 sup_server_credential 服务器多凭据档案表；不迁移、不删除 sup_server 既有账号密码；自动化巡检目标凭据仍保存于 sup_auto_inspection_target。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260616_server_credentials_v3_4_0.sql'
+    ]
+  },
+  {
     version: 'v3.3.7',
     submitTime: '2026-06-16 16:26:00',
     level: 'patch',

@@ -129,7 +129,8 @@ public class SupportChangeLogServiceImpl implements ISupportChangeLogService
     private String toSafeJson(Object data)
     {
         PropertyPreExcludeFilter filter = new PropertyPreExcludeFilter();
-        filter.addExcludes("osPassword", "osPasswordCipher", "loginPassword", "loginPasswordCipher", "password", "children");
+        filter.addExcludes("osPassword", "osPasswordCipher", "loginPassword", "loginPasswordCipher",
+                "password", "passwordCipher", "secretCipher", "children");
         return JSON.toJSONString(data, filter);
     }
 }

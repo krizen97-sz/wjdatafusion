@@ -20,6 +20,7 @@ import com.hm.common.core.page.TableDataInfo;
 import com.hm.common.enums.BusinessType;
 import com.hm.common.utils.poi.ExcelUtil;
 import com.hm.manage.domain.SupportServer;
+import com.hm.manage.domain.SupportServerCredential;
 import com.hm.manage.service.ISupportChangeLogService;
 import com.hm.manage.service.ISupportServerService;
 
@@ -108,5 +109,44 @@ public class SupportServerController extends BaseController
         SupportServer server = serverService.selectSupportServerByServerId(serverId);
         changeLogService.recordQuery(server == null ? null : server.getSiteId(), "SERVER", serverId, server == null ? null : server.getServerName(), "查看服务器密码明文");
         return success().put("plain", serverService.getServerPasswordPlain(serverId));
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:server:query')")
+    @GetMapping("/credential/list/{serverId}")
+    public AjaxResult credentialList(@PathVariable Long serverId)
+    {
+        return success(serverService.selectServerCredentialList(serverId));
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:server:add')")
+    @Log(title = "服务器凭据档案", businessType = BusinessType.INSERT)
+    @PostMapping("/credential")
+    public AjaxResult addCredential(@RequestBody SupportServerCredential credential)
+    {
+        return toAjax(serverService.insertServerCredential(credential));
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:server:edit')")
+    @Log(title = "服务器凭据档案", businessType = BusinessType.UPDATE)
+    @PutMapping("/credential")
+    public AjaxResult editCredential(@RequestBody SupportServerCredential credential)
+    {
+        return toAjax(serverService.updateServerCredential(credential));
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:server:remove')")
+    @Log(title = "服务器凭据档案", businessType = BusinessType.DELETE)
+    @DeleteMapping("/credential/{credentialId}")
+    public AjaxResult removeCredential(@PathVariable Long credentialId)
+    {
+        return toAjax(serverService.deleteServerCredentialById(credentialId));
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
+    @Log(title = "查看服务器凭据明文", businessType = BusinessType.GRANT)
+    @GetMapping("/credential/plain/{credentialId}")
+    public AjaxResult viewCredentialPlain(@PathVariable Long credentialId)
+    {
+        return success().put("plain", serverService.getServerCredentialPasswordPlain(credentialId));
     }
 }
