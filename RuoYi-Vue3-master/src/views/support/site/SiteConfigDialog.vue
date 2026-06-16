@@ -424,13 +424,49 @@
                     <label>操作系统</label>
                     <el-input v-model="inspectorDraft.osType" placeholder="例如 CentOS / Windows Server" />
                     <label>hik密码</label>
-                    <el-input v-model="inspectorDraft.hikPassword" type="password" show-password :placeholder="inspectorDraft.hikCredentialConfigured ? '已配置，留空则不修改' : '用户名固定为hik'" />
+                    <el-input v-model="inspectorDraft.hikPassword" :type="getServerPasswordInputType('inspector', 'hikPassword')" :placeholder="inspectorDraft.hikCredentialConfigured ? '已保存，点击右侧眼睛查看明文' : '用户名固定为hik'">
+                      <template #suffix>
+                        <el-button
+                          v-if="canShowServerPasswordEye('inspector', 'hikPassword')"
+                          class="server-password-eye"
+                          link
+                          type="primary"
+                          icon="View"
+                          :loading="isServerPasswordLoading('inspector', 'hikPassword')"
+                          @click.stop="toggleServerPasswordPlain('inspector', 'hikPassword')"
+                        />
+                      </template>
+                    </el-input>
                     <label>root密码</label>
-                    <el-input v-model="inspectorDraft.rootPassword" type="password" show-password :placeholder="inspectorDraft.rootCredentialConfigured ? '已配置，留空则不修改' : '用户名固定为root'" />
+                    <el-input v-model="inspectorDraft.rootPassword" :type="getServerPasswordInputType('inspector', 'rootPassword')" :placeholder="inspectorDraft.rootCredentialConfigured ? '已保存，点击右侧眼睛查看明文' : '用户名固定为root'">
+                      <template #suffix>
+                        <el-button
+                          v-if="canShowServerPasswordEye('inspector', 'rootPassword')"
+                          class="server-password-eye"
+                          link
+                          type="primary"
+                          icon="View"
+                          :loading="isServerPasswordLoading('inspector', 'rootPassword')"
+                          @click.stop="toggleServerPasswordPlain('inspector', 'rootPassword')"
+                        />
+                      </template>
+                    </el-input>
                     <label>其他账号用户名</label>
                     <el-input v-model="inspectorDraft.otherUsername" placeholder="可选，例如运维账号" />
                     <label>其他账号密码</label>
-                    <el-input v-model="inspectorDraft.otherPassword" type="password" show-password :placeholder="inspectorDraft.otherCredentialConfigured ? '已配置，留空则不修改' : '填写其他账号时必填'" />
+                    <el-input v-model="inspectorDraft.otherPassword" :type="getServerPasswordInputType('inspector', 'otherPassword')" :placeholder="inspectorDraft.otherCredentialConfigured ? '已保存，点击右侧眼睛查看明文' : '填写其他账号时必填'">
+                      <template #suffix>
+                        <el-button
+                          v-if="canShowServerPasswordEye('inspector', 'otherPassword')"
+                          class="server-password-eye"
+                          link
+                          type="primary"
+                          icon="View"
+                          :loading="isServerPasswordLoading('inspector', 'otherPassword')"
+                          @click.stop="toggleServerPasswordPlain('inspector', 'otherPassword')"
+                        />
+                      </template>
+                    </el-input>
                   </template>
 
                   <template v-else-if="inspectorEditType === 'contact'">
@@ -2481,16 +2517,52 @@
                   <el-input v-model="serverForm.osType" placeholder="例如：CentOS 7 / Windows Server 2019" />
                 </el-form-item>
                 <el-form-item label="hik密码" prop="hikPassword">
-                  <el-input v-model="serverForm.hikPassword" type="password" show-password :placeholder="serverForm.hikCredentialConfigured ? '已配置，留空表示不变' : '用户名固定为hik，可选'" />
+                  <el-input v-model="serverForm.hikPassword" :type="getServerPasswordInputType('form', 'hikPassword')" :placeholder="serverForm.hikCredentialConfigured ? '已保存，点击右侧眼睛查看明文' : '用户名固定为hik，可选'">
+                    <template #suffix>
+                      <el-button
+                        v-if="canShowServerPasswordEye('form', 'hikPassword')"
+                        class="server-password-eye"
+                        link
+                        type="primary"
+                        icon="View"
+                        :loading="isServerPasswordLoading('form', 'hikPassword')"
+                        @click.stop="toggleServerPasswordPlain('form', 'hikPassword')"
+                      />
+                    </template>
+                  </el-input>
                 </el-form-item>
                 <el-form-item label="root密码" prop="rootPassword">
-                  <el-input v-model="serverForm.rootPassword" type="password" show-password :placeholder="serverForm.rootCredentialConfigured ? '已配置，留空表示不变' : '用户名固定为root，可选'" />
+                  <el-input v-model="serverForm.rootPassword" :type="getServerPasswordInputType('form', 'rootPassword')" :placeholder="serverForm.rootCredentialConfigured ? '已保存，点击右侧眼睛查看明文' : '用户名固定为root，可选'">
+                    <template #suffix>
+                      <el-button
+                        v-if="canShowServerPasswordEye('form', 'rootPassword')"
+                        class="server-password-eye"
+                        link
+                        type="primary"
+                        icon="View"
+                        :loading="isServerPasswordLoading('form', 'rootPassword')"
+                        @click.stop="toggleServerPasswordPlain('form', 'rootPassword')"
+                      />
+                    </template>
+                  </el-input>
                 </el-form-item>
                 <el-form-item label="其他账号用户名" prop="otherUsername">
                   <el-input v-model="serverForm.otherUsername" placeholder="可选，例如运维账号" />
                 </el-form-item>
                 <el-form-item label="其他账号密码" prop="otherPassword">
-                  <el-input v-model="serverForm.otherPassword" type="password" show-password :placeholder="serverForm.otherCredentialConfigured ? '已配置，留空表示不变' : '填写其他账号时必填'" />
+                  <el-input v-model="serverForm.otherPassword" :type="getServerPasswordInputType('form', 'otherPassword')" :placeholder="serverForm.otherCredentialConfigured ? '已保存，点击右侧眼睛查看明文' : '填写其他账号时必填'">
+                    <template #suffix>
+                      <el-button
+                        v-if="canShowServerPasswordEye('form', 'otherPassword')"
+                        class="server-password-eye"
+                        link
+                        type="primary"
+                        icon="View"
+                        :loading="isServerPasswordLoading('form', 'otherPassword')"
+                        @click.stop="toggleServerPasswordPlain('form', 'otherPassword')"
+                      />
+                    </template>
+                  </el-input>
                 </el-form-item>
               </el-form>
             </div>
@@ -2953,6 +3025,14 @@ const serverImportFileRef = ref(null)
 const serverFormOpen = ref(false)
 const serverTitle = ref('')
 const serverForm = ref({})
+const serverPasswordPlainVisible = reactive({
+  form: { hikPassword: false, rootPassword: false, otherPassword: false },
+  inspector: { hikPassword: false, rootPassword: false, otherPassword: false }
+})
+const serverPasswordPlainLoading = reactive({
+  form: { hikPassword: false, rootPassword: false, otherPassword: false },
+  inspector: { hikPassword: false, rootPassword: false, otherPassword: false }
+})
 const serverCredentialDialogOpen = ref(false)
 const serverCredentialLoading = ref(false)
 const serverCredentialList = ref([])
@@ -2986,6 +3066,7 @@ const EQUIPMENT_SOURCE_HARDWARE = 'HARDWARE'
 const SERVER_FIXED_LOGIN_HIK = 'hik'
 const SERVER_FIXED_LOGIN_ROOT = 'root'
 const SERVER_FIXED_LOGIN_OTHER_LABEL = '其他账号'
+const SERVER_PASSWORD_MASK = '******'
 const SERVER_EXPORT_HEADERS = ['服务器名称', '服务器IP', 'SSH端口', '操作系统', 'hik密码', 'root密码', '其他账号', '其他密码', '运行状态', '所属子平台']
 const HARDWARE_TYPE_FALLBACKS = [
   { label: '解码器', value: 'DECODER' },
@@ -3502,6 +3583,96 @@ function formatServerCredentialStatus(server = {}) {
   return server.osUsername || '未配置'
 }
 
+function getServerPasswordModel(scope) {
+  return scope === 'inspector' ? inspectorDraft.value : serverForm.value
+}
+
+function getServerPasswordConfiguredField(field) {
+  if (field === 'hikPassword') return 'hikCredentialConfigured'
+  if (field === 'rootPassword') return 'rootCredentialConfigured'
+  return 'otherCredentialConfigured'
+}
+
+function isServerPasswordConfigured(model, field) {
+  return Boolean(model?.[getServerPasswordConfiguredField(field)])
+}
+
+function resetServerPasswordReveal(scope) {
+  const state = serverPasswordPlainVisible[scope]
+  const loading = serverPasswordPlainLoading[scope]
+  if (!state || !loading) return
+  Object.keys(state).forEach((field) => {
+    state[field] = false
+    loading[field] = false
+  })
+}
+
+function applyServerPasswordMasks(model) {
+  if (!model) return model
+  ;['hikPassword', 'rootPassword', 'otherPassword'].forEach((field) => {
+    if (isServerPasswordConfigured(model, field)) {
+      model[field] = SERVER_PASSWORD_MASK
+    }
+  })
+  return model
+}
+
+function getServerPasswordInputType(scope, field) {
+  return serverPasswordPlainVisible[scope]?.[field] ? 'text' : 'password'
+}
+
+function isServerPasswordLoading(scope, field) {
+  return Boolean(serverPasswordPlainLoading[scope]?.[field])
+}
+
+function canShowServerPasswordEye(scope, field) {
+  const model = getServerPasswordModel(scope)
+  return Boolean(
+    canViewPlain.value &&
+    model?.serverId &&
+    (isServerPasswordConfigured(model, field) || String(model?.[field] || '').trim())
+  )
+}
+
+function getServerPasswordFromSummary(summary, field) {
+  if (field === 'hikPassword') return summary.hikPassword
+  if (field === 'rootPassword') return summary.rootPassword
+  return summary.otherPassword
+}
+
+async function toggleServerPasswordPlain(scope, field) {
+  const model = getServerPasswordModel(scope)
+  if (!model?.serverId) return
+  if (serverPasswordPlainVisible[scope]?.[field]) {
+    serverPasswordPlainVisible[scope][field] = false
+    return
+  }
+  if (String(model[field] || '').trim() && model[field] !== SERVER_PASSWORD_MASK) {
+    serverPasswordPlainVisible[scope][field] = true
+    return
+  }
+  if (!canViewPlain.value) {
+    proxy.$modal.msgWarning('当前账号没有显示密码权限')
+    return
+  }
+  serverPasswordPlainLoading[scope][field] = true
+  try {
+    const summary = await loadServerPlainCredentialSummary(model)
+    const plain = getServerPasswordFromSummary(summary, field)
+    if (!plain) {
+      proxy.$modal.msgWarning('当前账号未保存对应密码')
+      return
+    }
+    if (field === 'otherPassword' && summary.otherUsername) {
+      model.otherUsername = summary.otherUsername
+    }
+    model[field] = plain
+    serverPasswordPlainVisible[scope][field] = true
+  } finally {
+    serverPasswordPlainLoading[scope][field] = false
+  }
+}
+
 const orgDialogLead = computed(() => '组织会作为联系人归属容器出现在组织池中，建议名称与现场业务称呼保持一致。')
 const orgPreviewCopy = computed(() =>
   orgForm.value.shortName
@@ -3675,6 +3846,7 @@ const inspectorActions = computed(() => {
 
 function openInspectorEdit(type, row) {
   if (!row) return
+  resetServerPasswordReveal('inspector')
   inspectorEditType.value = type
   inspectorDraft.value = createInspectorDraft(type, row)
   inspectorEditOpen.value = true
@@ -3704,7 +3876,7 @@ function createInspectorDraft(type, row) {
     }
   }
   if (type === 'server') {
-    return {
+    return applyServerPasswordMasks({
       serverId: row.serverId,
       siteId: row.siteId || props.site.siteId,
       serverName: row.serverName,
@@ -3720,7 +3892,7 @@ function createInspectorDraft(type, row) {
       otherCredentialConfigured: row.otherCredentialConfigured,
       status: row.status || '0',
       remark: row.remark || null
-    }
+    })
   }
   if (type === 'contact') {
     return {
@@ -3743,10 +3915,11 @@ function cancelInspectorEdit() {
   inspectorEditType.value = null
   inspectorDraft.value = {}
   inspectorSaving.value = false
+  resetServerPasswordReveal('inspector')
 }
 
 function normalizeSecretDraft(data, field) {
-  if (data[field] === '') {
+  if (data[field] === '' || data[field] === SERVER_PASSWORD_MASK) {
     data[field] = null
   }
   return data
@@ -6268,6 +6441,7 @@ async function loadServers() {
 }
 
 function resetServerForm() {
+  resetServerPasswordReveal('form')
   serverForm.value = {
     serverId: null,
     siteId: props.site.siteId,
@@ -6294,15 +6468,16 @@ function handleServerAdd() {
 }
 
 function handleServerEdit(row) {
+  resetServerPasswordReveal('form')
   getServer(row.serverId).then((res) => {
-    serverForm.value = {
+    serverForm.value = applyServerPasswordMasks({
       ...res.data,
       sshPort: res.data?.sshPort || 22,
       osPassword: null,
       hikPassword: null,
       rootPassword: null,
       otherPassword: null
-    }
+    })
     serverTitle.value = '修改服务器'
     serverFormOpen.value = true
   })
@@ -12830,6 +13005,16 @@ onBeforeUnmount(() => {
 
 .editor-form :deep(.el-input-number) {
   width: 100%;
+}
+
+.server-password-eye {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
+
+.server-password-eye :deep(.el-icon) {
+  margin: 0;
 }
 
 .editor-preview-card {
