@@ -619,7 +619,7 @@
                 <div>
                   <strong>{{ server.serverName || server.serverAddress || '未命名服务器' }}</strong>
                   <span>{{ server.serverAddress || '-' }}:{{ server.sshPort || BIG_DATA_DEFAULT_SSH_PORT }}</span>
-                  <em>{{ server.osUsername || BIG_DATA_DEFAULT_USERNAME }}</em>
+                  <em>默认{{ serverAssetPickerCredentialUsername }}</em>
                 </div>
                 <el-button link type="danger" icon="Close" @click="removeBigDataServerSelection(server.serverId)">移除</el-button>
               </div>
@@ -731,6 +731,7 @@ import {
   delAutoInspectionTemplate,
   getAutoInspectionPlan,
   getAutoInspectionRecord,
+  getAutoInspectionServerCredentialPlain,
   getAutoInspectionTarget,
   getAutoInspectionTemplate,
   listAutoInspectionPlan,
@@ -753,9 +754,11 @@ const router = useRouter()
 const { proxy } = getCurrentInstance()
 
 const BIG_DATA_DEFAULT_SSH_PORT = 2343
+const SITE_SERVER_LOGIN_HIK = 'hik'
+const SITE_SERVER_LOGIN_ROOT = 'root'
 const BIG_DATA_DEFAULT_USERNAME = 'root'
 const SERVER_FILE_DEFAULT_SSH_PORT = BIG_DATA_DEFAULT_SSH_PORT
-const SERVER_FILE_DEFAULT_USERNAME = BIG_DATA_DEFAULT_USERNAME
+const SERVER_FILE_DEFAULT_USERNAME = SITE_SERVER_LOGIN_HIK
 const configTabNames = ['template', 'plan']
 const activeTab = ref(resolveRouteTab(route.query.tab, route.path))
 const configTab = ref(resolveConfigTab(route.query.tab, route.query.configTab, route.path))
@@ -889,11 +892,12 @@ const bigDataServerTreeProps = {
   disabled: 'disabled'
 }
 const serverAssetPickerTitle = computed(() => serverAssetPickerMode.value === 'SERVER_FILE_COUNT' ? '选择目录检测服务器' : '选择大数据服务器')
+const serverAssetPickerCredentialUsername = computed(() => getDefaultServerCredentialUsername(serverAssetPickerMode.value))
 const serverAssetPickerHint = computed(() => {
   if (serverAssetPickerMode.value === 'SERVER_FILE_COUNT') {
-    return '可按现场、平台、服务器名称或 IP 搜索，多选后会自动带出服务器 IP、SSH 端口、系统账号和密码；每台服务器的检测目录和登录信息仍可在步骤里单独调整。'
+    return '可按现场、平台、服务器名称或 IP 搜索，多选后会自动带出服务器 IP、SSH 端口、hik账号和hik密码；每台服务器的检测目录和登录信息仍可在步骤里单独调整。'
   }
-  return '可按现场、平台、服务器名称或 IP 搜索，多选后会自动带出服务器 IP、SSH 端口、系统账号和密码；后续仍可在步骤里单独调整登录信息。'
+  return '可按现场、平台、服务器名称或 IP 搜索，多选后会自动带出服务器 IP、SSH 端口、root账号和root密码；后续仍可在步骤里单独调整登录信息。'
 })
 const stepTargetType = computed(() => getTargetTypeByTool(stepDraft.value.toolCode))
 const stepTargetSectionTitle = computed(() => {
@@ -1076,21 +1080,46 @@ function removeBigDataServerSelection(serverId) {
 }
 
 function handleTargetServerChange(serverId) {
-  applySelectedServerAsset(targetForm.value, serverId)
+  applySelectedServerAsset(targetForm.value, serverId, targetForm.value.targetType)
 }
 
 function handleStepServerChange(serverId) {
-  applySelectedServerAsset(stepDraft.value.target, serverId)
+  applySelectedServerAsset(stepDraft.value.target, serverId, stepDraft.value.toolCode)
 }
 
-function applySelectedServerAsset(target, serverId) {
+function getDefaultServerCredentialUsername(toolOrType) {
+  const value = String(toolOrType || '')
+  if (value === 'BIG_DATA_SERVER' || value === 'BIG_DATA_SERVER_DISK') return SITE_SERVER_LOGIN_ROOT
+  return SITE_SERVER_LOGIN_HIK
+}
+
+async function loadDefaultServerCredential(serverId, toolOrType) {
+  const username = getDefaultServerCredentialUsername(toolOrType)
+  if (!serverId) return { username, password: '' }
+  try {
+    const res = await getAutoInspectionServerCredentialPlain(serverId, username)
+    return {
+      username: res.data?.username || username,
+      password: res.data?.password || ''
+    }
+  } catch (error) {
+    return { username, password: '' }
+  }
+}
+
+async function applySelectedServerAsset(target, serverId, toolOrType) {
   const server = serverAssetMap.value?.[serverId]
   if (!target || !server) return
+  target.serverId = serverId
   if (!target.targetName || target.targetName === getToolLabel(stepDraft.value?.toolCode)) {
     target.targetName = server.serverName || server.serverAddress || target.targetName
   }
-  target.username = ''
-  target.password = ''
+  target.host = server.serverAddress || target.host || ''
+  target.port = server.sshPort || target.port || (getDefaultServerCredentialUsername(toolOrType) === SITE_SERVER_LOGIN_ROOT ? BIG_DATA_DEFAULT_SSH_PORT : SERVER_FILE_DEFAULT_SSH_PORT)
+  const credential = await loadDefaultServerCredential(serverId, toolOrType)
+  if (Number(target.serverId) !== Number(serverId)) return
+  target.username = credential.username
+  target.password = credential.password
 }
 
 function getTemplateList() {
@@ -1578,31 +1607,37 @@ async function confirmBigDataServerAssetSelection() {
       if (!asset) continue
       const index = manualTargets.length + nextAssetTargets.length + 1
       nextAssetTargets.push(isServerFileMode
-        ? buildServerFileTargetFromAsset(asset, index)
-        : buildBigDataServerTargetFromAsset(asset, index))
+        ? await buildServerFileTargetFromAsset(asset, index)
+        : await buildBigDataServerTargetFromAsset(asset, index))
     }
     stepDraft.value.stepParams.serverTargets = [
       ...nextAssetTargets,
       ...manualTargets.filter((server) => !selectedIdSet.has(Number(server.sourceServerId || 0)))
     ]
     bigDataServerSelectOpen.value = false
-    proxy.$modal.msgWarning(`已选择 ${nextAssetTargets.length} 台现场服务器，请为每台服务器填写本次巡检使用的登录密码`)
+    const missingCredentialCount = nextAssetTargets.filter((server) => !String(server.password || '').trim()).length
+    if (missingCredentialCount > 0) {
+      proxy.$modal.msgWarning(`已选择 ${nextAssetTargets.length} 台现场服务器，其中 ${missingCredentialCount} 台未找到对应账号密码，请补齐后保存`)
+    } else {
+      proxy.$modal.msgSuccess(`已选择 ${nextAssetTargets.length} 台现场服务器，已按巡检工具带出默认登录账号和密码`)
+    }
   } finally {
     bigDataServerSelectLoading.value = false
   }
 }
 
-function buildServerFileTargetFromAsset(asset, index = 1) {
+async function buildServerFileTargetFromAsset(asset, index = 1) {
   const address = asset.serverAddress || ''
   const serverName = asset.serverName || address || `目录检测服务器${index}`
+  const credential = await loadDefaultServerCredential(asset.serverId, 'SERVER_FILE_COUNT')
   return {
     ...defaultServerFileTarget(index),
     targetName: serverName,
     host: address,
     port: asset.sshPort || SERVER_FILE_DEFAULT_SSH_PORT,
     path: '',
-    username: asset.osUsername || SERVER_FILE_DEFAULT_USERNAME,
-    password: '',
+    username: credential.username,
+    password: credential.password,
     serverId: asset.serverId,
     sourceType: 'SITE_SERVER',
     sourceServerId: asset.serverId,
@@ -1611,16 +1646,17 @@ function buildServerFileTargetFromAsset(asset, index = 1) {
   }
 }
 
-function buildBigDataServerTargetFromAsset(asset, index = 1) {
+async function buildBigDataServerTargetFromAsset(asset, index = 1) {
   const address = asset.serverAddress || ''
   const serverName = asset.serverName || address || `大数据节点${index}`
+  const credential = await loadDefaultServerCredential(asset.serverId, 'BIG_DATA_SERVER_DISK')
   return {
     ...defaultBigDataServerTarget(index),
     targetName: serverName,
     host: address,
     port: asset.sshPort || BIG_DATA_DEFAULT_SSH_PORT,
-    username: asset.osUsername || BIG_DATA_DEFAULT_USERNAME,
-    password: '',
+    username: credential.username,
+    password: credential.password,
     serverId: asset.serverId,
     sourceType: 'SITE_SERVER',
     sourceServerId: asset.serverId,

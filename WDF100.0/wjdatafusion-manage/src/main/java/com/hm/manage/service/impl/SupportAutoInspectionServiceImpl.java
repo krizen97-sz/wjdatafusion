@@ -56,8 +56,10 @@ import com.hm.common.utils.SecurityUtils;
 import com.hm.common.utils.StringUtils;
 import com.hm.common.utils.poi.ExcelUtil;
 import com.hm.manage.domain.SupportServer;
+import com.hm.manage.domain.SupportServerCredential;
 import com.hm.manage.domain.vo.SupportAutoInspectionExportVo;
 import com.hm.manage.mapper.SupportAutoInspectionMapper;
+import com.hm.manage.mapper.SupportServerCredentialMapper;
 import com.hm.manage.mapper.SupportServerMapper;
 import com.hm.manage.service.ISupportAutoInspectionService;
 import com.hm.manage.service.support.CredentialCryptoService;
@@ -95,6 +97,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final String TOOL_SERVER_DISK = "SERVER_DISK";
     private static final String TOOL_BIG_DATA_SERVER_DISK = "BIG_DATA_SERVER_DISK";
     private static final String TARGET_BIG_DATA_SERVER = "BIG_DATA_SERVER";
+    private static final String SERVER_LOGIN_HIK = "hik";
+    private static final String SERVER_LOGIN_ROOT = "root";
     private static final int BIG_DATA_DEFAULT_SSH_PORT = 2343;
     private static final int SERVER_DEFAULT_SSH_PORT = 22;
 
@@ -103,6 +107,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     @Autowired
     private SupportServerMapper serverMapper;
+
+    @Autowired
+    private SupportServerCredentialMapper serverCredentialMapper;
 
     @Autowired
     private CredentialCryptoService cryptoService;
@@ -190,6 +197,44 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             }
         }
         return new ArrayList<>(siteMap.values());
+    }
+
+    @Override
+    public Map<String, Object> selectServerCredentialPlain(Long serverId, String username)
+    {
+        if (serverId == null)
+        {
+            throw new ServiceException("服务器ID不能为空");
+        }
+        String normalizedUsername = StringUtils.defaultString(username).trim().toLowerCase();
+        if (StringUtils.isBlank(normalizedUsername))
+        {
+            throw new ServiceException("登录账号不能为空");
+        }
+        if (!SERVER_LOGIN_HIK.equals(normalizedUsername) && !SERVER_LOGIN_ROOT.equals(normalizedUsername))
+        {
+            throw new ServiceException("自动巡检默认带出仅支持hik或root账号");
+        }
+        SupportServer server = serverMapper.selectSupportServerByServerId(serverId);
+        if (server == null)
+        {
+            throw new ServiceException("服务器不存在");
+        }
+
+        String password = findServerCredentialPlain(serverId, normalizedUsername);
+        if (StringUtils.isBlank(password)
+                && normalizedUsername.equalsIgnoreCase(StringUtils.defaultString(server.getOsUsername()).trim())
+                && StringUtils.isNotBlank(server.getOsPasswordCipher()))
+        {
+            password = decryptQuietly(server.getOsPasswordCipher());
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("serverId", serverId);
+        result.put("username", normalizedUsername);
+        result.put("password", password);
+        result.put("configured", StringUtils.isNotBlank(password));
+        return result;
     }
 
     @Override
@@ -1907,6 +1952,23 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             return name;
         }
         return name + "（" + address + "）";
+    }
+
+    private String findServerCredentialPlain(Long serverId, String username)
+    {
+        List<SupportServerCredential> credentials = serverCredentialMapper.selectCredentialsByServerId(serverId);
+        for (SupportServerCredential credential : credentials)
+        {
+            String credentialUsername = credential.getUsername();
+            if (credentialUsername != null
+                    && username.equalsIgnoreCase(credentialUsername.trim())
+                    && !STATUS_DISABLED.equals(credential.getStatus())
+                    && StringUtils.isNotBlank(credential.getPasswordCipher()))
+            {
+                return decryptQuietly(credential.getPasswordCipher());
+            }
+        }
+        return "";
     }
 
     private void ensureBuiltinTools()

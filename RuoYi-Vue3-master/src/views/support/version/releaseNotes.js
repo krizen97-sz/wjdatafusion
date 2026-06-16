@@ -1,5 +1,23 @@
 export const releaseNotes = [
   {
+    version: 'v3.4.4',
+    submitTime: '2026-06-16 22:38:15',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '自动巡检现场服务器默认凭据带出',
+    summary: '优化自动巡检模板步骤中从现场融合管理选择服务器的默认登录信息，按巡检工具自动带出 hik 或 root 对应密码。',
+    changes: [
+      '服务器磁盘使用率检测和服务器目录文件数量检测从现场服务器选择资源时，默认巡检登录账号固定带出 hik，并读取 hik 对应密码。',
+      '大数据服务器爆盘检测从现场服务器选择资源时，默认巡检登录账号固定带出 root，并读取 root 对应密码。',
+      '新增自动巡检专用的现场服务器凭据明文读取接口，继续受 support:credential:viewPlain 权限控制，并兼容历史 sup_server 密码字段。',
+      '已在步骤中手工调整过的服务器目标不会被重复选择覆盖，避免用户配置好的巡检账号密码被意外冲掉。'
+    ],
+    scope: ['自动化巡检', '巡检模板', '现场融合管理', '服务器凭据', '前端交互', '版本记录'],
+    database: '无数据库结构变化，无需执行 SQL；复用 sup_server_credential 和 sup_server 历史密码字段。',
+    scripts: []
+  },
+  {
     version: 'v3.4.3',
     submitTime: '2026-06-16 22:13:36',
     level: 'patch',

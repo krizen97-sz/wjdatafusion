@@ -14,6 +14,8 @@ public interface ISupportAutoInspectionService
 
     List<Map<String, Object>> selectServerAssetTree();
 
+    Map<String, Object> selectServerCredentialPlain(Long serverId, String username);
+
     int insertTarget(Map<String, Object> target);
 
     int updateTarget(Map<String, Object> target);

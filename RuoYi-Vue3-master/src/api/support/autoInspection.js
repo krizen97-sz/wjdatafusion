@@ -16,6 +16,10 @@ export function listAutoInspectionServerAssetTree() {
   return request({ url: '/support/autoInspection/target/serverAssetTree', method: 'get' })
 }
 
+export function getAutoInspectionServerCredentialPlain(serverId, username) {
+  return request({ url: '/support/autoInspection/target/serverCredentialPlain/' + serverId, method: 'get', params: { username } })
+}
+
 export function addAutoInspectionTarget(data) {
   return request({ url: '/support/autoInspection/target', method: 'post', data })
 }
