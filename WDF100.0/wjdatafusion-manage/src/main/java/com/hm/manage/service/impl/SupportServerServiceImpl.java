@@ -2,6 +2,9 @@ package com.hm.manage.service.impl;
 
 import java.util.List;
 import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import jakarta.servlet.http.HttpServletResponse;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.CellStyle;
@@ -255,6 +258,30 @@ public class SupportServerServiceImpl implements ISupportServerService
     }
 
     @Override
+    public List<Map<String, Object>> selectServerCredentialPlainSummaries(Long[] serverIds)
+    {
+        List<Map<String, Object>> result = new ArrayList<>();
+        if (serverIds == null || serverIds.length == 0)
+        {
+            return result;
+        }
+        HashSet<Long> seen = new HashSet<>();
+        for (Long serverId : serverIds)
+        {
+            if (serverId == null || !seen.add(serverId))
+            {
+                continue;
+            }
+            SupportServer server = serverMapper.selectSupportServerByServerId(serverId);
+            if (server != null)
+            {
+                result.add(buildServerCredentialPlainSummary(server));
+            }
+        }
+        return result;
+    }
+
+    @Override
     public void exportImportTemplate(HttpServletResponse response) throws Exception
     {
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -432,11 +459,12 @@ public class SupportServerServiceImpl implements ISupportServerService
             return;
         }
         String username = server.getOsUsername().trim();
-        if (SERVER_LOGIN_HIK.equals(username))
+        String normalizedUsername = normalizeFixedLoginUsername(username);
+        if (SERVER_LOGIN_HIK.equals(normalizedUsername))
         {
             server.setHikPassword(server.getOsPassword());
         }
-        else if (SERVER_LOGIN_ROOT.equals(username))
+        else if (SERVER_LOGIN_ROOT.equals(normalizedUsername))
         {
             server.setRootPassword(server.getOsPassword());
         }
@@ -447,14 +475,70 @@ public class SupportServerServiceImpl implements ISupportServerService
         }
     }
 
+    private Map<String, Object> buildServerCredentialPlainSummary(SupportServer server)
+    {
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("serverId", server.getServerId());
+        summary.put("hikPassword", StringUtils.EMPTY);
+        summary.put("rootPassword", StringUtils.EMPTY);
+        summary.put("otherUsername", StringUtils.EMPTY);
+        summary.put("otherPassword", StringUtils.EMPTY);
+
+        List<SupportServerCredential> credentials = credentialMapper.selectCredentialsByServerId(server.getServerId());
+        for (SupportServerCredential credential : credentials)
+        {
+            if (StringUtils.isBlank(credential.getPasswordCipher()))
+            {
+                continue;
+            }
+            String plain = cryptoService.decrypt(credential.getPasswordCipher());
+            String username = StringUtils.trimToEmpty(credential.getUsername());
+            String normalizedUsername = normalizeFixedLoginUsername(username);
+            if (SERVER_LOGIN_HIK.equals(normalizedUsername))
+            {
+                summary.put("hikPassword", plain);
+            }
+            else if (SERVER_LOGIN_ROOT.equals(normalizedUsername))
+            {
+                summary.put("rootPassword", plain);
+            }
+            else if (StringUtils.isBlank((String) summary.get("otherUsername")) || SERVER_LOGIN_OTHER_NAME.equals(credential.getCredentialName()))
+            {
+                summary.put("otherUsername", username);
+                summary.put("otherPassword", plain);
+            }
+        }
+
+        if (StringUtils.isNotBlank(server.getOsPasswordCipher()) && StringUtils.isNotBlank(server.getOsUsername()))
+        {
+            String legacyPlain = cryptoService.decrypt(server.getOsPasswordCipher());
+            String legacyUsername = StringUtils.trimToEmpty(server.getOsUsername());
+            String normalizedLegacyUsername = normalizeFixedLoginUsername(legacyUsername);
+            if (SERVER_LOGIN_HIK.equals(normalizedLegacyUsername) && StringUtils.isBlank((String) summary.get("hikPassword")))
+            {
+                summary.put("hikPassword", legacyPlain);
+            }
+            else if (SERVER_LOGIN_ROOT.equals(normalizedLegacyUsername) && StringUtils.isBlank((String) summary.get("rootPassword")))
+            {
+                summary.put("rootPassword", legacyPlain);
+            }
+            else if (StringUtils.isBlank((String) summary.get("otherPassword")))
+            {
+                summary.put("otherUsername", legacyUsername);
+                summary.put("otherPassword", legacyPlain);
+            }
+        }
+        return summary;
+    }
+
     private void attachFixedLoginCredentialStatus(SupportServer server)
     {
         if (server == null || server.getServerId() == null)
         {
             return;
         }
-        SupportServerCredential hikCredential = credentialMapper.selectCredentialByServerIdAndUsername(server.getServerId(), SERVER_LOGIN_HIK);
-        SupportServerCredential rootCredential = credentialMapper.selectCredentialByServerIdAndUsername(server.getServerId(), SERVER_LOGIN_ROOT);
+        SupportServerCredential hikCredential = selectCredentialByUsernameIgnoreCase(server.getServerId(), SERVER_LOGIN_HIK);
+        SupportServerCredential rootCredential = selectCredentialByUsernameIgnoreCase(server.getServerId(), SERVER_LOGIN_ROOT);
         SupportServerCredential otherCredential = credentialMapper.selectCredentialByServerIdAndName(server.getServerId(), SERVER_LOGIN_OTHER_NAME);
         boolean hikConfigured = hikCredential != null && StringUtils.isNotBlank(hikCredential.getPasswordCipher());
         boolean rootConfigured = rootCredential != null && StringUtils.isNotBlank(rootCredential.getPasswordCipher());
@@ -508,15 +592,15 @@ public class SupportServerServiceImpl implements ISupportServerService
         {
             return;
         }
-        SupportServerCredential credential = credentialMapper.selectCredentialByServerIdAndUsername(server.getServerId(), username);
+        SupportServerCredential credential = selectCredentialByUsernameIgnoreCase(server.getServerId(), username);
         boolean insert = credential == null;
         if (insert)
         {
             credential = new SupportServerCredential();
             credential.setServerId(server.getServerId());
-            credential.setUsername(username);
             credential.setCreateTime(DateUtils.getNowDate());
         }
+        credential.setUsername(username);
         credential.setCredentialName(credentialName);
         credential.setPurpose(purpose);
         credential.setIsDefault(isDefault);
@@ -547,7 +631,7 @@ public class SupportServerServiceImpl implements ISupportServerService
         {
             throw new ServiceException("请填写其他账号用户名");
         }
-        if (SERVER_LOGIN_HIK.equals(username) || SERVER_LOGIN_ROOT.equals(username))
+        if (isFixedLoginUsername(username))
         {
             throw new ServiceException("其他账号不能填写hik或root，请使用对应的固定账号栏");
         }
@@ -662,9 +746,34 @@ public class SupportServerServiceImpl implements ISupportServerService
             throw new ServiceException("登录密码不能为空");
         }
         credential.setCredentialName(credential.getCredentialName().trim());
-        credential.setUsername(credential.getUsername().trim());
+        credential.setUsername(isFixedLoginUsername(credential.getUsername()) ? normalizeFixedLoginUsername(credential.getUsername()) : credential.getUsername().trim());
         credential.setStatus("1".equals(credential.getStatus()) ? "1" : "0");
         credential.setIsDefault("1".equals(credential.getIsDefault()) ? "1" : "0");
+    }
+
+    private boolean isFixedLoginUsername(String username)
+    {
+        String normalized = normalizeFixedLoginUsername(username);
+        return SERVER_LOGIN_HIK.equals(normalized) || SERVER_LOGIN_ROOT.equals(normalized);
+    }
+
+    private String normalizeFixedLoginUsername(String username)
+    {
+        return StringUtils.trimToEmpty(username).toLowerCase();
+    }
+
+    private SupportServerCredential selectCredentialByUsernameIgnoreCase(Long serverId, String username)
+    {
+        List<SupportServerCredential> credentials = credentialMapper.selectCredentialsByServerId(serverId);
+        String normalizedUsername = normalizeFixedLoginUsername(username);
+        for (SupportServerCredential credential : credentials)
+        {
+            if (normalizedUsername.equals(normalizeFixedLoginUsername(credential.getUsername())))
+            {
+                return credential;
+            }
+        }
+        return null;
     }
 
     private void encryptCredentialPassword(SupportServerCredential credential)

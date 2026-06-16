@@ -100,7 +100,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final String SERVER_LOGIN_HIK = "hik";
     private static final String SERVER_LOGIN_ROOT = "root";
     private static final int BIG_DATA_DEFAULT_SSH_PORT = 2343;
-    private static final int SERVER_DEFAULT_SSH_PORT = 22;
+    private static final int SERVER_DEFAULT_SSH_PORT = 55555;
 
     @Autowired
     private SupportAutoInspectionMapper autoInspectionMapper;
@@ -185,7 +185,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             Long serverId = toLong(row.get("serverId"));
             if (serverId != null)
             {
-                Map<String, Object> serverNode = treeNode("server-" + serverId,
+                String serverNodeId = parentNode.get("id") + "-server-" + serverId;
+                Map<String, Object> serverNode = treeNode(serverNodeId,
                         buildServerAssetLabel(row), "SERVER", serverId, false);
                 serverNode.put("serverId", serverId);
                 serverNode.put("serverName", row.get("serverName"));
@@ -193,6 +194,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 serverNode.put("sshPort", row.get("sshPort"));
                 serverNode.put("osUsername", row.get("osUsername"));
                 serverNode.put("osType", row.get("osType"));
+                serverNode.put("sourcePath", buildServerAssetPath(siteNode, mainNode, subPlatformId == null ? null : parentNode, serverNode));
                 children(parentNode).add(serverNode);
             }
         }
@@ -234,6 +236,49 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         result.put("username", normalizedUsername);
         result.put("password", password);
         result.put("configured", StringUtils.isNotBlank(password));
+        return result;
+    }
+
+    @Override
+    public List<Map<String, Object>> selectServerCredentialPlainBatch(Map<String, Object> params)
+    {
+        Map<String, Object> safeParams = params == null ? new HashMap<>() : params;
+        String normalizedUsername = StringUtils.defaultString(str(safeParams, "username")).trim().toLowerCase();
+        if (StringUtils.isBlank(normalizedUsername))
+        {
+            throw new ServiceException("登录账号不能为空");
+        }
+        if (!SERVER_LOGIN_HIK.equals(normalizedUsername) && !SERVER_LOGIN_ROOT.equals(normalizedUsername))
+        {
+            throw new ServiceException("自动巡检默认带出仅支持hik或root账号");
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        HashSet<Long> seen = new HashSet<>();
+        Object rawServerIds = safeParams.get("serverIds");
+        if (rawServerIds instanceof List<?> list)
+        {
+            for (Object item : list)
+            {
+                Long serverId;
+                if (item instanceof Map<?, ?> mapItem)
+                {
+                    serverId = toLong(mapItem.get("serverId"));
+                    if (serverId == null)
+                    {
+                        serverId = toLong(mapItem.get("id"));
+                    }
+                }
+                else
+                {
+                    serverId = toLong(item);
+                }
+                if (serverId == null || !seen.add(serverId))
+                {
+                    continue;
+                }
+                result.add(selectServerCredentialPlain(serverId, normalizedUsername));
+            }
+        }
         return result;
     }
 
@@ -1929,6 +1974,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     {
         Map<String, Object> node = new LinkedHashMap<>();
         node.put("id", id);
+        node.put("nodeId", id);
         node.put("value", value == null ? id : value);
         node.put("label", label);
         node.put("type", type);
@@ -1941,6 +1987,27 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private List<Map<String, Object>> children(Map<String, Object> node)
     {
         return (List<Map<String, Object>>) node.get("children");
+    }
+
+    private String buildServerAssetPath(Map<String, Object> siteNode, Map<String, Object> mainNode, Map<String, Object> subNode, Map<String, Object> serverNode)
+    {
+        List<String> parts = new ArrayList<>();
+        addPathPart(parts, str(siteNode, "label"));
+        addPathPart(parts, str(mainNode, "label"));
+        if (subNode != null)
+        {
+            addPathPart(parts, str(subNode, "label"));
+        }
+        addPathPart(parts, str(serverNode, "label"));
+        return String.join(" / ", parts);
+    }
+
+    private void addPathPart(List<String> parts, String value)
+    {
+        if (StringUtils.isNotBlank(value) && !parts.contains(value))
+        {
+            parts.add(value);
+        }
     }
 
     private String buildServerAssetLabel(Map<String, Object> row)

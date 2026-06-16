@@ -16,6 +16,8 @@ public interface ISupportAutoInspectionService
 
     Map<String, Object> selectServerCredentialPlain(Long serverId, String username);
 
+    List<Map<String, Object>> selectServerCredentialPlainBatch(Map<String, Object> params);
+
     int insertTarget(Map<String, Object> target);
 
     int updateTarget(Map<String, Object> target);

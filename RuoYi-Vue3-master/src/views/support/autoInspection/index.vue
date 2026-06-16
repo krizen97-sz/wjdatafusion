@@ -263,7 +263,7 @@
                     v-model="targetForm.serverId"
                     :data="serverAssetTree"
                     :props="serverTreeProps"
-                    node-key="id"
+                    node-key="nodeId"
                     filterable
                     clearable
                     check-strictly
@@ -507,7 +507,7 @@
                   v-model="stepDraft.target.serverId"
                   :data="serverAssetTree"
                   :props="serverTreeProps"
-                  node-key="id"
+                  node-key="nodeId"
                   filterable
                   clearable
                   check-strictly
@@ -582,7 +582,7 @@
                 ref="bigDataServerTreeRef"
                 :data="serverAssetTree"
                 :props="bigDataServerTreeProps"
-                node-key="id"
+                node-key="nodeId"
                 show-checkbox
                 check-strictly
                 default-expand-all
@@ -592,7 +592,7 @@
                 <template #default="{ data }">
                   <span class="server-tree-node" :class="`server-tree-node--${String(data.type || '').toLowerCase()}`">
                     <strong>{{ data.label }}</strong>
-                    <em v-if="data.type === 'SERVER'">{{ data.serverAddress || '-' }}:{{ data.sshPort || BIG_DATA_DEFAULT_SSH_PORT }}</em>
+                    <em v-if="data.type === 'SERVER'">{{ data.serverAddress || '-' }}:{{ data.sshPort || serverAssetPickerDefaultPort }}</em>
                   </span>
                 </template>
               </el-tree>
@@ -618,7 +618,7 @@
               <div v-for="server in filteredSelectedBigDataServerAssets" :key="server.serverId" class="selected-server-item">
                 <div>
                   <strong>{{ server.serverName || server.serverAddress || '未命名服务器' }}</strong>
-                  <span>{{ server.serverAddress || '-' }}:{{ server.sshPort || BIG_DATA_DEFAULT_SSH_PORT }}</span>
+                  <span>{{ server.serverAddress || '-' }}:{{ server.sshPort || serverAssetPickerDefaultPort }}</span>
                   <em>默认{{ serverAssetPickerCredentialUsername }}</em>
                 </div>
                 <el-button link type="danger" icon="Close" @click="removeBigDataServerSelection(server.serverId)">移除</el-button>
@@ -725,6 +725,7 @@ import {
   addAutoInspectionPlan,
   addAutoInspectionTarget,
   addAutoInspectionTemplate,
+  batchAutoInspectionServerCredentialPlain,
   changeAutoInspectionPlanStatus,
   delAutoInspectionPlan,
   delAutoInspectionTarget,
@@ -757,7 +758,7 @@ const BIG_DATA_DEFAULT_SSH_PORT = 2343
 const SITE_SERVER_LOGIN_HIK = 'hik'
 const SITE_SERVER_LOGIN_ROOT = 'root'
 const BIG_DATA_DEFAULT_USERNAME = 'root'
-const SERVER_FILE_DEFAULT_SSH_PORT = BIG_DATA_DEFAULT_SSH_PORT
+const SERVER_FILE_DEFAULT_SSH_PORT = 55555
 const SERVER_FILE_DEFAULT_USERNAME = SITE_SERVER_LOGIN_HIK
 const configTabNames = ['template', 'plan']
 const activeTab = ref(resolveRouteTab(route.query.tab, route.path))
@@ -765,6 +766,8 @@ const configTab = ref(resolveConfigTab(route.query.tab, route.query.configTab, r
 const toolList = ref([])
 const serverAssetTree = ref([])
 const serverAssetMap = ref({})
+const serverAssetNodeMap = ref({})
+const serverAssetNodeKeysMap = ref({})
 const allTemplateList = ref([])
 const targetOptions = ref([])
 
@@ -893,6 +896,7 @@ const bigDataServerTreeProps = {
 }
 const serverAssetPickerTitle = computed(() => serverAssetPickerMode.value === 'SERVER_FILE_COUNT' ? '选择目录检测服务器' : '选择大数据服务器')
 const serverAssetPickerCredentialUsername = computed(() => getDefaultServerCredentialUsername(serverAssetPickerMode.value))
+const serverAssetPickerDefaultPort = computed(() => serverAssetPickerMode.value === 'SERVER_FILE_COUNT' ? SERVER_FILE_DEFAULT_SSH_PORT : BIG_DATA_DEFAULT_SSH_PORT)
 const serverAssetPickerHint = computed(() => {
   if (serverAssetPickerMode.value === 'SERVER_FILE_COUNT') {
     return '可按现场、平台、服务器名称或 IP 搜索，多选后会自动带出服务器 IP、SSH 端口、hik账号和hik密码；每台服务器的检测目录和登录信息仍可在步骤里单独调整。'
@@ -1003,40 +1007,52 @@ function getTools() {
 function getServerAssetTree() {
   return listAutoInspectionServerAssetTree().then((res) => {
     serverAssetTree.value = res.data || []
-    serverAssetMap.value = indexServerAssetTree(serverAssetTree.value)
+    const indexed = indexServerAssetTree(serverAssetTree.value)
+    serverAssetMap.value = indexed.serverMap
+    serverAssetNodeMap.value = indexed.nodeMap
+    serverAssetNodeKeysMap.value = indexed.nodeKeysMap
   })
 }
 
 function indexServerAssetTree(nodes = []) {
-  const result = {}
+  const serverMap = {}
+  const nodeMap = {}
+  const nodeKeysMap = {}
   const visit = (items = []) => {
     items.forEach((item) => {
       if (item.type === 'SERVER' && item.serverId) {
-        result[item.serverId] = item
+        const serverId = Number(item.serverId)
+        const nodeKey = String(item.nodeId || item.id || `server-${serverId}`)
+        if (!serverMap[serverId]) {
+          serverMap[serverId] = item
+        }
+        nodeMap[nodeKey] = item
+        if (!nodeKeysMap[serverId]) nodeKeysMap[serverId] = []
+        nodeKeysMap[serverId].push(nodeKey)
       }
       visit(item.children || [])
     })
   }
   visit(nodes)
-  return result
+  return { serverMap, nodeMap, nodeKeysMap }
 }
 
 function normalizeSearchText(value) {
   return String(value || '').trim().toLowerCase()
 }
 
-function getServerTreeNodeKey(serverId) {
-  return `server-${serverId}`
+function getServerTreeNodeKeys(serverId) {
+  return serverAssetNodeKeysMap.value?.[Number(serverId)] || []
 }
 
 function getServerIdFromTreeNodeKey(key) {
-  const match = String(key || '').match(/^server-(\d+)$/)
-  return match ? Number(match[1]) : null
+  const node = serverAssetNodeMap.value?.[String(key || '')]
+  return node?.serverId ? Number(node.serverId) : null
 }
 
 function syncBigDataServerTreeCheckedKeys() {
   setTimeout(() => {
-    const keys = bigDataSelectedServerIds.value.map(getServerTreeNodeKey)
+    const keys = bigDataSelectedServerIds.value.flatMap(getServerTreeNodeKeys)
     bigDataServerTreeRef.value?.setCheckedKeys(keys)
   }, 0)
 }
@@ -1062,6 +1078,7 @@ function handleBigDataServerTreeCheck() {
     .map(getServerIdFromTreeNodeKey)
     .filter((serverId) => serverId && serverAssetMap.value?.[serverId])
   bigDataSelectedServerIds.value = Array.from(new Set(ids))
+  syncBigDataServerTreeCheckedKeys()
 }
 
 function toggleAllBigDataServers(checked) {
@@ -1093,18 +1110,61 @@ function getDefaultServerCredentialUsername(toolOrType) {
   return SITE_SERVER_LOGIN_HIK
 }
 
+function getDefaultServerPort(toolOrType) {
+  return getDefaultServerCredentialUsername(toolOrType) === SITE_SERVER_LOGIN_ROOT ? BIG_DATA_DEFAULT_SSH_PORT : SERVER_FILE_DEFAULT_SSH_PORT
+}
+
 async function loadDefaultServerCredential(serverId, toolOrType) {
   const username = getDefaultServerCredentialUsername(toolOrType)
-  if (!serverId) return { username, password: '' }
+  if (!serverId) return { username, password: '', configured: false, reason: 'missing' }
   try {
     const res = await getAutoInspectionServerCredentialPlain(serverId, username)
     return {
       username: res.data?.username || username,
-      password: res.data?.password || ''
+      password: res.data?.password || '',
+      configured: Boolean(res.data?.configured || res.data?.password),
+      reason: res.data?.configured || res.data?.password ? '' : 'missing'
     }
   } catch (error) {
-    return { username, password: '' }
+    return { username, password: '', configured: false, reason: 'failed', message: error?.message || '接口异常' }
   }
+}
+
+async function loadDefaultServerCredentials(serverIds = [], toolOrType) {
+  const username = getDefaultServerCredentialUsername(toolOrType)
+  const result = new Map()
+  const ids = Array.from(new Set(serverIds.map((id) => Number(id)).filter(Boolean)))
+  if (!ids.length) return result
+  try {
+    const res = await batchAutoInspectionServerCredentialPlain(ids, username)
+    const rows = res.data || []
+    rows.forEach((row) => {
+      result.set(Number(row.serverId), {
+        username: row.username || username,
+        password: row.password || '',
+        configured: Boolean(row.configured || row.password),
+        reason: row.configured || row.password ? '' : 'missing'
+      })
+    })
+    ids.forEach((id) => {
+      if (!result.has(id)) {
+        result.set(id, { username, password: '', configured: false, reason: 'missing' })
+      }
+    })
+  } catch (error) {
+    ids.forEach((id) => result.set(id, { username, password: '', configured: false, reason: 'failed', message: error?.message || '接口异常' }))
+  }
+  return result
+}
+
+function getCredentialWarningText(credential) {
+  if (!credential || credential.reason === 'missing') {
+    return `现场服务器未保存 ${credential?.username || '对应'} 账号密码，请在巡检步骤里补齐`
+  }
+  if (credential.reason === 'failed') {
+    return '无法读取默认巡检凭据，请确认当前账号有敏感凭据查看权限或稍后重试'
+  }
+  return ''
 }
 
 async function applySelectedServerAsset(target, serverId, toolOrType) {
@@ -1115,11 +1175,15 @@ async function applySelectedServerAsset(target, serverId, toolOrType) {
     target.targetName = server.serverName || server.serverAddress || target.targetName
   }
   target.host = server.serverAddress || target.host || ''
-  target.port = server.sshPort || target.port || (getDefaultServerCredentialUsername(toolOrType) === SITE_SERVER_LOGIN_ROOT ? BIG_DATA_DEFAULT_SSH_PORT : SERVER_FILE_DEFAULT_SSH_PORT)
+  target.port = target.port || server.sshPort || getDefaultServerPort(toolOrType)
   const credential = await loadDefaultServerCredential(serverId, toolOrType)
   if (Number(target.serverId) !== Number(serverId)) return
   target.username = credential.username
   target.password = credential.password
+  const warning = getCredentialWarningText(credential)
+  if (warning) {
+    proxy.$modal.msgWarning(warning)
+  }
 }
 
 function getTemplateList() {
@@ -1393,6 +1457,7 @@ function cleanTargetPayload(target) {
     payload.port = payload.port || BIG_DATA_DEFAULT_SSH_PORT
     payload.username = payload.username || BIG_DATA_DEFAULT_USERNAME
   }
+  delete payload._credentialReason
   return payload
 }
 
@@ -1520,7 +1585,7 @@ function normalizeServerFileTargets(servers = []) {
     ...server,
     targetType: 'SERVER',
     targetName: server.targetName || `目录检测服务器${index + 1}`,
-    port: server.port || SERVER_FILE_DEFAULT_SSH_PORT,
+    port: server.port || server.sshPort || SERVER_FILE_DEFAULT_SSH_PORT,
     username: server.username || SERVER_FILE_DEFAULT_USERNAME,
     status: server.status || '0'
   }))
@@ -1597,6 +1662,7 @@ async function confirmBigDataServerAssetSelection() {
 
   bigDataServerSelectLoading.value = true
   try {
+    const credentialMap = await loadDefaultServerCredentials(selectedIds, isServerFileMode ? 'SERVER_FILE_COUNT' : 'BIG_DATA_SERVER_DISK')
     for (const serverId of selectedIds) {
       const existing = currentAssetTargets.find((server) => Number(server.sourceServerId) === serverId)
       if (existing) {
@@ -1607,17 +1673,20 @@ async function confirmBigDataServerAssetSelection() {
       if (!asset) continue
       const index = manualTargets.length + nextAssetTargets.length + 1
       nextAssetTargets.push(isServerFileMode
-        ? await buildServerFileTargetFromAsset(asset, index)
-        : await buildBigDataServerTargetFromAsset(asset, index))
+        ? buildServerFileTargetFromAsset(asset, index, credentialMap.get(serverId))
+        : buildBigDataServerTargetFromAsset(asset, index, credentialMap.get(serverId)))
     }
     stepDraft.value.stepParams.serverTargets = [
       ...nextAssetTargets,
       ...manualTargets.filter((server) => !selectedIdSet.has(Number(server.sourceServerId || 0)))
     ]
     bigDataServerSelectOpen.value = false
-    const missingCredentialCount = nextAssetTargets.filter((server) => !String(server.password || '').trim()).length
-    if (missingCredentialCount > 0) {
-      proxy.$modal.msgWarning(`已选择 ${nextAssetTargets.length} 台现场服务器，其中 ${missingCredentialCount} 台未找到对应账号密码，请补齐后保存`)
+    const missingCredentialCount = nextAssetTargets.filter((server) => server._credentialReason === 'missing').length
+    const failedCredentialCount = nextAssetTargets.filter((server) => server._credentialReason === 'failed').length
+    if (failedCredentialCount > 0) {
+      proxy.$modal.msgWarning(`已选择 ${nextAssetTargets.length} 台现场服务器，其中 ${failedCredentialCount} 台默认凭据读取失败，请确认权限或手动补齐`)
+    } else if (missingCredentialCount > 0) {
+      proxy.$modal.msgWarning(`已选择 ${nextAssetTargets.length} 台现场服务器，其中 ${missingCredentialCount} 台未保存对应账号密码，请补齐后保存`)
     } else {
       proxy.$modal.msgSuccess(`已选择 ${nextAssetTargets.length} 台现场服务器，已按巡检工具带出默认登录账号和密码`)
     }
@@ -1626,10 +1695,10 @@ async function confirmBigDataServerAssetSelection() {
   }
 }
 
-async function buildServerFileTargetFromAsset(asset, index = 1) {
+function buildServerFileTargetFromAsset(asset, index = 1, credential) {
+  credential = credential || { username: SERVER_FILE_DEFAULT_USERNAME, password: '', reason: 'missing' }
   const address = asset.serverAddress || ''
   const serverName = asset.serverName || address || `目录检测服务器${index}`
-  const credential = await loadDefaultServerCredential(asset.serverId, 'SERVER_FILE_COUNT')
   return {
     ...defaultServerFileTarget(index),
     targetName: serverName,
@@ -1641,15 +1710,16 @@ async function buildServerFileTargetFromAsset(asset, index = 1) {
     serverId: asset.serverId,
     sourceType: 'SITE_SERVER',
     sourceServerId: asset.serverId,
-    sourceLabel: asset.label || serverName,
+    sourceLabel: asset.sourcePath || asset.label || serverName,
+    _credentialReason: credential.reason || '',
     status: '0'
   }
 }
 
-async function buildBigDataServerTargetFromAsset(asset, index = 1) {
+function buildBigDataServerTargetFromAsset(asset, index = 1, credential) {
+  credential = credential || { username: BIG_DATA_DEFAULT_USERNAME, password: '', reason: 'missing' }
   const address = asset.serverAddress || ''
   const serverName = asset.serverName || address || `大数据节点${index}`
-  const credential = await loadDefaultServerCredential(asset.serverId, 'BIG_DATA_SERVER_DISK')
   return {
     ...defaultBigDataServerTarget(index),
     targetName: serverName,
@@ -1660,7 +1730,8 @@ async function buildBigDataServerTargetFromAsset(asset, index = 1) {
     serverId: asset.serverId,
     sourceType: 'SITE_SERVER',
     sourceServerId: asset.serverId,
-    sourceLabel: asset.label || serverName,
+    sourceLabel: asset.sourcePath || asset.label || serverName,
+    _credentialReason: credential.reason || '',
     status: '0'
   }
 }
@@ -2178,7 +2249,7 @@ function normalizeStepFromServer(step) {
         targetType: 'SERVER',
         sourceType: server.sourceType || (server.serverId ? 'SITE_SERVER' : undefined),
         sourceServerId: server.sourceServerId || server.serverId,
-        port: server.port || SERVER_FILE_DEFAULT_SSH_PORT,
+        port: server.port || server.sshPort || SERVER_FILE_DEFAULT_SSH_PORT,
         username: server.username || SERVER_FILE_DEFAULT_USERNAME,
         targetName: server.targetName || `目录检测服务器${index + 1}`,
         status: server.status || '0'
@@ -2194,7 +2265,7 @@ function normalizeStepFromServer(step) {
       targetType: 'BIG_DATA_SERVER',
       sourceType: server.sourceType || (server.serverId ? 'SITE_SERVER' : undefined),
       sourceServerId: server.sourceServerId || server.serverId,
-      port: server.port || BIG_DATA_DEFAULT_SSH_PORT,
+      port: server.port || server.sshPort || BIG_DATA_DEFAULT_SSH_PORT,
       username: server.username || BIG_DATA_DEFAULT_USERNAME
     }))
     params.serverTargets = serverTargets.length ? serverTargets : [defaultBigDataServerTarget()]

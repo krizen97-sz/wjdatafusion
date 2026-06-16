@@ -2858,7 +2858,7 @@ import useDictStore from '@/store/modules/dict'
 import { getSiteWorkbench, listChangeLog } from '@/api/support/site'
 import { addSiteMessage, latestSiteMessage, listSiteMessage } from '@/api/support/siteMessage'
 import { addPlatform, bindContact, bindServer, delPlatform, getPlatform, listPlatform, listPlatformContacts, listPlatformServers, unbindContact, updatePlatform } from '@/api/support/platform'
-import { addServer, addServerCredential, delServer, delServerCredential, getServer, listServer, listServerCredentials, previewServerImport, updateServer, updateServerCredential, viewServerCredentialPlain, viewServerPlain } from '@/api/support/server'
+import { addServer, addServerCredential, delServer, delServerCredential, getServer, listServer, listServerCredentialPlainSummaries, listServerCredentials, previewServerImport, updateServer, updateServerCredential, viewServerCredentialPlain } from '@/api/support/server'
 import { addHardwareAsset, delHardwareAsset, getHardwareAsset, listHardwareAsset, updateHardwareAsset, viewHardwareAssetPlain } from '@/api/support/hardwareAsset'
 import { addOrg, delOrg, getOrg, listOrg, updateOrg } from '@/api/support/org'
 import { addContact, delContact, getContact, listContact, updateContact } from '@/api/support/contact'
@@ -3074,6 +3074,15 @@ const HARDWARE_TYPE_FALLBACKS = [
   { label: '交换机', value: 'SWITCH' },
   { label: '网闸', value: 'GATEWAY' }
 ]
+
+function normalizeFixedServerUsername(value) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function isFixedServerUsername(value) {
+  const username = normalizeFixedServerUsername(value)
+  return username === SERVER_FIXED_LOGIN_HIK || username === SERVER_FIXED_LOGIN_ROOT
+}
 const EQUIPMENT_TYPE_IMAGES = {
   SERVER: equipmentServerImage,
   DECODER: equipmentDecoderImage,
@@ -3944,7 +3953,7 @@ function getServerOtherCredentialError(data) {
   if (password && !username) {
     return '请填写其他账号用户名'
   }
-  if (username && [SERVER_FIXED_LOGIN_HIK, SERVER_FIXED_LOGIN_ROOT].includes(username)) {
+  if (username && isFixedServerUsername(username)) {
     return '其他账号不能填写hik或root'
   }
   if (username && !password && !data?.otherCredentialConfigured) {
@@ -5827,18 +5836,23 @@ async function submitServerImport() {
     proxy.$modal.msgWarning('导入文件中没有可解析的服务器数据')
     return
   }
-  const drafts = rows.map((row) => ({
-    siteId: props.site.siteId,
-    serverName: String(row.serverName || '').trim() || `服务器-${normalizeServerAddress(row.serverAddress)}`,
-    serverAddress: normalizeServerAddress(row.serverAddress),
-    sshPort: normalizeSshPort(row.sshPort),
-    osType: row.osType || null,
-    hikPassword: row.osUsername === SERVER_FIXED_LOGIN_HIK ? row.osPassword || null : null,
-    rootPassword: row.osUsername === SERVER_FIXED_LOGIN_ROOT ? row.osPassword || null : null,
-    otherUsername: row.osUsername && ![SERVER_FIXED_LOGIN_HIK, SERVER_FIXED_LOGIN_ROOT].includes(row.osUsername) ? row.osUsername : null,
-    otherPassword: row.osUsername && ![SERVER_FIXED_LOGIN_HIK, SERVER_FIXED_LOGIN_ROOT].includes(row.osUsername) ? row.osPassword || null : null,
-    status: normalizeServerStatus(row.status)
-  }))
+  const drafts = rows.map((row) => {
+    const rawUsername = String(row.osUsername || '').trim()
+    const normalizedUsername = normalizeFixedServerUsername(rawUsername)
+    const fixedUsername = [SERVER_FIXED_LOGIN_HIK, SERVER_FIXED_LOGIN_ROOT].includes(normalizedUsername) ? normalizedUsername : ''
+    return {
+      siteId: props.site.siteId,
+      serverName: String(row.serverName || '').trim() || `服务器-${normalizeServerAddress(row.serverAddress)}`,
+      serverAddress: normalizeServerAddress(row.serverAddress),
+      sshPort: normalizeSshPort(row.sshPort),
+      osType: row.osType || null,
+      hikPassword: fixedUsername === SERVER_FIXED_LOGIN_HIK ? row.osPassword || null : null,
+      rootPassword: fixedUsername === SERVER_FIXED_LOGIN_ROOT ? row.osPassword || null : null,
+      otherUsername: rawUsername && !fixedUsername ? rawUsername : null,
+      otherPassword: rawUsername && !fixedUsername ? row.osPassword || null : null,
+      status: normalizeServerStatus(row.status)
+    }
+  })
   serverImportDialogOpen.value = false
   await openServerBatchConfirm(drafts, serverImportTargetPlatformId.value)
 }
@@ -6641,9 +6655,11 @@ async function handleManagedServerBatchExport() {
   }
   serverManagerSaving.value = true
   try {
+    const summaryRes = await listServerCredentialPlainSummaries(rows.map((server) => server.serverId))
+    const summaryMap = new Map((summaryRes.data || []).map((item) => [Number(item.serverId), item]))
     const dataRows = []
     for (const server of rows) {
-      const credentialSummary = await loadServerPlainCredentialSummary(server)
+      const credentialSummary = summaryMap.get(Number(server.serverId)) || {}
       dataRows.push([
         server.serverName || '',
         server.serverAddress || '',
@@ -6687,35 +6703,8 @@ async function loadServerPlainCredentialSummary(server = {}) {
   if (!server?.serverId) {
     return summary
   }
-  const credentialRes = await listServerCredentials(server.serverId)
-  const credentials = credentialRes.data || []
-  for (const credential of credentials) {
-    const plainRes = await viewServerCredentialPlain(credential.credentialId)
-    const plain = plainRes?.plain || ''
-    if (credential.username === SERVER_FIXED_LOGIN_HIK) {
-      summary.hikPassword = plain
-    } else if (credential.username === SERVER_FIXED_LOGIN_ROOT) {
-      summary.rootPassword = plain
-    } else if (!summary.otherUsername || credential.credentialName === SERVER_FIXED_LOGIN_OTHER_LABEL) {
-      summary.otherUsername = credential.username || ''
-      summary.otherPassword = plain
-    }
-  }
-  if (server.osUsername && (!summary.hikPassword || !summary.rootPassword || !summary.otherPassword)) {
-    const plainRes = await viewServerPlain(server.serverId)
-    const legacyPlain = plainRes?.plain || ''
-    const legacyUsername = String(server.osUsername || '').trim()
-    const legacyUsernameLower = legacyUsername.toLowerCase()
-    if (legacyUsernameLower === SERVER_FIXED_LOGIN_HIK && !summary.hikPassword) {
-      summary.hikPassword = legacyPlain
-    } else if (legacyUsernameLower === SERVER_FIXED_LOGIN_ROOT && !summary.rootPassword) {
-      summary.rootPassword = legacyPlain
-    } else if (!summary.otherPassword) {
-      summary.otherUsername = legacyUsername
-      summary.otherPassword = legacyPlain
-    }
-  }
-  return summary
+  const res = await listServerCredentialPlainSummaries([server.serverId])
+  return { ...summary, ...(res.data?.[0] || {}) }
 }
 
 async function handleServerPlain(row) {
@@ -6961,7 +6950,8 @@ async function openServerManagerFromHardwareDialog() {
   await loadSelectedPlatformContext()
   syncPlatformWindow(platform)
   resetServerManageForms()
-  equipmentWorkspaceMode.value = 'server'
+  equipmentWorkspaceMode.value = 'list'
+  bindServerDialogOpen.value = true
 }
 
 async function loadOrgs() {

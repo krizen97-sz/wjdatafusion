@@ -20,6 +20,10 @@ export function getAutoInspectionServerCredentialPlain(serverId, username) {
   return request({ url: '/support/autoInspection/target/serverCredentialPlain/' + serverId, method: 'get', params: { username } })
 }
 
+export function batchAutoInspectionServerCredentialPlain(serverIds, username) {
+  return request({ url: '/support/autoInspection/target/serverCredentialPlain/batch', method: 'post', data: { serverIds, username } })
+}
+
 export function addAutoInspectionTarget(data) {
   return request({ url: '/support/autoInspection/target', method: 'post', data })
 }

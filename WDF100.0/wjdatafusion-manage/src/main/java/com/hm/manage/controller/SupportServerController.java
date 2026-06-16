@@ -1,6 +1,7 @@
 package com.hm.manage.controller;
 
 import java.util.List;
+import java.util.Map;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -148,5 +149,14 @@ public class SupportServerController extends BaseController
     public AjaxResult viewCredentialPlain(@PathVariable Long credentialId)
     {
         return success().put("plain", serverService.getServerCredentialPasswordPlain(credentialId));
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
+    @Log(title = "批量查看服务器凭据明文", businessType = BusinessType.GRANT)
+    @PostMapping("/credential/plainSummary")
+    public AjaxResult credentialPlainSummary(@RequestBody Long[] serverIds)
+    {
+        List<Map<String, Object>> list = serverService.selectServerCredentialPlainSummaries(serverIds);
+        return success(list);
     }
 }

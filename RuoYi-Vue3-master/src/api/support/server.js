@@ -44,6 +44,10 @@ export function viewServerCredentialPlain(credentialId) {
   return request({ url: '/support/server/credential/plain/' + credentialId, method: 'get' })
 }
 
+export function listServerCredentialPlainSummaries(serverIds) {
+  return request({ url: '/support/server/credential/plainSummary', method: 'post', data: serverIds })
+}
+
 export function previewServerImport(file) {
   const data = new FormData()
   data.append('file', file)

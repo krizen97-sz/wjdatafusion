@@ -66,6 +66,14 @@ public class SupportAutoInspectionController extends BaseController
         return success(autoInspectionService.selectServerCredentialPlain(serverId, username));
     }
 
+    @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
+    @Log(title = "批量查看现场服务器巡检凭据", businessType = BusinessType.GRANT)
+    @PostMapping("/target/serverCredentialPlain/batch")
+    public AjaxResult serverCredentialPlainBatch(@RequestBody Map<String, Object> params)
+    {
+        return success(autoInspectionService.selectServerCredentialPlainBatch(params));
+    }
+
     @PreAuthorize("@ss.hasPermi('support:autoInspection:target')")
     @Log(title = "自动化巡检目标", businessType = BusinessType.INSERT)
     @PostMapping("/target")
