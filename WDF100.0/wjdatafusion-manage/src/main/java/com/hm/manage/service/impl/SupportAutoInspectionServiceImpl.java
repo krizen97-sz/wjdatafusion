@@ -87,6 +87,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final String TOOL_FTP_FILE_COUNT = "FTP_FILE_COUNT";
     private static final String TOOL_SERVER_FILE_COUNT = "SERVER_FILE_COUNT";
     private static final String TOOL_SERVER_DISK = "SERVER_DISK";
+    private static final String TOOL_BIG_DATA_SERVER_DISK = "BIG_DATA_SERVER_DISK";
+    private static final String TARGET_BIG_DATA_SERVER = "BIG_DATA_SERVER";
 
     @Autowired
     private SupportAutoInspectionMapper autoInspectionMapper;
@@ -237,6 +239,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 break;
             case "SERVER":
                 result = testServerTarget(effective);
+                break;
+            case TARGET_BIG_DATA_SERVER:
+                result = testBigDataServerTarget(effective);
                 break;
             default:
                 throw new ServiceException("不支持的目标类型：" + targetType);
@@ -560,6 +565,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                     break;
                 case TOOL_SERVER_DISK:
                     result = checkServerDisk(step, target);
+                    break;
+                case TOOL_BIG_DATA_SERVER_DISK:
+                    result = checkBigDataServerDisk(step, target);
                     break;
                 case TOOL_HTTP_COUNT:
                 default:
@@ -1123,7 +1131,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private TargetCheckResult checkServerDisk(Map<String, Object> step, Map<String, Object> target) throws Exception
     {
         SupportServer server = requireServer(target);
-        String output = executeServerCommand(server, target, "df -P", resolveTimeout(step));
+        String output = executeServerCommand(server, target, "df -Pk", resolveTimeout(step));
         String targetPath = resolvePath(step, target);
         List<DiskLine> lines = readDiskLines(output);
         BigDecimal maxUsage = BigDecimal.ZERO;
@@ -1156,6 +1164,52 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 "调用方式：SSH磁盘检测；服务器：" + StringUtils.defaultIfBlank(server.getServerName(), server.getServerAddress())
                         + "；挂载点：" + StringUtils.defaultIfBlank(targetPath, "全部")
                         + "；检测结果：" + detail);
+    }
+
+    private TargetCheckResult checkBigDataServerDisk(Map<String, Object> step, Map<String, Object> target) throws Exception
+    {
+        withPlainSecret(target);
+        String host = str(target, "host");
+        int port = toInt(target.get("port"), 22);
+        String username = str(target, "username");
+        String password = str(target, "password");
+        requireText(host, "服务器IP不能为空");
+        requireText(username, "SSH账号不能为空");
+        requireText(password, "SSH密码不能为空");
+
+        String output = executeSshCommand(host, port, username, password, "df -Pk", resolveTimeout(step));
+        Map<String, Object> params = readParams(step);
+        boolean includePseudo = "true".equalsIgnoreCase(str(params, "includePseudo"));
+        List<DiskLine> lines = readDiskLines(output);
+        BigDecimal maxUsage = BigDecimal.ZERO;
+        List<String> details = new ArrayList<>();
+        for (DiskLine line : lines)
+        {
+            if (!includePseudo && isPseudoFilesystem(line.fileSystem))
+            {
+                continue;
+            }
+            if (line.usePercent.compareTo(maxUsage) > 0)
+            {
+                maxUsage = line.usePercent;
+            }
+            details.add(line.mountPoint
+                    + "（" + line.fileSystem + "）"
+                    + " 已用" + formatStorage(line.usedKb)
+                    + " / 总" + formatStorage(line.totalKb)
+                    + "，剩余" + formatStorage(line.availableKb)
+                    + "，使用率" + formatDecimal(line.usePercent) + "%");
+        }
+        if (details.isEmpty())
+        {
+            throw new ServiceException("未读取到可检测磁盘分区");
+        }
+        return TargetCheckResult.normal(target, maxUsage, "%",
+                "调用方式：SSH全分区磁盘检测；服务器：" + StringUtils.defaultIfBlank(str(target, "targetName"), host)
+                        + "（" + host + ":" + port + "）"
+                        + "；分区数：" + details.size()
+                        + "；最高使用率：" + formatDecimal(maxUsage) + "%"
+                        + "；分区明细：" + StringUtils.join(details, "；"));
     }
 
     private TargetCheckResult checkKafkaLag(Map<String, Object> step, Map<String, Object> target)
@@ -1252,6 +1306,29 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             SupportServer server = requireServer(target);
             String output = executeServerCommand(server, target, "echo ok", DEFAULT_TIMEOUT_SECONDS).trim();
             return TargetCheckResult.normal(target, null, "", "服务器连接可用：" + output);
+        }
+        catch (Exception e)
+        {
+            throw new ServiceException(e.getMessage());
+        }
+    }
+
+    private TargetCheckResult testBigDataServerTarget(Map<String, Object> target)
+    {
+        try
+        {
+            withPlainSecret(target);
+            String host = str(target, "host");
+            int port = toInt(target.get("port"), 22);
+            String username = str(target, "username");
+            String password = str(target, "password");
+            requireText(host, "服务器IP不能为空");
+            requireText(username, "SSH账号不能为空");
+            requireText(password, "SSH密码不能为空");
+            String output = executeSshCommand(host, port, username, password, "df -Pk", DEFAULT_TIMEOUT_SECONDS);
+            int count = readDiskLines(output).size();
+            return TargetCheckResult.normal(target, new BigDecimal(count), "个分区",
+                    "服务器连接可用，已读取磁盘分区：" + count + "个");
         }
         catch (Exception e)
         {
@@ -1398,6 +1475,15 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 }
                 requireText(str(target, "path"), "检测路径不能为空");
                 break;
+            case TARGET_BIG_DATA_SERVER:
+                requireText(str(target, "host"), "服务器IP不能为空");
+                requireText(str(target, "username"), "SSH账号不能为空");
+                if (!update)
+                {
+                    requireText(str(target, "password"), "SSH密码不能为空");
+                }
+                target.put("port", toInt(target.get("port"), 22));
+                break;
             default:
                 throw new ServiceException("不支持的目标类型：" + targetType);
         }
@@ -1454,6 +1540,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private List<Long> resolveStepTargetIds(Map<String, Object> step, Map<String, Object> tool)
     {
+        if (TOOL_BIG_DATA_SERVER_DISK.equals(str(step, "toolCode")))
+        {
+            return saveBigDataServerTargets(step);
+        }
         Map<String, Object> inlineTarget = castMap(step.get("target"));
         if (!inlineTarget.isEmpty())
         {
@@ -1482,6 +1572,58 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         }
         updateTarget(target);
         return targetId;
+    }
+
+    private List<Long> saveBigDataServerTargets(Map<String, Object> step)
+    {
+        Map<String, Object> params = readParams(step);
+        List<Map<String, Object>> servers = castList(params.get("serverTargets"));
+        if (servers.isEmpty())
+        {
+            throw new ServiceException("大数据服务器爆盘检测至少需要配置一台服务器");
+        }
+        List<Long> targetIds = new ArrayList<>();
+        List<Map<String, Object>> sanitizedTargets = new ArrayList<>();
+        int index = 1;
+        for (Map<String, Object> serverTarget : servers)
+        {
+            Map<String, Object> target = new HashMap<>(serverTarget);
+            target.put("targetType", TARGET_BIG_DATA_SERVER);
+            target.put("targetName", StringUtils.defaultIfBlank(str(target, "targetName"),
+                    str(step, "stepName") + "-" + index));
+            target.put("status", STATUS_DISABLED.equals(str(target, "status")) ? STATUS_DISABLED : STATUS_NORMAL);
+            Long targetId = toLong(target.get("targetId"));
+            if (targetId == null)
+            {
+                normalizeTarget(target, false);
+                encryptTargetSecret(target);
+                target.put("createBy", getCurrentUsername());
+                target.put("createTime", DateUtils.getNowDate());
+                target.put("updateBy", getCurrentUsername());
+                target.put("updateTime", DateUtils.getNowDate());
+                autoInspectionMapper.insertTarget(target);
+                targetId = toLong(target.get("targetId"));
+            }
+            else
+            {
+                updateTarget(target);
+            }
+            targetIds.add(targetId);
+            Map<String, Object> sanitized = new LinkedHashMap<>();
+            sanitized.put("targetId", targetId);
+            sanitized.put("targetName", target.get("targetName"));
+            sanitized.put("targetType", TARGET_BIG_DATA_SERVER);
+            sanitized.put("host", target.get("host"));
+            sanitized.put("port", target.get("port"));
+            sanitized.put("username", target.get("username"));
+            sanitized.put("status", target.get("status"));
+            sanitizedTargets.add(sanitized);
+            index++;
+        }
+        Map<String, Object> sanitizedParams = new HashMap<>(params);
+        sanitizedParams.put("serverTargets", sanitizedTargets);
+        step.put("stepParams", JSON.toJSONString(sanitizedParams));
+        return targetIds;
     }
 
     private void mergeStepParamsToTarget(Map<String, Object> step, Map<String, Object> target)
@@ -1518,6 +1660,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         if (TOOL_FTP_FILE_COUNT.equals(toolCode))
         {
             return "FTP";
+        }
+        if (TOOL_BIG_DATA_SERVER_DISK.equals(toolCode))
+        {
+            return TARGET_BIG_DATA_SERVER;
         }
         return "SERVER";
     }
@@ -1562,11 +1708,20 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             step.put("targetIds", targetIds);
             if (!targetIds.isEmpty())
             {
-                Map<String, Object> target = autoInspectionMapper.selectTargetById(targetIds.get(0));
-                if (target != null)
+                List<Map<String, Object>> targets = new ArrayList<>();
+                for (Long targetId : targetIds)
                 {
-                    maskTargetSecret(target);
-                    step.put("target", target);
+                    Map<String, Object> target = autoInspectionMapper.selectTargetById(targetId);
+                    if (target != null)
+                    {
+                        maskTargetSecret(target);
+                        targets.add(target);
+                    }
+                }
+                if (!targets.isEmpty())
+                {
+                    step.put("target", targets.get(0));
+                    step.put("targets", targets);
                 }
             }
         }
@@ -1614,6 +1769,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 "{\"fields\":[\"path\",\"recursive\",\"filePattern\"]}");
         insertBuiltinTool(TOOL_SERVER_DISK, "服务器磁盘使用率检测", TOOL_SERVER_DISK, "%", RULE_MAX, new BigDecimal("80"), 10, 0,
                 "{\"fields\":[\"path\"]}");
+        insertBuiltinTool(TOOL_BIG_DATA_SERVER_DISK, "大数据服务器爆盘检测", TOOL_BIG_DATA_SERVER_DISK, "%", RULE_MAX, new BigDecimal("85"), 15, 0,
+                "{\"fields\":[\"serverTargets\",\"includePseudo\"]}");
     }
 
     private void insertBuiltinTool(String code, String name, String type, String unit, String rule,
@@ -1718,8 +1875,13 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             password = cryptoService.decrypt(server.getOsPasswordCipher());
         }
-        Session session = createSshSession(server.getServerAddress(), server.getSshPort() == null ? 22 : server.getSshPort(),
-                username, password, timeoutSeconds);
+        return executeSshCommand(server.getServerAddress(), server.getSshPort() == null ? 22 : server.getSshPort(),
+                username, password, command, timeoutSeconds);
+    }
+
+    private String executeSshCommand(String host, int port, String username, String password, String command, int timeoutSeconds) throws Exception
+    {
+        Session session = createSshSession(host, port, username, password, timeoutSeconds);
         ChannelExec channel = null;
         try
         {
@@ -1788,9 +1950,22 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 continue;
             }
             String percent = parts[4].replace("%", "");
-            lines.add(new DiskLine(parts[5], new BigDecimal(percent)));
+            lines.add(new DiskLine(parts[0], parseLong(parts[1]), parseLong(parts[2]), parseLong(parts[3]), parts[5], new BigDecimal(percent)));
         }
         return lines;
+    }
+
+    private boolean isPseudoFilesystem(String fileSystem)
+    {
+        String value = StringUtils.trimToEmpty(fileSystem).toLowerCase();
+        return value.startsWith("tmpfs")
+                || value.startsWith("devtmpfs")
+                || value.startsWith("udev")
+                || value.startsWith("overlay")
+                || value.startsWith("shm")
+                || value.startsWith("cgroup")
+                || value.startsWith("proc")
+                || value.startsWith("sysfs");
     }
 
     private Map<String, Object> buildEffectiveTargetForTest(Map<String, Object> form)
@@ -1806,11 +1981,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             merged.putAll(form);
         }
-        if (StringUtils.isBlank(str(merged, "password")) && StringUtils.isNotBlank(str(persisted, "passwordCipher")))
+        if ((StringUtils.isBlank(str(merged, "password")) || "******".equals(str(merged, "password"))) && StringUtils.isNotBlank(str(persisted, "passwordCipher")))
         {
             merged.put("password", decryptQuietly(str(persisted, "passwordCipher")));
         }
-        if (StringUtils.isBlank(str(merged, "secret")) && StringUtils.isNotBlank(str(persisted, "secretCipher")))
+        if ((StringUtils.isBlank(str(merged, "secret")) || "******".equals(str(merged, "secret"))) && StringUtils.isNotBlank(str(persisted, "secretCipher")))
         {
             merged.put("secret", decryptQuietly(str(persisted, "secretCipher")));
         }
@@ -2082,6 +2257,17 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return value == null ? "-" : value.stripTrailingZeros().toPlainString();
     }
 
+    private String formatStorage(long kb)
+    {
+        BigDecimal gb = new BigDecimal(kb).divide(new BigDecimal(1024 * 1024), 2, RoundingMode.HALF_UP);
+        if (gb.compareTo(BigDecimal.ONE) >= 0)
+        {
+            return formatDecimal(gb) + "GB";
+        }
+        BigDecimal mb = new BigDecimal(kb).divide(new BigDecimal(1024), 2, RoundingMode.HALF_UP);
+        return formatDecimal(mb) + "MB";
+    }
+
     private String formatDate(Object value)
     {
         if (value instanceof Date)
@@ -2147,6 +2333,16 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return value instanceof Number ? ((Number) value).intValue() : Integer.parseInt(value.toString());
     }
 
+    private long parseLong(String value)
+    {
+        if (StringUtils.isBlank(value))
+        {
+            return 0L;
+        }
+        String numeric = value.replaceAll("[^0-9]", "");
+        return StringUtils.isBlank(numeric) ? 0L : Long.parseLong(numeric);
+    }
+
     private BigDecimal toBigDecimal(Object value)
     {
         if (value == null || StringUtils.isBlank(value.toString()))
@@ -2188,11 +2384,19 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private static class DiskLine
     {
+        private final String fileSystem;
+        private final long totalKb;
+        private final long usedKb;
+        private final long availableKb;
         private final String mountPoint;
         private final BigDecimal usePercent;
 
-        private DiskLine(String mountPoint, BigDecimal usePercent)
+        private DiskLine(String fileSystem, long totalKb, long usedKb, long availableKb, String mountPoint, BigDecimal usePercent)
         {
+            this.fileSystem = fileSystem;
+            this.totalKb = totalKb;
+            this.usedKb = usedKb;
+            this.availableKb = availableKb;
             this.mountPoint = mountPoint;
             this.usePercent = usePercent;
         }

@@ -1,5 +1,28 @@
 export const releaseNotes = [
   {
+    version: 'v3.3.0',
+    submitTime: '2026-06-16 09:35:42',
+    level: 'minor',
+    levelLabel: '小版本',
+    tagType: 'primary',
+    title: '自动化巡检大数据服务器爆盘检测',
+    summary: '自动化巡检模板新增“大数据服务器爆盘检测”工具，一个步骤可配置多台服务器，逐台读取所有磁盘分区占用并按阈值告警。',
+    changes: [
+      '新增内置巡检工具 BIG_DATA_SERVER_DISK，默认按磁盘使用率不高于 85% 判断，超时默认 15 秒。',
+      '模板步骤配置中新增大数据服务器列表，可为每台服务器单独维护 IP、SSH 端口、账号和密码，不依赖现场服务器资产。',
+      '执行时通过 SSH 读取 df -Pk 输出，记录每台服务器每个分区的总量、已用量、剩余量和使用率，步骤代表值取最高使用率。',
+      '默认过滤 tmpfs、devtmpfs、proc、sysfs 等临时或伪文件系统，页面提供“包含临时文件系统”开关。',
+      '目标测试只验证 SSH 连通和磁盘分区读取能力，正式巡检时才根据阈值判定是否告警。'
+    ],
+    scope: ['自动化巡检', '巡检模板', '大数据服务器', '磁盘爆盘告警', 'SSH检测', 'SQL脚本', '版本记录'],
+    database: '不修改业务表结构；新增一条 sup_auto_inspection_tool 内置工具数据 BIG_DATA_SERVER_DISK。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260616_auto_inspection_bigdata_disk_v3_3_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v3.2.0',
     submitTime: '2026-06-12 23:55:26',
     level: 'minor',

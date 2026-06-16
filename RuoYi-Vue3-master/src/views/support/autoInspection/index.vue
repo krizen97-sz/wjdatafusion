@@ -279,6 +279,20 @@
             </el-row>
           </section>
 
+          <section v-if="targetForm.targetType === 'BIG_DATA_SERVER'" class="target-section">
+            <header>
+              <strong>大数据服务器</strong>
+              <span>直接配置服务器 IP、SSH 端口和登录信息，用于全分区磁盘占用检测。</span>
+            </header>
+            <el-row :gutter="16">
+              <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="targetForm.targetName" placeholder="例如：大数据节点01" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="服务器IP" required><el-input v-model="targetForm.host" placeholder="172.18.16.172" /></el-form-item></el-col>
+              <el-col :span="8"><el-form-item label="SSH端口"><el-input-number v-model="targetForm.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+              <el-col :span="8"><el-form-item label="SSH账号" required><el-input v-model="targetForm.username" /></el-form-item></el-col>
+              <el-col :span="8"><el-form-item label="SSH密码" required><el-input v-model="targetForm.password" show-password /></el-form-item></el-col>
+            </el-row>
+          </section>
+
           <section class="target-section target-section--subtle">
             <el-row :gutter="16">
               <el-col :span="12"><el-form-item label="状态"><el-radio-group v-model="targetForm.status"><el-radio label="0">正常</el-radio><el-radio label="1">停用</el-radio></el-radio-group></el-form-item></el-col>
@@ -457,11 +471,33 @@
             </el-col>
             <el-col v-if="stepDraft.toolCode === 'SERVER_FILE_COUNT'" :span="8"><el-form-item label="文件匹配"><el-input v-model="stepDraft.stepParams.filePattern" placeholder="*.dat" /></el-form-item></el-col>
           </el-row>
+          <div v-if="stepTargetType === 'BIG_DATA_SERVER'" class="bigdata-server-config">
+            <div class="bigdata-server-toolbar">
+              <span>已配置 {{ stepDraft.stepParams.serverTargets.length }} 台服务器</span>
+              <el-switch v-model="stepDraft.stepParams.includePseudo" active-value="true" inactive-value="false" active-text="包含临时文件系统" inactive-text="过滤临时文件系统" inline-prompt />
+              <el-button type="primary" plain icon="Plus" @click="addBigDataServerTarget">添加服务器</el-button>
+            </div>
+            <div class="bigdata-server-list">
+              <div v-for="(server, index) in stepDraft.stepParams.serverTargets" :key="index" class="bigdata-server-card">
+                <div class="bigdata-server-card__head">
+                  <strong>服务器 {{ index + 1 }}</strong>
+                  <el-button link type="danger" icon="Delete" :disabled="stepDraft.stepParams.serverTargets.length <= 1" @click="removeBigDataServerTarget(index)">删除</el-button>
+                </div>
+                <el-row :gutter="12">
+                  <el-col :span="8"><el-form-item label="目标名称"><el-input v-model="server.targetName" placeholder="大数据节点01" /></el-form-item></el-col>
+                  <el-col :span="8"><el-form-item label="服务器IP" required><el-input v-model="server.host" placeholder="172.18.16.172" /></el-form-item></el-col>
+                  <el-col :span="8"><el-form-item label="SSH端口"><el-input-number v-model="server.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="SSH账号" required><el-input v-model="server.username" /></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="SSH密码" required><el-input v-model="server.password" show-password /></el-form-item></el-col>
+                </el-row>
+              </div>
+            </div>
+          </div>
         </section>
       </el-form>
       <template #footer>
         <el-button @click="stepDialogOpen = false">取消</el-button>
-        <el-button :loading="targetTesting" @click="handleTestTarget(stepDraft.target)">测试目标</el-button>
+        <el-button :loading="targetTesting" @click="handleTestStepTarget">测试目标</el-button>
         <el-button type="primary" @click="submitStepDraft">保存步骤</el-button>
       </template>
     </el-dialog>
@@ -638,7 +674,8 @@ const targetTypeOptions = [
   { label: 'Kafka', value: 'KAFKA' },
   { label: 'HTTP接口', value: 'HTTP' },
   { label: 'FTP目录', value: 'FTP' },
-  { label: '服务器资产', value: 'SERVER' }
+  { label: '服务器资产', value: 'SERVER' },
+  { label: '大数据服务器', value: 'BIG_DATA_SERVER' }
 ]
 const serverTreeProps = {
   label: 'label',
@@ -683,12 +720,14 @@ const stepTargetSectionTitle = computed(() => {
   if (stepTargetType.value === 'KAFKA') return 'Kafka 目标'
   if (stepTargetType.value === 'HTTP') return 'HTTP 接口目标'
   if (stepTargetType.value === 'FTP') return 'FTP 目录目标'
+  if (stepTargetType.value === 'BIG_DATA_SERVER') return '大数据服务器'
   return '服务器资产目标'
 })
 const stepTargetSectionHint = computed(() => {
   if (stepTargetType.value === 'KAFKA') return '消费积压检测只需要 bootstrap、topic 和消费组。'
   if (stepTargetType.value === 'HTTP') return '接口数量检测关注请求地址、参数模板、认证信息和结果取值路径。'
   if (stepTargetType.value === 'FTP') return 'FTP 文件数量检测只需要连接信息和目录路径。'
+  if (stepTargetType.value === 'BIG_DATA_SERVER') return '逐台配置服务器 IP、SSH 端口和登录信息，执行时读取每台服务器的所有磁盘分区。'
   return '服务器目录或磁盘检测复用服务器资产，并配置检测路径。'
 })
 const latestRecordLabel = computed(() => {
@@ -885,6 +924,7 @@ function handleTargetTypeChange(type) {
   const current = { ...targetForm.value, targetType: type }
   targetForm.value = cleanTargetPayload(current)
   if (type === 'FTP' && !targetForm.value.port) targetForm.value.port = 21
+  if (type === 'BIG_DATA_SERVER' && !targetForm.value.port) targetForm.value.port = 22
   if (type === 'HTTP' && !targetForm.value.resultPath) targetForm.value.resultPath = 'data.total'
 }
 
@@ -939,6 +979,24 @@ function handleTestTarget(row) {
   })
 }
 
+function handleTestStepTarget() {
+  if (stepTargetType.value !== 'BIG_DATA_SERVER') {
+    return handleTestTarget(stepDraft.value.target)
+  }
+  const warning = validateBigDataServerTargets(stepDraft.value.stepParams?.serverTargets || [])
+  if (warning) {
+    proxy.$modal.msgWarning(warning)
+    return Promise.resolve()
+  }
+  targetTesting.value = true
+  const servers = normalizeBigDataServerTargets(stepDraft.value.stepParams.serverTargets)
+  return Promise.all(servers.map((server) => testAutoInspectionTarget(server))).then((results) => {
+    proxy.$modal.msgSuccess(`测试通过：${results.length} 台服务器均可读取磁盘分区`)
+  }).finally(() => {
+    targetTesting.value = false
+  })
+}
+
 function validateTargetBusiness(target) {
   if (!target?.targetType) return '请选择目标类型'
   if (target.targetType === 'KAFKA') {
@@ -955,6 +1013,11 @@ function validateTargetBusiness(target) {
   if (target.targetType === 'SERVER') {
     if (!target.serverId) return '请选择服务器资产'
     if (!String(target.path || '').trim()) return '请填写服务器检测路径'
+    if (!String(target.username || '').trim()) return '请填写 SSH 登录账号'
+    if (!String(target.password || '').trim()) return '请填写 SSH 登录密码'
+  }
+  if (target.targetType === 'BIG_DATA_SERVER') {
+    if (!String(target.host || '').trim()) return '请填写服务器 IP'
     if (!String(target.username || '').trim()) return '请填写 SSH 登录账号'
     if (!String(target.password || '').trim()) return '请填写 SSH 登录密码'
   }
@@ -1009,7 +1072,72 @@ function cleanTargetPayload(target) {
     payload.resultPath = ''
     payload.extraParams = ''
   }
+  if (payload.targetType === 'BIG_DATA_SERVER') {
+    payload.serverId = undefined
+    payload.path = ''
+    payload.url = ''
+    payload.httpMethod = 'POST'
+    payload.topic = ''
+    payload.consumerGroup = ''
+    payload.appKey = ''
+    payload.secret = ''
+    payload.resultPath = ''
+    payload.extraParams = ''
+    payload.port = payload.port || 22
+  }
   return payload
+}
+
+function defaultBigDataServerTarget(index = 1) {
+  return {
+    targetName: `大数据节点${index}`,
+    targetType: 'BIG_DATA_SERVER',
+    host: '',
+    port: 22,
+    username: '',
+    password: '',
+    status: '0'
+  }
+}
+
+function normalizeBigDataServerTargets(servers = []) {
+  return servers.map((server, index) => cleanTargetPayload({
+    ...defaultBigDataServerTarget(index + 1),
+    ...server,
+    targetType: 'BIG_DATA_SERVER',
+    targetName: server.targetName || `大数据节点${index + 1}`,
+    status: server.status || '0'
+  }))
+}
+
+function ensureBigDataServerParams(step) {
+  if (!step.stepParams) step.stepParams = {}
+  if (!Array.isArray(step.stepParams.serverTargets) || !step.stepParams.serverTargets.length) {
+    step.stepParams.serverTargets = [defaultBigDataServerTarget()]
+  }
+  if (!step.stepParams.includePseudo) {
+    step.stepParams.includePseudo = 'false'
+  }
+}
+
+function addBigDataServerTarget() {
+  ensureBigDataServerParams(stepDraft.value)
+  stepDraft.value.stepParams.serverTargets.push(defaultBigDataServerTarget(stepDraft.value.stepParams.serverTargets.length + 1))
+}
+
+function removeBigDataServerTarget(index) {
+  ensureBigDataServerParams(stepDraft.value)
+  if (stepDraft.value.stepParams.serverTargets.length <= 1) return
+  stepDraft.value.stepParams.serverTargets.splice(index, 1)
+}
+
+function validateBigDataServerTargets(servers = []) {
+  if (!servers.length) return '请至少配置一台大数据服务器'
+  for (let index = 0; index < servers.length; index++) {
+    const warning = validateTargetBusiness(cleanTargetPayload({ ...servers[index], targetType: 'BIG_DATA_SERVER' }))
+    if (warning) return `服务器 ${index + 1}：${warning}`
+  }
+  return ''
 }
 
 function insertHttpPlaceholder(value) {
@@ -1051,6 +1179,9 @@ function handleStepToolChange(toolCode) {
   draft.toolCode = toolCode
   applyToolDefaults(draft, true)
   draft.target = normalizeStepTarget({}, toolCode, draft.stepName)
+  if (getTargetTypeByTool(toolCode) === 'BIG_DATA_SERVER') {
+    ensureBigDataServerParams(draft)
+  }
 }
 
 function submitStepDraft() {
@@ -1132,14 +1263,22 @@ function stripStepIdentity(step) {
   if (step.target) {
     delete step.target.targetId
   }
+  ;(step.stepParams?.serverTargets || []).forEach((server) => {
+    delete server.targetId
+  })
 }
 
 function resetCopiedStepCredentials(step) {
-  if (!step?.target) return
-  step.target.password = ''
-  step.target.secret = ''
-  step.target.passwordCipher = ''
-  step.target.secretCipher = ''
+  if (step?.target) {
+    step.target.password = ''
+    step.target.secret = ''
+    step.target.passwordCipher = ''
+    step.target.secretCipher = ''
+  }
+  ;(step.stepParams?.serverTargets || []).forEach((server) => {
+    server.password = ''
+    server.passwordCipher = ''
+  })
 }
 
 function sortTemplateStepsByOrder(activeStepRef) {
@@ -1169,6 +1308,9 @@ function applyToolDefaults(step, forceName = false) {
   step.timeoutSeconds = tool.defaultTimeoutSeconds || 10
   step.targetIds = []
   step.stepParams = {}
+  if (getTargetTypeByTool(step.toolCode) === 'BIG_DATA_SERVER') {
+    ensureBigDataServerParams(step)
+  }
 }
 
 function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
@@ -1185,6 +1327,16 @@ function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
 
 function normalizeStepForSave(step) {
   const next = cloneStep(step)
+  if (next.toolCode === 'BIG_DATA_SERVER_DISK') {
+    const servers = normalizeBigDataServerTargets(next.stepParams?.serverTargets || [])
+    next.stepParams = {
+      includePseudo: next.stepParams?.includePseudo || 'false',
+      serverTargets: servers
+    }
+    next.target = {}
+    next.targetIds = servers.filter((server) => server.targetId).map((server) => server.targetId)
+    return next
+  }
   next.target = normalizeStepTarget(next.target, next.toolCode, next.stepName)
   next.targetIds = next.target?.targetId ? [next.target.targetId] : []
   if (next.toolCode !== 'SERVER_FILE_COUNT') {
@@ -1201,6 +1353,9 @@ function normalizeStepForSave(step) {
 function validateStepDraft(step) {
   if (!String(step?.stepName || '').trim()) return '请填写步骤名称'
   if (!step?.toolCode) return '请选择巡检工具'
+  if (step.toolCode === 'BIG_DATA_SERVER_DISK') {
+    return validateBigDataServerTargets(step.stepParams?.serverTargets || [])
+  }
   const target = normalizeStepTarget(step.target, step.toolCode, step.stepName)
   return validateTargetBusiness(target)
 }
@@ -1209,10 +1364,15 @@ function getTargetTypeByTool(toolCode) {
   if (toolCode === 'KAFKA_LAG') return 'KAFKA'
   if (toolCode === 'HTTP_COUNT') return 'HTTP'
   if (toolCode === 'FTP_FILE_COUNT') return 'FTP'
+  if (toolCode === 'BIG_DATA_SERVER_DISK') return 'BIG_DATA_SERVER'
   return 'SERVER'
 }
 
 function formatStepTarget(step) {
+  if (step?.toolCode === 'BIG_DATA_SERVER_DISK') {
+    const count = step.stepParams?.serverTargets?.length || step.targets?.length || step.targetIds?.length || 0
+    return count ? `${count} 台大数据服务器` : '未配置大数据服务器'
+  }
   const target = step?.target || {}
   if (!target.targetName && step?.targetIds?.length) return `已绑定 ${step.targetIds.length} 个目标`
   if (target.targetName) return target.targetName
@@ -1369,13 +1529,25 @@ function compatibleTargets(step) {
   if (tool.toolType === 'HTTP_COUNT') return targetOptions.value.filter((item) => item.targetType === 'HTTP')
   if (tool.toolType === 'FTP_FILE_COUNT') return targetOptions.value.filter((item) => item.targetType === 'FTP')
   if (['SERVER_FILE_COUNT', 'SERVER_DISK'].includes(tool.toolType)) return targetOptions.value.filter((item) => item.targetType === 'SERVER')
+  if (tool.toolType === 'BIG_DATA_SERVER_DISK') return targetOptions.value.filter((item) => item.targetType === 'BIG_DATA_SERVER')
   return targetOptions.value
 }
 
 function normalizeStepFromServer(step) {
+  const params = parseCronConfig(step.stepParams) || {}
+  if (step.toolCode === 'BIG_DATA_SERVER_DISK') {
+    const serverTargets = (step.targets?.length ? step.targets : params.serverTargets || []).map((server, index) => ({
+      ...defaultBigDataServerTarget(index + 1),
+      ...server,
+      targetType: 'BIG_DATA_SERVER',
+      port: server.port || 22
+    }))
+    params.serverTargets = serverTargets.length ? serverTargets : [defaultBigDataServerTarget()]
+    params.includePseudo = params.includePseudo || 'false'
+  }
   return {
     ...step,
-    stepParams: parseCronConfig(step.stepParams) || {},
+    stepParams: params,
     targetIds: step.targetIds || [],
     target: normalizeStepTarget(step.target || {}, step.toolCode, step.stepName)
   }
@@ -1420,6 +1592,7 @@ function getToolLabel(value) {
 function formatTargetAddress(row) {
   if (!row || !row.targetType) return '-'
   if (row.targetType === 'SERVER') return `${row.serverName || '服务器'}（${row.serverAddress || row.serverId || '-'}）${row.path ? ' ' + row.path : ''}`
+  if (row.targetType === 'BIG_DATA_SERVER') return `${row.host || '-'}:${row.port || 22}`
   if (row.targetType === 'HTTP') return row.url || '-'
   if (row.targetType === 'KAFKA') return `${row.host || '-'} ${row.topic || ''} ${row.consumerGroup || ''}`
   return `${row.host || '-'}:${row.port || ''}${row.path ? ' ' + row.path : ''}`
@@ -1444,6 +1617,11 @@ function getStepDetailItems(step) {
     items.push({ label: '目录路径', value: target.path || '-' }, { label: '端口', value: target.port || 21 })
   } else if (target.targetType === 'SERVER') {
     items.push({ label: '检测路径', value: target.path || '-' }, { label: 'SSH账号', value: target.username || '-' })
+  } else if (step.toolCode === 'BIG_DATA_SERVER_DISK') {
+    items.push(
+      { label: '服务器数量', value: `${step.stepParams?.serverTargets?.length || step.targets?.length || 0} 台` },
+      { label: '临时文件系统', value: step.stepParams?.includePseudo === 'true' ? '包含' : '过滤' }
+    )
   }
   if (step.toolCode === 'SERVER_FILE_COUNT') {
     items.push({ label: '递归/匹配', value: `${step.stepParams?.recursive === 'true' ? '递归' : '不递归'}${step.stepParams?.filePattern ? ' · ' + step.stepParams.filePattern : ''}` })
@@ -1867,6 +2045,53 @@ function resultTagType(value) {
   margin-top: 6px;
   color: #7b8fa8;
   line-height: 1.45;
+}
+
+.bigdata-server-config {
+  display: grid;
+  gap: 12px;
+}
+
+.bigdata-server-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid #dfeaf6;
+  border-radius: 8px;
+  background: #fff;
+
+  span {
+    margin-right: auto;
+    color: #1d3554;
+    font-weight: 700;
+  }
+}
+
+.bigdata-server-list {
+  display: grid;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.bigdata-server-card {
+  padding: 12px;
+  border: 1px solid #e2ebf7;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.bigdata-server-card__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+
+  strong {
+    color: #1d3554;
+  }
 }
 
 .step-actions {
