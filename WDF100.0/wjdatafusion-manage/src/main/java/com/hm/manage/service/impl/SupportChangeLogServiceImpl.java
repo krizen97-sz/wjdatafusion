@@ -130,7 +130,7 @@ public class SupportChangeLogServiceImpl implements ISupportChangeLogService
     {
         PropertyPreExcludeFilter filter = new PropertyPreExcludeFilter();
         filter.addExcludes("osPassword", "osPasswordCipher", "loginPassword", "loginPasswordCipher",
-                "password", "passwordCipher", "secretCipher", "children");
+                "password", "hikPassword", "rootPassword", "otherPassword", "passwordCipher", "secretCipher", "children");
         return JSON.toJSONString(data, filter);
     }
 }

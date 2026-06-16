@@ -31,6 +31,14 @@ public class SupportServer extends BaseEntity
     @JsonIgnore
     private String osPasswordCipher;
 
+    private String hikPassword;
+    private String rootPassword;
+    private String otherUsername;
+    private String otherPassword;
+    private Boolean hikCredentialConfigured;
+    private Boolean rootCredentialConfigured;
+    private Boolean otherCredentialConfigured;
+
     @Excel(name = "状态", readConverterExp = "0=正常,1=停用")
     private String status;
 
@@ -122,6 +130,76 @@ public class SupportServer extends BaseEntity
     public void setOsPasswordCipher(String osPasswordCipher)
     {
         this.osPasswordCipher = osPasswordCipher;
+    }
+
+    public String getHikPassword()
+    {
+        return hikPassword;
+    }
+
+    public void setHikPassword(String hikPassword)
+    {
+        this.hikPassword = hikPassword;
+    }
+
+    public String getRootPassword()
+    {
+        return rootPassword;
+    }
+
+    public void setRootPassword(String rootPassword)
+    {
+        this.rootPassword = rootPassword;
+    }
+
+    public String getOtherUsername()
+    {
+        return otherUsername;
+    }
+
+    public void setOtherUsername(String otherUsername)
+    {
+        this.otherUsername = otherUsername;
+    }
+
+    public String getOtherPassword()
+    {
+        return otherPassword;
+    }
+
+    public void setOtherPassword(String otherPassword)
+    {
+        this.otherPassword = otherPassword;
+    }
+
+    public Boolean getHikCredentialConfigured()
+    {
+        return hikCredentialConfigured;
+    }
+
+    public void setHikCredentialConfigured(Boolean hikCredentialConfigured)
+    {
+        this.hikCredentialConfigured = hikCredentialConfigured;
+    }
+
+    public Boolean getRootCredentialConfigured()
+    {
+        return rootCredentialConfigured;
+    }
+
+    public void setRootCredentialConfigured(Boolean rootCredentialConfigured)
+    {
+        this.rootCredentialConfigured = rootCredentialConfigured;
+    }
+
+    public Boolean getOtherCredentialConfigured()
+    {
+        return otherCredentialConfigured;
+    }
+
+    public void setOtherCredentialConfigured(Boolean otherCredentialConfigured)
+    {
+        this.otherCredentialConfigured = otherCredentialConfigured;
     }
 
     public String getStatus()

@@ -423,10 +423,14 @@
                     <el-input-number v-model="inspectorDraft.sshPort" :min="1" :max="65535" controls-position="right" />
                     <label>操作系统</label>
                     <el-input v-model="inspectorDraft.osType" placeholder="例如 CentOS / Windows Server" />
-                    <label>系统账号</label>
-                    <el-input v-model="inspectorDraft.osUsername" placeholder="请输入系统账号" />
-                    <label>系统密码</label>
-                    <el-input v-model="inspectorDraft.osPassword" type="password" show-password placeholder="留空则不修改密码" />
+                    <label>hik密码</label>
+                    <el-input v-model="inspectorDraft.hikPassword" type="password" show-password :placeholder="inspectorDraft.hikCredentialConfigured ? '已配置，留空则不修改' : '用户名固定为hik'" />
+                    <label>root密码</label>
+                    <el-input v-model="inspectorDraft.rootPassword" type="password" show-password :placeholder="inspectorDraft.rootCredentialConfigured ? '已配置，留空则不修改' : '用户名固定为root'" />
+                    <label>其他账号用户名</label>
+                    <el-input v-model="inspectorDraft.otherUsername" placeholder="可选，例如运维账号" />
+                    <label>其他账号密码</label>
+                    <el-input v-model="inspectorDraft.otherPassword" type="password" show-password :placeholder="inspectorDraft.otherCredentialConfigured ? '已配置，留空则不修改' : '填写其他账号时必填'" />
                   </template>
 
                   <template v-else-if="inspectorEditType === 'contact'">
@@ -1334,7 +1338,6 @@
             <el-table-column label="操作" width="250" fixed="right">
               <template #default="{ row }">
                 <el-button link type="primary" @click="handleEquipmentEdit(row)">编辑</el-button>
-                <el-button v-if="row.sourceType === EQUIPMENT_SOURCE_SERVER" link type="primary" @click="openServerCredentialDialog(row.raw)">凭据档案</el-button>
                 <el-button v-if="row.sourceType === EQUIPMENT_SOURCE_SERVER && canViewPlain" link type="primary" @click="handleServerPlain(row.raw)">显示密码</el-button>
                 <el-button v-else-if="row.sourceType === EQUIPMENT_SOURCE_HARDWARE && canViewPlain" link type="primary" @click="handleHardwareAssetPlain(row.raw || row)">显示密码</el-button>
                 <el-button link type="danger" @click="handleEquipmentDelete(row)">删除设备</el-button>
@@ -1396,11 +1399,19 @@
                     </el-form-item>
                   </div>
                   <div class="server-manager-form__grid">
-                    <el-form-item label="系统账号">
-                      <el-input v-model="serverQuickForm.osUsername" placeholder="可选" />
+                    <el-form-item label="hik密码">
+                      <el-input v-model="serverQuickForm.hikPassword" type="password" show-password placeholder="用户名固定为hik，可选" />
                     </el-form-item>
-                    <el-form-item label="系统密码">
-                      <el-input v-model="serverQuickForm.osPassword" type="password" show-password placeholder="可选" />
+                    <el-form-item label="root密码">
+                      <el-input v-model="serverQuickForm.rootPassword" type="password" show-password placeholder="用户名固定为root，可选" />
+                    </el-form-item>
+                  </div>
+                  <div class="server-manager-form__grid">
+                    <el-form-item label="其他账号用户名">
+                      <el-input v-model="serverQuickForm.otherUsername" placeholder="可选，例如运维账号" />
+                    </el-form-item>
+                    <el-form-item label="其他账号密码">
+                      <el-input v-model="serverQuickForm.otherPassword" type="password" show-password placeholder="填写其他账号时必填" />
                     </el-form-item>
                   </div>
                   <el-button type="primary" class="server-manager-submit" @click="submitManagedServerSingle">
@@ -1429,13 +1440,21 @@
                     <el-form-item label="SSH端口">
                       <el-input-number v-model="serverBatchForm.sshPort" :min="1" :max="65535" controls-position="right" />
                     </el-form-item>
-                    <el-form-item label="系统账号">
-                      <el-input v-model="serverBatchForm.osUsername" placeholder="批量设备统一账号，可选" />
+                    <el-form-item label="hik密码">
+                      <el-input v-model="serverBatchForm.hikPassword" type="password" show-password placeholder="批量设备统一hik密码，可选" />
                     </el-form-item>
                   </div>
                   <div class="server-manager-form__grid">
-                    <el-form-item label="系统密码">
-                      <el-input v-model="serverBatchForm.osPassword" type="password" show-password placeholder="批量设备统一密码，可选" />
+                    <el-form-item label="root密码">
+                      <el-input v-model="serverBatchForm.rootPassword" type="password" show-password placeholder="批量设备统一root密码，可选" />
+                    </el-form-item>
+                  </div>
+                  <div class="server-manager-form__grid">
+                    <el-form-item label="其他账号用户名">
+                      <el-input v-model="serverBatchForm.otherUsername" placeholder="批量设备统一其他账号，可选" />
+                    </el-form-item>
+                    <el-form-item label="其他账号密码">
+                      <el-input v-model="serverBatchForm.otherPassword" type="password" show-password placeholder="填写其他账号时必填" />
                     </el-form-item>
                   </div>
                   <div class="server-batch-preview" :class="{ 'is-error': serverBatchPreview.error }">
@@ -1484,7 +1503,6 @@
                     </div>
                     <div class="server-manager-card__actions">
                       <el-button link type="primary" @click="handleServerEdit(server)">编辑</el-button>
-                      <el-button link type="primary" @click="openServerCredentialDialog(server)">凭据档案</el-button>
                       <el-button v-if="canViewPlain" link type="primary" @click="handleServerPlain(server)">显示密码</el-button>
                       <el-button link type="danger" @click="handleServerDelete(server)">删除设备</el-button>
                     </div>
@@ -1852,11 +1870,19 @@
               </el-form-item>
             </div>
             <div class="server-manager-form__grid">
-              <el-form-item label="系统账号">
-                <el-input v-model="serverQuickForm.osUsername" placeholder="可选" />
+              <el-form-item label="hik密码">
+                <el-input v-model="serverQuickForm.hikPassword" type="password" show-password placeholder="用户名固定为hik，可选" />
               </el-form-item>
-              <el-form-item label="系统密码">
-                <el-input v-model="serverQuickForm.osPassword" type="password" show-password placeholder="可选" />
+              <el-form-item label="root密码">
+                <el-input v-model="serverQuickForm.rootPassword" type="password" show-password placeholder="用户名固定为root，可选" />
+              </el-form-item>
+            </div>
+            <div class="server-manager-form__grid">
+              <el-form-item label="其他账号用户名">
+                <el-input v-model="serverQuickForm.otherUsername" placeholder="可选，例如运维账号" />
+              </el-form-item>
+              <el-form-item label="其他账号密码">
+                <el-input v-model="serverQuickForm.otherPassword" type="password" show-password placeholder="填写其他账号时必填" />
               </el-form-item>
             </div>
             <el-button type="primary" class="server-manager-submit" @click="submitManagedServerSingle">
@@ -1885,13 +1911,21 @@
               <el-form-item label="SSH端口">
                 <el-input-number v-model="serverBatchForm.sshPort" :min="1" :max="65535" controls-position="right" />
               </el-form-item>
-              <el-form-item label="系统账号">
-                <el-input v-model="serverBatchForm.osUsername" placeholder="批量服务器统一账号，可选" />
+              <el-form-item label="hik密码">
+                <el-input v-model="serverBatchForm.hikPassword" type="password" show-password placeholder="批量服务器统一hik密码，可选" />
               </el-form-item>
             </div>
             <div class="server-manager-form__grid">
-              <el-form-item label="系统密码">
-                <el-input v-model="serverBatchForm.osPassword" type="password" show-password placeholder="批量服务器统一密码，可选" />
+              <el-form-item label="root密码">
+                <el-input v-model="serverBatchForm.rootPassword" type="password" show-password placeholder="批量服务器统一root密码，可选" />
+              </el-form-item>
+            </div>
+            <div class="server-manager-form__grid">
+              <el-form-item label="其他账号用户名">
+                <el-input v-model="serverBatchForm.otherUsername" placeholder="批量服务器统一其他账号，可选" />
+              </el-form-item>
+              <el-form-item label="其他账号密码">
+                <el-input v-model="serverBatchForm.otherPassword" type="password" show-password placeholder="填写其他账号时必填" />
               </el-form-item>
             </div>
             <div class="server-batch-preview" :class="{ 'is-error': serverBatchPreview.error }">
@@ -2021,7 +2055,7 @@
         <div class="server-batch-confirm__toolbar">
           <div>
             <strong>{{ getPlatformNameById(serverBatchConfirmPlatformId) }}</strong>
-            <span>请核对 IP、名称、SSH 端口、系统账号等信息，可直接修改或删除行。</span>
+            <span>请核对 IP、名称、SSH 端口和 hik/root/其他账号信息，可直接修改或删除行。</span>
           </div>
           <div class="server-batch-confirm__actions">
             <div class="server-batch-reuse-control" :class="{ 'is-active': serverBatchReuseExisting }">
@@ -2087,14 +2121,24 @@
               <el-input v-model="scope.row.osType" placeholder="可选" />
             </template>
           </el-table-column>
-          <el-table-column label="系统账号" min-width="140">
+          <el-table-column label="hik密码" min-width="150">
             <template #default="scope">
-              <el-input v-model="scope.row.osUsername" placeholder="可选" />
+              <el-input v-model="scope.row.hikPassword" type="password" show-password placeholder="用户名固定为hik，可选" />
             </template>
           </el-table-column>
-          <el-table-column label="系统密码" min-width="150">
+          <el-table-column label="root密码" min-width="150">
             <template #default="scope">
-              <el-input v-model="scope.row.osPassword" placeholder="可选，明文" />
+              <el-input v-model="scope.row.rootPassword" type="password" show-password placeholder="用户名固定为root，可选" />
+            </template>
+          </el-table-column>
+          <el-table-column label="其他账号" min-width="140">
+            <template #default="scope">
+              <el-input v-model="scope.row.otherUsername" placeholder="可选" />
+            </template>
+          </el-table-column>
+          <el-table-column label="其他密码" min-width="150">
+            <template #default="scope">
+              <el-input v-model="scope.row.otherPassword" type="password" show-password placeholder="填写账号时必填" />
             </template>
           </el-table-column>
           <el-table-column label="运行状态" width="110">
@@ -2436,11 +2480,17 @@
                 <el-form-item label="操作系统" prop="osType">
                   <el-input v-model="serverForm.osType" placeholder="例如：CentOS 7 / Windows Server 2019" />
                 </el-form-item>
-                <el-form-item label="系统账号" prop="osUsername">
-                  <el-input v-model="serverForm.osUsername" placeholder="填写系统登录账号" />
+                <el-form-item label="hik密码" prop="hikPassword">
+                  <el-input v-model="serverForm.hikPassword" type="password" show-password :placeholder="serverForm.hikCredentialConfigured ? '已配置，留空表示不变' : '用户名固定为hik，可选'" />
                 </el-form-item>
-                <el-form-item class="editor-form__wide" label="系统密码" prop="osPassword">
-                  <el-input v-model="serverForm.osPassword" type="password" show-password placeholder="留空表示不改动现有密码" />
+                <el-form-item label="root密码" prop="rootPassword">
+                  <el-input v-model="serverForm.rootPassword" type="password" show-password :placeholder="serverForm.rootCredentialConfigured ? '已配置，留空表示不变' : '用户名固定为root，可选'" />
+                </el-form-item>
+                <el-form-item label="其他账号用户名" prop="otherUsername">
+                  <el-input v-model="serverForm.otherUsername" placeholder="可选，例如运维账号" />
+                </el-form-item>
+                <el-form-item label="其他账号密码" prop="otherPassword">
+                  <el-input v-model="serverForm.otherPassword" type="password" show-password :placeholder="serverForm.otherCredentialConfigured ? '已配置，留空表示不变' : '填写其他账号时必填'" />
                 </el-form-item>
               </el-form>
             </div>
@@ -2454,7 +2504,9 @@
                 <span>状态 {{ getStatusLabel(serverForm.status) }}</span>
                 <span>SSH {{ serverForm.sshPort || 22 }}</span>
                 <span>系统 {{ serverForm.osType || '未填写' }}</span>
-                <span>账号 {{ serverForm.osUsername || '未填写' }}</span>
+                <span>hik {{ serverForm.hikCredentialConfigured || serverForm.hikPassword ? '已配置' : '未配置' }}</span>
+                <span>root {{ serverForm.rootCredentialConfigured || serverForm.rootPassword ? '已配置' : '未配置' }}</span>
+                <span>其他 {{ serverForm.otherCredentialConfigured || serverForm.otherUsername ? (serverForm.otherUsername || '已配置') : '未配置' }}</span>
               </div>
             </article>
           </aside>
@@ -2931,6 +2983,10 @@ const SERVER_BATCH_LIMIT = 512
 const HARDWARE_SERVER_TYPE = 'SERVER'
 const EQUIPMENT_SOURCE_SERVER = 'SERVER'
 const EQUIPMENT_SOURCE_HARDWARE = 'HARDWARE'
+const SERVER_FIXED_LOGIN_HIK = 'hik'
+const SERVER_FIXED_LOGIN_ROOT = 'root'
+const SERVER_FIXED_LOGIN_OTHER_LABEL = '其他账号'
+const SERVER_EXPORT_HEADERS = ['服务器名称', '服务器IP', 'SSH端口', '操作系统', 'hik密码', 'root密码', '其他账号', '其他密码', '运行状态', '所属子平台']
 const HARDWARE_TYPE_FALLBACKS = [
   { label: '解码器', value: 'DECODER' },
   { label: '终端', value: 'TERMINAL' },
@@ -3325,7 +3381,7 @@ const filteredManagedServers = computed(() => {
   const keyword = serverManagerKeyword.value.trim().toLowerCase()
   if (!keyword) return managedPlatformServers.value
   return managedPlatformServers.value.filter((server) => {
-    const searchText = [server.serverName, server.serverAddress, server.sshPort, server.osType, server.osUsername, getServerManagedScopeLabel(server)]
+    const searchText = [server.serverName, server.serverAddress, server.sshPort, server.osType, formatServerCredentialStatus(server), getServerManagedScopeLabel(server)]
       .filter(Boolean)
       .join(' ')
       .toLowerCase()
@@ -3418,12 +3474,34 @@ const endpointPlatformName = computed(() => {
 })
 const endpointCredentialLabel = computed(() => (endpointForm.value.loginUsername ? '已配置账号' : '未配置账号'))
 const serverDialogLead = computed(() => '服务器统一归属到子平台，主平台侧只做汇总查看和统一维护。')
-const serverCredentialLabel = computed(() => (serverForm.value.osUsername ? '已配置系统账号' : '未配置系统账号'))
+const serverCredentialLabel = computed(() => {
+  const configured = [
+    serverForm.value.hikCredentialConfigured || serverForm.value.hikPassword ? SERVER_FIXED_LOGIN_HIK : null,
+    serverForm.value.rootCredentialConfigured || serverForm.value.rootPassword ? SERVER_FIXED_LOGIN_ROOT : null,
+    serverForm.value.otherCredentialConfigured || serverForm.value.otherUsername || serverForm.value.otherPassword
+      ? (serverForm.value.otherUsername || SERVER_FIXED_LOGIN_OTHER_LABEL)
+      : null
+  ].filter(Boolean)
+  return configured.length ? `已配置 ${configured.join(' / ')}` : '未配置登录信息'
+})
 const serverPreviewCopy = computed(() =>
   serverForm.value.serverAddress
     ? `保存后会以 ${formatServerAddress(serverForm.value)} 作为服务器地址展示。`
     : '请输入服务器地址，保存后会进入子平台服务器集合。'
 )
+
+function formatServerCredentialStatus(server = {}) {
+  const items = [
+    server.hikCredentialConfigured ? SERVER_FIXED_LOGIN_HIK : null,
+    server.rootCredentialConfigured ? SERVER_FIXED_LOGIN_ROOT : null,
+    server.otherCredentialConfigured ? (server.otherUsername || SERVER_FIXED_LOGIN_OTHER_LABEL) : null
+  ].filter(Boolean)
+  if (items.length) {
+    return items.join(' / ')
+  }
+  return server.osUsername || '未配置'
+}
+
 const orgDialogLead = computed(() => '组织会作为联系人归属容器出现在组织池中，建议名称与现场业务称呼保持一致。')
 const orgPreviewCopy = computed(() =>
   orgForm.value.shortName
@@ -3517,7 +3595,7 @@ const inspectorFacts = computed(() => {
       { label: '地址', value: selectedServer.value.serverAddress || '未填写' },
       { label: 'SSH端口', value: selectedServer.value.sshPort || 22 },
       { label: '操作系统', value: selectedServer.value.osType || '未填写' },
-      { label: '系统账号', value: selectedServer.value.osUsername || '未填写' },
+      { label: '登录信息', value: formatServerCredentialStatus(selectedServer.value) },
       { label: '所属子平台', value: `${getServerBindCount(selectedServer.value.serverId)} 个` }
     ]
   }
@@ -3633,8 +3711,13 @@ function createInspectorDraft(type, row) {
       serverAddress: row.serverAddress,
       sshPort: row.sshPort || 22,
       osType: row.osType,
-      osUsername: row.osUsername,
-      osPassword: null,
+      hikPassword: null,
+      rootPassword: null,
+      otherUsername: row.otherUsername || null,
+      otherPassword: null,
+      hikCredentialConfigured: row.hikCredentialConfigured,
+      rootCredentialConfigured: row.rootCredentialConfigured,
+      otherCredentialConfigured: row.otherCredentialConfigured,
       status: row.status || '0',
       remark: row.remark || null
     }
@@ -3669,6 +3752,34 @@ function normalizeSecretDraft(data, field) {
   return data
 }
 
+function validateServerOtherCredential(data) {
+  const error = getServerOtherCredentialError(data)
+  if (error) {
+    proxy.$modal.msgWarning(error)
+    return false
+  }
+  return true
+}
+
+function validateServerOtherCredentialQuiet(data) {
+  return !getServerOtherCredentialError(data)
+}
+
+function getServerOtherCredentialError(data) {
+  const username = String(data?.otherUsername || '').trim()
+  const password = String(data?.otherPassword || '').trim()
+  if (password && !username) {
+    return '请填写其他账号用户名'
+  }
+  if (username && [SERVER_FIXED_LOGIN_HIK, SERVER_FIXED_LOGIN_ROOT].includes(username)) {
+    return '其他账号不能填写hik或root'
+  }
+  if (username && !password && !data?.otherCredentialConfigured) {
+    return '请填写其他账号密码'
+  }
+  return ''
+}
+
 async function submitInspectorEdit() {
   const type = inspectorEditType.value
   const draft = { ...inspectorDraft.value }
@@ -3694,6 +3805,9 @@ async function submitInspectorEdit() {
     proxy.$modal.msgWarning('SSH端口范围必须在1-65535之间')
     return
   }
+  if (type === 'server' && !validateServerOtherCredential(draft)) {
+    return
+  }
   if (type === 'contact' && (!draft.orgId || !draft.contactName)) {
     proxy.$modal.msgWarning('所属组织和联系人姓名不能为空')
     return
@@ -3711,7 +3825,15 @@ async function submitInspectorEdit() {
     } else if (type === 'endpoint') {
       await updateEndpoint(normalizeSecretDraft(draft, 'loginPassword'))
     } else if (type === 'server') {
-      await updateServer(normalizeSecretDraft(draft, 'osPassword'))
+      await updateServer(
+        normalizeSecretDraft(
+          normalizeSecretDraft(
+            normalizeSecretDraft(draft, 'hikPassword'),
+            'rootPassword'
+          ),
+          'otherPassword'
+        )
+      )
     } else if (type === 'contact') {
       await updateContact(draft)
     }
@@ -4720,7 +4842,7 @@ function createEquipmentServerRow(server = {}) {
     manageIp: null,
     manufacturer: null,
     assetModel: server.osType,
-    loginUsername: server.osUsername,
+    loginUsername: formatServerCredentialStatus(server),
     serialNo: null,
     installLocation: null,
     status: server.status || '0',
@@ -5460,8 +5582,10 @@ function createServerQuickForm() {
     serverAddress: null,
     sshPort: 22,
     osType: null,
-    osUsername: null,
-    osPassword: null,
+    hikPassword: null,
+    rootPassword: null,
+    otherUsername: null,
+    otherPassword: null,
     status: '0'
   }
 }
@@ -5472,8 +5596,10 @@ function createServerBatchForm() {
     namePrefix: '服务器',
     sshPort: 22,
     osType: null,
-    osUsername: null,
-    osPassword: null,
+    hikPassword: null,
+    rootPassword: null,
+    otherUsername: null,
+    otherPassword: null,
     status: '0'
   }
 }
@@ -5534,8 +5660,10 @@ async function submitServerImport() {
     serverAddress: normalizeServerAddress(row.serverAddress),
     sshPort: normalizeSshPort(row.sshPort),
     osType: row.osType || null,
-    osUsername: row.osUsername || null,
-    osPassword: row.osPassword || null,
+    hikPassword: row.osUsername === SERVER_FIXED_LOGIN_HIK ? row.osPassword || null : null,
+    rootPassword: row.osUsername === SERVER_FIXED_LOGIN_ROOT ? row.osPassword || null : null,
+    otherUsername: row.osUsername && ![SERVER_FIXED_LOGIN_HIK, SERVER_FIXED_LOGIN_ROOT].includes(row.osUsername) ? row.osUsername : null,
+    otherPassword: row.osUsername && ![SERVER_FIXED_LOGIN_HIK, SERVER_FIXED_LOGIN_ROOT].includes(row.osUsername) ? row.osPassword || null : null,
     status: normalizeServerStatus(row.status)
   }))
   serverImportDialogOpen.value = false
@@ -5608,8 +5736,10 @@ function createServerBatchConfirmRow(draft, index) {
     serverAddress: draft.serverAddress,
     sshPort: draft.sshPort || 22,
     osType: draft.osType,
-    osUsername: draft.osUsername,
-    osPassword: draft.osPassword,
+    hikPassword: draft.hikPassword,
+    rootPassword: draft.rootPassword,
+    otherUsername: draft.otherUsername,
+    otherPassword: draft.otherPassword,
     status: draft.status || '0',
     normalizedAddress: normalizeServerAddress(draft.serverAddress),
     existsInDb: false,
@@ -5642,6 +5772,8 @@ function refreshServerBatchConfirmRows() {
       row.error = 'IP格式不正确'
     } else if (!validateSshPort(row.sshPort)) {
       row.error = 'SSH端口异常'
+    } else if (!validateServerOtherCredentialQuiet(row)) {
+      row.error = getServerOtherCredentialError(row)
     }
   })
 }
@@ -5743,8 +5875,10 @@ function buildServerDraftFromBatchRow(row) {
     serverAddress: address,
     sshPort: normalizeSshPort(row.sshPort),
     osType: row.osType || null,
-    osUsername: row.osUsername || null,
-    osPassword: row.osPassword || null,
+    hikPassword: row.hikPassword || null,
+    rootPassword: row.rootPassword || null,
+    otherUsername: String(row.otherUsername || '').trim() || null,
+    otherPassword: row.otherPassword || null,
     status: row.status || '0'
   }
 }
@@ -5817,12 +5951,17 @@ async function submitManagedServerSingle() {
     proxy.$modal.msgWarning('SSH端口范围必须在1-65535之间')
     return
   }
+  if (!validateServerOtherCredential(serverQuickForm.value)) {
+    return
+  }
   const draft = buildServerDraft(address, {
     serverName: serverQuickForm.value.serverName,
     sshPort: serverQuickForm.value.sshPort,
     osType: serverQuickForm.value.osType,
-    osUsername: serverQuickForm.value.osUsername,
-    osPassword: serverQuickForm.value.osPassword,
+    hikPassword: serverQuickForm.value.hikPassword,
+    rootPassword: serverQuickForm.value.rootPassword,
+    otherUsername: serverQuickForm.value.otherUsername,
+    otherPassword: serverQuickForm.value.otherPassword,
     status: serverQuickForm.value.status
   })
   await createAndBindServers([draft], platformId)
@@ -5848,13 +5987,18 @@ async function submitManagedServerBatch() {
     proxy.$modal.msgWarning('SSH端口范围必须在1-65535之间')
     return
   }
+  if (!validateServerOtherCredential(serverBatchForm.value)) {
+    return
+  }
   const drafts = addresses.map((address) =>
     buildServerDraft(address, {
       namePrefix: serverBatchForm.value.namePrefix,
       sshPort: serverBatchForm.value.sshPort,
       osType: serverBatchForm.value.osType,
-      osUsername: serverBatchForm.value.osUsername,
-      osPassword: serverBatchForm.value.osPassword,
+      hikPassword: serverBatchForm.value.hikPassword,
+      rootPassword: serverBatchForm.value.rootPassword,
+      otherUsername: serverBatchForm.value.otherUsername,
+      otherPassword: serverBatchForm.value.otherPassword,
       status: serverBatchForm.value.status
     })
   )
@@ -5924,8 +6068,10 @@ function buildServerDraft(address, options = {}) {
     serverAddress: address,
     sshPort: normalizeSshPort(options.sshPort),
     osType: options.osType || null,
-    osUsername: options.osUsername || null,
-    osPassword: options.osPassword || null,
+    hikPassword: options.hikPassword || null,
+    rootPassword: options.rootPassword || null,
+    otherUsername: String(options.otherUsername || '').trim() || null,
+    otherPassword: options.otherPassword || null,
     status: options.status || '0'
   }
 }
@@ -6122,7 +6268,22 @@ async function loadServers() {
 }
 
 function resetServerForm() {
-  serverForm.value = { serverId: null, siteId: props.site.siteId, serverName: null, serverAddress: null, sshPort: 22, osType: null, osUsername: null, osPassword: null, status: '0' }
+  serverForm.value = {
+    serverId: null,
+    siteId: props.site.siteId,
+    serverName: null,
+    serverAddress: null,
+    sshPort: 22,
+    osType: null,
+    hikPassword: null,
+    rootPassword: null,
+    otherUsername: null,
+    otherPassword: null,
+    hikCredentialConfigured: false,
+    rootCredentialConfigured: false,
+    otherCredentialConfigured: false,
+    status: '0'
+  }
   proxy.resetForm('serverRef')
 }
 
@@ -6134,7 +6295,14 @@ function handleServerAdd() {
 
 function handleServerEdit(row) {
   getServer(row.serverId).then((res) => {
-    serverForm.value = { ...res.data, sshPort: res.data?.sshPort || 22, osPassword: null }
+    serverForm.value = {
+      ...res.data,
+      sshPort: res.data?.sshPort || 22,
+      osPassword: null,
+      hikPassword: null,
+      rootPassword: null,
+      otherPassword: null
+    }
     serverTitle.value = '修改服务器'
     serverFormOpen.value = true
   })
@@ -6145,6 +6313,9 @@ function submitServerForm() {
     if (!valid) return
     if (!validateSshPort(serverForm.value.sshPort)) {
       proxy.$modal.msgWarning('SSH端口范围必须在1-65535之间')
+      return
+    }
+    if (!validateServerOtherCredential(serverForm.value)) {
       return
     }
     serverForm.value.siteId = props.site.siteId
@@ -6297,19 +6468,21 @@ async function handleManagedServerBatchExport() {
   try {
     const dataRows = []
     for (const server of rows) {
-      const plainRes = await viewServerPlain(server.serverId)
+      const credentialSummary = await loadServerPlainCredentialSummary(server)
       dataRows.push([
         server.serverName || '',
         server.serverAddress || '',
         server.sshPort || 22,
         server.osType || '',
-        server.osUsername || '',
-        plainRes?.plain || '',
+        credentialSummary.hikPassword || '',
+        credentialSummary.rootPassword || '',
+        credentialSummary.otherUsername || '',
+        credentialSummary.otherPassword || '',
         getStatusLabel(server.status),
         getServerManagedScopeLabel(server)
       ])
     }
-    downloadCsv([SERVER_IMPORT_HEADERS.concat('所属子平台'), ...dataRows], `服务器导出-${props.site?.siteName || '现场'}-${Date.now()}.csv`)
+    downloadCsv([SERVER_EXPORT_HEADERS, ...dataRows], `服务器导出-${props.site?.siteName || '现场'}-${Date.now()}.csv`)
   } finally {
     serverManagerSaving.value = false
   }
@@ -6329,10 +6502,53 @@ function handleManagedServerBatchDelete() {
   }).catch(() => {})
 }
 
-function handleServerPlain(row) {
-  viewServerPlain(row.serverId).then((res) => {
-    proxy.$modal.alert('服务器密码：' + (res.plain || ''), '敏感信息', { confirmButtonText: '我知道了' })
-  })
+async function loadServerPlainCredentialSummary(server = {}) {
+  const summary = {
+    hikPassword: '',
+    rootPassword: '',
+    otherUsername: '',
+    otherPassword: ''
+  }
+  if (!server?.serverId) {
+    return summary
+  }
+  const credentialRes = await listServerCredentials(server.serverId)
+  const credentials = credentialRes.data || []
+  for (const credential of credentials) {
+    const plainRes = await viewServerCredentialPlain(credential.credentialId)
+    const plain = plainRes?.plain || ''
+    if (credential.username === SERVER_FIXED_LOGIN_HIK) {
+      summary.hikPassword = plain
+    } else if (credential.username === SERVER_FIXED_LOGIN_ROOT) {
+      summary.rootPassword = plain
+    } else if (!summary.otherUsername || credential.credentialName === SERVER_FIXED_LOGIN_OTHER_LABEL) {
+      summary.otherUsername = credential.username || ''
+      summary.otherPassword = plain
+    }
+  }
+  if (!credentials.length && server.osUsername) {
+    const plainRes = await viewServerPlain(server.serverId)
+    const legacyPlain = plainRes?.plain || ''
+    if (server.osUsername === SERVER_FIXED_LOGIN_HIK) {
+      summary.hikPassword = legacyPlain
+    } else if (server.osUsername === SERVER_FIXED_LOGIN_ROOT) {
+      summary.rootPassword = legacyPlain
+    } else {
+      summary.otherUsername = server.osUsername
+      summary.otherPassword = legacyPlain
+    }
+  }
+  return summary
+}
+
+async function handleServerPlain(row) {
+  const summary = await loadServerPlainCredentialSummary(row)
+  const lines = [
+    summary.hikPassword ? `hik：${summary.hikPassword}` : null,
+    summary.rootPassword ? `root：${summary.rootPassword}` : null,
+    summary.otherUsername ? `${summary.otherUsername}：${summary.otherPassword || ''}` : null
+  ].filter(Boolean)
+  proxy.$modal.alert(lines.length ? lines.join('\n') : '当前服务器未配置登录密码', '敏感信息', { confirmButtonText: '我知道了' })
 }
 
 async function loadHardwareAssets() {

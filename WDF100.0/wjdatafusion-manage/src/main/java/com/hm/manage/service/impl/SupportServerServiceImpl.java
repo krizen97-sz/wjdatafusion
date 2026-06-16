@@ -17,6 +17,7 @@ import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import com.hm.common.exception.ServiceException;
 import com.hm.common.utils.DateUtils;
@@ -39,6 +40,10 @@ public class SupportServerServiceImpl implements ISupportServerService
     private static final int MAX_PORT = 65535;
     private static final String IMPORT_SHEET_NAME = "服务器导入模板";
     private static final String[] IMPORT_HEADERS = {"服务器名称", "服务器IP", "SSH端口", "操作系统", "系统账号", "系统密码", "运行状态"};
+    private static final String SERVER_LOGIN_HIK = "hik";
+    private static final String SERVER_LOGIN_ROOT = "root";
+    private static final String SERVER_LOGIN_OTHER_NAME = "其他账号";
+    private static final String PASSWORD_MASK = "******";
 
     @Autowired
     private SupportServerMapper serverMapper;
@@ -60,6 +65,7 @@ public class SupportServerServiceImpl implements ISupportServerService
     {
         SupportServer server = serverMapper.selectSupportServerByServerId(serverId);
         maskPassword(server);
+        attachFixedLoginCredentialStatus(server);
         return server;
     }
 
@@ -70,11 +76,13 @@ public class SupportServerServiceImpl implements ISupportServerService
         for (SupportServer item : list)
         {
             maskPassword(item);
+            attachFixedLoginCredentialStatus(item);
         }
         return list;
     }
 
     @Override
+    @Transactional
     public int insertSupportServer(SupportServer server)
     {
         validateAndNormalizeServer(server, false);
@@ -83,12 +91,14 @@ public class SupportServerServiceImpl implements ISupportServerService
         int rows = serverMapper.insertSupportServer(server);
         if (rows > 0)
         {
+            syncFixedLoginCredentials(server);
             changeLogService.record(server.getSiteId(), "INSERT", "SERVER", server.getServerId(), server.getServerName(), "新增服务器 " + server.getServerName(), null, server);
         }
         return rows;
     }
 
     @Override
+    @Transactional
     public int updateSupportServer(SupportServer server)
     {
         SupportServer original = serverMapper.selectSupportServerByServerId(server.getServerId());
@@ -102,6 +112,7 @@ public class SupportServerServiceImpl implements ISupportServerService
         int rows = serverMapper.updateSupportServer(server);
         if (rows > 0)
         {
+            syncFixedLoginCredentials(server);
             changeLogService.record(server.getSiteId(), "UPDATE", "SERVER", server.getServerId(), server.getServerName(), "修改服务器 " + server.getServerName(), original, server);
         }
         return rows;
@@ -137,6 +148,10 @@ public class SupportServerServiceImpl implements ISupportServerService
     {
         SupportServer server = serverMapper.selectSupportServerByServerId(serverId);
         if (server == null)
+        {
+            return StringUtils.EMPTY;
+        }
+        if (StringUtils.isBlank(server.getOsPasswordCipher()))
         {
             return StringUtils.EMPTY;
         }
@@ -315,6 +330,7 @@ public class SupportServerServiceImpl implements ISupportServerService
                 server.setOsType(readCell(row, 3, formatter));
                 server.setOsUsername(readCell(row, 4, formatter));
                 server.setOsPassword(readCell(row, 5, formatter));
+                applyFixedLoginPasswordFromImport(server);
                 server.setStatus(parseImportStatus(readCell(row, 6, formatter)));
                 servers.add(server);
             }
@@ -407,6 +423,143 @@ public class SupportServerServiceImpl implements ISupportServerService
             server.setOsPasswordCipher(cryptoService.encrypt(server.getOsPassword()));
         }
         server.setOsPassword(null);
+    }
+
+    private void applyFixedLoginPasswordFromImport(SupportServer server)
+    {
+        if (server == null || StringUtils.isBlank(server.getOsUsername()) || StringUtils.isBlank(server.getOsPassword()))
+        {
+            return;
+        }
+        String username = server.getOsUsername().trim();
+        if (SERVER_LOGIN_HIK.equals(username))
+        {
+            server.setHikPassword(server.getOsPassword());
+        }
+        else if (SERVER_LOGIN_ROOT.equals(username))
+        {
+            server.setRootPassword(server.getOsPassword());
+        }
+        else
+        {
+            server.setOtherUsername(username);
+            server.setOtherPassword(server.getOsPassword());
+        }
+    }
+
+    private void attachFixedLoginCredentialStatus(SupportServer server)
+    {
+        if (server == null || server.getServerId() == null)
+        {
+            return;
+        }
+        SupportServerCredential hikCredential = credentialMapper.selectCredentialByServerIdAndUsername(server.getServerId(), SERVER_LOGIN_HIK);
+        SupportServerCredential rootCredential = credentialMapper.selectCredentialByServerIdAndUsername(server.getServerId(), SERVER_LOGIN_ROOT);
+        SupportServerCredential otherCredential = credentialMapper.selectCredentialByServerIdAndName(server.getServerId(), SERVER_LOGIN_OTHER_NAME);
+        server.setHikCredentialConfigured(hikCredential != null && StringUtils.isNotBlank(hikCredential.getPasswordCipher()));
+        server.setRootCredentialConfigured(rootCredential != null && StringUtils.isNotBlank(rootCredential.getPasswordCipher()));
+        server.setOtherCredentialConfigured(otherCredential != null && StringUtils.isNotBlank(otherCredential.getPasswordCipher()));
+        server.setOtherUsername(otherCredential == null ? null : otherCredential.getUsername());
+        server.setHikPassword(null);
+        server.setRootPassword(null);
+        server.setOtherPassword(null);
+    }
+
+    private void syncFixedLoginCredentials(SupportServer server)
+    {
+        if (server == null || server.getServerId() == null)
+        {
+            return;
+        }
+        upsertFixedLoginCredential(server, SERVER_LOGIN_HIK, server.getHikPassword(), "hik账号", "现场常用hik登录账号", "1");
+        upsertFixedLoginCredential(server, SERVER_LOGIN_ROOT, server.getRootPassword(), "root账号", "现场常用root登录账号", "0");
+        upsertOtherLoginCredential(server);
+        server.setHikPassword(null);
+        server.setRootPassword(null);
+        server.setOtherPassword(null);
+    }
+
+    private void upsertFixedLoginCredential(SupportServer server, String username, String password, String credentialName, String purpose, String isDefault)
+    {
+        if (StringUtils.isBlank(password) || PASSWORD_MASK.equals(password))
+        {
+            return;
+        }
+        SupportServerCredential credential = credentialMapper.selectCredentialByServerIdAndUsername(server.getServerId(), username);
+        boolean insert = credential == null;
+        if (insert)
+        {
+            credential = new SupportServerCredential();
+            credential.setServerId(server.getServerId());
+            credential.setUsername(username);
+            credential.setCreateTime(DateUtils.getNowDate());
+        }
+        credential.setCredentialName(credentialName);
+        credential.setPurpose(purpose);
+        credential.setIsDefault(isDefault);
+        credential.setStatus("0");
+        credential.setPasswordCipher(cryptoService.encrypt(password));
+        credential.setUpdateTime(DateUtils.getNowDate());
+        if (insert)
+        {
+            credentialMapper.insertCredential(credential);
+        }
+        else
+        {
+            credentialMapper.updateCredential(credential);
+        }
+        changeLogService.record(server.getSiteId(), insert ? "INSERT" : "UPDATE", "SERVER_CREDENTIAL", credential.getCredentialId(), credentialName,
+                "配置服务器" + username + "登录信息");
+    }
+
+    private void upsertOtherLoginCredential(SupportServer server)
+    {
+        String username = StringUtils.trimToEmpty(server.getOtherUsername());
+        String password = server.getOtherPassword();
+        if (StringUtils.isBlank(username) && StringUtils.isBlank(password))
+        {
+            return;
+        }
+        if (StringUtils.isBlank(username))
+        {
+            throw new ServiceException("请填写其他账号用户名");
+        }
+        if (SERVER_LOGIN_HIK.equals(username) || SERVER_LOGIN_ROOT.equals(username))
+        {
+            throw new ServiceException("其他账号不能填写hik或root，请使用对应的固定账号栏");
+        }
+        SupportServerCredential credential = credentialMapper.selectCredentialByServerIdAndName(server.getServerId(), SERVER_LOGIN_OTHER_NAME);
+        boolean insert = credential == null;
+        if (insert && StringUtils.isBlank(password))
+        {
+            throw new ServiceException("请填写其他账号密码");
+        }
+        if (insert)
+        {
+            credential = new SupportServerCredential();
+            credential.setServerId(server.getServerId());
+            credential.setCreateTime(DateUtils.getNowDate());
+        }
+        credential.setCredentialName(SERVER_LOGIN_OTHER_NAME);
+        credential.setUsername(username);
+        credential.setPurpose("现场补充登录账号");
+        credential.setIsDefault("0");
+        credential.setStatus("0");
+        if (StringUtils.isNotBlank(password) && !PASSWORD_MASK.equals(password))
+        {
+            credential.setPasswordCipher(cryptoService.encrypt(password));
+        }
+        credential.setUpdateTime(DateUtils.getNowDate());
+        if (insert)
+        {
+            credentialMapper.insertCredential(credential);
+        }
+        else
+        {
+            credentialMapper.updateCredential(credential);
+        }
+        changeLogService.record(server.getSiteId(), insert ? "INSERT" : "UPDATE", "SERVER_CREDENTIAL", credential.getCredentialId(), SERVER_LOGIN_OTHER_NAME,
+                "配置服务器其他账号登录信息");
     }
 
     private void validateAndNormalizeServer(SupportServer server, boolean update)

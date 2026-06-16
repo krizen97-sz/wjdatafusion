@@ -10,6 +10,10 @@ public interface SupportServerCredentialMapper
 
     List<SupportServerCredential> selectCredentialsByServerId(Long serverId);
 
+    SupportServerCredential selectCredentialByServerIdAndUsername(@Param("serverId") Long serverId, @Param("username") String username);
+
+    SupportServerCredential selectCredentialByServerIdAndName(@Param("serverId") Long serverId, @Param("credentialName") String credentialName);
+
     int insertCredential(SupportServerCredential credential);
 
     int updateCredential(SupportServerCredential credential);
