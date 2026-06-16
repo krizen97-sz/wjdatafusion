@@ -8,6 +8,10 @@ export function getHardwareAsset(assetId) {
   return request({ url: '/support/hardwareAsset/' + assetId, method: 'get' })
 }
 
+export function viewHardwareAssetPlain(assetId) {
+  return request({ url: '/support/hardwareAsset/plain/' + assetId, method: 'get' })
+}
+
 export function addHardwareAsset(data) {
   return request({ url: '/support/hardwareAsset', method: 'post', data })
 }

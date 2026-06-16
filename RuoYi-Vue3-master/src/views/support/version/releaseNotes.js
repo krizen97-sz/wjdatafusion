@@ -1,5 +1,25 @@
 export const releaseNotes = [
   {
+    version: 'v3.3.6',
+    submitTime: '2026-06-16 15:21:38',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '现场设备资产统一维护优化',
+    summary: '将现场设备资产清单升级为统一维护入口，补充非服务器设备登录信息、本地设备类型图片和更清晰的设备分类展示。',
+    changes: [
+      '非服务器硬件资产新增登录账号和登录密码配置，密码按现有敏感信息加密策略保存，并支持按权限查看明文。',
+      '新增设备类型选择页为服务器、解码器、终端、交换机、网闸增加本地 SVG 图片，随前端包发布，不依赖外部资源。',
+      '设备资产清单增加类型分类卡片，按设备类别展示数量并支持一键筛选，列表行同步展示设备缩略图和登录账号。',
+      '统一设备资产弹窗内增加服务器维护模式，直接承接服务器单个添加、批量添加、xlsx 导入、全选、导出、删除和显示密码能力，减少服务器管理与设备资产管理之间的跳转。'
+    ],
+    scope: ['现场融合管理', '设备资产清单', '服务器管理', '硬件资产', '版本记录'],
+    database: '新增 sup_hardware_asset.login_username 和 sup_hardware_asset.login_password_cipher 字段，历史数据默认为空。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260616_equipment_login_unification_v3_3_6.sql'
+    ]
+  },
+  {
     version: 'v3.3.5',
     submitTime: '2026-06-16 12:28:46',
     level: 'patch',

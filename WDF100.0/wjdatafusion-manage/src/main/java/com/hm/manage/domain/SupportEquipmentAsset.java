@@ -38,6 +38,9 @@ public class SupportEquipmentAsset extends BaseEntity
     @Excel(name = "安装位置")
     private String installLocation;
 
+    @Excel(name = "登录账号")
+    private String loginUsername;
+
     @Excel(name = "绑定范围")
     private String bindingLabel;
 
@@ -168,6 +171,16 @@ public class SupportEquipmentAsset extends BaseEntity
     public void setInstallLocation(String installLocation)
     {
         this.installLocation = installLocation;
+    }
+
+    public String getLoginUsername()
+    {
+        return loginUsername;
+    }
+
+    public void setLoginUsername(String loginUsername)
+    {
+        this.loginUsername = loginUsername;
     }
 
     public String getBindingLabel()

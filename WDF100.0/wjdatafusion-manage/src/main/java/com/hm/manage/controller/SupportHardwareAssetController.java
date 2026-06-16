@@ -62,6 +62,15 @@ public class SupportHardwareAssetController extends BaseController
         return success(asset);
     }
 
+    @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
+    @GetMapping("/plain/{assetId}")
+    public AjaxResult viewPlain(@PathVariable Long assetId)
+    {
+        SupportHardwareAsset asset = hardwareAssetService.selectSupportHardwareAssetByAssetId(assetId);
+        changeLogService.recordQuery(asset == null ? null : asset.getSiteId(), "HARDWARE_ASSET", assetId, asset == null ? null : asset.getAssetName(), "查看硬件资产密码");
+        return success().put("plain", hardwareAssetService.getHardwareAssetPasswordPlain(assetId));
+    }
+
     @PreAuthorize("@ss.hasPermi('support:hardwareAsset:add')")
     @Log(title = "硬件资产管理", businessType = BusinessType.INSERT)
     @PostMapping

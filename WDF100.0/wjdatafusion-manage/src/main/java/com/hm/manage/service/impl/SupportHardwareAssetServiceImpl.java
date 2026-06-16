@@ -18,6 +18,7 @@ import com.hm.manage.mapper.SupportPlatformMapper;
 import com.hm.manage.mapper.SupportSiteMapper;
 import com.hm.manage.service.ISupportChangeLogService;
 import com.hm.manage.service.ISupportHardwareAssetService;
+import com.hm.manage.service.support.CredentialCryptoService;
 
 @Service
 public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetService
@@ -41,6 +42,9 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
     @Autowired
     private ISupportChangeLogService changeLogService;
 
+    @Autowired
+    private CredentialCryptoService cryptoService;
+
     @Override
     public SupportHardwareAsset selectSupportHardwareAssetByAssetId(Long assetId)
     {
@@ -58,6 +62,7 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
     public int insertSupportHardwareAsset(SupportHardwareAsset asset)
     {
         normalizeAndValidate(asset, false);
+        encryptPassword(asset);
         asset.setCreateBy(SecurityUtils.getUsername());
         asset.setCreateTime(DateUtils.getNowDate());
         int rows = hardwareAssetMapper.insertSupportHardwareAsset(asset);
@@ -83,6 +88,7 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
             throw new ServiceException("硬件资产不存在");
         }
         normalizeAndValidate(asset, true);
+        encryptPassword(asset);
         asset.setUpdateBy(SecurityUtils.getUsername());
         asset.setUpdateTime(DateUtils.getNowDate());
         int rows = hardwareAssetMapper.updateSupportHardwareAsset(asset);
@@ -93,6 +99,17 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
             changeLogService.record(asset.getSiteId(), "UPDATE", "HARDWARE_ASSET", asset.getAssetId(), asset.getAssetName(), buildSummary("修改硬件资产", asset), original, asset);
         }
         return rows;
+    }
+
+    @Override
+    public String getHardwareAssetPasswordPlain(Long assetId)
+    {
+        SupportHardwareAsset asset = hardwareAssetMapper.selectSupportHardwareAssetByAssetId(assetId);
+        if (asset == null)
+        {
+            return StringUtils.EMPTY;
+        }
+        return cryptoService.decrypt(asset.getLoginPasswordCipher());
     }
 
     @Override
@@ -228,6 +245,7 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
         asset.setInstallLocation(StringUtils.trimToEmpty(asset.getInstallLocation()));
         asset.setOwnerOrg(StringUtils.trimToEmpty(asset.getOwnerOrg()));
         asset.setOwnerContact(StringUtils.trimToEmpty(asset.getOwnerContact()));
+        asset.setLoginUsername(StringUtils.trimToEmpty(asset.getLoginUsername()));
         asset.setOutputType(StringUtils.trimToEmpty(asset.getOutputType()));
         asset.setTerminalType(StringUtils.trimToEmpty(asset.getTerminalType()));
         asset.setDepartment(StringUtils.trimToEmpty(asset.getDepartment()));
@@ -239,6 +257,15 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
         asset.setGatewayDirection(StringUtils.trimToEmpty(asset.getGatewayDirection()));
         asset.setGatewayBandwidth(StringUtils.trimToEmpty(asset.getGatewayBandwidth()));
         asset.setSecurityZone(StringUtils.trimToEmpty(asset.getSecurityZone()));
+    }
+
+    private void encryptPassword(SupportHardwareAsset asset)
+    {
+        if (StringUtils.isNotEmpty(asset.getLoginPassword()))
+        {
+            asset.setLoginPasswordCipher(cryptoService.encrypt(asset.getLoginPassword()));
+        }
+        asset.setLoginPassword(null);
     }
 
     private SupportPlatform resolvePlatformForAsset(SupportHardwareAsset asset)

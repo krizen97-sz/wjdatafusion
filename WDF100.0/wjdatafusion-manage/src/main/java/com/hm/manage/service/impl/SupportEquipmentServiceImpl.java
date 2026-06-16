@@ -99,6 +99,7 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
             row.setAssetTypeLabel("服务器");
             row.setAssetName(StringUtils.defaultIfEmpty(server.getServerName(), server.getServerAddress()));
             row.setIpAddress(server.getServerAddress());
+            row.setLoginUsername(server.getOsUsername());
             row.setStatus(server.getStatus());
             fillServerBinding(row, relatedPlatforms, platformMap);
             rowMap.put(server.getServerId(), row);
@@ -172,6 +173,7 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
             row.setManufacturer(asset.getManufacturer());
             row.setAssetModel(asset.getAssetModel());
             row.setInstallLocation(asset.getInstallLocation());
+            row.setLoginUsername(asset.getLoginUsername());
             row.setStatus(asset.getStatus());
             row.setPlatformId(asset.getPlatformId());
             row.setPlatformName(asset.getPlatformName());
@@ -236,6 +238,7 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
             StringUtils.defaultString(row.getManufacturer()),
             StringUtils.defaultString(row.getAssetModel()),
             StringUtils.defaultString(row.getInstallLocation()),
+            StringUtils.defaultString(row.getLoginUsername()),
             StringUtils.defaultString(row.getNetworkEnv()),
             StringUtils.defaultString(row.getBindingLabel())
         ).toLowerCase(Locale.ROOT);

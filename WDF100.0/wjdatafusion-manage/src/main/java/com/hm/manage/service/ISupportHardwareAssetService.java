@@ -13,6 +13,8 @@ public interface ISupportHardwareAssetService
 
     int updateSupportHardwareAsset(SupportHardwareAsset asset);
 
+    String getHardwareAssetPasswordPlain(Long assetId);
+
     int deleteSupportHardwareAssetByAssetIds(Long[] assetIds);
 
     int bindPlatform(Long assetId, Long platformId);

@@ -19,6 +19,8 @@
         <result property="installLocation" column="install_location"/>
         <result property="ownerOrg" column="owner_org"/>
         <result property="ownerContact" column="owner_contact"/>
+        <result property="loginUsername" column="login_username"/>
+        <result property="loginPasswordCipher" column="login_password_cipher"/>
         <result property="status" column="status"/>
         <result property="channelCount" column="channel_count"/>
         <result property="outputType" column="output_type"/>
@@ -48,7 +50,7 @@
     <sql id="selectSupportHardwareAssetVo">
         select a.asset_id, a.site_id, a.asset_name, a.asset_type, a.network_env, a.ip_address, a.manage_ip,
                a.mac_address, a.manufacturer, a.asset_model, a.serial_no, a.install_location, a.owner_org,
-               a.owner_contact, a.status, a.channel_count, a.output_type, a.terminal_type, a.department,
+               a.owner_contact, a.login_username, a.login_password_cipher, a.status, a.channel_count, a.output_type, a.terminal_type, a.department,
                a.use_location, a.switch_level, a.port_count, a.uplink_device, a.vlan_info,
                a.gateway_mode, a.gateway_direction, a.gateway_bandwidth, a.security_zone,
                rel.platform_id, p.platform_name, p.platform_level,
@@ -107,6 +109,8 @@
             <if test="installLocation != null">install_location,</if>
             <if test="ownerOrg != null">owner_org,</if>
             <if test="ownerContact != null">owner_contact,</if>
+            <if test="loginUsername != null">login_username,</if>
+            <if test="loginPasswordCipher != null and loginPasswordCipher != ''">login_password_cipher,</if>
             <if test="status != null">status,</if>
             <if test="channelCount != null">channel_count,</if>
             <if test="outputType != null">output_type,</if>
@@ -141,6 +145,8 @@
             <if test="installLocation != null">#{installLocation},</if>
             <if test="ownerOrg != null">#{ownerOrg},</if>
             <if test="ownerContact != null">#{ownerContact},</if>
+            <if test="loginUsername != null">#{loginUsername},</if>
+            <if test="loginPasswordCipher != null and loginPasswordCipher != ''">#{loginPasswordCipher},</if>
             <if test="status != null">#{status},</if>
             <if test="channelCount != null">#{channelCount},</if>
             <if test="outputType != null">#{outputType},</if>
@@ -179,6 +185,8 @@
             <if test="installLocation != null">install_location = #{installLocation},</if>
             <if test="ownerOrg != null">owner_org = #{ownerOrg},</if>
             <if test="ownerContact != null">owner_contact = #{ownerContact},</if>
+            <if test="loginUsername != null">login_username = #{loginUsername},</if>
+            <if test="loginPasswordCipher != null and loginPasswordCipher != ''">login_password_cipher = #{loginPasswordCipher},</if>
             <if test="status != null">status = #{status},</if>
             <if test="channelCount != null">channel_count = #{channelCount},</if>
             <if test="channelCount == null">channel_count = null,</if>

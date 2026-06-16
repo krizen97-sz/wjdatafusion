@@ -136,6 +136,8 @@ CREATE TABLE IF NOT EXISTS sup_hardware_asset (
   install_location    VARCHAR(200) DEFAULT NULL COMMENT '安装位置',
   owner_org           VARCHAR(160) DEFAULT NULL COMMENT '归属组织',
   owner_contact       VARCHAR(80)  DEFAULT NULL COMMENT '责任人',
+  login_username      VARCHAR(128) DEFAULT NULL COMMENT '设备登录账号',
+  login_password_cipher VARCHAR(1024) DEFAULT NULL COMMENT '设备登录密码密文',
   channel_count       INT          DEFAULT NULL COMMENT '解码器通道数',
   output_type         VARCHAR(80)  DEFAULT NULL COMMENT '解码器输出类型',
   terminal_type       VARCHAR(80)  DEFAULT NULL COMMENT '终端类型',

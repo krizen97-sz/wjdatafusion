@@ -1,5 +1,6 @@
 package com.hm.manage.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.hm.common.annotation.Excel;
 import com.hm.common.core.domain.BaseEntity;
 
@@ -46,6 +47,14 @@ public class SupportHardwareAsset extends BaseEntity
 
     @Excel(name = "责任人")
     private String ownerContact;
+
+    @Excel(name = "登录账号")
+    private String loginUsername;
+
+    private String loginPassword;
+
+    @JsonIgnore
+    private String loginPasswordCipher;
 
     @Excel(name = "状态", readConverterExp = "0=正常,1=停用")
     private String status;
@@ -237,6 +246,36 @@ public class SupportHardwareAsset extends BaseEntity
     public void setOwnerContact(String ownerContact)
     {
         this.ownerContact = ownerContact;
+    }
+
+    public String getLoginUsername()
+    {
+        return loginUsername;
+    }
+
+    public void setLoginUsername(String loginUsername)
+    {
+        this.loginUsername = loginUsername;
+    }
+
+    public String getLoginPassword()
+    {
+        return loginPassword;
+    }
+
+    public void setLoginPassword(String loginPassword)
+    {
+        this.loginPassword = loginPassword;
+    }
+
+    public String getLoginPasswordCipher()
+    {
+        return loginPasswordCipher;
+    }
+
+    public void setLoginPasswordCipher(String loginPasswordCipher)
+    {
+        this.loginPasswordCipher = loginPasswordCipher;
     }
 
     public String getStatus()
