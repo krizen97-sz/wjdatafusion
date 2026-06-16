@@ -473,15 +473,15 @@
           </el-row>
           <div v-if="stepTargetType === 'BIG_DATA_SERVER'" class="bigdata-server-config">
             <div class="bigdata-server-toolbar">
-              <span>已配置 {{ stepDraft.stepParams.serverTargets.length }} 台服务器</span>
+              <span>已配置 {{ bigDataStepTargets.length }} 台服务器</span>
               <el-switch v-model="stepDraft.stepParams.includePseudo" active-value="true" inactive-value="false" active-text="包含临时文件系统" inactive-text="过滤临时文件系统" inline-prompt />
               <el-button type="primary" plain icon="Plus" @click="addBigDataServerTarget">添加服务器</el-button>
             </div>
             <div class="bigdata-server-list">
-              <div v-for="(server, index) in stepDraft.stepParams.serverTargets" :key="index" class="bigdata-server-card">
+              <div v-for="(server, index) in bigDataStepTargets" :key="index" class="bigdata-server-card">
                 <div class="bigdata-server-card__head">
                   <strong>服务器 {{ index + 1 }}</strong>
-                  <el-button link type="danger" icon="Delete" :disabled="stepDraft.stepParams.serverTargets.length <= 1" @click="removeBigDataServerTarget(index)">删除</el-button>
+                  <el-button link type="danger" icon="Delete" :disabled="bigDataStepTargets.length <= 1" @click="removeBigDataServerTarget(index)">删除</el-button>
                 </div>
                 <el-row :gutter="12">
                   <el-col :span="8"><el-form-item label="目标名称"><el-input v-model="server.targetName" placeholder="大数据节点01" /></el-form-item></el-col>
@@ -715,6 +715,7 @@ const planRules = {
 
 const activeStep = computed(() => templateForm.value.steps?.[activeStepIndex.value])
 const templateOptions = computed(() => allTemplateList.value.filter((item) => item.status !== '1'))
+const bigDataStepTargets = computed(() => stepDraft.value?.stepParams?.serverTargets || [])
 const stepTargetType = computed(() => getTargetTypeByTool(stepDraft.value.toolCode))
 const stepTargetSectionTitle = computed(() => {
   if (stepTargetType.value === 'KAFKA') return 'Kafka 目标'
@@ -1171,6 +1172,9 @@ function openStepDialog(index = null) {
   stepEditingIndex.value = index
   stepDraft.value = index === null ? defaultStepForm(templateForm.value.steps.length + 1) : cloneStep(templateForm.value.steps[index])
   if (!stepDraft.value.toolCode && toolList.value.length) handleStepToolChange(toolList.value[0].toolCode)
+  if (getTargetTypeByTool(stepDraft.value.toolCode) === 'BIG_DATA_SERVER') {
+    ensureBigDataServerParams(stepDraft.value)
+  }
   stepDialogOpen.value = true
 }
 
@@ -1222,6 +1226,9 @@ function defaultStepForm(order) {
     targetIds: [],
     target: normalizeStepTarget({}, tool?.toolCode, stepName),
     stepParams: {}
+  }
+  if (getTargetTypeByTool(step.toolCode) === 'BIG_DATA_SERVER') {
+    ensureBigDataServerParams(step)
   }
   return step
 }
@@ -1321,6 +1328,9 @@ function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
   if (targetType === 'HTTP') {
     next.httpMethod = next.httpMethod || 'POST'
     next.resultPath = next.resultPath || 'data.total'
+  }
+  if (targetType === 'BIG_DATA_SERVER') {
+    next.port = next.port || 22
   }
   return next
 }
