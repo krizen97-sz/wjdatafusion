@@ -1203,7 +1203,7 @@
           <div class="transfer-dialog-hero__copy">
             <span class="transfer-dialog-hero__eyebrow">设备资产清单</span>
             <h3>{{ hardwareAssetDialogTitle }}</h3>
-            <p>服务器、解码器、终端、交换机、网闸在一个清单里查看；服务器仍沿用原密码、导入和巡检配置能力。</p>
+            <p>统一查看和维护现场设备资产，新增、筛选、导出、删除和批量录入都从同一入口完成。</p>
           </div>
           <div class="server-manager-hero__stats">
             <strong>{{ hardwareAssetDialogStats.total }}</strong>
@@ -1213,51 +1213,59 @@
       </template>
 
       <div class="hardware-asset-shell" v-loading="hardwareAssetLoading">
-        <aside class="hardware-asset-filter">
-          <div class="hardware-asset-filter__head">
-            <strong>筛选条件</strong>
-            <span>{{ filteredEquipmentRows.length }} / {{ equipmentRows.length }} 项设备</span>
-          </div>
-          <label>关键词</label>
-          <el-input v-model="hardwareAssetKeyword" placeholder="名称、IP、型号、位置" clearable />
-          <label>网络环境</label>
-          <el-select v-model="hardwareAssetFilter.networkEnv" placeholder="全部网络" clearable filterable>
-            <el-option v-for="dict in support_network_env" :key="dict.value" :label="dict.label" :value="dict.value" />
-          </el-select>
-          <label>资产类型</label>
-          <el-select v-model="hardwareAssetFilter.assetType" placeholder="全部类型" clearable>
-            <el-option v-for="item in equipmentTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
-          <label>绑定范围</label>
-          <el-select v-model="hardwareAssetFilter.bindingScope" placeholder="全部范围" clearable>
-            <el-option label="平台设备" value="PLATFORM" />
-            <el-option label="现场公共设备" value="PUBLIC" />
-            <el-option label="未关联服务器" value="UNBOUND" />
-          </el-select>
-          <label>运行状态</label>
-          <el-select v-model="hardwareAssetFilter.status" placeholder="全部状态" clearable>
-            <el-option label="正常" value="0" />
-            <el-option label="停用" value="1" />
-          </el-select>
-          <div class="hardware-asset-filter__summary">
-            <strong>{{ managedHardwareServers.length }}</strong>
-            <span>台服务器保留原维护方式</span>
-            <el-button plain size="small" @click="openServerManagerFromHardwareDialog">管理服务器</el-button>
-          </div>
-        </aside>
-
         <section class="hardware-asset-table-panel" :class="{ 'is-server-workspace': equipmentWorkspaceMode === 'server' }">
+          <div v-if="equipmentWorkspaceMode === 'list'" class="hardware-asset-querybar">
+            <div class="hardware-asset-querybar__head">
+              <div>
+                <strong>筛选设备</strong>
+                <span>当前显示 {{ filteredEquipmentRows.length }} / {{ equipmentRows.length }} 项设备</span>
+              </div>
+              <el-button link type="primary" @click="resetHardwareAssetFilter">重置筛选</el-button>
+            </div>
+            <div class="hardware-asset-query-grid">
+              <div class="hardware-filter-field hardware-filter-field--keyword">
+                <span>关键词</span>
+                <el-input v-model="hardwareAssetKeyword" placeholder="设备名称、IP、型号、位置、账号" clearable />
+              </div>
+              <div class="hardware-filter-field">
+                <span>设备类型</span>
+                <el-select v-model="hardwareAssetFilter.assetType" placeholder="全部类型" clearable>
+                  <el-option v-for="item in equipmentTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
+              </div>
+              <div class="hardware-filter-field">
+                <span>网络环境</span>
+                <el-select v-model="hardwareAssetFilter.networkEnv" placeholder="全部网络" clearable filterable>
+                  <el-option v-for="dict in support_network_env" :key="dict.value" :label="dict.label" :value="dict.value" />
+                </el-select>
+              </div>
+              <div class="hardware-filter-field">
+                <span>绑定范围</span>
+                <el-select v-model="hardwareAssetFilter.bindingScope" placeholder="全部范围" clearable>
+                  <el-option label="平台设备" value="PLATFORM" />
+                  <el-option label="现场公共设备" value="PUBLIC" />
+                  <el-option label="未关联设备" value="UNBOUND" />
+                </el-select>
+              </div>
+              <div class="hardware-filter-field">
+                <span>运行状态</span>
+                <el-select v-model="hardwareAssetFilter.status" placeholder="全部状态" clearable>
+                  <el-option label="正常" value="0" />
+                  <el-option label="停用" value="1" />
+                </el-select>
+              </div>
+            </div>
+          </div>
+
           <div class="hardware-asset-toolbar">
             <div>
-              <strong>{{ equipmentWorkspaceMode === 'server' ? '服务器维护' : '设备明细' }}</strong>
+              <strong>{{ equipmentWorkspaceMode === 'server' ? '批量录入设备' : '设备明细' }}</strong>
               <span>{{ hardwareAssetDialogPlatform ? getHardwareAssetPlatformLabel({ platformId: hardwareAssetDialogPlatform.platformId, platformLevel: hardwareAssetDialogPlatform.platformLevel, platformName: hardwareAssetDialogPlatform.platformName }) : '现场全部设备资产' }}</span>
             </div>
             <div>
-              <el-button-group class="equipment-workspace-toggle">
-                <el-button :type="equipmentWorkspaceMode === 'list' ? 'primary' : ''" @click="equipmentWorkspaceMode = 'list'">设备清单</el-button>
-                <el-button :type="equipmentWorkspaceMode === 'server' ? 'primary' : ''" @click="openServerManagerFromHardwareDialog">服务器维护</el-button>
-              </el-button-group>
+              <el-button v-if="equipmentWorkspaceMode === 'server'" plain @click="equipmentWorkspaceMode = 'list'">返回设备清单</el-button>
               <el-button v-if="equipmentWorkspaceMode === 'list'" type="primary" icon="Plus" @click="handleEquipmentAdd">新增设备</el-button>
+              <el-button v-if="equipmentWorkspaceMode === 'list'" plain icon="Upload" @click="openServerManagerFromHardwareDialog">批量录入</el-button>
               <el-button v-if="equipmentWorkspaceMode === 'list'" plain icon="Download" @click="handleEquipmentExport">导出设备清单</el-button>
               <el-button v-if="equipmentWorkspaceMode === 'list'" type="danger" plain :disabled="!equipmentSelectedRows.length" @click="handleEquipmentBatchDelete">
                 批量删除
@@ -1328,7 +1336,7 @@
                 <el-button link type="primary" @click="handleEquipmentEdit(row)">编辑</el-button>
                 <el-button v-if="row.sourceType === EQUIPMENT_SOURCE_SERVER && canViewPlain" link type="primary" @click="handleServerPlain(row.raw)">显示密码</el-button>
                 <el-button v-else-if="row.sourceType === EQUIPMENT_SOURCE_HARDWARE && canViewPlain" link type="primary" @click="handleHardwareAssetPlain(row.raw || row)">显示密码</el-button>
-                <el-button link type="danger" @click="handleEquipmentDelete(row)">{{ row.sourceType === EQUIPMENT_SOURCE_SERVER ? '删除服务器' : '删除设备' }}</el-button>
+                <el-button link type="danger" @click="handleEquipmentDelete(row)">删除设备</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -1339,18 +1347,18 @@
               <section class="server-manager-create">
                 <div class="server-manager-section__head">
                   <div>
-                    <strong>添加服务器</strong>
-                    <p>服务器仍归属到子平台；这里复用原服务器管理的单个、批量和 xlsx 导入能力。</p>
+                    <strong>录入设备</strong>
+                    <p>适合一次录入多台需要登录维护的设备，保存后会进入统一设备清单展示。</p>
                   </div>
                 </div>
 
                 <div class="server-create-actions">
                   <button type="button" class="server-create-action" :class="{ 'is-active': serverCreateMode === 'single' }" @click="serverCreateMode = 'single'">
-                    <strong>单个添加</strong>
+                    <strong>单个录入</strong>
                     <span>单台录入</span>
                   </button>
                   <button type="button" class="server-create-action" :class="{ 'is-active': serverCreateMode === 'batch' }" @click="serverCreateMode = 'batch'">
-                    <strong>批量添加</strong>
+                    <strong>批量录入</strong>
                     <span>IP 段录入</span>
                   </button>
                   <button type="button" class="server-create-action server-create-action--import" @click="openServerImportDialog">
@@ -1360,7 +1368,7 @@
                 </div>
 
                 <div v-if="isManagingMainPlatformServers" class="server-manager-target">
-                  <label>添加到子平台</label>
+                  <label>归属子平台</label>
                   <el-select v-model="serverManagerTargetSubPlatformId" placeholder="请选择子平台" filterable>
                     <el-option
                       v-for="sub in serverManagerTargetSubPlatformOptions"
@@ -1372,10 +1380,10 @@
                 </div>
 
                 <el-form v-if="serverCreateMode === 'single'" :model="serverQuickForm" label-position="top" class="server-manager-form">
-                  <el-form-item label="服务器 IP">
+                  <el-form-item label="设备 IP">
                     <el-input v-model="serverQuickForm.serverAddress" placeholder="例如：10.10.10.21" />
                   </el-form-item>
-                  <el-form-item label="服务器名称">
+                  <el-form-item label="设备名称">
                     <el-input v-model="serverQuickForm.serverName" placeholder="不填则按 IP 自动生成" />
                   </el-form-item>
                   <div class="server-manager-form__grid">
@@ -1395,7 +1403,7 @@
                     </el-form-item>
                   </div>
                   <el-button type="primary" class="server-manager-submit" @click="submitManagedServerSingle">
-                    {{ isManagingMainPlatformServers ? '添加到所选子平台' : '添加到当前子平台' }}
+                    {{ isManagingMainPlatformServers ? '录入到所选子平台' : '录入到当前子平台' }}
                   </el-button>
                 </el-form>
 
@@ -1410,7 +1418,7 @@
                   </el-form-item>
                   <div class="server-manager-form__grid">
                     <el-form-item label="名称前缀">
-                      <el-input v-model="serverBatchForm.namePrefix" placeholder="例如：服务器" />
+                      <el-input v-model="serverBatchForm.namePrefix" placeholder="例如：设备" />
                     </el-form-item>
                     <el-form-item label="操作系统">
                       <el-input v-model="serverBatchForm.osType" placeholder="可选" />
@@ -1421,12 +1429,12 @@
                       <el-input-number v-model="serverBatchForm.sshPort" :min="1" :max="65535" controls-position="right" />
                     </el-form-item>
                     <el-form-item label="系统账号">
-                      <el-input v-model="serverBatchForm.osUsername" placeholder="批量服务器统一账号，可选" />
+                      <el-input v-model="serverBatchForm.osUsername" placeholder="批量设备统一账号，可选" />
                     </el-form-item>
                   </div>
                   <div class="server-manager-form__grid">
                     <el-form-item label="系统密码">
-                      <el-input v-model="serverBatchForm.osPassword" type="password" show-password placeholder="批量服务器统一密码，可选" />
+                      <el-input v-model="serverBatchForm.osPassword" type="password" show-password placeholder="批量设备统一密码，可选" />
                     </el-form-item>
                   </div>
                   <div class="server-batch-preview" :class="{ 'is-error': serverBatchPreview.error }">
@@ -1434,7 +1442,7 @@
                     <span>{{ serverBatchPreview.error || serverBatchPreviewText }}</span>
                   </div>
                   <el-button type="primary" class="server-manager-submit" @click="submitManagedServerBatch">
-                    {{ isManagingMainPlatformServers ? '批量添加到所选子平台' : '批量添加到当前子平台' }}
+                    {{ isManagingMainPlatformServers ? '批量录入到所选子平台' : '批量录入到当前子平台' }}
                   </el-button>
                 </el-form>
               </section>
@@ -1442,7 +1450,7 @@
               <section class="server-manager-list-panel">
                 <div class="server-manager-section__head">
                   <div>
-                    <strong>{{ isManagingMainPlatformServers ? '子平台服务器集合' : '当前子平台服务器' }}</strong>
+                    <strong>{{ isManagingMainPlatformServers ? '平台设备集合' : '当前范围设备' }}</strong>
                     <p>{{ serverManagerListLead }}</p>
                   </div>
                 </div>
@@ -1457,8 +1465,8 @@
                     全选
                   </el-checkbox>
                   <el-input v-model="serverManagerKeyword" class="server-manager-search" placeholder="搜索名称、IP、端口、系统" clearable />
-                  <el-button plain :disabled="!serverManagerSelectedIds.length || !canViewPlain" @click="handleManagedServerBatchExport">导出服务器</el-button>
-                  <el-button type="danger" plain :disabled="!serverManagerSelectedIds.length" @click="handleManagedServerBatchDelete">删除服务器</el-button>
+                  <el-button plain :disabled="!serverManagerSelectedIds.length || !canViewPlain" @click="handleManagedServerBatchExport">导出设备</el-button>
+                  <el-button type="danger" plain :disabled="!serverManagerSelectedIds.length" @click="handleManagedServerBatchDelete">删除设备</el-button>
                 </div>
                 <div v-if="filteredManagedServers.length" class="server-manager-list equipment-server-list">
                   <article v-for="server in filteredManagedServers" :key="server.serverId" class="server-manager-card">
@@ -1469,14 +1477,14 @@
                       @click.stop
                     />
                     <div class="server-manager-card__main">
-                      <strong>{{ server.serverName || '未命名服务器' }}</strong>
+                      <strong>{{ server.serverName || '未命名设备' }}</strong>
                       <span>{{ formatServerAddress(server) }}</span>
                       <small>{{ server.osType || '未填写系统' }} · SSH {{ server.sshPort || 22 }} · {{ getStatusLabel(server.status) }} · {{ getServerManagedScopeLabel(server) }}</small>
                     </div>
                     <div class="server-manager-card__actions">
                       <el-button link type="primary" @click="handleServerEdit(server)">编辑</el-button>
                       <el-button v-if="canViewPlain" link type="primary" @click="handleServerPlain(server)">显示密码</el-button>
-                      <el-button link type="danger" @click="handleServerDelete(server)">删除服务器</el-button>
+                      <el-button link type="danger" @click="handleServerDelete(server)">删除设备</el-button>
                     </div>
                   </article>
                 </div>
@@ -1484,15 +1492,15 @@
                   <span>
                     {{
                       managedPlatformServers.length
-                        ? '没有匹配当前搜索条件的服务器。'
-                        : (isManagingMainPlatformServers ? '当前主平台下还没有子平台服务器，请先选择子平台添加。' : '当前子平台还没有服务器，可以从左侧添加。')
+                        ? '没有匹配当前搜索条件的设备。'
+                        : (isManagingMainPlatformServers ? '当前主平台下还没有可批量维护的设备，请先选择子平台录入。' : '当前范围还没有可批量维护的设备，可以从左侧录入。')
                     }}
                   </span>
                 </div>
               </section>
             </div>
             <div v-else class="empty-state compact-empty equipment-server-empty">
-              <span>服务器必须绑定到主平台下的子平台。请先从画布选择主平台或子平台，再进入服务器维护。</span>
+              <span>批量录入需要先选定主平台或子平台，请从画布选择范围后再进入。</span>
             </div>
           </template>
         </section>
@@ -1500,7 +1508,7 @@
 
       <template #footer>
         <div class="transfer-dialog-footer">
-          <span>统一清单负责查看和入口整合；服务器与非服务器设备仍按各自原有能力保存和维护。</span>
+          <span>所有设备在这里统一查看、筛选、新增、编辑、导出和删除。</span>
           <el-button @click="hardwareAssetDialogOpen = false">关闭</el-button>
         </div>
       </template>
@@ -3074,7 +3082,7 @@ const equipmentTypeOptions = computed(() => [
   ...hardwareTypeOptions.value
 ])
 const equipmentCreateOptions = computed(() => [
-  { label: '服务器', value: HARDWARE_SERVER_TYPE, image: getEquipmentTypeImage(HARDWARE_SERVER_TYPE), description: '沿用服务器原有单个添加、批量添加、导入和密码维护方式' },
+  { label: '服务器', value: HARDWARE_SERVER_TYPE, image: getEquipmentTypeImage(HARDWARE_SERVER_TYPE), description: '支持单个录入、批量录入、导入和密码维护' },
   ...hardwareTypeOptions.value.map((item) => ({
     label: item.label,
     value: item.value,
@@ -3136,8 +3144,8 @@ const serverManagerLead = computed(() =>
 )
 const serverManagerListLead = computed(() =>
   isManagingMainPlatformServers.value
-    ? '这里汇总当前主平台下所有子平台服务器，可以统一编辑、删除、导入和导出服务器。'
-    : '这里展示当前子平台服务器，可以直接编辑、删除、导入和导出服务器。'
+    ? '这里汇总当前主平台下所有可登录维护设备，可以统一编辑、删除、导入和导出。'
+    : '这里展示当前范围内可登录维护设备，可以直接编辑、删除、导入和导出。'
 )
 const serverBatchPreviewText = computed(() => {
   const target = isManagingMainPlatformServers.value ? getPlatformNameById(serverManagerTargetSubPlatformId.value) : selectedPlatform.value?.platformName
@@ -3181,7 +3189,6 @@ const equipmentCategoryCards = computed(() => {
       count: countMap.get(item.value) || 0,
       active: hardwareAssetFilter.assetType === item.value
     }))
-    .filter((item) => item.count || !hardwareAssetFilter.assetType)
 })
 const filteredEquipmentRows = computed(() => {
   const keyword = hardwareAssetKeyword.value.trim().toLowerCase()
@@ -6164,16 +6171,20 @@ function openHardwareAssetDialog(platform = selectedPlatform.value) {
     syncPlatformWindow(platform)
   }
   hardwareAssetDialogPlatformId.value = platform?.platformId || null
-  hardwareAssetKeyword.value = ''
-  hardwareAssetFilter.assetType = null
-  hardwareAssetFilter.networkEnv = null
-  hardwareAssetFilter.status = null
-  hardwareAssetFilter.bindingScope = null
+  resetHardwareAssetFilter()
   hardwareAssetSelectedIds.value = []
   equipmentSelectedRows.value = []
   equipmentWorkspaceMode.value = 'list'
   hardwareAssetDialogOpen.value = true
   loadHardwareAssets()
+}
+
+function resetHardwareAssetFilter() {
+  hardwareAssetKeyword.value = ''
+  hardwareAssetFilter.assetType = null
+  hardwareAssetFilter.networkEnv = null
+  hardwareAssetFilter.status = null
+  hardwareAssetFilter.bindingScope = null
 }
 
 function resetHardwareAssetForm(assetType = null) {
@@ -6319,11 +6330,7 @@ function handleEquipmentBatchDelete() {
   }
   const serverIds = rows.filter((row) => row.sourceType === EQUIPMENT_SOURCE_SERVER).map((row) => row.sourceId)
   const assetIds = rows.filter((row) => row.sourceType === EQUIPMENT_SOURCE_HARDWARE).map((row) => row.sourceId)
-  const summary = [
-    serverIds.length ? `${serverIds.length} 台服务器` : '',
-    assetIds.length ? `${assetIds.length} 项硬件设备` : ''
-  ].filter(Boolean).join('、')
-  proxy.$modal.confirm(`确认删除选中的 ${summary} 吗？删除后不可恢复。`).then(async () => {
+  proxy.$modal.confirm(`确认删除选中的 ${rows.length} 台设备吗？删除后不可恢复。`).then(async () => {
     if (serverIds.length) {
       await delServer(serverIds)
     }
@@ -6369,7 +6376,7 @@ function handleHardwareAssetExport() {
 async function openServerManagerFromHardwareDialog() {
   const platform = hardwareAssetDialogPlatform.value || selectedPlatform.value
   if (!platform) {
-    proxy.$modal.msgWarning('请选择主平台或子平台后再管理服务器')
+    proxy.$modal.msgWarning('请选择主平台或子平台后再批量录入设备')
     return
   }
   selectedPlatformId.value = platform.platformId
@@ -10978,9 +10985,7 @@ onBeforeUnmount(() => {
 }
 
 .hardware-asset-shell {
-  display: grid;
-  grid-template-columns: 260px minmax(0, 1fr);
-  gap: 14px;
+  display: block;
   padding-top: 18px;
 }
 
@@ -11053,6 +11058,63 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.96);
 }
 
+.hardware-asset-querybar {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border: 1px solid #dce8f4;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+}
+
+.hardware-asset-querybar__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.hardware-asset-querybar__head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.hardware-asset-querybar__head strong,
+.hardware-asset-toolbar strong {
+  color: #193a5f;
+  font-size: 15px;
+}
+
+.hardware-asset-querybar__head span,
+.hardware-asset-toolbar span {
+  color: #73869d;
+  font-size: 12px;
+}
+
+.hardware-asset-query-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.8fr) repeat(4, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.hardware-filter-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.hardware-filter-field span {
+  color: #536b83;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hardware-filter-field :deep(.el-select),
+.hardware-filter-field :deep(.el-input) {
+  width: 100%;
+}
+
 .hardware-asset-toolbar {
   display: flex;
   align-items: center;
@@ -11069,13 +11131,13 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
-.equipment-workspace-toggle {
-  margin-right: 4px;
+.hardware-asset-toolbar > div:last-child {
+  justify-content: flex-end;
 }
 
 .equipment-category-strip {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 8px;
   margin-bottom: 12px;
 }
@@ -12496,12 +12558,18 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 640px) {
-  .support-transfer-dialog :deep(.el-dialog) {
+  .support-transfer-dialog :deep(.el-dialog),
+  .support-server-manager-dialog :deep(.el-dialog),
+  .support-hardware-asset-dialog :deep(.el-dialog) {
     max-width: calc(100vw - 12px);
   }
 
   .support-transfer-dialog :deep(.el-dialog__body),
-  .support-transfer-dialog :deep(.el-dialog__footer) {
+  .support-transfer-dialog :deep(.el-dialog__footer),
+  .support-server-manager-dialog :deep(.el-dialog__body),
+  .support-server-manager-dialog :deep(.el-dialog__footer),
+  .support-hardware-asset-dialog :deep(.el-dialog__body),
+  .support-hardware-asset-dialog :deep(.el-dialog__footer) {
     padding-left: 14px;
     padding-right: 14px;
   }
@@ -12567,6 +12635,11 @@ onBeforeUnmount(() => {
   .transfer-dialog-footer :deep(.el-button) {
     flex: 1 1 132px;
   }
+
+  .hardware-asset-query-grid,
+  .equipment-server-inline {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 900px) {
@@ -12615,6 +12688,18 @@ onBeforeUnmount(() => {
 
   .fusion-inspector {
     order: -1;
+  }
+
+  .hardware-asset-query-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hardware-filter-field--keyword {
+    grid-column: 1 / -1;
+  }
+
+  .equipment-server-inline {
+    grid-template-columns: 1fr;
   }
 
   .canvas-editor-hero {
@@ -12771,6 +12856,13 @@ onBeforeUnmount(() => {
   .contact-list-scroll {
     height: auto;
     max-height: 360px;
+  }
+}
+
+@media (max-width: 640px) {
+  .hardware-asset-query-grid,
+  .equipment-server-inline {
+    grid-template-columns: 1fr;
   }
 }
 
