@@ -6701,15 +6701,17 @@ async function loadServerPlainCredentialSummary(server = {}) {
       summary.otherPassword = plain
     }
   }
-  if (!credentials.length && server.osUsername) {
+  if (server.osUsername && (!summary.hikPassword || !summary.rootPassword || !summary.otherPassword)) {
     const plainRes = await viewServerPlain(server.serverId)
     const legacyPlain = plainRes?.plain || ''
-    if (server.osUsername === SERVER_FIXED_LOGIN_HIK) {
+    const legacyUsername = String(server.osUsername || '').trim()
+    const legacyUsernameLower = legacyUsername.toLowerCase()
+    if (legacyUsernameLower === SERVER_FIXED_LOGIN_HIK && !summary.hikPassword) {
       summary.hikPassword = legacyPlain
-    } else if (server.osUsername === SERVER_FIXED_LOGIN_ROOT) {
+    } else if (legacyUsernameLower === SERVER_FIXED_LOGIN_ROOT && !summary.rootPassword) {
       summary.rootPassword = legacyPlain
-    } else {
-      summary.otherUsername = server.osUsername
+    } else if (!summary.otherPassword) {
+      summary.otherUsername = legacyUsername
       summary.otherPassword = legacyPlain
     }
   }

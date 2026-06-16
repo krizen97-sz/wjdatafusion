@@ -1,5 +1,23 @@
 export const releaseNotes = [
   {
+    version: 'v3.4.3',
+    submitTime: '2026-06-16 22:13:36',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '历史服务器密码兼容修复',
+    summary: '修复旧服务器密码仍保存在 sup_server 主表时，修改服务器页面无法在 hik/root 密码栏展示已保存状态的问题。',
+    changes: [
+      '服务器列表和详情接口补充旧字段兼容：当 sup_server.os_username 为 hik 或 root 且存在 os_password_cipher 时，对应密码栏同样识别为已保存。',
+      '其他历史账号继续识别为“其他账号”，避免旧账号密码在编辑页消失。',
+      '点击密码框右侧眼睛查看明文时，优先读取新凭据表，缺失时自动回退读取 sup_server 旧密码字段。',
+      '兼容大小写历史账号，例如旧数据中的 HIK、Root 等仍可被识别到对应固定账号栏。'
+    ],
+    scope: ['现场融合管理', '服务器管理', '设备资产清单', '历史数据兼容', '登录凭据', '版本记录'],
+    database: '无数据库结构变化；本次仅兼容读取 sup_server.os_username/os_password_cipher 历史字段，不需要执行 SQL。',
+    scripts: []
+  },
+  {
     version: 'v3.4.2',
     submitTime: '2026-06-16 21:27:02',
     level: 'patch',

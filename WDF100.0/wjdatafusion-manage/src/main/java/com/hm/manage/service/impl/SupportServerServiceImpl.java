@@ -456,10 +456,33 @@ public class SupportServerServiceImpl implements ISupportServerService
         SupportServerCredential hikCredential = credentialMapper.selectCredentialByServerIdAndUsername(server.getServerId(), SERVER_LOGIN_HIK);
         SupportServerCredential rootCredential = credentialMapper.selectCredentialByServerIdAndUsername(server.getServerId(), SERVER_LOGIN_ROOT);
         SupportServerCredential otherCredential = credentialMapper.selectCredentialByServerIdAndName(server.getServerId(), SERVER_LOGIN_OTHER_NAME);
-        server.setHikCredentialConfigured(hikCredential != null && StringUtils.isNotBlank(hikCredential.getPasswordCipher()));
-        server.setRootCredentialConfigured(rootCredential != null && StringUtils.isNotBlank(rootCredential.getPasswordCipher()));
-        server.setOtherCredentialConfigured(otherCredential != null && StringUtils.isNotBlank(otherCredential.getPasswordCipher()));
-        server.setOtherUsername(otherCredential == null ? null : otherCredential.getUsername());
+        boolean hikConfigured = hikCredential != null && StringUtils.isNotBlank(hikCredential.getPasswordCipher());
+        boolean rootConfigured = rootCredential != null && StringUtils.isNotBlank(rootCredential.getPasswordCipher());
+        boolean otherConfigured = otherCredential != null && StringUtils.isNotBlank(otherCredential.getPasswordCipher());
+        String otherUsername = otherCredential == null ? null : otherCredential.getUsername();
+
+        if (StringUtils.isNotBlank(server.getOsPasswordCipher()) && StringUtils.isNotBlank(server.getOsUsername()))
+        {
+            String legacyUsername = server.getOsUsername().trim();
+            if (SERVER_LOGIN_HIK.equalsIgnoreCase(legacyUsername))
+            {
+                hikConfigured = true;
+            }
+            else if (SERVER_LOGIN_ROOT.equalsIgnoreCase(legacyUsername))
+            {
+                rootConfigured = true;
+            }
+            else if (!otherConfigured)
+            {
+                otherConfigured = true;
+                otherUsername = legacyUsername;
+            }
+        }
+
+        server.setHikCredentialConfigured(hikConfigured);
+        server.setRootCredentialConfigured(rootConfigured);
+        server.setOtherCredentialConfigured(otherConfigured);
+        server.setOtherUsername(otherUsername);
         server.setHikPassword(null);
         server.setRootPassword(null);
         server.setOtherPassword(null);
