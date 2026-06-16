@@ -96,6 +96,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final String TOOL_BIG_DATA_SERVER_DISK = "BIG_DATA_SERVER_DISK";
     private static final String TARGET_BIG_DATA_SERVER = "BIG_DATA_SERVER";
     private static final int BIG_DATA_DEFAULT_SSH_PORT = 2343;
+    private static final int SERVER_DEFAULT_SSH_PORT = 22;
 
     @Autowired
     private SupportAutoInspectionMapper autoInspectionMapper;
@@ -1118,7 +1119,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private TargetCheckResult checkServerFileCount(Map<String, Object> step, Map<String, Object> target) throws Exception
     {
-        SupportServer server = requireServer(target);
+        SupportServer server = resolveOptionalServer(target);
         String path = resolvePath(step, target);
         requireText(path, "服务器目录不能为空");
         Map<String, Object> params = readParams(step);
@@ -1129,7 +1130,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         String output = executeServerCommand(server, target, command, resolveTimeout(step)).trim();
         BigDecimal value = new BigDecimal(output.replaceAll("[^0-9]", ""));
         return TargetCheckResult.normal(target, value, "个",
-                "调用方式：SSH目录统计；服务器：" + StringUtils.defaultIfBlank(server.getServerName(), server.getServerAddress())
+                "调用方式：SSH目录统计；服务器：" + formatServerTargetName(server, target)
                         + "；目录：" + path
                         + "；递归：" + (recursive ? "是" : "否")
                         + (StringUtils.isBlank(filePattern) ? "" : "；文件匹配：" + filePattern)
@@ -1311,7 +1312,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     {
         try
         {
-            SupportServer server = requireServer(target);
+            SupportServer server = resolveOptionalServer(target);
             String output = executeServerCommand(server, target, "echo ok", DEFAULT_TIMEOUT_SECONDS).trim();
             return TargetCheckResult.normal(target, null, "", "服务器连接可用：" + output);
         }
@@ -1472,10 +1473,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 target.put("port", toInt(target.get("port"), 21));
                 break;
             case "SERVER":
-                if (toLong(target.get("serverId")) == null)
+                if (toLong(target.get("serverId")) == null && StringUtils.isBlank(str(target, "host")))
                 {
-                    throw new ServiceException("请选择服务器资产");
+                    throw new ServiceException("请选择服务器资产或填写服务器IP");
                 }
+                target.put("port", toInt(target.get("port"), SERVER_DEFAULT_SSH_PORT));
                 requireText(str(target, "username"), "SSH账号不能为空");
                 if (!update)
                 {
@@ -1555,6 +1557,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         if (TOOL_FTP_FILE_COUNT.equals(str(step, "toolCode")))
         {
             return saveFtpTargets(step);
+        }
+        if (TOOL_SERVER_FILE_COUNT.equals(str(step, "toolCode")))
+        {
+            return saveServerFileTargets(step);
         }
         Map<String, Object> inlineTarget = castMap(step.get("target"));
         if (!inlineTarget.isEmpty())
@@ -1644,6 +1650,78 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         }
         Map<String, Object> sanitizedParams = new HashMap<>(params);
         sanitizedParams.put("ftpTargets", sanitizedTargets);
+        step.put("stepParams", JSON.toJSONString(sanitizedParams));
+        return targetIds;
+    }
+
+    private List<Long> saveServerFileTargets(Map<String, Object> step)
+    {
+        Map<String, Object> params = readParams(step);
+        List<Map<String, Object>> serverTargets = castList(params.get("serverTargets"));
+        if (serverTargets.isEmpty())
+        {
+            Map<String, Object> inlineTarget = castMap(step.get("target"));
+            if (!inlineTarget.isEmpty())
+            {
+                serverTargets = Collections.singletonList(inlineTarget);
+            }
+        }
+        if (serverTargets.isEmpty())
+        {
+            throw new ServiceException("服务器目录文件数量检测至少需要配置一台服务器");
+        }
+        List<Long> targetIds = new ArrayList<>();
+        List<Map<String, Object>> sanitizedTargets = new ArrayList<>();
+        int index = 1;
+        for (Map<String, Object> serverTarget : serverTargets)
+        {
+            Map<String, Object> target = new HashMap<>(serverTarget);
+            target.put("targetType", "SERVER");
+            target.put("targetName", StringUtils.defaultIfBlank(str(target, "targetName"),
+                    str(step, "stepName") + "-" + index));
+            target.put("status", STATUS_DISABLED.equals(str(target, "status")) ? STATUS_DISABLED : STATUS_NORMAL);
+            if (target.get("sourceServerId") != null && target.get("serverId") == null)
+            {
+                target.put("serverId", target.get("sourceServerId"));
+            }
+            target.put("port", toInt(target.get("port"), SERVER_DEFAULT_SSH_PORT));
+            Long targetId = toLong(target.get("targetId"));
+            if (targetId == null)
+            {
+                normalizeTarget(target, false);
+                encryptTargetSecret(target);
+                target.put("createBy", getCurrentUsername());
+                target.put("createTime", DateUtils.getNowDate());
+                target.put("updateBy", getCurrentUsername());
+                target.put("updateTime", DateUtils.getNowDate());
+                autoInspectionMapper.insertTarget(target);
+                targetId = toLong(target.get("targetId"));
+            }
+            else
+            {
+                updateTarget(target);
+            }
+            targetIds.add(targetId);
+            Map<String, Object> sanitized = new LinkedHashMap<>();
+            sanitized.put("targetId", targetId);
+            sanitized.put("targetName", target.get("targetName"));
+            sanitized.put("targetType", "SERVER");
+            sanitized.put("serverId", target.get("serverId"));
+            sanitized.put("sourceType", target.get("sourceType"));
+            sanitized.put("sourceServerId", target.get("sourceServerId"));
+            sanitized.put("sourceLabel", target.get("sourceLabel"));
+            sanitized.put("host", target.get("host"));
+            sanitized.put("port", target.get("port"));
+            sanitized.put("path", target.get("path"));
+            sanitized.put("username", target.get("username"));
+            sanitized.put("status", target.get("status"));
+            sanitizedTargets.add(sanitized);
+            index++;
+        }
+        Map<String, Object> sanitizedParams = new HashMap<>(params);
+        sanitizedParams.put("recursive", StringUtils.defaultIfBlank(str(params, "recursive"), "true"));
+        sanitizedParams.put("filePattern", StringUtils.defaultString(str(params, "filePattern")));
+        sanitizedParams.put("serverTargets", sanitizedTargets);
         step.put("stepParams", JSON.toJSONString(sanitizedParams));
         return targetIds;
     }
@@ -1840,7 +1918,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         insertBuiltinTool(TOOL_FTP_FILE_COUNT, "FTP目录文件数量检测", TOOL_FTP_FILE_COUNT, "个", RULE_MAX, new BigDecimal("50"), 10, 0,
                 "{\"fields\":[\"path\"]}");
         insertBuiltinTool(TOOL_SERVER_FILE_COUNT, "服务器目录文件数量检测", TOOL_SERVER_FILE_COUNT, "个", RULE_MAX, new BigDecimal("20"), 10, 0,
-                "{\"fields\":[\"path\",\"recursive\",\"filePattern\"]}");
+                "{\"fields\":[\"serverTargets\",\"recursive\",\"filePattern\"]}");
         insertBuiltinTool(TOOL_SERVER_DISK, "服务器磁盘使用率检测", TOOL_SERVER_DISK, "%", RULE_MAX, new BigDecimal("80"), 10, 0,
                 "{\"fields\":[\"path\"]}");
         insertBuiltinTool(TOOL_BIG_DATA_SERVER_DISK, "大数据服务器爆盘检测", TOOL_BIG_DATA_SERVER_DISK, "%", RULE_MAX, new BigDecimal("85"), 15, 0,
@@ -1940,17 +2018,46 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return server;
     }
 
+    private SupportServer resolveOptionalServer(Map<String, Object> target)
+    {
+        Long serverId = toLong(target.get("serverId"));
+        if (serverId == null)
+        {
+            return null;
+        }
+        SupportServer server = serverMapper.selectSupportServerByServerId(serverId);
+        if (server == null)
+        {
+            throw new ServiceException("服务器不存在");
+        }
+        return server;
+    }
+
     private String executeServerCommand(SupportServer server, Map<String, Object> target, String command, int timeoutSeconds) throws Exception
     {
         withPlainSecret(target);
-        String username = StringUtils.defaultIfBlank(str(target, "username"), server.getOsUsername());
+        String host = StringUtils.defaultIfBlank(str(target, "host"), server == null ? null : server.getServerAddress());
+        int fallbackPort = server == null ? SERVER_DEFAULT_SSH_PORT : (server.getSshPort() == null ? SERVER_DEFAULT_SSH_PORT : server.getSshPort());
+        int port = toInt(target.get("port"), fallbackPort);
+        String username = StringUtils.defaultIfBlank(str(target, "username"), server == null ? null : server.getOsUsername());
         String password = str(target, "password");
-        if (StringUtils.isBlank(password) && StringUtils.isNotBlank(server.getOsPasswordCipher()))
+        if (StringUtils.isBlank(password) && server != null && StringUtils.isNotBlank(server.getOsPasswordCipher()))
         {
             password = cryptoService.decrypt(server.getOsPasswordCipher());
         }
-        return executeSshCommand(server.getServerAddress(), server.getSshPort() == null ? 22 : server.getSshPort(),
-                username, password, command, timeoutSeconds);
+        requireText(host, "服务器IP不能为空");
+        requireText(username, "SSH账号不能为空");
+        requireText(password, "SSH密码不能为空");
+        return executeSshCommand(host, port, username, password, command, timeoutSeconds);
+    }
+
+    private String formatServerTargetName(SupportServer server, Map<String, Object> target)
+    {
+        if (server != null)
+        {
+            return StringUtils.defaultIfBlank(server.getServerName(), server.getServerAddress());
+        }
+        return StringUtils.defaultIfBlank(str(target, "targetName"), str(target, "host"));
     }
 
     private String executeSshCommand(String host, int port, String username, String password, String command, int timeoutSeconds) throws Exception

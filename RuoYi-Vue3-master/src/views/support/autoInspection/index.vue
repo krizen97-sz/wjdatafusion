@@ -462,7 +462,43 @@
               </div>
             </div>
           </div>
-          <el-row v-if="stepTargetType === 'SERVER'" :gutter="16">
+          <div v-if="stepDraft.toolCode === 'SERVER_FILE_COUNT'" class="bigdata-server-config server-file-config">
+            <div class="bigdata-server-toolbar">
+              <span>已配置 {{ serverFileStepTargets.length }} 台服务器</span>
+              <el-button type="primary" plain icon="Select" @click="openServerAssetPicker('SERVER_FILE_COUNT')">从现场服务器选择</el-button>
+              <el-button plain icon="Plus" @click="addServerFileTarget">手动添加</el-button>
+            </div>
+            <div class="server-file-options">
+              <el-form-item label="递归查询">
+                <el-switch v-model="stepDraft.stepParams.recursive" active-value="true" inactive-value="false" />
+                <small class="field-hint">开启后会统计当前目录及所有子目录；关闭后只统计当前目录第一层文件。</small>
+              </el-form-item>
+              <el-form-item label="文件匹配">
+                <el-input v-model="stepDraft.stepParams.filePattern" placeholder="例如：*.dat，不填则统计全部文件" />
+              </el-form-item>
+            </div>
+            <div class="bigdata-server-list">
+              <div v-for="(server, index) in serverFileStepTargets" :key="index" class="bigdata-server-card">
+                <div class="bigdata-server-card__head">
+                  <div>
+                    <strong>服务器 {{ index + 1 }}</strong>
+                    <el-tag v-if="server.sourceType === 'SITE_SERVER'" size="small" type="primary">现场服务器</el-tag>
+                    <el-tag v-else size="small" type="info">手动添加</el-tag>
+                  </div>
+                  <el-button link type="danger" icon="Delete" :disabled="serverFileStepTargets.length <= 1" @click="removeServerFileTarget(index)">删除</el-button>
+                </div>
+                <el-row :gutter="12">
+                  <el-col :span="8"><el-form-item label="目标名称"><el-input v-model="server.targetName" placeholder="服务器目录目标" /></el-form-item></el-col>
+                  <el-col :span="8"><el-form-item label="服务器IP" required><el-input v-model="server.host" placeholder="10.0.0.10" /></el-form-item></el-col>
+                  <el-col :span="8"><el-form-item label="SSH端口"><el-input-number v-model="server.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="检测路径" required><el-input v-model="server.path" placeholder="/data/inbox" /></el-form-item></el-col>
+                  <el-col :span="6"><el-form-item label="SSH账号" required><el-input v-model="server.username" /></el-form-item></el-col>
+                  <el-col :span="6"><el-form-item label="SSH密码" required><el-input v-model="server.password" show-password /></el-form-item></el-col>
+                </el-row>
+              </div>
+            </div>
+          </div>
+          <el-row v-if="stepTargetType === 'SERVER' && stepDraft.toolCode !== 'SERVER_FILE_COUNT'" :gutter="16">
             <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：大数据服务器磁盘" /></el-form-item></el-col>
             <el-col :span="12">
               <el-form-item label="服务器资产" required>
@@ -483,19 +519,12 @@
             <el-col :span="12"><el-form-item label="检测路径" required><el-input v-model="stepDraft.target.path" placeholder="目录路径或磁盘挂载点" /></el-form-item></el-col>
             <el-col :span="12"><el-form-item label="SSH账号" required><el-input v-model="stepDraft.target.username" placeholder="本次巡检使用的登录账号" /></el-form-item></el-col>
             <el-col :span="12"><el-form-item label="SSH密码" required><el-input v-model="stepDraft.target.password" show-password placeholder="本次巡检使用的登录密码" /></el-form-item></el-col>
-            <el-col v-if="stepDraft.toolCode === 'SERVER_FILE_COUNT'" :span="8">
-              <el-form-item label="递归查询">
-                <el-switch v-model="stepDraft.stepParams.recursive" active-value="true" inactive-value="false" />
-                <small class="field-hint">开启后会统计当前目录及所有子目录；关闭后只统计当前目录第一层文件。</small>
-              </el-form-item>
-            </el-col>
-            <el-col v-if="stepDraft.toolCode === 'SERVER_FILE_COUNT'" :span="8"><el-form-item label="文件匹配"><el-input v-model="stepDraft.stepParams.filePattern" placeholder="*.dat" /></el-form-item></el-col>
           </el-row>
           <div v-if="stepTargetType === 'BIG_DATA_SERVER'" class="bigdata-server-config">
             <div class="bigdata-server-toolbar">
               <span>已配置 {{ bigDataStepTargets.length }} 台服务器</span>
               <el-switch v-model="stepDraft.stepParams.includePseudo" active-value="true" inactive-value="false" active-text="包含临时文件系统" inactive-text="过滤临时文件系统" inline-prompt />
-              <el-button type="primary" plain icon="Select" @click="openBigDataServerAssetPicker">从现场服务器选择</el-button>
+              <el-button type="primary" plain icon="Select" @click="openServerAssetPicker('BIG_DATA_SERVER')">从现场服务器选择</el-button>
               <el-button plain icon="Plus" @click="addBigDataServerTarget">手动添加</el-button>
             </div>
             <div class="bigdata-server-list">
@@ -531,11 +560,11 @@
       <template #header>
         <div class="dialog-title">
           <span>从现场管理服务器中选择</span>
-          <strong>选择大数据服务器</strong>
+          <strong>{{ serverAssetPickerTitle }}</strong>
         </div>
       </template>
       <div class="asset-transfer-panel">
-        <p>可按现场、平台、服务器名称或 IP 搜索，多选后会自动带出服务器 IP、SSH 端口、系统账号和密码；后续仍可在步骤里单独调整登录信息。</p>
+        <p>{{ serverAssetPickerHint }}</p>
         <div class="tree-transfer">
           <section class="tree-transfer-panel">
             <header>
@@ -724,6 +753,8 @@ const { proxy } = getCurrentInstance()
 
 const BIG_DATA_DEFAULT_SSH_PORT = 2343
 const BIG_DATA_DEFAULT_USERNAME = 'root'
+const SERVER_FILE_DEFAULT_SSH_PORT = BIG_DATA_DEFAULT_SSH_PORT
+const SERVER_FILE_DEFAULT_USERNAME = BIG_DATA_DEFAULT_USERNAME
 const configTabNames = ['template', 'plan']
 const activeTab = ref(resolveRouteTab(route.query.tab, route.path))
 const configTab = ref(resolveConfigTab(route.query.tab, route.query.configTab, route.path))
@@ -773,6 +804,7 @@ const bigDataSelectedServerIds = ref([])
 const bigDataServerTreeRef = ref(null)
 const bigDataServerTreeKeyword = ref('')
 const bigDataSelectedServerKeyword = ref('')
+const serverAssetPickerMode = ref('BIG_DATA_SERVER')
 const planDialogOpen = ref(false)
 const planSubmitLoading = ref(false)
 const planForm = ref(defaultPlanForm())
@@ -825,6 +857,7 @@ const planRules = {
 const activeStep = computed(() => templateForm.value.steps?.[activeStepIndex.value])
 const templateOptions = computed(() => allTemplateList.value.filter((item) => item.status !== '1'))
 const bigDataStepTargets = computed(() => stepDraft.value?.stepParams?.serverTargets || [])
+const serverFileStepTargets = computed(() => stepDraft.value?.stepParams?.serverTargets || [])
 const ftpStepTargets = computed(() => stepDraft.value?.stepParams?.ftpTargets || [])
 const bigDataServerIds = computed(() => Object.keys(serverAssetMap.value || {}).map((id) => Number(id)).filter(Boolean))
 const bigDataServerTotal = computed(() => bigDataServerIds.value.length)
@@ -854,6 +887,13 @@ const bigDataServerTreeProps = {
   children: 'children',
   disabled: 'disabled'
 }
+const serverAssetPickerTitle = computed(() => serverAssetPickerMode.value === 'SERVER_FILE_COUNT' ? '选择目录检测服务器' : '选择大数据服务器')
+const serverAssetPickerHint = computed(() => {
+  if (serverAssetPickerMode.value === 'SERVER_FILE_COUNT') {
+    return '可按现场、平台、服务器名称或 IP 搜索，多选后会自动带出服务器 IP、SSH 端口、系统账号和密码；每台服务器的检测目录和登录信息仍可在步骤里单独调整。'
+  }
+  return '可按现场、平台、服务器名称或 IP 搜索，多选后会自动带出服务器 IP、SSH 端口、系统账号和密码；后续仍可在步骤里单独调整登录信息。'
+})
 const stepTargetType = computed(() => getTargetTypeByTool(stepDraft.value.toolCode))
 const stepTargetSectionTitle = computed(() => {
   if (stepTargetType.value === 'KAFKA') return 'Kafka 目标'
@@ -1196,6 +1236,20 @@ function handleTestStepTarget() {
       targetTesting.value = false
     })
   }
+  if (stepDraft.value.toolCode === 'SERVER_FILE_COUNT') {
+    const warning = validateServerFileTargets(stepDraft.value.stepParams?.serverTargets || [])
+    if (warning) {
+      proxy.$modal.msgWarning(warning)
+      return Promise.resolve()
+    }
+    targetTesting.value = true
+    const servers = normalizeServerFileTargets(stepDraft.value.stepParams.serverTargets)
+    return Promise.all(servers.map((server) => testAutoInspectionTarget(server))).then((results) => {
+      proxy.$modal.msgSuccess(`测试通过：${results.length} 台服务器均可连接`)
+    }).finally(() => {
+      targetTesting.value = false
+    })
+  }
   if (stepTargetType.value !== 'BIG_DATA_SERVER') {
     return handleTestTarget(stepDraft.value.target)
   }
@@ -1227,7 +1281,7 @@ function validateTargetBusiness(target) {
     if (!String(target.username || '').trim()) return '请填写 FTP 账号'
   }
   if (target.targetType === 'SERVER') {
-    if (!target.serverId) return '请选择服务器资产'
+    if (!target.serverId && !String(target.host || '').trim()) return '请选择服务器资产或填写服务器 IP'
     if (!String(target.path || '').trim()) return '请填写服务器检测路径'
     if (!String(target.username || '').trim()) return '请填写 SSH 登录账号'
     if (!String(target.password || '').trim()) return '请填写 SSH 登录密码'
@@ -1277,8 +1331,9 @@ function cleanTargetPayload(target) {
     payload.serverId = undefined
   }
   if (payload.targetType === 'SERVER') {
-    payload.host = ''
-    payload.port = undefined
+    if (payload.sourceType === 'SITE_SERVER' || payload.sourceServerId) {
+      payload.serverId = payload.sourceServerId || payload.serverId
+    }
     payload.url = ''
     payload.httpMethod = 'POST'
     payload.topic = ''
@@ -1287,6 +1342,8 @@ function cleanTargetPayload(target) {
     payload.secret = ''
     payload.resultPath = ''
     payload.extraParams = ''
+    payload.port = payload.port || SERVER_FILE_DEFAULT_SSH_PORT
+    payload.username = payload.username || SERVER_FILE_DEFAULT_USERNAME
   }
   if (payload.targetType === 'BIG_DATA_SERVER') {
     if (payload.sourceType === 'SITE_SERVER' || payload.sourceServerId) {
@@ -1403,12 +1460,38 @@ function defaultBigDataServerTarget(index = 1) {
   }
 }
 
+function defaultServerFileTarget(index = 1) {
+  return {
+    targetName: `目录检测服务器${index}`,
+    targetType: 'SERVER',
+    serverId: undefined,
+    host: '',
+    port: SERVER_FILE_DEFAULT_SSH_PORT,
+    path: '',
+    username: SERVER_FILE_DEFAULT_USERNAME,
+    password: '',
+    status: '0'
+  }
+}
+
 function normalizeBigDataServerTargets(servers = []) {
   return servers.map((server, index) => cleanTargetPayload({
     ...defaultBigDataServerTarget(index + 1),
     ...server,
     targetType: 'BIG_DATA_SERVER',
     targetName: server.targetName || `大数据节点${index + 1}`,
+    status: server.status || '0'
+  }))
+}
+
+function normalizeServerFileTargets(servers = []) {
+  return servers.map((server, index) => cleanTargetPayload({
+    ...defaultServerFileTarget(index + 1),
+    ...server,
+    targetType: 'SERVER',
+    targetName: server.targetName || `目录检测服务器${index + 1}`,
+    port: server.port || SERVER_FILE_DEFAULT_SSH_PORT,
+    username: server.username || SERVER_FILE_DEFAULT_USERNAME,
     status: server.status || '0'
   }))
 }
@@ -1423,13 +1506,42 @@ function ensureBigDataServerParams(step) {
   }
 }
 
+function ensureServerFileParams(step) {
+  if (!step.stepParams) step.stepParams = {}
+  if (!Array.isArray(step.stepParams.serverTargets)) {
+    const existing = []
+    if (Array.isArray(step.targets) && step.targets.length) {
+      existing.push(...step.targets)
+    } else if (step.target?.targetType === 'SERVER' || step.target?.serverId || step.target?.host || step.target?.path) {
+      existing.push(step.target)
+    }
+    step.stepParams.serverTargets = existing.length ? normalizeServerFileTargets(existing) : [defaultServerFileTarget()]
+  }
+  if (!step.stepParams.recursive) {
+    step.stepParams.recursive = 'true'
+  }
+  if (step.stepParams.filePattern === undefined) {
+    step.stepParams.filePattern = ''
+  }
+}
+
 function addBigDataServerTarget() {
   ensureBigDataServerParams(stepDraft.value)
   stepDraft.value.stepParams.serverTargets.push(defaultBigDataServerTarget(stepDraft.value.stepParams.serverTargets.length + 1))
 }
 
-function openBigDataServerAssetPicker() {
-  ensureBigDataServerParams(stepDraft.value)
+function addServerFileTarget() {
+  ensureServerFileParams(stepDraft.value)
+  stepDraft.value.stepParams.serverTargets.push(defaultServerFileTarget(stepDraft.value.stepParams.serverTargets.length + 1))
+}
+
+function openServerAssetPicker(mode = 'BIG_DATA_SERVER') {
+  serverAssetPickerMode.value = mode
+  if (mode === 'SERVER_FILE_COUNT') {
+    ensureServerFileParams(stepDraft.value)
+  } else {
+    ensureBigDataServerParams(stepDraft.value)
+  }
   bigDataSelectedServerIds.value = (stepDraft.value.stepParams.serverTargets || [])
     .map((server) => Number(server.sourceServerId || 0))
     .filter(Boolean)
@@ -1440,7 +1552,12 @@ function openBigDataServerAssetPicker() {
 }
 
 async function confirmBigDataServerAssetSelection() {
-  ensureBigDataServerParams(stepDraft.value)
+  const isServerFileMode = serverAssetPickerMode.value === 'SERVER_FILE_COUNT'
+  if (isServerFileMode) {
+    ensureServerFileParams(stepDraft.value)
+  } else {
+    ensureBigDataServerParams(stepDraft.value)
+  }
   const selectedIds = bigDataSelectedServerIds.value.map((id) => Number(id)).filter(Boolean)
   const selectedIdSet = new Set(selectedIds)
   const currentTargets = stepDraft.value.stepParams.serverTargets || []
@@ -1466,7 +1583,10 @@ async function confirmBigDataServerAssetSelection() {
       } catch (e) {
         plainFailedCount += 1
       }
-      nextAssetTargets.push(buildBigDataServerTargetFromAsset(asset, password, manualTargets.length + nextAssetTargets.length + 1))
+      const index = manualTargets.length + nextAssetTargets.length + 1
+      nextAssetTargets.push(isServerFileMode
+        ? buildServerFileTargetFromAsset(asset, password, index)
+        : buildBigDataServerTargetFromAsset(asset, password, index))
     }
     stepDraft.value.stepParams.serverTargets = [
       ...nextAssetTargets,
@@ -1480,6 +1600,25 @@ async function confirmBigDataServerAssetSelection() {
     }
   } finally {
     bigDataServerSelectLoading.value = false
+  }
+}
+
+function buildServerFileTargetFromAsset(asset, password = '', index = 1) {
+  const address = asset.serverAddress || ''
+  const serverName = asset.serverName || address || `目录检测服务器${index}`
+  return {
+    ...defaultServerFileTarget(index),
+    targetName: serverName,
+    host: address,
+    port: asset.sshPort || SERVER_FILE_DEFAULT_SSH_PORT,
+    path: '',
+    username: asset.osUsername || SERVER_FILE_DEFAULT_USERNAME,
+    password,
+    serverId: asset.serverId,
+    sourceType: 'SITE_SERVER',
+    sourceServerId: asset.serverId,
+    sourceLabel: asset.label || serverName,
+    status: '0'
   }
 }
 
@@ -1507,10 +1646,25 @@ function removeBigDataServerTarget(index) {
   stepDraft.value.stepParams.serverTargets.splice(index, 1)
 }
 
+function removeServerFileTarget(index) {
+  ensureServerFileParams(stepDraft.value)
+  if (stepDraft.value.stepParams.serverTargets.length <= 1) return
+  stepDraft.value.stepParams.serverTargets.splice(index, 1)
+}
+
 function validateBigDataServerTargets(servers = []) {
   if (!servers.length) return '请至少配置一台大数据服务器'
   for (let index = 0; index < servers.length; index++) {
     const warning = validateTargetBusiness(cleanTargetPayload({ ...servers[index], targetType: 'BIG_DATA_SERVER' }))
+    if (warning) return `服务器 ${index + 1}：${warning}`
+  }
+  return ''
+}
+
+function validateServerFileTargets(servers = []) {
+  if (!servers.length) return '请至少配置一台服务器'
+  for (let index = 0; index < servers.length; index++) {
+    const warning = validateTargetBusiness(cleanTargetPayload({ ...servers[index], targetType: 'SERVER' }))
     if (warning) return `服务器 ${index + 1}：${warning}`
   }
   return ''
@@ -1550,6 +1704,9 @@ function openStepDialog(index = null) {
   if (getTargetTypeByTool(stepDraft.value.toolCode) === 'FTP') {
     ensureFtpStepParams(stepDraft.value)
   }
+  if (stepDraft.value.toolCode === 'SERVER_FILE_COUNT') {
+    ensureServerFileParams(stepDraft.value)
+  }
   if (getTargetTypeByTool(stepDraft.value.toolCode) === 'BIG_DATA_SERVER') {
     ensureBigDataServerParams(stepDraft.value)
   }
@@ -1563,6 +1720,9 @@ function handleStepToolChange(toolCode) {
   draft.target = normalizeStepTarget({}, toolCode, draft.stepName)
   if (getTargetTypeByTool(toolCode) === 'FTP') {
     ensureFtpStepParams(draft)
+  }
+  if (toolCode === 'SERVER_FILE_COUNT') {
+    ensureServerFileParams(draft)
   }
   if (getTargetTypeByTool(toolCode) === 'BIG_DATA_SERVER') {
     ensureBigDataServerParams(draft)
@@ -1613,6 +1773,9 @@ function defaultStepForm(order) {
   }
   if (getTargetTypeByTool(step.toolCode) === 'FTP') {
     ensureFtpStepParams(step)
+  }
+  if (step.toolCode === 'SERVER_FILE_COUNT') {
+    ensureServerFileParams(step)
   }
   return step
 }
@@ -1709,6 +1872,9 @@ function applyToolDefaults(step, forceName = false) {
   if (getTargetTypeByTool(step.toolCode) === 'FTP') {
     ensureFtpStepParams(step)
   }
+  if (step.toolCode === 'SERVER_FILE_COUNT') {
+    ensureServerFileParams(step)
+  }
   if (getTargetTypeByTool(step.toolCode) === 'BIG_DATA_SERVER') {
     ensureBigDataServerParams(step)
   }
@@ -1751,16 +1917,20 @@ function normalizeStepForSave(step) {
     next.targetIds = targets.filter((target) => target.targetId).map((target) => target.targetId)
     return next
   }
+  if (next.toolCode === 'SERVER_FILE_COUNT') {
+    const servers = normalizeServerFileTargets(next.stepParams?.serverTargets || [])
+    next.stepParams = {
+      recursive: next.stepParams?.recursive || 'true',
+      filePattern: next.stepParams?.filePattern || '',
+      serverTargets: servers
+    }
+    next.target = {}
+    next.targetIds = servers.filter((server) => server.targetId).map((server) => server.targetId)
+    return next
+  }
   next.target = normalizeStepTarget(next.target, next.toolCode, next.stepName)
   next.targetIds = next.target?.targetId ? [next.target.targetId] : []
-  if (next.toolCode !== 'SERVER_FILE_COUNT') {
-    next.stepParams = {}
-  } else {
-    next.stepParams = {
-      recursive: next.stepParams?.recursive || 'false',
-      filePattern: next.stepParams?.filePattern || ''
-    }
-  }
+  next.stepParams = {}
   return next
 }
 
@@ -1772,6 +1942,9 @@ function validateStepDraft(step) {
   }
   if (step.toolCode === 'FTP_FILE_COUNT') {
     return validateFtpStepTargets(step.stepParams?.ftpTargets || [])
+  }
+  if (step.toolCode === 'SERVER_FILE_COUNT') {
+    return validateServerFileTargets(step.stepParams?.serverTargets || [])
   }
   const target = normalizeStepTarget(step.target, step.toolCode, step.stepName)
   return validateTargetBusiness(target)
@@ -1793,6 +1966,10 @@ function formatStepTarget(step) {
   if (step?.toolCode === 'FTP_FILE_COUNT') {
     const count = getFtpTargetsFromStep(step).length
     return count ? `${count} 个 FTP 目录目标` : '未配置 FTP 目录目标'
+  }
+  if (step?.toolCode === 'SERVER_FILE_COUNT') {
+    const count = getServerFileTargetsFromStep(step).length
+    return count ? `${count} 台目录检测服务器` : '未配置目录检测服务器'
   }
   const target = step?.target || {}
   if (!target.targetName && step?.targetIds?.length) return `已绑定 ${step.targetIds.length} 个目标`
@@ -1968,6 +2145,23 @@ function normalizeStepFromServer(step) {
       }))
     params.ftpTargets = ftpTargets.length ? ftpTargets : [defaultFtpStepTarget()]
   }
+  if (step.toolCode === 'SERVER_FILE_COUNT') {
+    const serverTargets = (step.targets?.length ? step.targets : params.serverTargets || (step.target ? [step.target] : []))
+      .map((server, index) => ({
+        ...defaultServerFileTarget(index + 1),
+        ...server,
+        targetType: 'SERVER',
+        sourceType: server.sourceType || (server.serverId ? 'SITE_SERVER' : undefined),
+        sourceServerId: server.sourceServerId || server.serverId,
+        port: server.port || SERVER_FILE_DEFAULT_SSH_PORT,
+        username: server.username || SERVER_FILE_DEFAULT_USERNAME,
+        targetName: server.targetName || `目录检测服务器${index + 1}`,
+        status: server.status || '0'
+      }))
+    params.serverTargets = serverTargets.length ? serverTargets : [defaultServerFileTarget()]
+    params.recursive = params.recursive || 'true'
+    params.filePattern = params.filePattern || ''
+  }
   if (step.toolCode === 'BIG_DATA_SERVER_DISK') {
     const serverTargets = (step.targets?.length ? step.targets : params.serverTargets || []).map((server, index) => ({
       ...defaultBigDataServerTarget(index + 1),
@@ -2050,10 +2244,30 @@ function formatFtpTargetLine(target, index) {
   return `${name}（${host}:${port}${path ? ' ' + path : ''}）`
 }
 
+function getServerFileTargetsFromStep(step) {
+  if (!step) return []
+  if (Array.isArray(step.stepParams?.serverTargets) && step.stepParams.serverTargets.length) return step.stepParams.serverTargets
+  if (Array.isArray(step.targets) && step.targets.length) return step.targets.filter((target) => target.targetType === 'SERVER')
+  if (step.target?.targetType === 'SERVER') return [step.target]
+  return []
+}
+
+function formatServerFileTargetLine(target, index) {
+  const name = target.targetName || `服务器${index + 1}`
+  const host = target.host || target.serverAddress || target.serverId || '-'
+  const port = target.port || target.sshPort || SERVER_FILE_DEFAULT_SSH_PORT
+  const path = target.path || '/'
+  return `${name}（${host}:${port} ${path}）`
+}
+
 function formatStepCallTarget(step) {
   if (step?.toolCode === 'FTP_FILE_COUNT') {
     const targets = getFtpTargetsFromStep(step)
     return targets.length ? targets.map(formatFtpTargetLine).join('；') : '-'
+  }
+  if (step?.toolCode === 'SERVER_FILE_COUNT') {
+    const targets = getServerFileTargetsFromStep(step)
+    return targets.length ? targets.map(formatServerFileTargetLine).join('；') : '-'
   }
   if (step?.toolCode === 'BIG_DATA_SERVER_DISK') {
     const targets = step.stepParams?.serverTargets || step.targets || []
@@ -2079,6 +2293,13 @@ function getStepDetailItems(step) {
       { label: '目录目标数', value: `${targets.length} 个` },
       { label: '目录清单', value: targets.length ? targets.map(formatFtpTargetLine).join('；') : '-' }
     )
+  } else if (step.toolCode === 'SERVER_FILE_COUNT') {
+    const targets = getServerFileTargetsFromStep(step)
+    items.push(
+      { label: '服务器数量', value: `${targets.length} 台` },
+      { label: '目录清单', value: targets.length ? targets.map(formatServerFileTargetLine).join('；') : '-' },
+      { label: '递归/匹配', value: `${step.stepParams?.recursive === 'true' ? '递归' : '不递归'}${step.stepParams?.filePattern ? ' · ' + step.stepParams.filePattern : ''}` }
+    )
   } else if (target.targetType === 'KAFKA') {
     items.push({ label: 'Topic', value: target.topic || '-' }, { label: '消费组', value: target.consumerGroup || '-' })
   } else if (target.targetType === 'HTTP') {
@@ -2090,9 +2311,6 @@ function getStepDetailItems(step) {
       { label: '服务器数量', value: `${step.stepParams?.serverTargets?.length || step.targets?.length || 0} 台` },
       { label: '临时文件系统', value: step.stepParams?.includePseudo === 'true' ? '包含' : '过滤' }
     )
-  }
-  if (step.toolCode === 'SERVER_FILE_COUNT') {
-    items.push({ label: '递归/匹配', value: `${step.stepParams?.recursive === 'true' ? '递归' : '不递归'}${step.stepParams?.filePattern ? ' · ' + step.stepParams.filePattern : ''}` })
   }
   return items
 }
@@ -2568,6 +2786,16 @@ function resultTagType(value) {
   }
 }
 
+.server-file-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 10px 12px 0;
+  border: 1px solid #dfeaf6;
+  border-radius: 8px;
+  background: #fff;
+}
+
 .target-card-actions {
   flex-shrink: 0;
   justify-content: flex-end;
@@ -2911,6 +3139,7 @@ function resultTagType(value) {
   }
 
   .step-rule-grid,
+  .server-file-options,
   .step-detail-lines {
     grid-template-columns: 1fr;
   }
