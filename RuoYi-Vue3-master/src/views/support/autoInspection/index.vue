@@ -348,7 +348,7 @@
             <span><label>状态</label><strong>{{ activeStep.enabledFlag === 'Y' ? '启用' : '停用' }}</strong></span>
           </div>
           <div class="step-detail-lines">
-            <p><label>调用目标</label><span>{{ formatTargetAddress(activeStep.target || {}) }}</span></p>
+            <p><label>调用目标</label><span>{{ formatStepCallTarget(activeStep) }}</span></p>
             <p v-for="item in getStepDetailItems(activeStep)" :key="item.label"><label>{{ item.label }}</label><span>{{ item.value }}</span></p>
           </div>
           <el-alert v-if="!activeStep.target" title="当前步骤还没有配置巡检目标，执行时会记录为配置缺失异常。" type="warning" show-icon :closable="false" />
@@ -434,14 +434,34 @@
             </el-col>
             <el-col :span="24"><el-form-item label="请求体模板"><el-input v-model="stepDraft.target.extraParams" type="textarea" :rows="4" placeholder='例如：{"startTime":"${todayStart}","endTime":"${todayEnd}"}' /></el-form-item></el-col>
           </el-row>
-          <el-row v-if="stepTargetType === 'FTP'" :gutter="16">
-            <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：FTP入库目录" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="主机地址" required><el-input v-model="stepDraft.target.host" /></el-form-item></el-col>
-            <el-col :span="8"><el-form-item label="端口"><el-input-number v-model="stepDraft.target.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
-            <el-col :span="16"><el-form-item label="目录路径" required><el-input v-model="stepDraft.target.path" placeholder="/data/ftp/inbox" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="账号" required><el-input v-model="stepDraft.target.username" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="密码"><el-input v-model="stepDraft.target.password" show-password /></el-form-item></el-col>
-          </el-row>
+          <div v-if="stepTargetType === 'FTP'" class="bigdata-server-config ftp-target-config">
+            <div class="bigdata-server-toolbar">
+              <span>已配置 {{ ftpStepTargets.length }} 个 FTP 目录目标</span>
+              <el-button type="primary" plain icon="Plus" @click="addFtpStepTarget">手动添加</el-button>
+            </div>
+            <div class="bigdata-server-list">
+              <div v-for="(target, index) in ftpStepTargets" :key="index" class="bigdata-server-card ftp-target-card">
+                <div class="bigdata-server-card__head">
+                  <div>
+                    <strong>FTP 目录 {{ index + 1 }}</strong>
+                    <el-tag size="small" type="info">{{ target.host || '未配置主机' }}</el-tag>
+                  </div>
+                  <div class="target-card-actions">
+                    <el-button link type="primary" icon="CopyDocument" @click="duplicateFtpStepTarget(index)">复制</el-button>
+                    <el-button link type="danger" icon="Delete" :disabled="ftpStepTargets.length <= 1" @click="removeFtpStepTarget(index)">删除</el-button>
+                  </div>
+                </div>
+                <el-row :gutter="12">
+                  <el-col :span="8"><el-form-item label="目标名称"><el-input v-model="target.targetName" placeholder="例如：FTP入库目录" /></el-form-item></el-col>
+                  <el-col :span="8"><el-form-item label="主机地址" required><el-input v-model="target.host" placeholder="10.0.0.10" /></el-form-item></el-col>
+                  <el-col :span="8"><el-form-item label="端口"><el-input-number v-model="target.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+                  <el-col :span="12"><el-form-item label="目录路径" required><el-input v-model="target.path" placeholder="/data/ftp/inbox" /></el-form-item></el-col>
+                  <el-col :span="6"><el-form-item label="账号" required><el-input v-model="target.username" /></el-form-item></el-col>
+                  <el-col :span="6"><el-form-item label="密码"><el-input v-model="target.password" show-password /></el-form-item></el-col>
+                </el-row>
+              </div>
+            </div>
+          </div>
           <el-row v-if="stepTargetType === 'SERVER'" :gutter="16">
             <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：大数据服务器磁盘" /></el-form-item></el-col>
             <el-col :span="12">
@@ -805,6 +825,7 @@ const planRules = {
 const activeStep = computed(() => templateForm.value.steps?.[activeStepIndex.value])
 const templateOptions = computed(() => allTemplateList.value.filter((item) => item.status !== '1'))
 const bigDataStepTargets = computed(() => stepDraft.value?.stepParams?.serverTargets || [])
+const ftpStepTargets = computed(() => stepDraft.value?.stepParams?.ftpTargets || [])
 const bigDataServerIds = computed(() => Object.keys(serverAssetMap.value || {}).map((id) => Number(id)).filter(Boolean))
 const bigDataServerTotal = computed(() => bigDataServerIds.value.length)
 const checkedBigDataServerCount = computed(() => bigDataSelectedServerIds.value.length)
@@ -1161,6 +1182,20 @@ function handleTestTarget(row) {
 }
 
 function handleTestStepTarget() {
+  if (stepTargetType.value === 'FTP') {
+    const warning = validateFtpStepTargets(stepDraft.value.stepParams?.ftpTargets || [])
+    if (warning) {
+      proxy.$modal.msgWarning(warning)
+      return Promise.resolve()
+    }
+    targetTesting.value = true
+    const targets = normalizeFtpStepTargets(stepDraft.value.stepParams.ftpTargets)
+    return Promise.all(targets.map((target) => testAutoInspectionTarget(target))).then((results) => {
+      proxy.$modal.msgSuccess(`测试通过：${results.length} 个 FTP 目录目标均可访问`)
+    }).finally(() => {
+      targetTesting.value = false
+    })
+  }
   if (stepTargetType.value !== 'BIG_DATA_SERVER') {
     return handleTestTarget(stepDraft.value.target)
   }
@@ -1272,6 +1307,88 @@ function cleanTargetPayload(target) {
     payload.username = payload.username || BIG_DATA_DEFAULT_USERNAME
   }
   return payload
+}
+
+function defaultFtpStepTarget(index = 1) {
+  return {
+    targetName: `FTP目录目标${index}`,
+    targetType: 'FTP',
+    host: '',
+    port: 21,
+    path: '',
+    username: '',
+    password: '',
+    status: '0'
+  }
+}
+
+function normalizeFtpStepTargets(targets = []) {
+  return targets.map((target = {}, index) => cleanTargetPayload({
+    ...defaultFtpStepTarget(index + 1),
+    ...target,
+    targetType: 'FTP',
+    targetName: target.targetName || `FTP目录目标${index + 1}`,
+    port: target.port || 21,
+    status: target.status || '0'
+  }))
+}
+
+function ensureFtpStepParams(step) {
+  if (!step.stepParams) step.stepParams = {}
+  if (!Array.isArray(step.stepParams.ftpTargets)) {
+    const existing = []
+    if (Array.isArray(step.targets) && step.targets.length) {
+      existing.push(...step.targets)
+    } else if (step.target?.targetType === 'FTP' || step.target?.host || step.target?.path) {
+      existing.push(step.target)
+    }
+    step.stepParams.ftpTargets = existing.length ? normalizeFtpStepTargets(existing) : [defaultFtpStepTarget()]
+  }
+}
+
+function addFtpStepTarget() {
+  ensureFtpStepParams(stepDraft.value)
+  stepDraft.value.stepParams.ftpTargets.push(defaultFtpStepTarget(stepDraft.value.stepParams.ftpTargets.length + 1))
+}
+
+function duplicateFtpStepTarget(index) {
+  ensureFtpStepParams(stepDraft.value)
+  const source = stepDraft.value.stepParams.ftpTargets[index]
+  if (!source) return
+  const copy = cloneStep(source)
+  delete copy.targetId
+  copy.passwordCipher = ''
+  copy.secretCipher = ''
+  if (copy.password === '******') copy.password = ''
+  copy.targetName = nextCopyTargetName(source.targetName || `FTP目录目标${index + 1}`)
+  stepDraft.value.stepParams.ftpTargets.splice(index + 1, 0, copy)
+}
+
+function removeFtpStepTarget(index) {
+  ensureFtpStepParams(stepDraft.value)
+  if (stepDraft.value.stepParams.ftpTargets.length <= 1) return
+  stepDraft.value.stepParams.ftpTargets.splice(index, 1)
+}
+
+function validateFtpStepTargets(targets = []) {
+  if (!targets.length) return '请至少配置一个 FTP 目录目标'
+  for (let index = 0; index < targets.length; index++) {
+    const warning = validateTargetBusiness(cleanTargetPayload({ ...targets[index], targetType: 'FTP' }))
+    if (warning) return `FTP 目录 ${index + 1}：${warning}`
+  }
+  return ''
+}
+
+function nextCopyTargetName(name) {
+  const base = String(name || 'FTP目录目标').replace(/\s*副本\d*$/, '')
+  const exists = new Set((stepDraft.value.stepParams?.ftpTargets || []).map((item) => item.targetName).filter(Boolean))
+  let candidate = `${base} 副本`
+  let index = 2
+  while (exists.has(candidate)) {
+    candidate = `${base} 副本${index}`
+    index++
+  }
+  return candidate
 }
 
 function defaultBigDataServerTarget(index = 1) {
@@ -1430,6 +1547,9 @@ function openStepDialog(index = null) {
   stepEditingIndex.value = index
   stepDraft.value = index === null ? defaultStepForm(templateForm.value.steps.length + 1) : cloneStep(templateForm.value.steps[index])
   if (!stepDraft.value.toolCode && toolList.value.length) handleStepToolChange(toolList.value[0].toolCode)
+  if (getTargetTypeByTool(stepDraft.value.toolCode) === 'FTP') {
+    ensureFtpStepParams(stepDraft.value)
+  }
   if (getTargetTypeByTool(stepDraft.value.toolCode) === 'BIG_DATA_SERVER') {
     ensureBigDataServerParams(stepDraft.value)
   }
@@ -1441,6 +1561,9 @@ function handleStepToolChange(toolCode) {
   draft.toolCode = toolCode
   applyToolDefaults(draft, true)
   draft.target = normalizeStepTarget({}, toolCode, draft.stepName)
+  if (getTargetTypeByTool(toolCode) === 'FTP') {
+    ensureFtpStepParams(draft)
+  }
   if (getTargetTypeByTool(toolCode) === 'BIG_DATA_SERVER') {
     ensureBigDataServerParams(draft)
   }
@@ -1488,6 +1611,9 @@ function defaultStepForm(order) {
   if (getTargetTypeByTool(step.toolCode) === 'BIG_DATA_SERVER') {
     ensureBigDataServerParams(step)
   }
+  if (getTargetTypeByTool(step.toolCode) === 'FTP') {
+    ensureFtpStepParams(step)
+  }
   return step
 }
 
@@ -1528,6 +1654,9 @@ function stripStepIdentity(step) {
   if (step.target) {
     delete step.target.targetId
   }
+  ;(step.stepParams?.ftpTargets || []).forEach((target) => {
+    delete target.targetId
+  })
   ;(step.stepParams?.serverTargets || []).forEach((server) => {
     delete server.targetId
   })
@@ -1543,6 +1672,10 @@ function resetCopiedStepCredentials(step) {
   ;(step.stepParams?.serverTargets || []).forEach((server) => {
     server.password = ''
     server.passwordCipher = ''
+  })
+  ;(step.stepParams?.ftpTargets || []).forEach((target) => {
+    target.password = ''
+    target.passwordCipher = ''
   })
 }
 
@@ -1573,6 +1706,9 @@ function applyToolDefaults(step, forceName = false) {
   step.timeoutSeconds = tool.defaultTimeoutSeconds || 10
   step.targetIds = []
   step.stepParams = {}
+  if (getTargetTypeByTool(step.toolCode) === 'FTP') {
+    ensureFtpStepParams(step)
+  }
   if (getTargetTypeByTool(step.toolCode) === 'BIG_DATA_SERVER') {
     ensureBigDataServerParams(step)
   }
@@ -1606,6 +1742,15 @@ function normalizeStepForSave(step) {
     next.targetIds = servers.filter((server) => server.targetId).map((server) => server.targetId)
     return next
   }
+  if (next.toolCode === 'FTP_FILE_COUNT') {
+    const targets = normalizeFtpStepTargets(next.stepParams?.ftpTargets || [])
+    next.stepParams = {
+      ftpTargets: targets
+    }
+    next.target = {}
+    next.targetIds = targets.filter((target) => target.targetId).map((target) => target.targetId)
+    return next
+  }
   next.target = normalizeStepTarget(next.target, next.toolCode, next.stepName)
   next.targetIds = next.target?.targetId ? [next.target.targetId] : []
   if (next.toolCode !== 'SERVER_FILE_COUNT') {
@@ -1625,6 +1770,9 @@ function validateStepDraft(step) {
   if (step.toolCode === 'BIG_DATA_SERVER_DISK') {
     return validateBigDataServerTargets(step.stepParams?.serverTargets || [])
   }
+  if (step.toolCode === 'FTP_FILE_COUNT') {
+    return validateFtpStepTargets(step.stepParams?.ftpTargets || [])
+  }
   const target = normalizeStepTarget(step.target, step.toolCode, step.stepName)
   return validateTargetBusiness(target)
 }
@@ -1641,6 +1789,10 @@ function formatStepTarget(step) {
   if (step?.toolCode === 'BIG_DATA_SERVER_DISK') {
     const count = step.stepParams?.serverTargets?.length || step.targets?.length || step.targetIds?.length || 0
     return count ? `${count} 台大数据服务器` : '未配置大数据服务器'
+  }
+  if (step?.toolCode === 'FTP_FILE_COUNT') {
+    const count = getFtpTargetsFromStep(step).length
+    return count ? `${count} 个 FTP 目录目标` : '未配置 FTP 目录目标'
   }
   const target = step?.target || {}
   if (!target.targetName && step?.targetIds?.length) return `已绑定 ${step.targetIds.length} 个目标`
@@ -1804,6 +1956,18 @@ function compatibleTargets(step) {
 
 function normalizeStepFromServer(step) {
   const params = parseCronConfig(step.stepParams) || {}
+  if (step.toolCode === 'FTP_FILE_COUNT') {
+    const ftpTargets = (step.targets?.length ? step.targets : params.ftpTargets || (step.target ? [step.target] : []))
+      .map((target, index) => ({
+        ...defaultFtpStepTarget(index + 1),
+        ...target,
+        targetType: 'FTP',
+        port: target.port || 21,
+        targetName: target.targetName || `FTP目录目标${index + 1}`,
+        status: target.status || '0'
+      }))
+    params.ftpTargets = ftpTargets.length ? ftpTargets : [defaultFtpStepTarget()]
+  }
   if (step.toolCode === 'BIG_DATA_SERVER_DISK') {
     const serverTargets = (step.targets?.length ? step.targets : params.serverTargets || []).map((server, index) => ({
       ...defaultBigDataServerTarget(index + 1),
@@ -1870,6 +2034,34 @@ function formatTargetAddress(row) {
   return `${row.host || '-'}:${row.port || ''}${row.path ? ' ' + row.path : ''}`
 }
 
+function getFtpTargetsFromStep(step) {
+  if (!step) return []
+  if (Array.isArray(step.stepParams?.ftpTargets) && step.stepParams.ftpTargets.length) return step.stepParams.ftpTargets
+  if (Array.isArray(step.targets) && step.targets.length) return step.targets.filter((target) => target.targetType === 'FTP')
+  if (step.target?.targetType === 'FTP') return [step.target]
+  return []
+}
+
+function formatFtpTargetLine(target, index) {
+  const name = target.targetName || `FTP目录${index + 1}`
+  const host = target.host || '-'
+  const port = target.port || 21
+  const path = target.path || '/'
+  return `${name}（${host}:${port}${path ? ' ' + path : ''}）`
+}
+
+function formatStepCallTarget(step) {
+  if (step?.toolCode === 'FTP_FILE_COUNT') {
+    const targets = getFtpTargetsFromStep(step)
+    return targets.length ? targets.map(formatFtpTargetLine).join('；') : '-'
+  }
+  if (step?.toolCode === 'BIG_DATA_SERVER_DISK') {
+    const targets = step.stepParams?.serverTargets || step.targets || []
+    return targets.length ? targets.map((target, index) => `${target.targetName || `服务器${index + 1}`}（${target.host || '-'}:${target.port || BIG_DATA_DEFAULT_SSH_PORT}）`).join('；') : '-'
+  }
+  return formatTargetAddress(step?.target || {})
+}
+
 function formatJobCode(row) {
   return row.jobId ? `AUTO_INSPECTION_PLAN_${row.planId || row.jobId}` : '未生成'
 }
@@ -1881,12 +2073,16 @@ function getStepDetailItems(step) {
     { label: '工具类型', value: getTargetTypeLabel(target.targetType || getTargetTypeByTool(step.toolCode)) },
     { label: '排序', value: step.sortOrder || '-' }
   ]
-  if (target.targetType === 'KAFKA') {
+  if (step.toolCode === 'FTP_FILE_COUNT') {
+    const targets = getFtpTargetsFromStep(step)
+    items.push(
+      { label: '目录目标数', value: `${targets.length} 个` },
+      { label: '目录清单', value: targets.length ? targets.map(formatFtpTargetLine).join('；') : '-' }
+    )
+  } else if (target.targetType === 'KAFKA') {
     items.push({ label: 'Topic', value: target.topic || '-' }, { label: '消费组', value: target.consumerGroup || '-' })
   } else if (target.targetType === 'HTTP') {
     items.push({ label: '请求方法', value: target.httpMethod || 'POST' }, { label: '结果路径', value: target.resultPath || '-' })
-  } else if (target.targetType === 'FTP') {
-    items.push({ label: '目录路径', value: target.path || '-' }, { label: '端口', value: target.port || 21 })
   } else if (target.targetType === 'SERVER') {
     items.push({ label: '检测路径', value: target.path || '-' }, { label: 'SSH账号', value: target.username || '-' })
   } else if (step.toolCode === 'BIG_DATA_SERVER_DISK') {
@@ -2370,6 +2566,11 @@ function resultTagType(value) {
   strong {
     color: #1d3554;
   }
+}
+
+.target-card-actions {
+  flex-shrink: 0;
+  justify-content: flex-end;
 }
 
 .asset-transfer-panel {

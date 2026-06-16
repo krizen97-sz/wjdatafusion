@@ -1552,6 +1552,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             return saveBigDataServerTargets(step);
         }
+        if (TOOL_FTP_FILE_COUNT.equals(str(step, "toolCode")))
+        {
+            return saveFtpTargets(step);
+        }
         Map<String, Object> inlineTarget = castMap(step.get("target"));
         if (!inlineTarget.isEmpty())
         {
@@ -1580,6 +1584,68 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         }
         updateTarget(target);
         return targetId;
+    }
+
+    private List<Long> saveFtpTargets(Map<String, Object> step)
+    {
+        Map<String, Object> params = readParams(step);
+        List<Map<String, Object>> ftpTargets = castList(params.get("ftpTargets"));
+        if (ftpTargets.isEmpty())
+        {
+            Map<String, Object> inlineTarget = castMap(step.get("target"));
+            if (!inlineTarget.isEmpty())
+            {
+                ftpTargets = Collections.singletonList(inlineTarget);
+            }
+        }
+        if (ftpTargets.isEmpty())
+        {
+            throw new ServiceException("FTP目录文件数量检测至少需要配置一个FTP目录目标");
+        }
+        List<Long> targetIds = new ArrayList<>();
+        List<Map<String, Object>> sanitizedTargets = new ArrayList<>();
+        int index = 1;
+        for (Map<String, Object> ftpTarget : ftpTargets)
+        {
+            Map<String, Object> target = new HashMap<>(ftpTarget);
+            target.put("targetType", "FTP");
+            target.put("targetName", StringUtils.defaultIfBlank(str(target, "targetName"),
+                    str(step, "stepName") + "-" + index));
+            target.put("status", STATUS_DISABLED.equals(str(target, "status")) ? STATUS_DISABLED : STATUS_NORMAL);
+            target.put("port", toInt(target.get("port"), 21));
+            Long targetId = toLong(target.get("targetId"));
+            if (targetId == null)
+            {
+                normalizeTarget(target, false);
+                encryptTargetSecret(target);
+                target.put("createBy", getCurrentUsername());
+                target.put("createTime", DateUtils.getNowDate());
+                target.put("updateBy", getCurrentUsername());
+                target.put("updateTime", DateUtils.getNowDate());
+                autoInspectionMapper.insertTarget(target);
+                targetId = toLong(target.get("targetId"));
+            }
+            else
+            {
+                updateTarget(target);
+            }
+            targetIds.add(targetId);
+            Map<String, Object> sanitized = new LinkedHashMap<>();
+            sanitized.put("targetId", targetId);
+            sanitized.put("targetName", target.get("targetName"));
+            sanitized.put("targetType", "FTP");
+            sanitized.put("host", target.get("host"));
+            sanitized.put("port", target.get("port"));
+            sanitized.put("path", target.get("path"));
+            sanitized.put("username", target.get("username"));
+            sanitized.put("status", target.get("status"));
+            sanitizedTargets.add(sanitized);
+            index++;
+        }
+        Map<String, Object> sanitizedParams = new HashMap<>(params);
+        sanitizedParams.put("ftpTargets", sanitizedTargets);
+        step.put("stepParams", JSON.toJSONString(sanitizedParams));
+        return targetIds;
     }
 
     private List<Long> saveBigDataServerTargets(Map<String, Object> step)
