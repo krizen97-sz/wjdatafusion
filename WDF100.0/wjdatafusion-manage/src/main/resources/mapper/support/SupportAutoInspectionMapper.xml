@@ -92,6 +92,7 @@
                s.server_name as serverName,
                s.server_address as serverAddress,
                s.ssh_port as sshPort,
+               s.os_username as osUsername,
                s.os_type as osType,
                s.status as status
         from sup_server s

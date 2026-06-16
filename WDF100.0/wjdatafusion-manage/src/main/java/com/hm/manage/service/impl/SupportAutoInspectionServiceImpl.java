@@ -95,6 +95,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final String TOOL_SERVER_DISK = "SERVER_DISK";
     private static final String TOOL_BIG_DATA_SERVER_DISK = "BIG_DATA_SERVER_DISK";
     private static final String TARGET_BIG_DATA_SERVER = "BIG_DATA_SERVER";
+    private static final int BIG_DATA_DEFAULT_SSH_PORT = 2343;
 
     @Autowired
     private SupportAutoInspectionMapper autoInspectionMapper;
@@ -182,6 +183,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 serverNode.put("serverName", row.get("serverName"));
                 serverNode.put("serverAddress", row.get("serverAddress"));
                 serverNode.put("sshPort", row.get("sshPort"));
+                serverNode.put("osUsername", row.get("osUsername"));
                 serverNode.put("osType", row.get("osType"));
                 children(parentNode).add(serverNode);
             }
@@ -1176,7 +1178,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     {
         withPlainSecret(target);
         String host = str(target, "host");
-        int port = toInt(target.get("port"), 22);
+        int port = toInt(target.get("port"), BIG_DATA_DEFAULT_SSH_PORT);
         String username = str(target, "username");
         String password = str(target, "password");
         requireText(host, "服务器IP不能为空");
@@ -1325,7 +1327,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             withPlainSecret(target);
             String host = str(target, "host");
-            int port = toInt(target.get("port"), 22);
+            int port = toInt(target.get("port"), BIG_DATA_DEFAULT_SSH_PORT);
             String username = str(target, "username");
             String password = str(target, "password");
             requireText(host, "服务器IP不能为空");
@@ -1488,7 +1490,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 {
                     requireText(str(target, "password"), "SSH密码不能为空");
                 }
-                target.put("port", toInt(target.get("port"), 22));
+                target.put("port", toInt(target.get("port"), BIG_DATA_DEFAULT_SSH_PORT));
                 break;
             default:
                 throw new ServiceException("不支持的目标类型：" + targetType);

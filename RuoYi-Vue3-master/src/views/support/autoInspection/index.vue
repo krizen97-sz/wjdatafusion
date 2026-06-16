@@ -475,12 +475,17 @@
             <div class="bigdata-server-toolbar">
               <span>已配置 {{ bigDataStepTargets.length }} 台服务器</span>
               <el-switch v-model="stepDraft.stepParams.includePseudo" active-value="true" inactive-value="false" active-text="包含临时文件系统" inactive-text="过滤临时文件系统" inline-prompt />
-              <el-button type="primary" plain icon="Plus" @click="addBigDataServerTarget">添加服务器</el-button>
+              <el-button type="primary" plain icon="Select" @click="openBigDataServerAssetPicker">从现场服务器选择</el-button>
+              <el-button plain icon="Plus" @click="addBigDataServerTarget">手动添加</el-button>
             </div>
             <div class="bigdata-server-list">
               <div v-for="(server, index) in bigDataStepTargets" :key="index" class="bigdata-server-card">
                 <div class="bigdata-server-card__head">
-                  <strong>服务器 {{ index + 1 }}</strong>
+                  <div>
+                    <strong>服务器 {{ index + 1 }}</strong>
+                    <el-tag v-if="server.sourceType === 'SITE_SERVER'" size="small" type="primary">现场服务器</el-tag>
+                    <el-tag v-else size="small" type="info">手动添加</el-tag>
+                  </div>
                   <el-button link type="danger" icon="Delete" :disabled="bigDataStepTargets.length <= 1" @click="removeBigDataServerTarget(index)">删除</el-button>
                 </div>
                 <el-row :gutter="12">
@@ -499,6 +504,32 @@
         <el-button @click="stepDialogOpen = false">取消</el-button>
         <el-button :loading="targetTesting" @click="handleTestStepTarget">测试目标</el-button>
         <el-button type="primary" @click="submitStepDraft">保存步骤</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="bigDataServerSelectOpen" width="920px" append-to-body class="auto-dialog asset-transfer-dialog">
+      <template #header>
+        <div class="dialog-title">
+          <span>从现场管理服务器中选择</span>
+          <strong>选择大数据服务器</strong>
+        </div>
+      </template>
+      <div class="asset-transfer-panel">
+        <p>可按现场、平台、服务器名称或 IP 搜索，多选后会自动带出服务器 IP、SSH 端口、系统账号和密码；后续仍可在步骤里单独调整登录信息。</p>
+        <el-transfer
+          v-model="bigDataSelectedServerIds"
+          :data="bigDataServerTransferData"
+          :titles="['现场服务器', '已选择']"
+          :props="{ key: 'key', label: 'label', disabled: 'disabled' }"
+          filterable
+          filter-placeholder="搜索现场 / 平台 / IP"
+          target-order="push"
+          class="asset-transfer"
+        />
+      </div>
+      <template #footer>
+        <el-button @click="bigDataServerSelectOpen = false">取消</el-button>
+        <el-button type="primary" :loading="bigDataServerSelectLoading" @click="confirmBigDataServerAssetSelection">确认添加</el-button>
       </template>
     </el-dialog>
 
@@ -616,11 +647,14 @@ import {
   updateAutoInspectionTemplate,
   viewAutoInspectionTargetPlain
 } from '@/api/support/autoInspection'
+import { viewServerPlain } from '@/api/support/server'
 
 const route = useRoute()
 const router = useRouter()
 const { proxy } = getCurrentInstance()
 
+const BIG_DATA_DEFAULT_SSH_PORT = 2343
+const BIG_DATA_DEFAULT_USERNAME = 'root'
 const configTabNames = ['template', 'plan']
 const activeTab = ref(resolveRouteTab(route.query.tab, route.path))
 const configTab = ref(resolveConfigTab(route.query.tab, route.query.configTab, route.path))
@@ -664,6 +698,9 @@ const activeStepIndex = ref(0)
 const stepDialogOpen = ref(false)
 const stepEditingIndex = ref(null)
 const stepDraft = ref(defaultStepForm())
+const bigDataServerSelectOpen = ref(false)
+const bigDataServerSelectLoading = ref(false)
+const bigDataSelectedServerIds = ref([])
 const planDialogOpen = ref(false)
 const planSubmitLoading = ref(false)
 const planForm = ref(defaultPlanForm())
@@ -716,6 +753,7 @@ const planRules = {
 const activeStep = computed(() => templateForm.value.steps?.[activeStepIndex.value])
 const templateOptions = computed(() => allTemplateList.value.filter((item) => item.status !== '1'))
 const bigDataStepTargets = computed(() => stepDraft.value?.stepParams?.serverTargets || [])
+const bigDataServerTransferData = computed(() => flattenServerAssetTransferData(serverAssetTree.value))
 const stepTargetType = computed(() => getTargetTypeByTool(stepDraft.value.toolCode))
 const stepTargetSectionTitle = computed(() => {
   if (stepTargetType.value === 'KAFKA') return 'Kafka 目标'
@@ -834,6 +872,31 @@ function indexServerAssetTree(nodes = []) {
   return result
 }
 
+function flattenServerAssetTransferData(nodes = []) {
+  const result = []
+  const seen = new Set()
+  const visit = (items = [], path = []) => {
+    items.forEach((item) => {
+      const nextPath = item.type === 'SERVER' ? path : [...path, item.label].filter(Boolean)
+      if (item.type === 'SERVER' && item.serverId && !seen.has(item.serverId)) {
+        seen.add(item.serverId)
+        const address = item.serverAddress || '-'
+        const port = item.sshPort || BIG_DATA_DEFAULT_SSH_PORT
+        const serverName = item.serverName || item.serverAddress || '未命名服务器'
+        const pathLabel = path.length ? `${path.join(' / ')} / ` : ''
+        result.push({
+          key: item.serverId,
+          label: `${pathLabel}${serverName}（${address}:${port}）`,
+          disabled: false
+        })
+      }
+      visit(item.children || [], nextPath)
+    })
+  }
+  visit(nodes)
+  return result
+}
+
 function handleTargetServerChange(serverId) {
   applySelectedServerAsset(targetForm.value, serverId)
 }
@@ -925,7 +988,8 @@ function handleTargetTypeChange(type) {
   const current = { ...targetForm.value, targetType: type }
   targetForm.value = cleanTargetPayload(current)
   if (type === 'FTP' && !targetForm.value.port) targetForm.value.port = 21
-  if (type === 'BIG_DATA_SERVER' && !targetForm.value.port) targetForm.value.port = 22
+  if (type === 'BIG_DATA_SERVER' && !targetForm.value.port) targetForm.value.port = BIG_DATA_DEFAULT_SSH_PORT
+  if (type === 'BIG_DATA_SERVER' && !targetForm.value.username) targetForm.value.username = BIG_DATA_DEFAULT_USERNAME
   if (type === 'HTTP' && !targetForm.value.resultPath) targetForm.value.resultPath = 'data.total'
 }
 
@@ -1074,7 +1138,11 @@ function cleanTargetPayload(target) {
     payload.extraParams = ''
   }
   if (payload.targetType === 'BIG_DATA_SERVER') {
-    payload.serverId = undefined
+    if (payload.sourceType === 'SITE_SERVER' || payload.sourceServerId) {
+      payload.serverId = payload.sourceServerId || payload.serverId
+    } else {
+      payload.serverId = undefined
+    }
     payload.path = ''
     payload.url = ''
     payload.httpMethod = 'POST'
@@ -1084,7 +1152,8 @@ function cleanTargetPayload(target) {
     payload.secret = ''
     payload.resultPath = ''
     payload.extraParams = ''
-    payload.port = payload.port || 22
+    payload.port = payload.port || BIG_DATA_DEFAULT_SSH_PORT
+    payload.username = payload.username || BIG_DATA_DEFAULT_USERNAME
   }
   return payload
 }
@@ -1094,8 +1163,8 @@ function defaultBigDataServerTarget(index = 1) {
     targetName: `大数据节点${index}`,
     targetType: 'BIG_DATA_SERVER',
     host: '',
-    port: 22,
-    username: '',
+    port: BIG_DATA_DEFAULT_SSH_PORT,
+    username: BIG_DATA_DEFAULT_USERNAME,
     password: '',
     status: '0'
   }
@@ -1113,7 +1182,7 @@ function normalizeBigDataServerTargets(servers = []) {
 
 function ensureBigDataServerParams(step) {
   if (!step.stepParams) step.stepParams = {}
-  if (!Array.isArray(step.stepParams.serverTargets) || !step.stepParams.serverTargets.length) {
+  if (!Array.isArray(step.stepParams.serverTargets)) {
     step.stepParams.serverTargets = [defaultBigDataServerTarget()]
   }
   if (!step.stepParams.includePseudo) {
@@ -1124,6 +1193,76 @@ function ensureBigDataServerParams(step) {
 function addBigDataServerTarget() {
   ensureBigDataServerParams(stepDraft.value)
   stepDraft.value.stepParams.serverTargets.push(defaultBigDataServerTarget(stepDraft.value.stepParams.serverTargets.length + 1))
+}
+
+function openBigDataServerAssetPicker() {
+  ensureBigDataServerParams(stepDraft.value)
+  bigDataSelectedServerIds.value = (stepDraft.value.stepParams.serverTargets || [])
+    .map((server) => Number(server.sourceServerId || 0))
+    .filter(Boolean)
+  bigDataServerSelectOpen.value = true
+}
+
+async function confirmBigDataServerAssetSelection() {
+  ensureBigDataServerParams(stepDraft.value)
+  const selectedIds = bigDataSelectedServerIds.value.map((id) => Number(id)).filter(Boolean)
+  const selectedIdSet = new Set(selectedIds)
+  const currentTargets = stepDraft.value.stepParams.serverTargets || []
+  const manualTargets = currentTargets.filter((server) => !server.sourceServerId)
+  const currentAssetTargets = currentTargets.filter((server) => server.sourceServerId)
+  const nextAssetTargets = []
+  let plainFailedCount = 0
+
+  bigDataServerSelectLoading.value = true
+  try {
+    for (const serverId of selectedIds) {
+      const existing = currentAssetTargets.find((server) => Number(server.sourceServerId) === serverId)
+      if (existing) {
+        nextAssetTargets.push(existing)
+        continue
+      }
+      const asset = serverAssetMap.value?.[serverId]
+      if (!asset) continue
+      let password = ''
+      try {
+        const plainRes = await viewServerPlain(serverId)
+        password = plainRes?.plain || ''
+      } catch (e) {
+        plainFailedCount += 1
+      }
+      nextAssetTargets.push(buildBigDataServerTargetFromAsset(asset, password, manualTargets.length + nextAssetTargets.length + 1))
+    }
+    stepDraft.value.stepParams.serverTargets = [
+      ...nextAssetTargets,
+      ...manualTargets.filter((server) => !selectedIdSet.has(Number(server.sourceServerId || 0)))
+    ]
+    bigDataServerSelectOpen.value = false
+    if (plainFailedCount) {
+      proxy.$modal.msgWarning(`已添加 ${nextAssetTargets.length} 台现场服务器，其中 ${plainFailedCount} 台未能自动带出密码，请手动补充`)
+    } else {
+      proxy.$modal.msgSuccess(`已选择 ${nextAssetTargets.length} 台现场服务器`)
+    }
+  } finally {
+    bigDataServerSelectLoading.value = false
+  }
+}
+
+function buildBigDataServerTargetFromAsset(asset, password = '', index = 1) {
+  const address = asset.serverAddress || ''
+  const serverName = asset.serverName || address || `大数据节点${index}`
+  return {
+    ...defaultBigDataServerTarget(index),
+    targetName: serverName,
+    host: address,
+    port: asset.sshPort || BIG_DATA_DEFAULT_SSH_PORT,
+    username: asset.osUsername || BIG_DATA_DEFAULT_USERNAME,
+    password,
+    serverId: asset.serverId,
+    sourceType: 'SITE_SERVER',
+    sourceServerId: asset.serverId,
+    sourceLabel: asset.label || serverName,
+    status: '0'
+  }
 }
 
 function removeBigDataServerTarget(index) {
@@ -1330,7 +1469,8 @@ function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
     next.resultPath = next.resultPath || 'data.total'
   }
   if (targetType === 'BIG_DATA_SERVER') {
-    next.port = next.port || 22
+    next.port = next.port || BIG_DATA_DEFAULT_SSH_PORT
+    next.username = next.username || BIG_DATA_DEFAULT_USERNAME
   }
   return next
 }
@@ -1550,7 +1690,10 @@ function normalizeStepFromServer(step) {
       ...defaultBigDataServerTarget(index + 1),
       ...server,
       targetType: 'BIG_DATA_SERVER',
-      port: server.port || 22
+      sourceType: server.sourceType || (server.serverId ? 'SITE_SERVER' : undefined),
+      sourceServerId: server.sourceServerId || server.serverId,
+      port: server.port || BIG_DATA_DEFAULT_SSH_PORT,
+      username: server.username || BIG_DATA_DEFAULT_USERNAME
     }))
     params.serverTargets = serverTargets.length ? serverTargets : [defaultBigDataServerTarget()]
     params.includePseudo = params.includePseudo || 'false'
@@ -1602,7 +1745,7 @@ function getToolLabel(value) {
 function formatTargetAddress(row) {
   if (!row || !row.targetType) return '-'
   if (row.targetType === 'SERVER') return `${row.serverName || '服务器'}（${row.serverAddress || row.serverId || '-'}）${row.path ? ' ' + row.path : ''}`
-  if (row.targetType === 'BIG_DATA_SERVER') return `${row.host || '-'}:${row.port || 22}`
+  if (row.targetType === 'BIG_DATA_SERVER') return `${row.host || '-'}:${row.port || BIG_DATA_DEFAULT_SSH_PORT}`
   if (row.targetType === 'HTTP') return row.url || '-'
   if (row.targetType === 'KAFKA') return `${row.host || '-'} ${row.topic || ''} ${row.consumerGroup || ''}`
   return `${row.host || '-'}:${row.port || ''}${row.path ? ' ' + row.path : ''}`
@@ -2099,8 +2242,40 @@ function resultTagType(value) {
   align-items: center;
   margin-bottom: 10px;
 
+  div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
   strong {
     color: #1d3554;
+  }
+}
+
+.asset-transfer-panel {
+  display: grid;
+  gap: 12px;
+
+  p {
+    margin: 0;
+    color: #6d8199;
+    line-height: 1.6;
+  }
+}
+
+.asset-transfer {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+
+  :deep(.el-transfer-panel) {
+    width: 360px;
+  }
+
+  :deep(.el-transfer-panel__item) {
+    display: flex;
+    align-items: center;
   }
 }
 
