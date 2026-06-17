@@ -778,30 +778,46 @@
             <span>展示每个目标的调用对象、实际返回、异常原因和所属步骤。</span>
           </div>
         </header>
-        <el-empty v-if="!(detail.targetResults || []).length" description="暂无目标明细" :image-size="90" />
-        <div v-else class="target-result-grid">
-          <article v-for="(target, index) in detail.targetResults || []" :key="`${target.stepResultId || 'step'}-${target.targetId || index}`" class="target-result-card">
-            <header>
-              <span class="target-result-index">{{ index + 1 }}</span>
+        <el-empty v-if="!detailTargetGroups.length" description="暂无目标明细" :image-size="90" />
+        <div v-else class="target-step-groups">
+          <section v-for="(group, groupIndex) in detailTargetGroups" :key="group.key" class="target-step-group">
+            <header class="target-step-group__head">
+              <span class="target-step-index">步骤 {{ groupIndex + 1 }}</span>
               <div>
-                <strong>{{ target.targetName || '未命名目标' }}</strong>
-                <em>{{ target.stepName || '-' }}</em>
+                <strong>{{ group.stepName }}</strong>
+                <em>{{ group.toolName || '未标注工具' }}</em>
               </div>
-              <el-tag class="soft-status-tag" size="small" :type="resultTagType(target.resultStatus)">{{ formatResult(target.resultStatus) }}</el-tag>
+              <div class="target-step-summary">
+                <span><label>子项</label><strong>{{ group.targets.length }}</strong></span>
+                <span><label>异常</label><strong>{{ group.abnormalCount }}</strong></span>
+                <el-tag class="soft-status-tag" size="small" :type="resultTagType(group.resultStatus)">{{ formatResult(group.resultStatus) }}</el-tag>
+              </div>
             </header>
-            <div class="target-result-meta">
-              <span><label>类型</label><strong>{{ getTargetTypeLabel(target.targetType) }}</strong></span>
-              <span><label>实际值</label><strong>{{ formatActualValue(target) }}</strong></span>
+            <div class="target-step-items">
+              <article v-for="(target, index) in group.targets" :key="`${group.key}-${target.targetId || index}`" class="target-result-card">
+                <header>
+                  <span class="target-result-index">{{ index + 1 }}</span>
+                  <div>
+                    <strong>{{ target.targetName || '未命名子项' }}</strong>
+                    <em>检查子项 · {{ getTargetTypeLabel(target.targetType) }}</em>
+                  </div>
+                  <el-tag class="soft-status-tag" size="small" :type="resultTagType(target.resultStatus)">{{ formatResult(target.resultStatus) }}</el-tag>
+                </header>
+                <div class="target-result-meta">
+                  <span><label>实际值</label><strong>{{ formatActualValue(target) }}</strong></span>
+                  <span><label>目标类型</label><strong>{{ getTargetTypeLabel(target.targetType) }}</strong></span>
+                </div>
+                <div class="target-call-box">
+                  <label>调用信息</label>
+                  <p>{{ formatTargetResultDetail(target) }}</p>
+                </div>
+                <div v-if="target.errorMessage" class="target-error-box">
+                  <label>异常原因</label>
+                  <p>{{ target.errorMessage }}</p>
+                </div>
+              </article>
             </div>
-            <div class="target-call-box">
-              <label>调用信息</label>
-              <p>{{ formatTargetResultDetail(target) }}</p>
-            </div>
-            <div v-if="target.errorMessage" class="target-error-box">
-              <label>异常原因</label>
-              <p>{{ target.errorMessage }}</p>
-            </div>
-          </article>
+          </section>
         </div>
       </section>
     </el-drawer>
@@ -1026,6 +1042,55 @@ const detailTargetStats = computed(() => {
   return {
     abnormal: rows.filter((row) => row.resultStatus === '2').length
   }
+})
+const detailTargetGroups = computed(() => {
+  const steps = detail.value?.steps || []
+  const targets = detail.value?.targetResults || []
+  if (!targets.length) return []
+
+  const groups = []
+  const groupMap = new Map()
+  const registerGroup = (key, step = {}) => {
+    const safeKey = String(key || `step-${groups.length + 1}`)
+    if (groupMap.has(safeKey)) return groupMap.get(safeKey)
+    const group = {
+      key: safeKey,
+      stepName: step.stepName || '未归属步骤',
+      toolName: step.toolName || '',
+      resultStatus: step.resultStatus || '3',
+      sortOrder: Number(step.sortOrder || groups.length + 1),
+      targets: []
+    }
+    groups.push(group)
+    groupMap.set(safeKey, group)
+    return group
+  }
+
+  steps
+    .slice()
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+    .forEach((step, index) => {
+      registerGroup(getStepResultGroupKey(step, index), step)
+    })
+
+  targets.forEach((target, index) => {
+    const key = getTargetResultGroupKey(target)
+    const group = groupMap.get(key) || registerGroup(key || `unmatched-${index}`, {
+      stepName: target.stepName || '未归属步骤',
+      toolName: target.toolName || '',
+      resultStatus: target.resultStatus || '3',
+      sortOrder: groups.length + 1
+    })
+    group.targets.push(target)
+    if (target.resultStatus === '2') group.resultStatus = '2'
+  })
+
+  return groups
+    .filter((group) => group.targets.length)
+    .map((group) => ({
+      ...group,
+      abnormalCount: group.targets.filter((target) => target.resultStatus === '2').length
+    }))
 })
 
 watch(() => [route.query.tab, route.query.configTab, route.path], ([tab, subTab, path]) => {
@@ -2587,6 +2652,20 @@ function formatFileDate(date) {
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
 }
 
+function getStepResultGroupKey(step, index = 0) {
+  if (step?.stepResultId) return `step-result-${step.stepResultId}`
+  if (step?.stepId) return `step-${step.stepId}`
+  if (step?.stepName) return `step-name-${step.stepName}`
+  return `step-index-${index}`
+}
+
+function getTargetResultGroupKey(target) {
+  if (target?.stepResultId) return `step-result-${target.stepResultId}`
+  if (target?.stepId) return `step-${target.stepId}`
+  if (target?.stepName) return `step-name-${target.stepName}`
+  return ''
+}
+
 function formatActualValue(row) {
   if (!row || row.actualValue === undefined || row.actualValue === null || row.actualValue === '') return '-'
   return `${row.actualValue}${row.actualUnit || ''}`
@@ -3548,10 +3627,96 @@ function resultTagType(value) {
   }
 }
 
-.target-result-grid {
+.target-result-grid,
+.target-step-items {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.target-step-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.target-step-group {
+  overflow: hidden;
+  border: 1px solid #dce8f6;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.target-step-group__head {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e6eef8;
+  background: #f8fbff;
+
+  > div:nth-child(2) {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  strong,
+  em {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: #18324f;
+    font-size: 16px;
+  }
+
+  em {
+    color: #7890aa;
+    font-size: 12px;
+    font-style: normal;
+  }
+}
+
+.target-step-index {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #eaf3ff;
+  color: #2f80ed;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.target-step-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+
+  span {
+    display: grid;
+    min-width: 48px;
+    padding: 5px 8px;
+    border: 1px solid #e2ebf7;
+    border-radius: 7px;
+    background: #fff;
+    text-align: center;
+  }
+
+  label {
+    color: #7890aa;
+    font-size: 12px;
+  }
+
+  strong {
+    color: #1d3554;
+    font-size: 14px;
+  }
+}
+
+.target-step-items {
+  padding: 14px;
 }
 
 .target-result-card {
@@ -3685,8 +3850,18 @@ function resultTagType(value) {
 
   .record-insight-strip,
   .detail-kpi-grid,
-  .target-result-grid {
+  .target-result-grid,
+  .target-step-items {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .target-step-group__head {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .target-step-summary {
+    flex-wrap: wrap;
   }
 
   .tree-transfer {
