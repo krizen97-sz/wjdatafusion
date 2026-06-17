@@ -1,5 +1,21 @@
 export const releaseNotes = [
   {
+    version: 'v3.4.10',
+    submitTime: '2026-06-17 14:36:31',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '巡检结果按周按月导出异常修复',
+    summary: '修复自动化巡检结果导出本周、本月时后端时间条件类型比较异常，保证按时间范围导出能正常生成 Excel。',
+    changes: [
+      '巡检记录导出接口在按本周、本月生成 beginTime 和 endTime 时使用 Date 类型，Mapper 动态 SQL 不再把时间字段与空字符串比较。',
+      '保留 v3.4.9 的选中记录、本周、本月导出能力和双 sheet Excel 结构，只修复时间范围过滤的后端异常。'
+    ],
+    scope: ['自动化巡检', '巡检记录', '批量导出', '后端修复', '版本记录'],
+    database: '无数据库结构变化，无需执行 SQL。',
+    scripts: []
+  },
+  {
     version: 'v3.4.9',
     submitTime: '2026-06-17 14:30:53',
     level: 'patch',

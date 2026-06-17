@@ -388,8 +388,8 @@
             <if test="templateName != null and templateName != ''">and template_name like concat('%', #{templateName}, '%')</if>
             <if test="planName != null and planName != ''">and plan_name like concat('%', #{planName}, '%')</if>
             <if test="executorName != null and executorName != ''">and executor_name like concat('%', #{executorName}, '%')</if>
-            <if test="beginTime != null and beginTime != ''">and inspection_time &gt;= #{beginTime}</if>
-            <if test="endTime != null and endTime != ''">and inspection_time &lt; #{endTime}</if>
+            <if test="beginTime != null">and inspection_time &gt;= #{beginTime}</if>
+            <if test="endTime != null">and inspection_time &lt; #{endTime}</if>
         </where>
         order by inspection_time desc, record_id desc
     </select>
