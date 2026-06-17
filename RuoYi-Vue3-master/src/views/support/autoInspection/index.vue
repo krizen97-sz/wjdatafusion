@@ -131,6 +131,24 @@
       </el-tab-pane>
 
       <el-tab-pane label="巡检记录" name="record">
+        <div class="record-insight-strip">
+          <span>
+            <strong>{{ recordPageSummary.total }}</strong>
+            <em>当前页记录</em>
+          </span>
+          <span>
+            <strong>{{ recordPageSummary.normal }}</strong>
+            <em>正常</em>
+          </span>
+          <span>
+            <strong>{{ recordPageSummary.abnormal }}</strong>
+            <em>异常</em>
+          </span>
+          <span>
+            <strong>{{ recordPageSummary.latestTime }}</strong>
+            <em>最近巡检</em>
+          </span>
+        </div>
         <el-form :model="recordQuery" :inline="true" class="auto-query-bar">
           <el-form-item label="模板">
             <el-input v-model="recordQuery.templateName" clearable placeholder="模板名称" @keyup.enter="getRecordList" />
@@ -162,10 +180,10 @@
           <el-button icon="Refresh" @click="getRecordList">刷新</el-button>
         </div>
 
-        <el-table v-loading="recordLoading" :data="recordList" class="auto-table">
+        <el-table v-loading="recordLoading" :data="recordList" class="auto-table record-table">
           <el-table-column label="巡检时间" prop="inspectionTime" width="170" align="center" />
           <el-table-column label="结果" prop="resultStatus" width="90" align="center">
-            <template #default="scope"><el-tag size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
+            <template #default="scope"><el-tag class="soft-status-tag" size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
           </el-table-column>
           <el-table-column label="来源" prop="sourceType" width="90" align="center">
             <template #default="scope"><el-tag size="small" :type="scope.row.sourceType === 'MANUAL' ? 'success' : 'info'">{{ scope.row.sourceType === 'MANUAL' ? '手动' : '自动' }}</el-tag></template>
@@ -493,7 +511,15 @@
                   <el-col :span="8"><el-form-item label="SSH端口"><el-input-number v-model="server.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
                   <el-col :span="12"><el-form-item label="检测路径" required><el-input v-model="server.path" placeholder="/data/inbox" /></el-form-item></el-col>
                   <el-col :span="6"><el-form-item label="巡检登录账号" required><el-input v-model="server.username" placeholder="本次巡检使用的账号" /></el-form-item></el-col>
-                  <el-col :span="6"><el-form-item label="巡检登录密码" required><el-input v-model="server.password" show-password placeholder="本次巡检使用的密码" /></el-form-item></el-col>
+                  <el-col :span="6">
+                    <el-form-item label="巡检登录密码" required>
+                      <el-input v-model="server.password" :type="server._passwordVisible ? 'text' : 'password'" placeholder="本次巡检使用的密码" class="password-reveal-input">
+                        <template #append>
+                          <el-button :loading="isServerPasswordRevealLoading(server)" @click="toggleStepServerPassword(server, 'SERVER_FILE_COUNT')">{{ server._passwordVisible ? '隐藏' : '显示' }}</el-button>
+                        </template>
+                      </el-input>
+                    </el-form-item>
+                  </el-col>
                 </el-row>
                 <p v-if="server.sourceType === 'SITE_SERVER'" class="credential-source-tip">已带出现场服务器 IP、端口和账号提示；实际连接只使用这里填写的巡检账号和密码。</p>
               </div>
@@ -543,7 +569,15 @@
                   <el-col :span="8"><el-form-item label="服务器IP" required><el-input v-model="server.host" placeholder="172.18.16.172" /></el-form-item></el-col>
                   <el-col :span="8"><el-form-item label="SSH端口"><el-input-number v-model="server.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
                   <el-col :span="12"><el-form-item label="巡检登录账号" required><el-input v-model="server.username" placeholder="本次巡检使用的账号" /></el-form-item></el-col>
-                  <el-col :span="12"><el-form-item label="巡检登录密码" required><el-input v-model="server.password" show-password placeholder="本次巡检使用的密码" /></el-form-item></el-col>
+                  <el-col :span="12">
+                    <el-form-item label="巡检登录密码" required>
+                      <el-input v-model="server.password" :type="server._passwordVisible ? 'text' : 'password'" placeholder="本次巡检使用的密码" class="password-reveal-input">
+                        <template #append>
+                          <el-button :loading="isServerPasswordRevealLoading(server)" @click="toggleStepServerPassword(server, 'BIG_DATA_SERVER_DISK')">{{ server._passwordVisible ? '隐藏' : '显示' }}</el-button>
+                        </template>
+                      </el-input>
+                    </el-form-item>
+                  </el-col>
                 </el-row>
                 <p v-if="server.sourceType === 'SITE_SERVER'" class="credential-source-tip">已带出现场服务器 IP、端口和账号提示；实际连接只使用这里填写的巡检账号和密码。</p>
               </div>
@@ -585,7 +619,7 @@
                 node-key="nodeId"
                 show-checkbox
                 check-strictly
-                default-expand-all
+                :render-after-expand="true"
                 :filter-node-method="filterBigDataServerTree"
                 @check="handleBigDataServerTreeCheck"
               >
@@ -593,6 +627,7 @@
                   <span class="server-tree-node" :class="`server-tree-node--${String(data.type || '').toLowerCase()}`">
                     <strong>{{ data.label }}</strong>
                     <em v-if="data.type === 'SERVER'">{{ data.serverAddress || '-' }}:{{ data.sshPort || serverAssetPickerDefaultPort }}</em>
+                    <small v-else>{{ data.serverCount || 0 }} 台</small>
                   </span>
                 </template>
               </el-tree>
@@ -619,6 +654,7 @@
                 <div>
                   <strong>{{ server.serverName || server.serverAddress || '未命名服务器' }}</strong>
                   <span>{{ server.serverAddress || '-' }}:{{ server.sshPort || serverAssetPickerDefaultPort }}</span>
+                  <small>{{ server.sourcePath || server.label || '-' }}</small>
                   <em>默认{{ serverAssetPickerCredentialUsername }}</em>
                 </div>
                 <el-button link type="danger" icon="Close" @click="removeBigDataServerSelection(server.serverId)">移除</el-button>
@@ -680,41 +716,78 @@
       </template>
     </el-dialog>
 
-    <el-drawer v-model="detailOpen" size="72%" append-to-body class="detail-drawer">
+    <el-drawer v-model="detailOpen" size="78%" append-to-body class="detail-drawer inspection-detail-drawer">
       <template #header><div class="dialog-title"><span>巡检详情</span><strong>{{ detail.inspectionTime || '-' }}</strong></div></template>
-      <div class="detail-summary">
+      <div class="inspection-detail-hero">
+        <div>
+          <span>自动化巡检报告</span>
+          <h3>{{ detail.templateName || '未命名模板' }}</h3>
+          <p>{{ detail.summary || '暂无摘要' }}</p>
+        </div>
         <el-tag :type="resultTagType(detail.resultStatus)" size="large">{{ formatResult(detail.resultStatus) }}</el-tag>
-        <span>{{ detail.summary }}</span>
-        <small>{{ detail.abnormalSummary }}</small>
       </div>
-      <el-table :data="detail.steps || []" class="auto-table">
-        <el-table-column label="步骤" prop="stepName" min-width="160" />
-        <el-table-column label="工具" prop="toolName" min-width="150" />
-        <el-table-column label="结果" width="90" align="center">
-          <template #default="scope"><el-tag size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
-        </el-table-column>
-        <el-table-column label="实际值" width="110" align="center">
-          <template #default="scope">{{ scope.row.actualValue ?? '-' }}{{ scope.row.actualUnit || '' }}</template>
-        </el-table-column>
-        <el-table-column label="阈值" width="120" align="center">
-          <template #default="scope">{{ scope.row.compareRule === 'MIN' ? '不低于' : '不高于' }} {{ scope.row.thresholdValue ?? '-' }}{{ scope.row.thresholdUnit || '' }}</template>
-        </el-table-column>
-        <el-table-column label="摘要" prop="resultSummary" min-width="260" show-overflow-tooltip />
-      </el-table>
-      <h4>目标明细</h4>
-      <el-table :data="detail.targetResults || []" class="auto-table">
-        <el-table-column label="步骤" prop="stepName" min-width="150" show-overflow-tooltip />
-        <el-table-column label="目标" prop="targetName" min-width="160" />
-        <el-table-column label="类型" width="100"><template #default="scope">{{ getTargetTypeLabel(scope.row.targetType) }}</template></el-table-column>
-        <el-table-column label="结果" width="90" align="center"><template #default="scope"><el-tag size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template></el-table-column>
-        <el-table-column label="实际值" width="110" align="center"><template #default="scope">{{ scope.row.actualValue ?? '-' }}{{ scope.row.actualUnit || '' }}</template></el-table-column>
-        <el-table-column label="调用信息" min-width="360">
-          <template #default="scope">
-            <div class="target-call-info">{{ scope.row.resultDetail || '-' }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="异常原因" prop="errorMessage" min-width="220" show-overflow-tooltip />
-      </el-table>
+      <div class="detail-kpi-grid">
+        <span><strong>{{ detail.steps?.length || 0 }}</strong><em>步骤数</em></span>
+        <span><strong>{{ detail.targetResults?.length || 0 }}</strong><em>目标数</em></span>
+        <span><strong>{{ detailTargetStats.abnormal }}</strong><em>异常目标</em></span>
+        <span><strong>{{ detail.planName || '手动执行' }}</strong><em>计划</em></span>
+      </div>
+      <section class="detail-section">
+        <header>
+          <div>
+            <strong>步骤结果</strong>
+            <span>按模板步骤顺序展示每个检测动作的判定结果。</span>
+          </div>
+        </header>
+        <el-table :data="detail.steps || []" class="auto-table detail-step-table">
+          <el-table-column type="index" label="序号" width="70" align="center" />
+          <el-table-column label="步骤" prop="stepName" min-width="160" show-overflow-tooltip />
+          <el-table-column label="工具" prop="toolName" min-width="150" show-overflow-tooltip />
+          <el-table-column label="结果" width="90" align="center">
+            <template #default="scope"><el-tag class="soft-status-tag" size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
+          </el-table-column>
+          <el-table-column label="实际值" width="120" align="center">
+            <template #default="scope">{{ formatActualValue(scope.row) }}</template>
+          </el-table-column>
+          <el-table-column label="阈值" width="140" align="center">
+            <template #default="scope">{{ scope.row.compareRule === 'MIN' ? '不低于' : '不高于' }} {{ scope.row.thresholdValue ?? '-' }}{{ scope.row.thresholdUnit || '' }}</template>
+          </el-table-column>
+          <el-table-column label="摘要" prop="resultSummary" min-width="280" show-overflow-tooltip />
+        </el-table>
+      </section>
+      <section class="detail-section target-detail-section">
+        <header>
+          <div>
+            <strong>目标明细</strong>
+            <span>展示每个目标的调用对象、实际返回、异常原因和所属步骤。</span>
+          </div>
+        </header>
+        <el-empty v-if="!(detail.targetResults || []).length" description="暂无目标明细" :image-size="90" />
+        <div v-else class="target-result-grid">
+          <article v-for="(target, index) in detail.targetResults || []" :key="`${target.stepResultId || 'step'}-${target.targetId || index}`" class="target-result-card">
+            <header>
+              <span class="target-result-index">{{ index + 1 }}</span>
+              <div>
+                <strong>{{ target.targetName || '未命名目标' }}</strong>
+                <em>{{ target.stepName || '-' }}</em>
+              </div>
+              <el-tag class="soft-status-tag" size="small" :type="resultTagType(target.resultStatus)">{{ formatResult(target.resultStatus) }}</el-tag>
+            </header>
+            <div class="target-result-meta">
+              <span><label>类型</label><strong>{{ getTargetTypeLabel(target.targetType) }}</strong></span>
+              <span><label>实际值</label><strong>{{ formatActualValue(target) }}</strong></span>
+            </div>
+            <div class="target-call-box">
+              <label>调用信息</label>
+              <p>{{ formatTargetResultDetail(target) }}</p>
+            </div>
+            <div v-if="target.errorMessage" class="target-error-box">
+              <label>异常原因</label>
+              <p>{{ target.errorMessage }}</p>
+            </div>
+          </article>
+        </div>
+      </section>
     </el-drawer>
   </div>
 </template>
@@ -817,6 +890,7 @@ const planSubmitLoading = ref(false)
 const planForm = ref(defaultPlanForm())
 const detailOpen = ref(false)
 const detail = ref({})
+const serverPasswordRevealLoadingKey = ref('')
 
 const targetTypeOptions = [
   { label: 'Kafka', value: 'KAFKA' },
@@ -922,6 +996,21 @@ const latestRecordLabel = computed(() => {
   const row = recordList.value?.[0]
   return row ? formatResult(row.resultStatus) : '暂无'
 })
+const recordPageSummary = computed(() => {
+  const rows = recordList.value || []
+  return {
+    total: rows.length,
+    normal: rows.filter((row) => row.resultStatus === '1').length,
+    abnormal: rows.filter((row) => row.resultStatus === '2').length,
+    latestTime: rows[0]?.inspectionTime || '-'
+  }
+})
+const detailTargetStats = computed(() => {
+  const rows = detail.value?.targetResults || []
+  return {
+    abnormal: rows.filter((row) => row.resultStatus === '2').length
+  }
+})
 
 watch(() => [route.query.tab, route.query.configTab, route.path], ([tab, subTab, path]) => {
   const nextActive = resolveRouteTab(tab, path)
@@ -1006,12 +1095,23 @@ function getTools() {
 
 function getServerAssetTree() {
   return listAutoInspectionServerAssetTree().then((res) => {
-    serverAssetTree.value = res.data || []
+    serverAssetTree.value = decorateServerAssetTree(res.data || [])
     const indexed = indexServerAssetTree(serverAssetTree.value)
     serverAssetMap.value = indexed.serverMap
     serverAssetNodeMap.value = indexed.nodeMap
     serverAssetNodeKeysMap.value = indexed.nodeKeysMap
   })
+}
+
+function decorateServerAssetTree(nodes = []) {
+  const visit = (items = []) => items.map((item) => {
+    const children = visit(item.children || [])
+    const serverCount = item.type === 'SERVER'
+      ? 1
+      : children.reduce((total, child) => total + Number(child.serverCount || 0), 0)
+    return { ...item, children, serverCount }
+  })
+  return visit(nodes)
 }
 
 function indexServerAssetTree(nodes = []) {
@@ -1165,6 +1265,60 @@ function getCredentialWarningText(credential) {
     return '无法读取默认巡检凭据，请确认当前账号有敏感凭据查看权限或稍后重试'
   }
   return ''
+}
+
+function getServerPasswordKey(server) {
+  return String(server?.targetId || server?.sourceServerId || server?.serverId || server?.host || '')
+}
+
+function isServerPasswordRevealLoading(server) {
+  const key = getServerPasswordKey(server)
+  return Boolean(key) && serverPasswordRevealLoadingKey.value === key
+}
+
+function isMaskedPassword(value) {
+  return String(value || '') === '******'
+}
+
+async function toggleStepServerPassword(server, toolOrType) {
+  if (!server) return
+  if (server._passwordVisible) {
+    server._passwordVisible = false
+    return
+  }
+  if (!server.password || isMaskedPassword(server.password)) {
+    const key = getServerPasswordKey(server)
+    serverPasswordRevealLoadingKey.value = key
+    try {
+      const password = await loadStepServerPasswordPlain(server, toolOrType)
+      if (!password) {
+        proxy.$modal.msgWarning('未读取到已保存的巡检登录密码，请手动填写')
+        return
+      }
+      server.password = password
+    } catch (error) {
+      proxy.$modal.msgWarning(error?.msg || error?.message || '读取巡检登录密码失败，请确认权限后重试')
+      return
+    } finally {
+      if (serverPasswordRevealLoadingKey.value === key) serverPasswordRevealLoadingKey.value = ''
+    }
+  }
+  server._passwordVisible = true
+}
+
+async function loadStepServerPasswordPlain(server, toolOrType) {
+  if (server.targetId) {
+    const res = await viewAutoInspectionTargetPlain(server.targetId)
+    const targetPassword = res.password || res.data?.password || ''
+    if (targetPassword) return targetPassword
+  }
+  const sourceServerId = server.sourceServerId || server.serverId
+  if (sourceServerId) {
+    const username = server.username || getDefaultServerCredentialUsername(toolOrType)
+    const res = await getAutoInspectionServerCredentialPlain(sourceServerId, username)
+    return res.data?.password || res.password || ''
+  }
+  return isMaskedPassword(server.password) ? '' : (server.password || '')
 }
 
 async function applySelectedServerAsset(target, serverId, toolOrType) {
@@ -1458,6 +1612,7 @@ function cleanTargetPayload(target) {
     payload.username = payload.username || BIG_DATA_DEFAULT_USERNAME
   }
   delete payload._credentialReason
+  delete payload._passwordVisible
   return payload
 }
 
@@ -2416,6 +2571,16 @@ function formatFileDate(date) {
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
 }
 
+function formatActualValue(row) {
+  if (!row || row.actualValue === undefined || row.actualValue === null || row.actualValue === '') return '-'
+  return `${row.actualValue}${row.actualUnit || ''}`
+}
+
+function formatTargetResultDetail(row) {
+  if (!row) return '-'
+  return row.resultDetail || row.callInfo || row.resultSummary || '-'
+}
+
 function formatResult(value) {
   if (value === '1') return '正常'
   if (value === '2') return '异常'
@@ -2573,6 +2738,37 @@ function resultTagType(value) {
   display: flex;
   gap: 10px;
   margin-bottom: 10px;
+}
+
+.record-insight-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+
+  span {
+    display: grid;
+    gap: 4px;
+    min-height: 68px;
+    padding: 12px 14px;
+    border: 1px solid #e0eaf6;
+    border-radius: 8px;
+    background: #fbfdff;
+  }
+
+  strong {
+    overflow: hidden;
+    color: #1d3554;
+    font-size: 20px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  em {
+    color: #7890aa;
+    font-size: 12px;
+    font-style: normal;
+  }
 }
 
 .auto-table {
@@ -2899,14 +3095,33 @@ function resultTagType(value) {
   line-height: 1.5;
 }
 
+.password-reveal-input {
+  :deep(.el-input-group__append) {
+    padding: 0;
+
+    .el-button {
+      min-width: 54px;
+      padding: 0 10px;
+    }
+  }
+}
+
 .target-card-actions {
   flex-shrink: 0;
   justify-content: flex-end;
 }
 
+.asset-transfer-dialog {
+  :deep(.el-dialog__body) {
+    max-height: calc(100vh - 210px);
+    overflow: hidden;
+  }
+}
+
 .asset-transfer-panel {
   display: grid;
   gap: 12px;
+  min-height: 0;
 
   p {
     margin: 0;
@@ -2920,6 +3135,8 @@ function resultTagType(value) {
   grid-template-columns: minmax(0, 1fr) 74px 360px;
   gap: 14px;
   align-items: stretch;
+  height: min(62vh, 620px);
+  min-height: 420px;
 }
 
 .tree-transfer-panel {
@@ -2927,7 +3144,7 @@ function resultTagType(value) {
   grid-template-rows: auto auto minmax(0, 1fr);
   gap: 12px;
   min-width: 0;
-  min-height: 480px;
+  min-height: 0;
   padding: 14px;
   border: 1px solid #dfeaf6;
   border-radius: 8px;
@@ -3022,6 +3239,15 @@ function resultTagType(value) {
     font-size: 12px;
   }
 
+  small {
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: #eef5ff;
+    color: #2f80ed;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
   &--server strong {
     color: #2167b2;
   }
@@ -3066,7 +3292,8 @@ function resultTagType(value) {
     font-size: 12px;
   }
 
-  em {
+  em,
+  small {
     color: #7b8fa8;
     font-style: normal;
     font-size: 12px;
@@ -3208,18 +3435,218 @@ function resultTagType(value) {
   min-height: 40px;
 }
 
-.detail-summary {
-  display: grid;
-  gap: 8px;
-  padding: 14px;
-  border: 1px solid #dce8f6;
-  border-radius: 8px;
-  background: #f8fbff;
+.inspection-detail-drawer {
+  :deep(.el-drawer__body) {
+    padding: 16px 20px 22px;
+    background: #f5f8fc;
+  }
+}
+
+.inspection-detail-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  border: 1px solid #dbe8f6;
+  border-radius: 10px;
+  background: #fff;
   margin-bottom: 12px;
 
-  small {
-    color: #7a8da6;
+  span {
+    color: #6f86a1;
+    font-size: 12px;
+    font-weight: 600;
   }
+
+  h3 {
+    margin: 6px 0;
+    color: #18324f;
+    font-size: 22px;
+  }
+
+  p {
+    margin: 0;
+    color: #6d8199;
+    line-height: 1.5;
+  }
+}
+
+.detail-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+
+  span {
+    display: grid;
+    gap: 4px;
+    min-height: 68px;
+    padding: 12px;
+    border: 1px solid #e0eaf6;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  strong {
+    overflow: hidden;
+    color: #1d3554;
+    font-size: 18px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  em {
+    color: #7890aa;
+    font-size: 12px;
+    font-style: normal;
+  }
+}
+
+.detail-section {
+  padding: 14px;
+  border: 1px solid #e0eaf6;
+  border-radius: 10px;
+  background: #fff;
+  margin-bottom: 12px;
+
+  > header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+
+    div {
+      display: grid;
+      gap: 4px;
+    }
+
+    strong {
+      color: #1d3554;
+      font-size: 16px;
+    }
+
+    span {
+      color: #7890aa;
+      font-size: 12px;
+    }
+  }
+}
+
+.target-result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.target-result-card {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e2ebf7;
+  border-radius: 8px;
+  background: #fbfdff;
+
+  header {
+    display: grid;
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
+
+    div {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    strong,
+    em {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    strong {
+      color: #1d3554;
+      font-size: 15px;
+    }
+
+    em {
+      color: #7890aa;
+      font-size: 12px;
+      font-style: normal;
+    }
+  }
+}
+
+.target-result-index {
+  width: 30px;
+  height: 30px;
+  line-height: 30px;
+  border-radius: 50%;
+  background: #eaf3ff;
+  color: #2f80ed;
+  text-align: center;
+  font-weight: 700;
+}
+
+.target-result-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+
+  span {
+    display: grid;
+    gap: 4px;
+    padding: 10px;
+    border-radius: 7px;
+    background: #fff;
+  }
+
+  label {
+    color: #7890aa;
+    font-size: 12px;
+  }
+
+  strong {
+    color: #1d3554;
+  }
+}
+
+.target-call-box,
+.target-error-box {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  background: #fff;
+
+  label {
+    color: #7890aa;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  p {
+    margin: 0;
+    color: #1d3554;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
+.target-error-box {
+  background: #fff7f7;
+
+  p {
+    color: #c45656;
+  }
+}
+
+.soft-status-tag {
+  border-radius: 999px;
 }
 
 @media (max-width: 1200px) {
@@ -3239,6 +3666,23 @@ function resultTagType(value) {
 
   .step-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .record-insight-strip,
+  .detail-kpi-grid,
+  .target-result-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .tree-transfer {
+    grid-template-columns: 1fr;
+    height: auto;
+    max-height: calc(100vh - 230px);
+    overflow-y: auto;
+  }
+
+  .tree-transfer-actions {
+    display: none;
   }
 
   .step-rule-grid,
