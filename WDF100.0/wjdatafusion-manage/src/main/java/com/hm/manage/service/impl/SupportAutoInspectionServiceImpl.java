@@ -18,7 +18,9 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
+import java.time.DayOfWeek;
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -28,15 +30,29 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
+import java.util.stream.Collectors;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLParameters;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.X509TrustManager;
 import jakarta.servlet.http.HttpServletResponse;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.CellStyle;
+import org.apache.poi.ss.usermodel.FillPatternType;
+import org.apache.poi.ss.usermodel.Font;
+import org.apache.poi.ss.usermodel.HorizontalAlignment;
+import org.apache.poi.ss.usermodel.IndexedColors;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.VerticalAlignment;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.commons.net.ftp.FTPClient;
 import org.apache.commons.net.ftp.FTPFile;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -54,6 +70,7 @@ import com.hm.common.exception.ServiceException;
 import com.hm.common.utils.DateUtils;
 import com.hm.common.utils.SecurityUtils;
 import com.hm.common.utils.StringUtils;
+import com.hm.common.utils.file.FileUtils;
 import com.hm.common.utils.poi.ExcelUtil;
 import com.hm.manage.domain.SupportServer;
 import com.hm.manage.domain.SupportServerCredential;
@@ -527,14 +544,297 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     @Override
     public void exportRecord(HttpServletResponse response, Map<String, Object> record)
     {
-        List<Map<String, Object>> records = selectRecordList(record);
-        List<SupportAutoInspectionExportVo> exportList = new ArrayList<>();
-        for (Map<String, Object> item : records)
+        Map<String, Object> exportParams = normalizeRecordExportParams(record);
+        List<Map<String, Object>> records = selectRecordList(exportParams);
+        if (records.isEmpty())
         {
-            exportList.add(toExportVo(selectRecordDetail(toLong(item.get("recordId")))));
+            throw new ServiceException("暂无可导出的巡检记录");
         }
-        ExcelUtil<SupportAutoInspectionExportVo> util = new ExcelUtil<>(SupportAutoInspectionExportVo.class);
-        util.exportExcel(response, exportList, "自动化巡检记录_" + DateTimeFormatter.ofPattern("yyyyMMdd").format(LocalDateTime.now()));
+        List<Long> recordIds = records.stream()
+                .map(item -> toLong(item.get("recordId")))
+                .filter(id -> id != null)
+                .collect(Collectors.toList());
+        List<Map<String, Object>> steps = recordIds.isEmpty() ? new ArrayList<>() : autoInspectionMapper.selectStepResultsByRecordIds(recordIds);
+        List<Map<String, Object>> targets = recordIds.isEmpty() ? new ArrayList<>() : autoInspectionMapper.selectTargetResultsByRecordIds(recordIds);
+        exportRecordWorkbook(response, exportParams, records, steps, targets);
+    }
+
+    private Map<String, Object> normalizeRecordExportParams(Map<String, Object> record)
+    {
+        Map<String, Object> params = new HashMap<>(record == null ? new HashMap<>() : record);
+        List<Long> recordIds = toLongList(params.get("recordIds"));
+        if (!recordIds.isEmpty())
+        {
+            params.put("recordIds", recordIds);
+            params.remove("beginTime");
+            params.remove("endTime");
+            return params;
+        }
+
+        String rangeType = str(params, "rangeType");
+        if ("THIS_WEEK".equals(rangeType) || "WEEK".equals(rangeType))
+        {
+            LocalDate begin = LocalDate.now().with(DayOfWeek.MONDAY);
+            params.put("beginTime", toDate(begin.atStartOfDay()));
+            params.put("endTime", toDate(begin.plusDays(7).atStartOfDay()));
+        }
+        else if ("THIS_MONTH".equals(rangeType) || "MONTH".equals(rangeType))
+        {
+            LocalDate begin = LocalDate.now().withDayOfMonth(1);
+            params.put("beginTime", toDate(begin.atStartOfDay()));
+            params.put("endTime", toDate(begin.plusMonths(1).atStartOfDay()));
+        }
+        return params;
+    }
+
+    private Date toDate(LocalDateTime dateTime)
+    {
+        return Date.from(dateTime.atZone(ZoneId.systemDefault()).toInstant());
+    }
+
+    private void exportRecordWorkbook(HttpServletResponse response, Map<String, Object> params,
+                                      List<Map<String, Object>> records,
+                                      List<Map<String, Object>> steps,
+                                      List<Map<String, Object>> targets)
+    {
+        String rangeLabel = resolveExportRangeLabel(params);
+        String timestamp = DateTimeFormatter.ofPattern("yyyyMMddHHmmss").format(LocalDateTime.now());
+        String fileName = "自动化巡检结果_" + rangeLabel + "_" + timestamp + ".xlsx";
+        try (Workbook workbook = new XSSFWorkbook(); OutputStream outputStream = response.getOutputStream())
+        {
+            Map<String, CellStyle> styles = buildExportStyles(workbook);
+            writeOverviewSheet(workbook, styles, rangeLabel, records, steps, targets);
+            writeDailyDetailSheet(workbook, styles, records, steps, targets);
+
+            response.setCharacterEncoding("utf-8");
+            response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            FileUtils.setAttachmentResponseHeader(response, fileName);
+            workbook.write(outputStream);
+        }
+        catch (Exception e)
+        {
+            log.error("导出自动化巡检记录失败", e);
+            throw new ServiceException("导出自动化巡检记录失败：" + e.getMessage());
+        }
+    }
+
+    private String resolveExportRangeLabel(Map<String, Object> params)
+    {
+        if (!toLongList(params.get("recordIds")).isEmpty())
+        {
+            return "选中记录";
+        }
+        String rangeType = str(params, "rangeType");
+        if ("THIS_WEEK".equals(rangeType) || "WEEK".equals(rangeType))
+        {
+            return "本周";
+        }
+        if ("THIS_MONTH".equals(rangeType) || "MONTH".equals(rangeType))
+        {
+            return "本月";
+        }
+        return "筛选结果";
+    }
+
+    private void writeOverviewSheet(Workbook workbook, Map<String, CellStyle> styles, String rangeLabel,
+                                    List<Map<String, Object>> records,
+                                    List<Map<String, Object>> steps,
+                                    List<Map<String, Object>> targets)
+    {
+        Sheet sheet = workbook.createSheet("巡检结果总揽");
+        int rowIndex = 0;
+        writeTitleRow(sheet, rowIndex++, "自动化巡检结果总揽", 13, styles.get("title"));
+        rowIndex++;
+        writeRow(sheet, rowIndex++, styles.get("header"), "统计项", "数值", "说明");
+
+        long normalCount = records.stream().filter(row -> RESULT_NORMAL.equals(str(row, "resultStatus"))).count();
+        long abnormalCount = records.stream().filter(row -> RESULT_ABNORMAL.equals(str(row, "resultStatus"))).count();
+        long skippedCount = records.stream().filter(row -> RESULT_SKIP.equals(str(row, "resultStatus"))).count();
+        long manualCount = records.stream().filter(row -> SOURCE_MANUAL.equals(str(row, "sourceType"))).count();
+        Set<String> templateNames = records.stream().map(row -> str(row, "templateName"))
+                .filter(StringUtils::isNotBlank).collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> planNames = records.stream().map(row -> str(row, "planName"))
+                .filter(StringUtils::isNotBlank).collect(Collectors.toCollection(LinkedHashSet::new));
+
+        writeRow(sheet, rowIndex++, styles.get("normal"), "导出范围", rangeLabel, "本文件按该范围生成");
+        writeRow(sheet, rowIndex++, null, "导出时间", formatDate(new Date()), "系统导出时间");
+        writeRow(sheet, rowIndex++, null, "巡检记录数", records.size(), "该范围内的巡检执行次数");
+        writeRow(sheet, rowIndex++, null, "正常记录数", normalCount, "主结果为正常的记录");
+        writeRow(sheet, rowIndex++, abnormalCount > 0 ? styles.get("warning") : null, "异常记录数", abnormalCount, "主结果为异常的记录");
+        writeRow(sheet, rowIndex++, null, "未检测/跳过记录数", skippedCount, "主结果为未检测的记录");
+        writeRow(sheet, rowIndex++, null, "手动 / 自动执行", manualCount + " / " + (records.size() - manualCount), "按执行来源统计");
+        writeRow(sheet, rowIndex++, null, "涉及模板数", templateNames.size(), StringUtils.join(templateNames, "、"));
+        writeRow(sheet, rowIndex++, null, "涉及计划数", planNames.size(), StringUtils.join(planNames, "、"));
+        writeRow(sheet, rowIndex++, null, "步骤结果数", steps.size(), "第二个 sheet 会展开到步骤和子项");
+        writeRow(sheet, rowIndex++, targets.stream().anyMatch(row -> RESULT_ABNORMAL.equals(str(row, "resultStatus"))) ? styles.get("warning") : null,
+                "目标子项数 / 异常子项数", targets.size() + " / " + targets.stream().filter(row -> RESULT_ABNORMAL.equals(str(row, "resultStatus"))).count(),
+                "异常子项用于定位具体检查对象");
+
+        rowIndex++;
+        writeRow(sheet, rowIndex++, styles.get("header"), "序号", "记录ID", "巡检时间", "模板名称", "计划名称", "执行来源", "巡检结果", "执行人",
+                "启用步骤", "跳过步骤", "目标数", "异常数", "摘要", "异常摘要");
+        int index = 1;
+        for (Map<String, Object> record : records)
+        {
+            CellStyle rowStyle = RESULT_ABNORMAL.equals(str(record, "resultStatus")) ? styles.get("warning") : null;
+            writeRow(sheet, rowIndex++, rowStyle, index++, record.get("recordId"), formatDate(record.get("inspectionTime")),
+                    str(record, "templateName"), StringUtils.defaultIfBlank(str(record, "planName"), "-"),
+                    labelSource(str(record, "sourceType")), labelResult(str(record, "resultStatus")),
+                    str(record, "executorName"), record.get("enabledStepCount"), record.get("skippedStepCount"),
+                    record.get("targetCount"), record.get("abnormalCount"), str(record, "summary"), str(record, "abnormalSummary"));
+        }
+        setColumnWidths(sheet, 8, 12, 20, 24, 22, 12, 12, 16, 12, 12, 12, 12, 48, 56);
+        sheet.createFreezePane(0, 15);
+    }
+
+    private void writeDailyDetailSheet(Workbook workbook, Map<String, CellStyle> styles,
+                                       List<Map<String, Object>> records,
+                                       List<Map<String, Object>> steps,
+                                       List<Map<String, Object>> targets)
+    {
+        Sheet sheet = workbook.createSheet("每日巡检明细");
+        int rowIndex = 0;
+        writeTitleRow(sheet, rowIndex++, "每日巡检项目明细", 20, styles.get("title"));
+        writeRow(sheet, rowIndex++, styles.get("header"), "序号", "巡检日期", "巡检时间", "记录ID", "模板名称", "计划名称", "执行来源",
+                "步骤序号", "步骤名称", "巡检工具", "步骤结果", "步骤实际值", "阈值规则", "步骤摘要",
+                "子项序号", "子项名称", "子项类型", "子项结果", "子项实际值", "调用信息", "异常原因");
+
+        Map<Long, List<Map<String, Object>>> stepMap = groupByLong(steps, "recordId");
+        Map<Long, List<Map<String, Object>>> targetMap = groupByLong(targets, "stepResultId");
+        int index = 1;
+        for (Map<String, Object> record : records)
+        {
+            Long recordId = toLong(record.get("recordId"));
+            List<Map<String, Object>> recordSteps = stepMap.getOrDefault(recordId, new ArrayList<>());
+            if (recordSteps.isEmpty())
+            {
+                writeRow(sheet, rowIndex++, null, index++, formatDateOnly(record.get("inspectionTime")), formatDate(record.get("inspectionTime")),
+                        recordId, str(record, "templateName"), StringUtils.defaultIfBlank(str(record, "planName"), "-"),
+                        labelSource(str(record, "sourceType")), "", "", "", labelResult(str(record, "resultStatus")),
+                        "", "", str(record, "summary"), "", "", "", "", "", "", str(record, "abnormalSummary"));
+                continue;
+            }
+            for (Map<String, Object> step : recordSteps)
+            {
+                Long stepResultId = toLong(step.get("stepResultId"));
+                List<Map<String, Object>> stepTargets = targetMap.getOrDefault(stepResultId, new ArrayList<>());
+                if (stepTargets.isEmpty())
+                {
+                    CellStyle rowStyle = RESULT_ABNORMAL.equals(str(step, "resultStatus")) ? styles.get("warning") : null;
+                    writeRow(sheet, rowIndex++, rowStyle, index++, formatDateOnly(record.get("inspectionTime")), formatDate(record.get("inspectionTime")),
+                            recordId, str(record, "templateName"), StringUtils.defaultIfBlank(str(record, "planName"), "-"),
+                            labelSource(str(record, "sourceType")), step.get("sortOrder"), str(step, "stepName"), str(step, "toolName"),
+                            labelResult(str(step, "resultStatus")), formatActualValue(step), formatThreshold(step), str(step, "resultSummary"),
+                            "", "", "", "", "", "", "");
+                    continue;
+                }
+                int targetIndex = 1;
+                for (Map<String, Object> target : stepTargets)
+                {
+                    CellStyle rowStyle = RESULT_ABNORMAL.equals(str(target, "resultStatus")) ? styles.get("warning") : null;
+                    writeRow(sheet, rowIndex++, rowStyle, index++, formatDateOnly(record.get("inspectionTime")), formatDate(record.get("inspectionTime")),
+                            recordId, str(record, "templateName"), StringUtils.defaultIfBlank(str(record, "planName"), "-"),
+                            labelSource(str(record, "sourceType")), step.get("sortOrder"), str(step, "stepName"), str(step, "toolName"),
+                            labelResult(str(step, "resultStatus")), formatActualValue(step), formatThreshold(step), str(step, "resultSummary"),
+                            targetIndex++, str(target, "targetName"), labelTargetType(str(target, "targetType")),
+                            labelResult(str(target, "resultStatus")), formatActualValue(target), str(target, "resultDetail"), str(target, "errorMessage"));
+                }
+            }
+        }
+        setColumnWidths(sheet, 8, 14, 20, 12, 24, 22, 12, 10, 28, 24, 12, 14, 22, 44, 10, 28, 16, 12, 14, 60, 52);
+        sheet.createFreezePane(0, 2);
+    }
+
+    private Map<Long, List<Map<String, Object>>> groupByLong(List<Map<String, Object>> rows, String key)
+    {
+        Map<Long, List<Map<String, Object>>> result = new LinkedHashMap<>();
+        for (Map<String, Object> row : rows)
+        {
+            Long id = toLong(row.get(key));
+            if (id != null)
+            {
+                result.computeIfAbsent(id, value -> new ArrayList<>()).add(row);
+            }
+        }
+        return result;
+    }
+
+    private Map<String, CellStyle> buildExportStyles(Workbook workbook)
+    {
+        Map<String, CellStyle> styles = new HashMap<>();
+        Font titleFont = workbook.createFont();
+        titleFont.setBold(true);
+        titleFont.setFontHeightInPoints((short) 16);
+        titleFont.setColor(IndexedColors.DARK_BLUE.getIndex());
+        CellStyle titleStyle = workbook.createCellStyle();
+        titleStyle.setFont(titleFont);
+        titleStyle.setAlignment(HorizontalAlignment.LEFT);
+        titleStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        styles.put("title", titleStyle);
+
+        Font headerFont = workbook.createFont();
+        headerFont.setBold(true);
+        headerFont.setColor(IndexedColors.WHITE.getIndex());
+        CellStyle headerStyle = workbook.createCellStyle();
+        headerStyle.setFont(headerFont);
+        headerStyle.setFillForegroundColor(IndexedColors.ROYAL_BLUE.getIndex());
+        headerStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        headerStyle.setAlignment(HorizontalAlignment.CENTER);
+        headerStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        headerStyle.setWrapText(true);
+        styles.put("header", headerStyle);
+
+        CellStyle warningStyle = workbook.createCellStyle();
+        warningStyle.setFillForegroundColor(IndexedColors.LIGHT_YELLOW.getIndex());
+        warningStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        warningStyle.setVerticalAlignment(VerticalAlignment.TOP);
+        warningStyle.setWrapText(true);
+        styles.put("warning", warningStyle);
+
+        CellStyle normalStyle = workbook.createCellStyle();
+        normalStyle.setFillForegroundColor(IndexedColors.LIGHT_CORNFLOWER_BLUE.getIndex());
+        normalStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        normalStyle.setVerticalAlignment(VerticalAlignment.TOP);
+        normalStyle.setWrapText(true);
+        styles.put("normal", normalStyle);
+        return styles;
+    }
+
+    private void writeTitleRow(Sheet sheet, int rowIndex, String title, int lastCol, CellStyle style)
+    {
+        Row row = sheet.createRow(rowIndex);
+        row.setHeightInPoints(28);
+        Cell cell = row.createCell(0);
+        cell.setCellValue(title);
+        if (style != null)
+        {
+            cell.setCellStyle(style);
+        }
+        sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(rowIndex, rowIndex, 0, lastCol));
+    }
+
+    private void writeRow(Sheet sheet, int rowIndex, CellStyle style, Object... values)
+    {
+        Row row = sheet.createRow(rowIndex);
+        row.setHeightInPoints(24);
+        for (int i = 0; i < values.length; i++)
+        {
+            Cell cell = row.createCell(i);
+            Object value = values[i];
+            cell.setCellValue(value == null ? "" : value.toString());
+            if (style != null)
+            {
+                cell.setCellStyle(style);
+            }
+        }
+    }
+
+    private void setColumnWidths(Sheet sheet, int... widths)
+    {
+        for (int i = 0; i < widths.length; i++)
+        {
+            sheet.setColumnWidth(i, Math.min(widths[i] * 256, 255 * 256));
+        }
     }
 
     private Map<String, Object> runInspection(Long templateId, Map<String, Object> plan, String sourceType, String executorName)
@@ -2522,6 +2822,69 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return vo;
     }
 
+    private String labelSource(String sourceType)
+    {
+        return SOURCE_MANUAL.equals(sourceType) ? "手动" : "自动";
+    }
+
+    private String labelTargetType(String targetType)
+    {
+        if ("KAFKA".equals(targetType))
+        {
+            return "Kafka";
+        }
+        if ("HTTP".equals(targetType))
+        {
+            return "HTTP接口";
+        }
+        if ("FTP".equals(targetType))
+        {
+            return "FTP目录";
+        }
+        if ("SERVER".equals(targetType))
+        {
+            return "服务器";
+        }
+        if (TARGET_BIG_DATA_SERVER.equals(targetType))
+        {
+            return "大数据服务器";
+        }
+        return StringUtils.defaultIfBlank(targetType, "-");
+    }
+
+    private String formatActualValue(Map<String, Object> row)
+    {
+        String value = str(row, "actualValue");
+        if (StringUtils.isBlank(value))
+        {
+            return "-";
+        }
+        return value + StringUtils.defaultString(str(row, "actualUnit"));
+    }
+
+    private String formatThreshold(Map<String, Object> row)
+    {
+        String threshold = str(row, "thresholdValue");
+        if (StringUtils.isBlank(threshold))
+        {
+            return "-";
+        }
+        return labelCompareRule(str(row, "compareRule")) + " " + threshold + StringUtils.defaultString(str(row, "thresholdUnit"));
+    }
+
+    private String labelCompareRule(String compareRule)
+    {
+        if (RULE_MIN.equals(compareRule))
+        {
+            return "低于阈值告警";
+        }
+        if (RULE_MAX.equals(compareRule))
+        {
+            return "高于阈值告警";
+        }
+        return StringUtils.defaultIfBlank(compareRule, "-");
+    }
+
     private String labelResult(String resultStatus)
     {
         if (RESULT_NORMAL.equals(resultStatus))
@@ -2582,6 +2945,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             return DateUtils.parseDateToStr(DateUtils.YYYY_MM_DD_HH_MM_SS, (Date) value);
         }
         return value == null ? "" : value.toString();
+    }
+
+    private String formatDateOnly(Object value)
+    {
+        String text = formatDate(value);
+        return text.length() >= 10 ? text.substring(0, 10) : text;
     }
 
     private String getCurrentUsername()
@@ -2674,13 +3043,30 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private List<Long> toLongList(Object value)
     {
         List<Long> result = new ArrayList<>();
-        if (!(value instanceof List))
+        if (value == null)
         {
             return result;
         }
-        for (Object item : (List<?>) value)
+        if (value instanceof List)
         {
-            Long id = toLong(item);
+            for (Object item : (List<?>) value)
+            {
+                Long id = toLong(item);
+                if (id != null)
+                {
+                    result.add(id);
+                }
+            }
+            return result;
+        }
+        String text = value.toString();
+        if (StringUtils.isBlank(text))
+        {
+            return result;
+        }
+        for (String item : text.split(","))
+        {
+            Long id = toLong(StringUtils.trim(item));
             if (id != null)
             {
                 result.add(id);

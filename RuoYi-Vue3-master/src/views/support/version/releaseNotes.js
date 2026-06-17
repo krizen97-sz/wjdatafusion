@@ -1,5 +1,23 @@
 export const releaseNotes = [
   {
+    version: 'v3.4.9',
+    submitTime: '2026-06-17 14:30:53',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '自动化巡检结果批量导出增强',
+    summary: '为巡检记录增加面向汇总分析的批量导出能力，支持选中记录、本周记录和本月记录一键导出，并在 Excel 中拆分总揽和每日明细。',
+    changes: [
+      '巡检记录列表新增多选列和“导出选中 / 导出本周 / 导出本月”按钮，导出选中记录时只按用户勾选的记录生成结果文件。',
+      '后端导出接口保留原路径，新增记录 ID、开始时间和结束时间过滤，并批量查询步骤结果和目标子项结果，避免逐条查询详情导致导出效率下降。',
+      '导出的 Excel 包含“巡检结果总揽”和“每日巡检明细”两个 sheet：总揽页展示记录数、正常/异常数、执行来源、模板计划和记录概览；明细页按日期、记录、步骤、子项展开具体巡检结果。',
+      '每日明细中明确展示步骤名称、巡检工具、阈值规则、步骤结果、子项名称、调用信息和异常原因，方便按周或按月复盘巡检质量。'
+    ],
+    scope: ['自动化巡检', '巡检记录', '批量导出', 'Excel报表', '前后端接口', '版本记录'],
+    database: '无数据库结构变化，无需执行 SQL；复用现有 sup_auto_inspection_record、sup_auto_inspection_step_result、sup_auto_inspection_target_result 数据。',
+    scripts: []
+  },
+  {
     version: 'v3.4.8',
     submitTime: '2026-06-17 13:00:36',
     level: 'patch',

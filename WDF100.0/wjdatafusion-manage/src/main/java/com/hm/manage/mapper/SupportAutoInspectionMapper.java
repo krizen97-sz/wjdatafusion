@@ -76,9 +76,13 @@ public interface SupportAutoInspectionMapper
 
     List<Map<String, Object>> selectStepResultsByRecordId(Long recordId);
 
+    List<Map<String, Object>> selectStepResultsByRecordIds(@Param("recordIds") List<Long> recordIds);
+
     int insertStepResult(Map<String, Object> stepResult);
 
     List<Map<String, Object>> selectTargetResultsByRecordId(Long recordId);
+
+    List<Map<String, Object>> selectTargetResultsByRecordIds(@Param("recordIds") List<Long> recordIds);
 
     int insertTargetResult(Map<String, Object> targetResult);
 }

@@ -176,11 +176,14 @@
         </el-form>
 
         <div class="auto-toolbar">
-          <el-button type="warning" plain icon="Download" @click="handleExportRecord" v-hasPermi="['support:autoInspection:export']">导出记录</el-button>
+          <el-button type="warning" plain icon="Download" :disabled="!recordSelection.length" @click="handleExportSelectedRecord" v-hasPermi="['support:autoInspection:export']">导出选中</el-button>
+          <el-button type="primary" plain icon="Calendar" @click="handleExportRecord('THIS_WEEK')" v-hasPermi="['support:autoInspection:export']">导出本周</el-button>
+          <el-button type="success" plain icon="Calendar" @click="handleExportRecord('THIS_MONTH')" v-hasPermi="['support:autoInspection:export']">导出本月</el-button>
           <el-button icon="Refresh" @click="getRecordList">刷新</el-button>
         </div>
 
-        <el-table v-loading="recordLoading" :data="recordList" class="auto-table record-table">
+        <el-table v-loading="recordLoading" :data="recordList" class="auto-table record-table" @selection-change="handleRecordSelectionChange">
+          <el-table-column type="selection" width="48" align="center" />
           <el-table-column label="巡检时间" prop="inspectionTime" width="170" align="center" />
           <el-table-column label="结果" prop="resultStatus" width="90" align="center">
             <template #default="scope"><el-tag class="soft-status-tag" size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
@@ -898,6 +901,7 @@ const planQuery = ref({ pageNum: 1, pageSize: 10, planName: '', templateId: unde
 const recordLoading = ref(false)
 const recordList = ref([])
 const recordTotal = ref(0)
+const recordSelection = ref([])
 const recordQuery = ref({ pageNum: 1, pageSize: 10, templateName: '', planName: '', sourceType: '', resultStatus: '' })
 
 const targetDialogOpen = ref(false)
@@ -1462,6 +1466,7 @@ function getRecordList() {
   return listAutoInspectionRecord(recordQuery.value).then((res) => {
     recordList.value = res.rows || []
     recordTotal.value = res.total || 0
+    recordSelection.value = []
   }).finally(() => { recordLoading.value = false })
 }
 
@@ -2422,8 +2427,29 @@ function handleRecordDetail(row) {
   })
 }
 
-function handleExportRecord() {
-  proxy.download('/support/autoInspection/record/export', { ...recordQuery.value }, `自动化巡检记录_${formatFileDate(new Date())}.xlsx`)
+function handleRecordSelectionChange(selection) {
+  recordSelection.value = selection || []
+}
+
+function handleExportSelectedRecord() {
+  if (!recordSelection.value.length) {
+    proxy.$modal.msgWarning('请先选择需要导出的巡检记录')
+    return
+  }
+  const ids = recordSelection.value.map((item) => item.recordId).filter(Boolean)
+  handleExportRecord('SELECTED', { recordIds: ids.join(',') })
+}
+
+function handleExportRecord(rangeType, extraParams = {}) {
+  const labelMap = {
+    SELECTED: '选中记录',
+    THIS_WEEK: '本周',
+    THIS_MONTH: '本月'
+  }
+  const params = rangeType === 'SELECTED'
+    ? { ...extraParams, rangeType }
+    : { ...recordQuery.value, pageNum: undefined, pageSize: undefined, rangeType, ...extraParams }
+  proxy.download('/support/autoInspection/record/export', params, `自动化巡检结果_${labelMap[rangeType] || '筛选结果'}_${formatFileDate(new Date())}.xlsx`)
 }
 
 function exportWord(row) {

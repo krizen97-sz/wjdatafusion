@@ -377,11 +377,19 @@
                update_by as updateBy, update_time as updateTime, remark
         from sup_auto_inspection_record
         <where>
+            <if test="recordIds != null and recordIds.size > 0">
+                and record_id in
+                <foreach collection="recordIds" item="recordId" open="(" separator="," close=")">
+                    #{recordId}
+                </foreach>
+            </if>
             <if test="sourceType != null and sourceType != ''">and source_type = #{sourceType}</if>
             <if test="resultStatus != null and resultStatus != ''">and result_status = #{resultStatus}</if>
             <if test="templateName != null and templateName != ''">and template_name like concat('%', #{templateName}, '%')</if>
             <if test="planName != null and planName != ''">and plan_name like concat('%', #{planName}, '%')</if>
             <if test="executorName != null and executorName != ''">and executor_name like concat('%', #{executorName}, '%')</if>
+            <if test="beginTime != null and beginTime != ''">and inspection_time &gt;= #{beginTime}</if>
+            <if test="endTime != null and endTime != ''">and inspection_time &lt; #{endTime}</if>
         </where>
         order by inspection_time desc, record_id desc
     </select>
@@ -444,6 +452,25 @@
         order by sort_order asc, step_result_id asc
     </select>
 
+    <select id="selectStepResultsByRecordIds" resultType="java.util.HashMap">
+        select step_result_id as stepResultId, record_id as recordId, step_id as stepId,
+               tool_code as toolCode, tool_name as toolName, tool_type as toolType,
+               step_name as stepName, enabled_flag as enabledFlag, sort_order as sortOrder,
+               threshold_value as thresholdValue, threshold_unit as thresholdUnit,
+               compare_rule as compareRule, time_window_minutes as timeWindowMinutes,
+               timeout_seconds as timeoutSeconds, step_params as stepParams,
+               result_status as resultStatus, actual_value as actualValue,
+               actual_unit as actualUnit, result_summary as resultSummary,
+               create_by as createBy, create_time as createTime,
+               update_by as updateBy, update_time as updateTime, remark
+        from sup_auto_inspection_step_result
+        where record_id in
+        <foreach collection="recordIds" item="recordId" open="(" separator="," close=")">
+            #{recordId}
+        </foreach>
+        order by record_id asc, sort_order asc, step_result_id asc
+    </select>
+
     <insert id="insertStepResult" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="stepResultId">
         insert into sup_auto_inspection_step_result(
             record_id, step_id, tool_code, tool_name, tool_type, step_name,
@@ -473,6 +500,24 @@
         left join sup_auto_inspection_step_result sr on sr.step_result_id = tr.step_result_id
         where tr.record_id = #{recordId}
         order by sr.sort_order asc, tr.result_id asc
+    </select>
+
+    <select id="selectTargetResultsByRecordIds" resultType="java.util.HashMap">
+        select tr.result_id as resultId, tr.record_id as recordId, tr.step_result_id as stepResultId,
+               sr.step_name as stepName, sr.tool_code as toolCode, sr.tool_name as toolName,
+               sr.sort_order as sortOrder, tr.target_id as targetId, tr.target_name as targetName,
+               tr.target_type as targetType, tr.result_status as resultStatus, tr.actual_value as actualValue,
+               tr.actual_unit as actualUnit, tr.result_detail as resultDetail,
+               tr.error_message as errorMessage, tr.create_by as createBy,
+               tr.create_time as createTime, tr.update_by as updateBy,
+               tr.update_time as updateTime, tr.remark
+        from sup_auto_inspection_target_result tr
+        left join sup_auto_inspection_step_result sr on sr.step_result_id = tr.step_result_id
+        where tr.record_id in
+        <foreach collection="recordIds" item="recordId" open="(" separator="," close=")">
+            #{recordId}
+        </foreach>
+        order by tr.record_id asc, sr.sort_order asc, tr.result_id asc
     </select>
 
     <insert id="insertTargetResult" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="resultId">
