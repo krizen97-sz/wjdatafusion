@@ -1,5 +1,25 @@
 export const releaseNotes = [
   {
+    version: 'v3.5.0',
+    submitTime: '2026-06-18 00:29:03',
+    level: 'minor',
+    levelLabel: '小版本',
+    tagType: 'warning',
+    title: '自动化巡检运行看板',
+    summary: '为自动化巡检新增今日运行看板，让用户进入模块后可以直接判断当天平台运行状态、近 7 天趋势、工具健康度和异常子项。',
+    changes: [
+      '自动化巡检新增“巡检看板”页签，并作为默认入口展示，避免用户只能通过巡检记录表逐条判断平台是否正常。',
+      '后端新增 /support/autoInspection/dashboard 聚合接口，按近 7 天巡检记录批量汇总今日记录、步骤结果、目标子项、工具健康度和异常子项，不新增业务表。',
+      '看板顶部展示今日巡检次数、异常记录数、异常子项数和正常率，并根据当天异常情况给出明确状态提示。',
+      '看板新增近 7 天状态条、今日最新巡检、工具健康度和今日异常子项列表，可从最新巡检直接打开记录详情。',
+      '手动执行模板或计划后同步刷新巡检记录与看板，保证用户能立即看到最新运行结果。',
+      '复核巡检记录导出报错链路，当前代码已使用 Date 空值判断，生产环境若仍出现 Date/String 比较异常，需要重新部署包含 v3.4.10 及以上修复的后端包。'
+    ],
+    scope: ['自动化巡检', '巡检看板', '巡检记录', '导出回归', '前后端接口', '版本记录'],
+    database: '无数据库结构变化，无需执行 SQL；复用 sup_auto_inspection_record、sup_auto_inspection_step_result、sup_auto_inspection_target_result。',
+    scripts: []
+  },
+  {
     version: 'v3.4.10',
     submitTime: '2026-06-17 14:36:31',
     level: 'patch',

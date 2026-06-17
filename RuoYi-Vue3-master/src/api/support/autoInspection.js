@@ -100,6 +100,10 @@ export function listAutoInspectionRecord(query) {
   return request({ url: '/support/autoInspection/record/list', method: 'get', params: query })
 }
 
+export function getAutoInspectionDashboard(query) {
+  return request({ url: '/support/autoInspection/dashboard', method: 'get', params: query })
+}
+
 export function getAutoInspectionRecord(recordId) {
   return request({ url: '/support/autoInspection/record/' + recordId, method: 'get' })
 }

@@ -519,6 +519,252 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     @Override
+    public Map<String, Object> selectDashboard(Map<String, Object> params)
+    {
+        LocalDate today = LocalDate.now();
+        LocalDate trendBegin = today.minusDays(6);
+        Map<String, Object> query = new HashMap<>();
+        query.put("beginTime", toDate(trendBegin.atStartOfDay()));
+        query.put("endTime", toDate(today.plusDays(1).atStartOfDay()));
+        List<Map<String, Object>> records = autoInspectionMapper.selectRecordList(query);
+        List<Long> recordIds = records.stream()
+                .map(item -> toLong(item.get("recordId")))
+                .filter(id -> id != null)
+                .collect(Collectors.toList());
+        List<Map<String, Object>> steps = recordIds.isEmpty() ? new ArrayList<>() : autoInspectionMapper.selectStepResultsByRecordIds(recordIds);
+        List<Map<String, Object>> targets = recordIds.isEmpty() ? new ArrayList<>() : autoInspectionMapper.selectTargetResultsByRecordIds(recordIds);
+
+        Map<String, Object> dashboard = new LinkedHashMap<>();
+        dashboard.put("summary", buildDashboardSummary(today, records, steps, targets));
+        dashboard.put("trend", buildDashboardTrend(trendBegin, today, records));
+        dashboard.put("toolStats", buildDashboardToolStats(today, records, steps, targets));
+        dashboard.put("latestAbnormalTargets", buildLatestAbnormalTargets(today, records, targets));
+        dashboard.put("recentRecords", buildDashboardRecentRecords(today, records));
+        dashboard.put("generatedTime", formatDate(new Date()));
+        return dashboard;
+    }
+
+    private Map<String, Object> buildDashboardSummary(LocalDate today, List<Map<String, Object>> records,
+                                                       List<Map<String, Object>> steps,
+                                                       List<Map<String, Object>> targets)
+    {
+        Set<Long> todayRecordIds = records.stream()
+                .filter(record -> isSameDate(record.get("inspectionTime"), today))
+                .map(record -> toLong(record.get("recordId")))
+                .filter(id -> id != null)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        List<Map<String, Object>> todayRecords = records.stream()
+                .filter(record -> todayRecordIds.contains(toLong(record.get("recordId"))))
+                .collect(Collectors.toList());
+        List<Map<String, Object>> todaySteps = steps.stream()
+                .filter(step -> todayRecordIds.contains(toLong(step.get("recordId"))))
+                .collect(Collectors.toList());
+        List<Map<String, Object>> todayTargets = targets.stream()
+                .filter(target -> todayRecordIds.contains(toLong(target.get("recordId"))))
+                .collect(Collectors.toList());
+
+        long normalCount = todayRecords.stream().filter(row -> RESULT_NORMAL.equals(str(row, "resultStatus"))).count();
+        long abnormalCount = todayRecords.stream().filter(row -> RESULT_ABNORMAL.equals(str(row, "resultStatus"))).count();
+        long skippedCount = todayRecords.stream().filter(row -> RESULT_SKIP.equals(str(row, "resultStatus"))).count();
+        long abnormalTargetCount = todayTargets.stream().filter(row -> RESULT_ABNORMAL.equals(str(row, "resultStatus"))).count();
+        Map<String, Object> latest = todayRecords.isEmpty() ? null : dashboardRecordRow(todayRecords.get(0));
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("recordCount", todayRecords.size());
+        summary.put("normalCount", normalCount);
+        summary.put("abnormalCount", abnormalCount);
+        summary.put("skippedCount", skippedCount);
+        summary.put("stepCount", todaySteps.size());
+        summary.put("targetCount", todayTargets.size());
+        summary.put("abnormalTargetCount", abnormalTargetCount);
+        summary.put("successRate", formatPercent(normalCount, todayRecords.size()));
+        summary.put("status", todayRecords.isEmpty() ? RESULT_SKIP : (abnormalCount > 0 || abnormalTargetCount > 0 ? RESULT_ABNORMAL : RESULT_NORMAL));
+        summary.put("latestInspectionTime", latest == null ? "" : latest.get("inspectionTime"));
+        summary.put("latestRecord", latest);
+        return summary;
+    }
+
+    private List<Map<String, Object>> buildDashboardTrend(LocalDate begin, LocalDate end, List<Map<String, Object>> records)
+    {
+        Map<String, List<Map<String, Object>>> dayRecords = new LinkedHashMap<>();
+        LocalDate cursor = begin;
+        while (!cursor.isAfter(end))
+        {
+            dayRecords.put(cursor.toString(), new ArrayList<>());
+            cursor = cursor.plusDays(1);
+        }
+        for (Map<String, Object> record : records)
+        {
+            LocalDate day = toLocalDate(record.get("inspectionTime"));
+            if (day != null)
+            {
+                List<Map<String, Object>> rows = dayRecords.get(day.toString());
+                if (rows != null)
+                {
+                    rows.add(record);
+                }
+            }
+        }
+
+        List<Map<String, Object>> trend = new ArrayList<>();
+        for (Map.Entry<String, List<Map<String, Object>>> entry : dayRecords.entrySet())
+        {
+            List<Map<String, Object>> rows = entry.getValue();
+            long abnormal = rows.stream().filter(row -> RESULT_ABNORMAL.equals(str(row, "resultStatus"))).count();
+            long normal = rows.stream().filter(row -> RESULT_NORMAL.equals(str(row, "resultStatus"))).count();
+            long skipped = rows.stream().filter(row -> RESULT_SKIP.equals(str(row, "resultStatus"))).count();
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("date", entry.getKey());
+            item.put("total", rows.size());
+            item.put("normal", normal);
+            item.put("abnormal", abnormal);
+            item.put("skipped", skipped);
+            item.put("status", rows.isEmpty() ? RESULT_SKIP : (abnormal > 0 ? RESULT_ABNORMAL : RESULT_NORMAL));
+            trend.add(item);
+        }
+        return trend;
+    }
+
+    private List<Map<String, Object>> buildDashboardToolStats(LocalDate today, List<Map<String, Object>> records,
+                                                              List<Map<String, Object>> steps,
+                                                              List<Map<String, Object>> targets)
+    {
+        Set<Long> todayRecordIds = records.stream()
+                .filter(record -> isSameDate(record.get("inspectionTime"), today))
+                .map(record -> toLong(record.get("recordId")))
+                .filter(id -> id != null)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<Long> todayStepResultIds = steps.stream()
+                .filter(step -> todayRecordIds.contains(toLong(step.get("recordId"))))
+                .map(step -> toLong(step.get("stepResultId")))
+                .filter(id -> id != null)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Map<Long, List<Map<String, Object>>> targetMap = groupByLong(targets, "stepResultId");
+        Map<String, Map<String, Object>> statMap = new LinkedHashMap<>();
+        for (Map<String, Object> step : steps)
+        {
+            Long stepResultId = toLong(step.get("stepResultId"));
+            if (!todayStepResultIds.contains(stepResultId))
+            {
+                continue;
+            }
+            String toolCode = StringUtils.defaultIfBlank(str(step, "toolCode"), "UNKNOWN");
+            Map<String, Object> stat = statMap.computeIfAbsent(toolCode, key -> {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("toolCode", key);
+                item.put("toolName", StringUtils.defaultIfBlank(str(step, "toolName"), key));
+                item.put("total", 0L);
+                item.put("normal", 0L);
+                item.put("abnormal", 0L);
+                item.put("skipped", 0L);
+                item.put("targetCount", 0L);
+                item.put("abnormalTargetCount", 0L);
+                return item;
+            });
+            increaseLong(stat, "total", 1L);
+            if (RESULT_NORMAL.equals(str(step, "resultStatus")))
+            {
+                increaseLong(stat, "normal", 1L);
+            }
+            else if (RESULT_ABNORMAL.equals(str(step, "resultStatus")))
+            {
+                increaseLong(stat, "abnormal", 1L);
+            }
+            else
+            {
+                increaseLong(stat, "skipped", 1L);
+            }
+            List<Map<String, Object>> stepTargets = targetMap.getOrDefault(stepResultId, new ArrayList<>());
+            increaseLong(stat, "targetCount", stepTargets.size());
+            increaseLong(stat, "abnormalTargetCount", stepTargets.stream().filter(row -> RESULT_ABNORMAL.equals(str(row, "resultStatus"))).count());
+        }
+        List<Map<String, Object>> stats = new ArrayList<>(statMap.values());
+        for (Map<String, Object> stat : stats)
+        {
+            long total = toLongValue(stat.get("total"));
+            long normal = toLongValue(stat.get("normal"));
+            stat.put("healthRate", formatPercent(normal, total));
+            stat.put("status", toLongValue(stat.get("abnormal")) > 0 || toLongValue(stat.get("abnormalTargetCount")) > 0 ? RESULT_ABNORMAL : RESULT_NORMAL);
+        }
+        stats.sort((a, b) -> {
+            int abnormalCompare = Long.compare(toLongValue(b.get("abnormalTargetCount")), toLongValue(a.get("abnormalTargetCount")));
+            if (abnormalCompare != 0)
+            {
+                return abnormalCompare;
+            }
+            return Long.compare(toLongValue(b.get("total")), toLongValue(a.get("total")));
+        });
+        return stats;
+    }
+
+    private List<Map<String, Object>> buildLatestAbnormalTargets(LocalDate today, List<Map<String, Object>> records,
+                                                                 List<Map<String, Object>> targets)
+    {
+        Map<Long, Map<String, Object>> recordMap = records.stream()
+                .filter(record -> toLong(record.get("recordId")) != null)
+                .collect(Collectors.toMap(record -> toLong(record.get("recordId")), record -> record, (a, b) -> a, LinkedHashMap::new));
+        Map<Long, List<Map<String, Object>>> targetMap = groupByLong(targets, "recordId");
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> record : records)
+        {
+            if (!isSameDate(record.get("inspectionTime"), today))
+            {
+                continue;
+            }
+            Long recordId = toLong(record.get("recordId"));
+            for (Map<String, Object> target : targetMap.getOrDefault(recordId, new ArrayList<>()))
+            {
+                if (!RESULT_ABNORMAL.equals(str(target, "resultStatus")))
+                {
+                    continue;
+                }
+                Map<String, Object> item = new LinkedHashMap<>(target);
+                Map<String, Object> parent = recordMap.get(recordId);
+                item.put("inspectionTime", parent == null ? "" : formatDate(parent.get("inspectionTime")));
+                item.put("templateName", parent == null ? "" : str(parent, "templateName"));
+                item.put("planName", parent == null ? "" : str(parent, "planName"));
+                item.put("resultLabel", labelResult(str(target, "resultStatus")));
+                item.put("targetTypeLabel", labelTargetType(str(target, "targetType")));
+                item.put("actualText", formatActualValue(target));
+                result.add(item);
+                if (result.size() >= 8)
+                {
+                    return result;
+                }
+            }
+        }
+        return result;
+    }
+
+    private List<Map<String, Object>> buildDashboardRecentRecords(LocalDate today, List<Map<String, Object>> records)
+    {
+        return records.stream()
+                .filter(record -> isSameDate(record.get("inspectionTime"), today))
+                .limit(8)
+                .map(this::dashboardRecordRow)
+                .collect(Collectors.toList());
+    }
+
+    private Map<String, Object> dashboardRecordRow(Map<String, Object> record)
+    {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("recordId", record.get("recordId"));
+        row.put("inspectionTime", formatDate(record.get("inspectionTime")));
+        row.put("sourceType", str(record, "sourceType"));
+        row.put("sourceLabel", labelSource(str(record, "sourceType")));
+        row.put("resultStatus", str(record, "resultStatus"));
+        row.put("resultLabel", labelResult(str(record, "resultStatus")));
+        row.put("templateName", str(record, "templateName"));
+        row.put("planName", str(record, "planName"));
+        row.put("summary", str(record, "summary"));
+        row.put("abnormalSummary", str(record, "abnormalSummary"));
+        row.put("enabledStepCount", record.get("enabledStepCount"));
+        row.put("targetCount", record.get("targetCount"));
+        row.put("abnormalCount", record.get("abnormalCount"));
+        return row;
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public Map<String, Object> runManualTemplate(Long templateId)
     {
@@ -2825,6 +3071,64 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private String labelSource(String sourceType)
     {
         return SOURCE_MANUAL.equals(sourceType) ? "手动" : "自动";
+    }
+
+    private boolean isSameDate(Object value, LocalDate date)
+    {
+        LocalDate rowDate = toLocalDate(value);
+        return rowDate != null && rowDate.equals(date);
+    }
+
+    private LocalDate toLocalDate(Object value)
+    {
+        if (value instanceof Date)
+        {
+            return ((Date) value).toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+        }
+        if (value instanceof LocalDateTime)
+        {
+            return ((LocalDateTime) value).toLocalDate();
+        }
+        if (value instanceof LocalDate)
+        {
+            return (LocalDate) value;
+        }
+        String text = value == null ? "" : value.toString();
+        if (text.length() >= 10)
+        {
+            try
+            {
+                return LocalDate.parse(text.substring(0, 10));
+            }
+            catch (Exception ignored)
+            {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private void increaseLong(Map<String, Object> map, String key, long delta)
+    {
+        map.put(key, toLongValue(map.get(key)) + delta);
+    }
+
+    private long toLongValue(Object value)
+    {
+        Long result = toLong(value);
+        return result == null ? 0L : result;
+    }
+
+    private String formatPercent(long numerator, long denominator)
+    {
+        if (denominator <= 0)
+        {
+            return "0%";
+        }
+        BigDecimal rate = new BigDecimal(numerator)
+                .multiply(new BigDecimal(100))
+                .divide(new BigDecimal(denominator), 1, RoundingMode.HALF_UP);
+        return rate.stripTrailingZeros().toPlainString() + "%";
     }
 
     private String labelTargetType(String targetType)

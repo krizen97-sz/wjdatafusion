@@ -54,6 +54,8 @@ public interface ISupportAutoInspectionService
 
     Map<String, Object> selectRecordDetail(Long recordId);
 
+    Map<String, Object> selectDashboard(Map<String, Object> params);
+
     Map<String, Object> runManualTemplate(Long templateId);
 
     Map<String, Object> runManualPlan(Long planId);

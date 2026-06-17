@@ -15,6 +15,108 @@
     </section>
 
     <el-tabs v-model="activeTab" class="auto-tabs" @tab-change="handleTabChange">
+      <el-tab-pane label="巡检看板" name="dashboard">
+        <div v-loading="dashboardLoading" class="dashboard-shell">
+          <section class="dashboard-status" :class="`dashboard-status--${dashboardSummary.status || '3'}`">
+            <div>
+              <span class="dashboard-status__eyebrow">今日运行状态</span>
+              <h3>{{ formatResult(dashboardSummary.status) }}</h3>
+              <p>{{ dashboardStatusText }}</p>
+            </div>
+            <div class="dashboard-status__metrics">
+              <span><strong>{{ dashboardSummary.recordCount || 0 }}</strong><em>今日巡检</em></span>
+              <span><strong>{{ dashboardSummary.abnormalCount || 0 }}</strong><em>异常记录</em></span>
+              <span><strong>{{ dashboardSummary.abnormalTargetCount || 0 }}</strong><em>异常子项</em></span>
+              <span><strong>{{ dashboardSummary.successRate || '0%' }}</strong><em>正常率</em></span>
+            </div>
+            <el-button icon="Refresh" @click="getDashboard">刷新看板</el-button>
+          </section>
+
+          <section class="dashboard-grid">
+            <article class="dashboard-panel dashboard-panel--trend">
+              <header>
+                <div>
+                  <strong>近 7 天巡检状态</strong>
+                  <span>按天查看平台运行趋势</span>
+                </div>
+              </header>
+              <div class="trend-days">
+                <div v-for="item in dashboardTrend" :key="item.date" class="trend-day" :class="`trend-day--${item.status}`">
+                  <span>{{ formatTrendDate(item.date) }}</span>
+                  <strong>{{ item.total }}</strong>
+                  <em>{{ item.abnormal ? `${item.abnormal} 异常` : (item.total ? '正常' : '无记录') }}</em>
+                </div>
+              </div>
+            </article>
+
+            <article class="dashboard-panel dashboard-panel--records">
+              <header>
+                <div>
+                  <strong>今日最新巡检</strong>
+                  <span>最近执行的模板和结果</span>
+                </div>
+              </header>
+              <el-empty v-if="!dashboardRecentRecords.length" description="今日暂无巡检记录" :image-size="76" />
+              <div v-else class="recent-records">
+                <button v-for="item in dashboardRecentRecords" :key="item.recordId" @click="handleRecordDetail(item)">
+                  <span :class="`status-dot status-dot--${item.resultStatus}`"></span>
+                  <div>
+                    <strong>{{ item.templateName || '未命名模板' }}</strong>
+                    <em>{{ item.inspectionTime || '-' }} · {{ item.sourceLabel || '-' }}</em>
+                  </div>
+                  <label>{{ item.abnormalCount || 0 }} 异常</label>
+                </button>
+              </div>
+            </article>
+          </section>
+
+          <section class="dashboard-grid dashboard-grid--bottom">
+            <article class="dashboard-panel">
+              <header>
+                <div>
+                  <strong>工具健康度</strong>
+                  <span>按巡检工具聚合今日步骤结果</span>
+                </div>
+              </header>
+              <el-empty v-if="!dashboardToolStats.length" description="今日暂无工具结果" :image-size="76" />
+              <div v-else class="tool-health-list">
+                <div v-for="item in dashboardToolStats" :key="item.toolCode" class="tool-health-item">
+                  <div class="tool-health-item__head">
+                    <strong>{{ item.toolName || item.toolCode }}</strong>
+                    <el-tag class="soft-status-tag" size="small" :type="resultTagType(item.status)">{{ formatResult(item.status) }}</el-tag>
+                  </div>
+                  <div class="tool-health-item__bar">
+                    <span :style="{ width: item.healthRate || '0%' }"></span>
+                  </div>
+                  <p>步骤 {{ item.total || 0 }} · 子项 {{ item.targetCount || 0 }} · 异常子项 {{ item.abnormalTargetCount || 0 }} · 正常率 {{ item.healthRate || '0%' }}</p>
+                </div>
+              </div>
+            </article>
+
+            <article class="dashboard-panel">
+              <header>
+                <div>
+                  <strong>今日异常子项</strong>
+                  <span>优先展示需要处理的具体检查对象</span>
+                </div>
+              </header>
+              <el-empty v-if="!dashboardAbnormalTargets.length" description="今日暂无异常子项" :image-size="76" />
+              <div v-else class="abnormal-target-list">
+                <article v-for="(item, index) in dashboardAbnormalTargets" :key="`${item.recordId}-${item.resultId || index}`">
+                  <span>{{ index + 1 }}</span>
+                  <div>
+                    <strong>{{ item.stepName || '未命名步骤' }} / {{ item.targetName || '未命名子项' }}</strong>
+                    <em>{{ item.templateName || '-' }} · {{ item.inspectionTime || '-' }}</em>
+                    <p>{{ item.errorMessage || item.resultDetail || '未记录异常详情' }}</p>
+                  </div>
+                  <label>{{ item.actualText || '-' }}</label>
+                </article>
+              </div>
+            </article>
+          </section>
+        </div>
+      </el-tab-pane>
+
       <el-tab-pane label="巡检配置" name="config">
         <div class="config-shell">
           <div class="config-guide">
@@ -838,6 +940,7 @@ import {
   delAutoInspectionPlan,
   delAutoInspectionTarget,
   delAutoInspectionTemplate,
+  getAutoInspectionDashboard,
   getAutoInspectionPlan,
   getAutoInspectionRecord,
   getAutoInspectionServerCredentialPlain,
@@ -898,6 +1001,8 @@ const planTotal = ref(0)
 const planRunId = ref(null)
 const planQuery = ref({ pageNum: 1, pageSize: 10, planName: '', templateId: undefined, status: '' })
 
+const dashboardLoading = ref(false)
+const dashboardData = ref(defaultDashboardData())
 const recordLoading = ref(false)
 const recordList = ref([])
 const recordTotal = ref(0)
@@ -1028,6 +1133,17 @@ const stepTargetSectionHint = computed(() => {
   if (stepTargetType.value === 'BIG_DATA_SERVER') return '逐台配置服务器 IP、SSH 端口和登录信息，执行时读取每台服务器的所有磁盘分区。'
   return '服务器目录或磁盘检测复用服务器资产，并配置检测路径。'
 })
+const dashboardSummary = computed(() => dashboardData.value?.summary || {})
+const dashboardTrend = computed(() => dashboardData.value?.trend || [])
+const dashboardToolStats = computed(() => dashboardData.value?.toolStats || [])
+const dashboardAbnormalTargets = computed(() => dashboardData.value?.latestAbnormalTargets || [])
+const dashboardRecentRecords = computed(() => dashboardData.value?.recentRecords || [])
+const dashboardStatusText = computed(() => {
+  const summary = dashboardSummary.value
+  if (!summary.recordCount) return '今天还没有巡检记录，建议先执行一次模板或检查计划是否启用。'
+  if (summary.status === '2') return `今日发现 ${summary.abnormalCount || 0} 条异常记录、${summary.abnormalTargetCount || 0} 个异常子项，需要优先处理。`
+  return '今日巡检结果正常，平台运行状态稳定。'
+})
 const latestRecordLabel = computed(() => {
   const row = recordList.value?.[0]
   return row ? formatResult(row.resultStatus) : '暂无'
@@ -1119,13 +1235,16 @@ onMounted(() => {
 
 async function initPage() {
   await Promise.all([getTools(), getServerAssetTree()])
-  await Promise.all([getTemplateList(), getTemplateOptions(), getPlanList(), getRecordList()])
+  await Promise.all([getDashboard(), getTemplateList(), getTemplateOptions(), getPlanList(), getRecordList()])
 }
 
 function resolveRouteTab(tab, path = '') {
+  if (tab === 'dashboard') return 'dashboard'
   if (tab === 'record') return 'record'
   if (tab === 'config' || configTabNames.includes(tab)) return 'config'
-  return String(path).endsWith('/record') ? 'record' : 'config'
+  if (String(path).endsWith('/record')) return 'record'
+  if (String(path).endsWith('/config') || String(path).endsWith('/plan')) return 'config'
+  return 'dashboard'
 }
 
 function resolveConfigTab(tab, subTab, path = '') {
@@ -1136,6 +1255,10 @@ function resolveConfigTab(tab, subTab, path = '') {
 }
 
 function handleTabChange(tab) {
+  if (tab === 'dashboard') {
+    navigateAutoInspection('dashboard', configTab.value)
+    return
+  }
   navigateAutoInspection(tab === 'record' ? 'record' : 'config', configTab.value)
 }
 
@@ -1149,20 +1272,21 @@ function switchConfigTab(tab) {
 function navigateAutoInspection(tab, config = configTab.value) {
   const nextQuery = { ...route.query }
   delete nextQuery.configTab
-  nextQuery.tab = tab === 'record' ? 'record' : config
+  nextQuery.tab = tab === 'dashboard' ? 'dashboard' : (tab === 'record' ? 'record' : config)
   router.replace({ path: resolveAutoInspectionPath(tab), query: nextQuery })
 }
 
 function resolveAutoInspectionPath(tab) {
   const path = String(route.path || '')
-  const targetLeaf = tab === 'record' ? 'record' : 'config'
-  if (/\/(config|record|plan|target)$/.test(path)) {
-    return path.replace(/\/(config|record|plan|target)$/, `/${targetLeaf}`)
+  const targetLeaf = tab === 'record' ? 'record' : (tab === 'dashboard' ? 'dashboard' : 'config')
+  if (/\/(dashboard|config|record|plan|target)$/.test(path)) {
+    return path.replace(/\/(dashboard|config|record|plan|target)$/, `/${targetLeaf}`)
   }
   return path
 }
 
 function loadActiveTab() {
+  if (activeTab.value === 'dashboard') getDashboard()
   if (activeTab.value === 'config') loadConfigTab()
   if (activeTab.value === 'record') getRecordList()
 }
@@ -1468,6 +1592,13 @@ function getRecordList() {
     recordTotal.value = res.total || 0
     recordSelection.value = []
   }).finally(() => { recordLoading.value = false })
+}
+
+function getDashboard() {
+  dashboardLoading.value = true
+  return getAutoInspectionDashboard().then((res) => {
+    dashboardData.value = { ...defaultDashboardData(), ...(res.data || {}) }
+  }).finally(() => { dashboardLoading.value = false })
 }
 
 function resetTemplateQuery() {
@@ -2361,6 +2492,7 @@ function handleRunTemplate(row) {
     activeTab.value = 'record'
     router.replace({ path: route.path, query: { ...route.query, tab: 'record' } })
     getRecordList()
+    getDashboard()
   }).finally(() => { templateRunId.value = null })
 }
 
@@ -2410,6 +2542,7 @@ function handleRunPlan(row) {
     activeTab.value = 'record'
     router.replace({ path: route.path, query: { ...route.query, tab: 'record' } })
     getRecordList()
+    getDashboard()
   }).finally(() => { planRunId.value = null })
 }
 
@@ -2553,6 +2686,10 @@ function defaultPlanForm() {
   return { planName: '', templateId: undefined, reportStyle: 'STANDARD', status: '0', cronExpression: '', cronConfig: { type: 'daily', time: '08:00:00', weekDays: ['MON'], monthDays: [1], interval: 10, intervalUnit: 'minute' }, remark: '' }
 }
 
+function defaultDashboardData() {
+  return { summary: {}, trend: [], toolStats: [], latestAbnormalTargets: [], recentRecords: [], generatedTime: '' }
+}
+
 function parseCronConfig(value) {
   if (!value) return null
   if (typeof value === 'object') return value
@@ -2678,6 +2815,12 @@ function formatFileDate(date) {
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
 }
 
+function formatTrendDate(value) {
+  if (!value) return '-'
+  const text = String(value)
+  return text.length >= 10 ? text.slice(5, 10) : text
+}
+
 function getStepResultGroupKey(step, index = 0) {
   if (step?.stepResultId) return `step-result-${step.stepResultId}`
   if (step?.stepId) return `step-${step.stepId}`
@@ -2784,6 +2927,319 @@ function resultTagType(value) {
   :deep(.el-tabs__content),
   :deep(.el-tab-pane) {
     min-width: 0;
+  }
+}
+
+.dashboard-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.dashboard-status {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(420px, auto) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 18px 20px;
+  border: 1px solid #dce8f6;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #f8fbff 0%, #eef7ff 100%);
+
+  h3 {
+    margin: 6px 0;
+    color: #1d3554;
+    font-size: 30px;
+  }
+
+  p {
+    margin: 0;
+    color: #647c96;
+    line-height: 1.6;
+  }
+}
+
+.dashboard-status--2 {
+  border-color: #ffd8d8;
+  background: linear-gradient(135deg, #fff8f8 0%, #fff1f1 100%);
+}
+
+.dashboard-status--1 {
+  border-color: #ccebd8;
+  background: linear-gradient(135deg, #f8fffb 0%, #edf9f1 100%);
+}
+
+.dashboard-status__eyebrow {
+  color: #2f80ed;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dashboard-status__metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(88px, 1fr));
+  gap: 10px;
+
+  span {
+    display: grid;
+    gap: 3px;
+    min-height: 72px;
+    padding: 12px;
+    border: 1px solid #dfeaf7;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.82);
+  }
+
+  strong {
+    color: #1d5da6;
+    font-size: 22px;
+  }
+
+  em {
+    color: #7890aa;
+    font-size: 12px;
+    font-style: normal;
+  }
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.65fr);
+  gap: 14px;
+}
+
+.dashboard-grid--bottom {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+}
+
+.dashboard-panel {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid #e1ebf7;
+  border-radius: 10px;
+  background: #fff;
+
+  > header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+
+    strong {
+      display: block;
+      color: #1d3554;
+      font-size: 16px;
+    }
+
+    span {
+      color: #7890aa;
+      font-size: 12px;
+    }
+  }
+}
+
+.trend-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.trend-day {
+  display: grid;
+  gap: 6px;
+  min-height: 118px;
+  padding: 12px;
+  border: 1px solid #e1ebf7;
+  border-radius: 8px;
+  background: #f8fbff;
+
+  span {
+    color: #7890aa;
+    font-size: 12px;
+  }
+
+  strong {
+    color: #1d3554;
+    font-size: 24px;
+  }
+
+  em {
+    color: #60758d;
+    font-style: normal;
+  }
+}
+
+.trend-day--1 {
+  border-color: #cfebdc;
+  background: #f3fbf6;
+}
+
+.trend-day--2 {
+  border-color: #ffd8d8;
+  background: #fff7f7;
+
+  strong,
+  em {
+    color: #c45656;
+  }
+}
+
+.recent-records {
+  display: grid;
+  gap: 8px;
+}
+
+.recent-records button {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #e5edf7;
+  border-radius: 8px;
+  background: #fbfdff;
+  text-align: left;
+  cursor: pointer;
+
+  strong,
+  em {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: #1d3554;
+  }
+
+  em {
+    color: #7890aa;
+    font-style: normal;
+    font-size: 12px;
+  }
+
+  label {
+    color: #60758d;
+    cursor: pointer;
+  }
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #a8b5c5;
+}
+
+.status-dot--1 {
+  background: #43b36f;
+}
+
+.status-dot--2 {
+  background: #f56c6c;
+}
+
+.tool-health-list {
+  display: grid;
+  gap: 12px;
+}
+
+.tool-health-item {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #e5edf7;
+  border-radius: 8px;
+  background: #fbfdff;
+
+  p {
+    margin: 0;
+    color: #7890aa;
+    font-size: 12px;
+  }
+}
+
+.tool-health-item__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  strong {
+    color: #1d3554;
+  }
+}
+
+.tool-health-item__bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #edf3fa;
+
+  span {
+    display: block;
+    height: 100%;
+    max-width: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, #409eff, #67c23a);
+  }
+}
+
+.abnormal-target-list {
+  display: grid;
+  gap: 10px;
+}
+
+.abnormal-target-list article {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid #ffd8d8;
+  border-radius: 8px;
+  background: #fff8f8;
+
+  > span {
+    width: 28px;
+    height: 28px;
+    line-height: 28px;
+    border-radius: 50%;
+    background: #ffecec;
+    color: #c45656;
+    text-align: center;
+    font-weight: 700;
+  }
+
+  strong,
+  em,
+  p {
+    display: block;
+    min-width: 0;
+  }
+
+  strong {
+    color: #1d3554;
+  }
+
+  em {
+    color: #7890aa;
+    font-style: normal;
+    font-size: 12px;
+  }
+
+  p {
+    margin: 6px 0 0;
+    color: #c45656;
+    line-height: 1.5;
+    word-break: break-word;
+  }
+
+  label {
+    color: #c45656;
+    font-weight: 700;
+    white-space: nowrap;
   }
 }
 
@@ -3862,6 +4318,20 @@ function resultTagType(value) {
 
   .auto-hero__stats {
     grid-template-columns: repeat(2, minmax(110px, 1fr));
+  }
+
+  .dashboard-status,
+  .dashboard-grid,
+  .dashboard-grid--bottom {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-status__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .trend-days {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .step-layout {

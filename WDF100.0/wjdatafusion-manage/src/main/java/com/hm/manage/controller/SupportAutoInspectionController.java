@@ -164,6 +164,13 @@ public class SupportAutoInspectionController extends BaseController
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:query')")
+    @GetMapping("/dashboard")
+    public AjaxResult dashboard(@RequestParam Map<String, Object> params)
+    {
+        return success(autoInspectionService.selectDashboard(params));
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:autoInspection:query')")
     @GetMapping("/record/list")
     public TableDataInfo recordList(@RequestParam Map<String, Object> record)
     {
