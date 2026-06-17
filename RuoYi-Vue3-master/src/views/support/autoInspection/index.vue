@@ -513,9 +513,17 @@
                   <el-col :span="6"><el-form-item label="巡检登录账号" required><el-input v-model="server.username" placeholder="本次巡检使用的账号" /></el-form-item></el-col>
                   <el-col :span="6">
                     <el-form-item label="巡检登录密码" required>
-                      <el-input v-model="server.password" :type="server._passwordVisible ? 'text' : 'password'" placeholder="本次巡检使用的密码" class="password-reveal-input">
-                        <template #append>
-                          <el-button :loading="isServerPasswordRevealLoading(server)" @click="toggleStepServerPassword(server, 'SERVER_FILE_COUNT')">{{ server._passwordVisible ? '隐藏' : '显示' }}</el-button>
+                      <el-input v-model="server.password" :type="server._passwordVisible ? 'text' : 'password'" placeholder="本次巡检使用的密码">
+                        <template #suffix>
+                          <el-button
+                            class="inspection-password-eye"
+                            link
+                            type="primary"
+                            icon="View"
+                            :title="server._passwordVisible ? '隐藏密码' : '显示密码'"
+                            :loading="isServerPasswordRevealLoading(server)"
+                            @click.stop="toggleStepServerPassword(server, 'SERVER_FILE_COUNT')"
+                          />
                         </template>
                       </el-input>
                     </el-form-item>
@@ -571,9 +579,17 @@
                   <el-col :span="12"><el-form-item label="巡检登录账号" required><el-input v-model="server.username" placeholder="本次巡检使用的账号" /></el-form-item></el-col>
                   <el-col :span="12">
                     <el-form-item label="巡检登录密码" required>
-                      <el-input v-model="server.password" :type="server._passwordVisible ? 'text' : 'password'" placeholder="本次巡检使用的密码" class="password-reveal-input">
-                        <template #append>
-                          <el-button :loading="isServerPasswordRevealLoading(server)" @click="toggleStepServerPassword(server, 'BIG_DATA_SERVER_DISK')">{{ server._passwordVisible ? '隐藏' : '显示' }}</el-button>
+                      <el-input v-model="server.password" :type="server._passwordVisible ? 'text' : 'password'" placeholder="本次巡检使用的密码">
+                        <template #suffix>
+                          <el-button
+                            class="inspection-password-eye"
+                            link
+                            type="primary"
+                            icon="View"
+                            :title="server._passwordVisible ? '隐藏密码' : '显示密码'"
+                            :loading="isServerPasswordRevealLoading(server)"
+                            @click.stop="toggleStepServerPassword(server, 'BIG_DATA_SERVER_DISK')"
+                          />
                         </template>
                       </el-input>
                     </el-form-item>
@@ -3095,15 +3111,14 @@ function resultTagType(value) {
   line-height: 1.5;
 }
 
-.password-reveal-input {
-  :deep(.el-input-group__append) {
-    padding: 0;
+.inspection-password-eye {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+}
 
-    .el-button {
-      min-width: 54px;
-      padding: 0 10px;
-    }
-  }
+.inspection-password-eye :deep(.el-icon) {
+  margin: 0;
 }
 
 .target-card-actions {
