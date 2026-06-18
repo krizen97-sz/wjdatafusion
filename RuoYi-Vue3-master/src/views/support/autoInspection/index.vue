@@ -2866,40 +2866,48 @@ function resultTagType(value) {
 .auto-hero {
   display: flex;
   justify-content: space-between;
-  gap: 24px;
-  padding: 24px 28px;
+  gap: 16px;
+  align-items: center;
+  padding: 10px 14px;
   border: 1px solid #dce8f6;
-  border-radius: 10px;
-  background: linear-gradient(135deg, #f8fbff 0%, #eef6ff 100%);
-  margin-bottom: 16px;
+  border-radius: 8px;
+  background: #fbfdff;
+  margin-bottom: 10px;
 
   h2 {
-    margin: 8px 0;
+    margin: 2px 0;
     color: #18324f;
-    font-size: 28px;
+    font-size: 18px;
+    line-height: 1.25;
   }
 
   p {
+    overflow: hidden;
+    max-width: 720px;
     margin: 0;
     color: #6d8199;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
 .auto-hero__eyebrow {
   color: #2f80ed;
+  font-size: 12px;
   font-weight: 700;
 }
 
 .auto-hero__stats {
   display: grid;
-  grid-template-columns: repeat(4, 110px);
-  gap: 10px;
+  grid-template-columns: repeat(4, 74px);
+  gap: 6px;
   align-items: center;
 
   span {
-    padding: 12px;
+    padding: 6px 8px;
     border: 1px solid #d6e4f5;
-    border-radius: 8px;
+    border-radius: 7px;
     background: #fff;
     text-align: center;
   }
@@ -2907,12 +2915,14 @@ function resultTagType(value) {
   strong {
     display: block;
     color: #2167b2;
-    font-size: 24px;
+    font-size: 16px;
+    line-height: 1.1;
   }
 
   em {
     font-style: normal;
     color: #778aa4;
+    font-size: 11px;
   }
 }
 
