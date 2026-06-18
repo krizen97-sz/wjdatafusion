@@ -125,6 +125,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final String SERVER_LOGIN_ROOT = "root";
     private static final int BIG_DATA_DEFAULT_SSH_PORT = 2343;
     private static final int SERVER_DEFAULT_SSH_PORT = 55555;
+    private static final int TARGET_RESULT_TEXT_MAX_LENGTH = 30000;
 
     @Autowired
     private SupportAutoInspectionMapper autoInspectionMapper;
@@ -3331,6 +3332,15 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return StringUtils.abbreviate(value.replaceAll("\\r?\\n", "\\\\n"), 2048);
     }
 
+    private static String limitTargetResultText(String value)
+    {
+        if (StringUtils.isBlank(value))
+        {
+            return value;
+        }
+        return StringUtils.abbreviate(value, TARGET_RESULT_TEXT_MAX_LENGTH);
+    }
+
     private Object findJsonValue(JSONObject json, String path)
     {
         if (json == null || StringUtils.isBlank(path))
@@ -3965,8 +3975,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             result.put("resultStatus", status);
             result.put("actualValue", actualValue);
             result.put("actualUnit", actualUnit);
-            result.put("resultDetail", detail);
-            result.put("errorMessage", errorMessage);
+            result.put("resultDetail", limitTargetResultText(detail));
+            result.put("errorMessage", limitTargetResultText(errorMessage));
             result.put("createBy", operator);
             result.put("createTime", now);
             result.put("updateBy", operator);

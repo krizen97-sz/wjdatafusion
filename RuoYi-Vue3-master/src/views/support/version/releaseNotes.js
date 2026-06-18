@@ -1,5 +1,22 @@
 export const releaseNotes = [
   {
+    version: 'v3.6.5',
+    submitTime: '2026-06-18 10:18:42',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '自动化巡检目标结果详情扩容',
+    summary: '修复服务器服务状态检测正式执行时，systemctl 输出过长导致目标结果详情入库失败的问题。',
+    changes: [
+      '将自动化巡检目标结果表的结果详情和异常原因字段从短文本扩展为报告型文本，支持保存服务状态、自动拉起和复查输出。',
+      '后端在写入目标结果前增加统一长度保护，避免外部命令或接口返回异常长内容时造成数据库写入失败。',
+      '同步更新全量部署脚本和独立升级脚本，保证既有环境和新部署环境的数据结构一致。'
+    ],
+    scope: ['自动化巡检', '服务器服务状态', '巡检记录', '数据库脚本', '版本记录'],
+    database: '修改 sup_auto_inspection_target_result.result_detail、error_message 为 MEDIUMTEXT。',
+    scripts: ['WDF100.0/sql/support_upgrade_20260618_auto_inspection_target_result_text_v3_6_5.sql']
+  },
+  {
     version: 'v3.6.4',
     submitTime: '2026-06-18 10:00:50',
     level: 'minor',
