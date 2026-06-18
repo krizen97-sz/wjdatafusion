@@ -447,7 +447,7 @@
             <strong>{{ step.stepName || '未命名步骤' }}</strong>
             <em>{{ getToolLabel(step.toolCode) }} · {{ formatStepTarget(step) }}</em>
           </button>
-          <el-button type="primary" plain icon="Plus" @click="openStepDialog()">添加步骤</el-button>
+          <el-button type="primary" plain icon="Plus" @click="openNewStepToolPicker">添加步骤</el-button>
         </aside>
         <section v-if="activeStep" class="step-editor step-summary-panel">
           <div class="step-summary-head">
@@ -485,12 +485,12 @@
     </el-dialog>
 
     <el-dialog v-model="stepDialogOpen" width="960px" append-to-body class="template-dialog step-dialog">
-      <template #header><div class="dialog-title"><span>{{ stepEditingIndex === null ? '新增步骤' : '编辑步骤' }}</span><strong>选择工具并配置巡检细节</strong></div></template>
+      <template #header><div class="dialog-title"><span>{{ stepEditingIndex === null ? '新增步骤配置' : '编辑步骤配置' }}</span><strong>{{ currentStepTool?.toolName || '巡检步骤' }}</strong></div></template>
       <el-form ref="stepRef" :model="stepDraft" label-width="110px">
         <section class="target-section">
           <header>
             <strong>巡检工具</strong>
-            <span>工具决定检测方式，目标信息在当前步骤里一并配置。</span>
+            <span>当前步骤已选择工具，如需调整可重新选择，切换工具会重置当前步骤配置。</span>
           </header>
           <el-row :gutter="16">
             <el-col :span="12"><el-form-item label="步骤名称" required><el-input v-model="stepDraft.stepName" placeholder="例如：原始Kafka积压" /></el-form-item></el-col>
@@ -730,7 +730,7 @@
       <template #header>
         <div class="dialog-title">
           <span>巡检工具箱</span>
-          <strong>选择一个工具作为模板步骤</strong>
+          <strong>{{ toolPickerDialogTitle }}</strong>
         </div>
       </template>
       <div class="tool-picker">
@@ -761,7 +761,7 @@
               <h3>{{ toolPickerPreviewTool.toolName }}</h3>
               <p>{{ toolPickerPreviewGuide.description }}</p>
             </div>
-            <el-button type="primary" icon="Check" @click="confirmToolPicker(toolPickerPreviewTool.toolCode)">使用这个工具</el-button>
+            <el-button type="primary" icon="Check" @click="confirmToolPicker(toolPickerPreviewTool.toolCode)">{{ toolPickerActionLabel }}</el-button>
           </div>
           <div class="tool-picker-meta">
             <span><label>默认规则</label><strong>{{ toolPickerPreviewTool.defaultCompareRule === 'MIN' ? '不得低于' : '不得高于' }} {{ toolPickerPreviewTool.defaultThresholdValue ?? '-' }}{{ toolPickerPreviewTool.valueUnit || '' }}</strong></span>
@@ -786,7 +786,7 @@
       </div>
       <template #footer>
         <el-button @click="toolPickerOpen = false">取消</el-button>
-        <el-button type="primary" :disabled="!toolPickerPreviewTool" @click="confirmToolPicker()">确认选择</el-button>
+        <el-button type="primary" :disabled="!toolPickerPreviewTool" @click="confirmToolPicker()">{{ toolPickerActionLabel }}</el-button>
       </template>
     </el-dialog>
 
@@ -1101,6 +1101,7 @@ const stepDraft = ref(defaultStepForm())
 const toolPickerOpen = ref(false)
 const toolPickerKeyword = ref('')
 const toolPickerPreviewCode = ref('')
+const toolPickerMode = ref('change')
 const bigDataServerSelectOpen = ref(false)
 const bigDataServerSelectLoading = ref(false)
 const bigDataSelectedServerIds = ref([])
@@ -1242,6 +1243,8 @@ const toolPickerPreviewTool = computed(() => {
     || toolList.value[0]
 })
 const toolPickerPreviewGuide = computed(() => getToolGuide(toolPickerPreviewTool.value?.toolCode))
+const toolPickerDialogTitle = computed(() => toolPickerMode.value === 'new' ? '先选择工具，再进入对应配置页面' : '重新选择当前步骤的巡检工具')
+const toolPickerActionLabel = computed(() => toolPickerMode.value === 'new' ? '进入配置' : '使用这个工具')
 const templateOptions = computed(() => allTemplateList.value.filter((item) => item.status !== '1'))
 const bigDataStepTargets = computed(() => stepDraft.value?.stepParams?.serverTargets || [])
 const serverFileStepTargets = computed(() => stepDraft.value?.stepParams?.serverTargets || [])
@@ -2367,7 +2370,20 @@ function openStepDialog(index = null) {
   stepDialogOpen.value = true
 }
 
+function openNewStepToolPicker() {
+  if (!toolList.value.length) {
+    proxy.$modal.msgWarning('巡检工具加载中，请稍后再试')
+    return
+  }
+  stepEditingIndex.value = null
+  toolPickerMode.value = 'new'
+  toolPickerKeyword.value = ''
+  toolPickerPreviewCode.value = toolList.value[0]?.toolCode || ''
+  toolPickerOpen.value = true
+}
+
 function openToolPicker() {
+  toolPickerMode.value = 'change'
   toolPickerKeyword.value = ''
   toolPickerPreviewCode.value = stepDraft.value.toolCode || toolList.value[0]?.toolCode || ''
   toolPickerOpen.value = true
@@ -2381,6 +2397,13 @@ function confirmToolPicker(toolCode) {
   const nextToolCode = toolCode || toolPickerPreviewTool.value?.toolCode
   if (!nextToolCode) {
     proxy.$modal.msgWarning('请选择巡检工具')
+    return
+  }
+  if (toolPickerMode.value === 'new') {
+    stepEditingIndex.value = null
+    stepDraft.value = defaultStepForm(templateForm.value.steps.length + 1, nextToolCode)
+    toolPickerOpen.value = false
+    stepDialogOpen.value = true
     return
   }
   if (nextToolCode !== stepDraft.value.toolCode) {
@@ -2427,8 +2450,8 @@ function cloneStep(step) {
   return JSON.parse(JSON.stringify(step || defaultStepForm()))
 }
 
-function defaultStepForm(order) {
-  const tool = toolList.value[0]
+function defaultStepForm(order, toolCode = '') {
+  const tool = toolList.value.find((item) => item.toolCode === toolCode) || toolList.value[0]
   const stepName = tool?.toolName || ''
   const step = {
     stepName,
