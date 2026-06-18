@@ -1,5 +1,22 @@
 export const releaseNotes = [
   {
+    version: 'v3.5.1',
+    submitTime: '2026-06-18 08:41:54',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '自动化巡检看板路由修复',
+    summary: '修复巡检看板打开后地址切换到未配置动态菜单路由导致 404 的问题，保持看板作为自动化巡检页面内页签展示。',
+    changes: [
+      '巡检看板切换时不再把页面 path 改为 /dashboard，而是继续使用已有若依动态菜单路由，并通过 tab=dashboard 标识当前页签。',
+      '保留“巡检配置 / 巡检记录”已有动态路由和菜单 SQL，不新增数据库菜单项，避免影响现有权限与菜单结构。',
+      '修复后从巡检配置、巡检记录切换到巡检看板不会再进入 404 页面。'
+    ],
+    scope: ['自动化巡检', '巡检看板', '若依动态路由', '前端修复', '版本记录'],
+    database: '无数据库结构变化，无需执行 SQL。',
+    scripts: []
+  },
+  {
     version: 'v3.5.0',
     submitTime: '2026-06-18 00:29:03',
     level: 'minor',

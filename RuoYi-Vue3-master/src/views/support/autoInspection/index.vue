@@ -1278,7 +1278,7 @@ function navigateAutoInspection(tab, config = configTab.value) {
 
 function resolveAutoInspectionPath(tab) {
   const path = String(route.path || '')
-  const targetLeaf = tab === 'record' ? 'record' : (tab === 'dashboard' ? 'dashboard' : 'config')
+  const targetLeaf = tab === 'record' ? 'record' : 'config'
   if (/\/(dashboard|config|record|plan|target)$/.test(path)) {
     return path.replace(/\/(dashboard|config|record|plan|target)$/, `/${targetLeaf}`)
   }
