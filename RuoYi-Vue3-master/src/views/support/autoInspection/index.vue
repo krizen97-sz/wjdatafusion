@@ -650,7 +650,7 @@
             </div>
           </div>
           <el-row v-if="stepTargetType === 'SERVER' && stepDraft.toolCode !== 'SERVER_FILE_COUNT'" :gutter="16">
-            <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" :placeholder="isTcpPortStep ? '例如：Kafka 9092端口检测' : '例如：服务器磁盘检测'" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" :placeholder="isTcpPortStep ? '例如：Kafka 9092端口检测' : (isServiceStatusStep ? '例如：防火墙服务状态' : '例如：服务器磁盘检测')" /></el-form-item></el-col>
             <el-col :span="12">
               <el-form-item label="服务器资产" required>
                 <el-tree-select
@@ -667,11 +667,39 @@
                 />
               </el-form-item>
             </el-col>
-            <el-col v-if="isTcpPortStep" :span="12"><el-form-item label="主机IP"><el-input v-model="stepDraft.target.host" placeholder="可选择服务器自动带出，也可手工填写" /></el-form-item></el-col>
+            <el-col v-if="isTcpPortStep || isServiceStatusStep" :span="12"><el-form-item label="主机IP"><el-input v-model="stepDraft.target.host" placeholder="可选择服务器自动带出，也可手工填写" /></el-form-item></el-col>
             <el-col v-if="isTcpPortStep" :span="12"><el-form-item label="服务端口" required><el-input-number v-model="stepDraft.target.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
-            <el-col v-if="!isTcpPortStep" :span="12"><el-form-item label="检测路径" required><el-input v-model="stepDraft.target.path" placeholder="目录路径或磁盘挂载点" /></el-form-item></el-col>
+            <el-col v-if="isServiceStatusStep" :span="12"><el-form-item label="SSH端口"><el-input-number v-model="stepDraft.target.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+            <el-col v-if="isServiceStatusStep" :span="12"><el-form-item label="服务名称" required><el-input v-model="stepDraft.stepParams.serviceName" placeholder="例如：firewalld / nginx.service" /></el-form-item></el-col>
+            <el-col v-if="!isTcpPortStep && !isServiceStatusStep" :span="12"><el-form-item label="检测路径" required><el-input v-model="stepDraft.target.path" placeholder="目录路径或磁盘挂载点" /></el-form-item></el-col>
             <el-col v-if="!isTcpPortStep" :span="12"><el-form-item label="巡检登录账号" required><el-input v-model="stepDraft.target.username" placeholder="本次巡检使用的登录账号" /></el-form-item></el-col>
             <el-col v-if="!isTcpPortStep" :span="12"><el-form-item label="巡检登录密码" required><el-input v-model="stepDraft.target.password" show-password placeholder="本次巡检使用的登录密码" /></el-form-item></el-col>
+            <el-col v-if="isServiceStatusStep" :span="12">
+              <el-form-item label="提权方式">
+                <el-select v-model="stepDraft.stepParams.privilegeMode" style="width: 100%">
+                  <el-option label="不提权，仅检查状态" value="NONE" />
+                  <el-option label="sudo 执行 systemctl" value="SUDO" />
+                  <el-option label="su 切换后执行" value="SU" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col v-if="isServiceStatusStep && stepDraft.stepParams.privilegeMode === 'SU'" :span="12"><el-form-item label="提权用户"><el-input v-model="stepDraft.stepParams.privilegeUser" placeholder="默认 root" /></el-form-item></el-col>
+            <el-col v-if="isServiceStatusStep && stepDraft.stepParams.privilegeMode !== 'NONE'" :span="12">
+              <el-form-item label="提权密码">
+                <el-input v-model="stepDraft.target.secret" show-password :placeholder="stepDraft.stepParams.privilegeMode === 'SUDO' ? '可留空，默认使用巡检登录密码' : '请输入 root 或目标用户密码'" />
+              </el-form-item>
+            </el-col>
+            <el-col v-if="isServiceStatusStep" :span="12">
+              <el-form-item label="异常自动拉起">
+                <el-switch v-model="stepDraft.stepParams.autoRestart" active-value="true" inactive-value="false" active-text="开启" inactive-text="关闭" inline-prompt />
+                <small class="field-hint">开启后异常时执行 systemctl restart，并在等待后复查状态。</small>
+              </el-form-item>
+            </el-col>
+            <el-col v-if="isServiceStatusStep && stepDraft.stepParams.autoRestart === 'true'" :span="12">
+              <el-form-item label="复查等待秒数">
+                <el-input-number v-model="stepDraft.stepParams.restartWaitSeconds" :min="1" :max="60" controls-position="right" style="width: 100%" />
+              </el-form-item>
+            </el-col>
           </el-row>
           <div v-if="stepTargetType === 'BIG_DATA_SERVER'" class="bigdata-server-config">
             <div class="bigdata-server-toolbar">
@@ -1070,6 +1098,7 @@ const SERVER_FILE_DEFAULT_SSH_PORT = 55555
 const SERVER_FILE_DEFAULT_USERNAME = SITE_SERVER_LOGIN_HIK
 const TOOL_HTTP_HEALTH = 'HTTP_HEALTH'
 const TOOL_TCP_PORT_CHECK = 'TCP_PORT_CHECK'
+const TOOL_SERVER_SERVICE_STATUS = 'SERVER_SERVICE_STATUS'
 const configTabNames = ['template', 'plan']
 const activeTab = ref(resolveRouteTab(route.query.tab, route.path))
 const configTab = ref(resolveConfigTab(route.query.tab, route.query.configTab, route.path))
@@ -1224,6 +1253,13 @@ const toolGuideMap = {
     scenario: '适合检查 Kafka 9092、MySQL 3306、Redis 6379、Web 80/443 等关键端口是否可达。',
     configs: ['选择服务器资产或手工填写主机 IP。', '填写需要检测的服务端口。', '阈值通常设置为最大允许连接耗时，单位 ms。'],
     example: '例如“Kafka 端口检测”：选择 Kafka 服务器，端口填 9092，耗时高于 1000ms 或端口不可达时告警。'
+  },
+  SERVER_SERVICE_STATUS: {
+    brief: '远程检查指定 systemd 服务是否处于 active 状态。',
+    description: '通过 SSH 登录服务器执行 systemctl is-active/status，可配置 sudo 或 su 提权，并可在异常时自动 restart 后复查。',
+    scenario: '适合检查 firewalld、nginx、kafka、mysql 等关键服务是否运行，发现异常后尝试自动拉起。',
+    configs: ['选择服务器资产或填写服务器 IP。', '填写巡检登录账号和密码，通常使用 hik。', '填写服务名称，例如 firewalld 或 nginx.service。', '根据现场权限选择不提权、sudo 或 su，并按需开启异常自动重启。'],
+    example: '例如“防火墙服务状态”：服务名称填 firewalld，提权方式选 sudo，开启异常自动重启，等待 5 秒后复查状态。'
   }
 }
 
@@ -1250,7 +1286,7 @@ const toolTreeCategoryList = [
     key: 'server',
     label: '服务器资源检测',
     brief: '服务器磁盘、大数据节点分区占用等资源类检查。',
-    matcher: (toolCode) => ['SERVER_DISK', 'BIG_DATA_SERVER_DISK'].includes(toolCode)
+    matcher: (toolCode) => ['SERVER_DISK', 'BIG_DATA_SERVER_DISK', TOOL_SERVER_SERVICE_STATUS].includes(toolCode)
   },
   {
     key: 'network',
@@ -1360,6 +1396,7 @@ const serverAssetPickerHint = computed(() => {
 const stepTargetType = computed(() => getTargetTypeByTool(stepDraft.value.toolCode))
 const isHttpHealthStep = computed(() => stepDraft.value.toolCode === TOOL_HTTP_HEALTH)
 const isTcpPortStep = computed(() => stepDraft.value.toolCode === TOOL_TCP_PORT_CHECK)
+const isServiceStatusStep = computed(() => stepDraft.value.toolCode === TOOL_SERVER_SERVICE_STATUS)
 const stepTargetSectionTitle = computed(() => {
   if (stepTargetType.value === 'KAFKA') return 'Kafka 目标'
   if (isHttpHealthStep.value) return 'HTTP 健康目标'
@@ -1367,6 +1404,7 @@ const stepTargetSectionTitle = computed(() => {
   if (stepTargetType.value === 'FTP') return 'FTP 目录目标'
   if (stepTargetType.value === 'BIG_DATA_SERVER') return '大数据服务器'
   if (isTcpPortStep.value) return 'TCP 端口目标'
+  if (isServiceStatusStep.value) return '服务器服务状态目标'
   return '服务器资产目标'
 })
 const stepTargetSectionHint = computed(() => {
@@ -1376,6 +1414,7 @@ const stepTargetSectionHint = computed(() => {
   if (stepTargetType.value === 'FTP') return 'FTP 文件数量检测只需要连接信息和目录路径。'
   if (stepTargetType.value === 'BIG_DATA_SERVER') return '逐台配置服务器 IP、SSH 端口和登录信息，执行时读取每台服务器的所有磁盘分区。'
   if (isTcpPortStep.value) return '端口连通性检测只需要服务器或主机 IP 和端口，不需要 SSH 账号密码。'
+  if (isServiceStatusStep.value) return '通过 SSH 执行 systemctl 检查服务状态，异常时可按配置自动 restart 并复查。'
   return '服务器目录或磁盘检测复用服务器资产，并配置检测路径。'
 })
 const dashboardSummary = computed(() => dashboardData.value?.summary || {})
@@ -1783,7 +1822,7 @@ async function applySelectedServerAsset(target, serverId, toolOrType) {
     target.targetName = server.serverName || server.serverAddress || target.targetName
   }
   target.host = server.serverAddress || target.host || ''
-  target.port = target.port || server.sshPort || getDefaultServerPort(toolOrType)
+  target.port = server.sshPort || target.port || getDefaultServerPort(toolOrType)
   if (toolOrType === TOOL_TCP_PORT_CHECK) {
     target.username = ''
     target.password = ''
@@ -1966,7 +2005,7 @@ function handleTestStepTarget() {
     })
   }
   if (stepTargetType.value !== 'BIG_DATA_SERVER') {
-    return handleTestTarget({ ...stepDraft.value.target, toolCode: stepDraft.value.toolCode })
+    return handleTestTarget(buildSingleStepTargetPayload(stepDraft.value))
   }
   const warning = validateBigDataServerTargets(stepDraft.value.stepParams?.serverTargets || [])
   if (warning) {
@@ -1980,6 +2019,25 @@ function handleTestStepTarget() {
   }).finally(() => {
     targetTesting.value = false
   })
+}
+
+function buildSingleStepTargetPayload(step) {
+  if (step?.toolCode === TOOL_SERVER_SERVICE_STATUS) {
+    ensureServiceStatusParams(step)
+    const params = {
+      ...defaultServiceStatusParams(),
+      ...step.stepParams,
+      serviceName: String(step.stepParams?.serviceName || '').trim(),
+      autoRestart: String(step.stepParams?.autoRestart || 'false'),
+      restartWaitSeconds: Number(step.stepParams?.restartWaitSeconds || 5)
+    }
+    return normalizeStepTarget({
+      ...step.target,
+      path: params.serviceName,
+      extraParams: JSON.stringify(params)
+    }, step.toolCode, step.stepName)
+  }
+  return { ...step.target, toolCode: step.toolCode }
 }
 
 function validateTargetBusiness(target) {
@@ -1999,6 +2057,15 @@ function validateTargetBusiness(target) {
     if (!target.serverId && !String(target.host || '').trim()) return '请选择服务器资产或填写服务器 IP'
     if (target.toolCode === TOOL_TCP_PORT_CHECK) {
       if (!Number(target.port)) return '请填写 TCP 目标端口'
+      return ''
+    }
+    if (target.toolCode === TOOL_SERVER_SERVICE_STATUS) {
+      const params = parseCronConfig(target.extraParams) || {}
+      if (!String(target.path || params.serviceName || '').trim()) return '请填写服务名称'
+      if (!String(target.username || '').trim()) return '请填写 SSH 登录账号'
+      if (!String(target.password || '').trim()) return '请填写 SSH 登录密码'
+      if (params.autoRestart === 'true' && params.privilegeMode === 'NONE') return '开启自动拉起时需要选择 sudo 或 su 提权方式'
+      if (params.privilegeMode === 'SU' && !String(target.secret || '').trim()) return 'su 提权需要填写 root 或目标用户密码'
       return ''
     }
     if (!String(target.path || '').trim()) return '请填写服务器检测路径'
@@ -2058,16 +2125,21 @@ function cleanTargetPayload(target) {
     payload.topic = ''
     payload.consumerGroup = ''
     payload.appKey = ''
-    payload.secret = ''
     payload.resultPath = ''
-    payload.extraParams = ''
     payload.port = payload.port || SERVER_FILE_DEFAULT_SSH_PORT
     if (payload.toolCode === TOOL_TCP_PORT_CHECK) {
       payload.path = ''
       payload.username = ''
       payload.password = ''
+      payload.secret = ''
+      payload.extraParams = ''
+    } else if (payload.toolCode === TOOL_SERVER_SERVICE_STATUS) {
+      payload.username = payload.username || SERVER_FILE_DEFAULT_USERNAME
+      payload.extraParams = payload.extraParams || JSON.stringify(defaultServiceStatusParams())
     } else {
       payload.username = payload.username || SERVER_FILE_DEFAULT_USERNAME
+      payload.secret = ''
+      payload.extraParams = ''
     }
   }
   if (payload.targetType === 'BIG_DATA_SERVER') {
@@ -2201,6 +2273,16 @@ function defaultServerFileTarget(index = 1) {
   }
 }
 
+function defaultServiceStatusParams() {
+  return {
+    serviceName: '',
+    privilegeMode: 'SUDO',
+    privilegeUser: SITE_SERVER_LOGIN_ROOT,
+    autoRestart: 'false',
+    restartWaitSeconds: 5
+  }
+}
+
 function normalizeBigDataServerTargets(servers = []) {
   return servers.map((server, index) => cleanTargetPayload({
     ...defaultBigDataServerTarget(index + 1),
@@ -2249,6 +2331,26 @@ function ensureServerFileParams(step) {
   }
   if (step.stepParams.filePattern === undefined) {
     step.stepParams.filePattern = ''
+  }
+}
+
+function ensureServiceStatusParams(step) {
+  if (!step.stepParams) step.stepParams = {}
+  const targetExtra = parseCronConfig(step.target?.extraParams) || {}
+  step.stepParams = {
+    ...defaultServiceStatusParams(),
+    ...targetExtra,
+    ...step.stepParams,
+    serviceName: step.stepParams.serviceName || targetExtra.serviceName || step.target?.path || '',
+    privilegeMode: step.stepParams.privilegeMode || targetExtra.privilegeMode || 'SUDO',
+    privilegeUser: step.stepParams.privilegeUser || targetExtra.privilegeUser || SITE_SERVER_LOGIN_ROOT,
+    autoRestart: String(step.stepParams.autoRestart ?? targetExtra.autoRestart ?? 'false'),
+    restartWaitSeconds: Number(step.stepParams.restartWaitSeconds || targetExtra.restartWaitSeconds || 5)
+  }
+  if (step.target) {
+    step.target.path = step.stepParams.serviceName || step.target.path || ''
+    step.target.username = step.target.username || SERVER_FILE_DEFAULT_USERNAME
+    step.target.port = step.target.port || SERVER_FILE_DEFAULT_SSH_PORT
   }
 }
 
@@ -2438,6 +2540,9 @@ function openStepDialog(index = null) {
   if (getTargetTypeByTool(stepDraft.value.toolCode) === 'BIG_DATA_SERVER') {
     ensureBigDataServerParams(stepDraft.value)
   }
+  if (stepDraft.value.toolCode === TOOL_SERVER_SERVICE_STATUS) {
+    ensureServiceStatusParams(stepDraft.value)
+  }
   stepDialogOpen.value = true
 }
 
@@ -2515,6 +2620,9 @@ function handleStepToolChange(toolCode) {
   if (getTargetTypeByTool(toolCode) === 'BIG_DATA_SERVER') {
     ensureBigDataServerParams(draft)
   }
+  if (toolCode === TOOL_SERVER_SERVICE_STATUS) {
+    ensureServiceStatusParams(draft)
+  }
 }
 
 function submitStepDraft() {
@@ -2564,6 +2672,9 @@ function defaultStepForm(order, toolCode = '') {
   }
   if (step.toolCode === 'SERVER_FILE_COUNT') {
     ensureServerFileParams(step)
+  }
+  if (step.toolCode === TOOL_SERVER_SERVICE_STATUS) {
+    ensureServiceStatusParams(step)
   }
   return step
 }
@@ -2666,6 +2777,9 @@ function applyToolDefaults(step, forceName = false) {
   if (getTargetTypeByTool(step.toolCode) === 'BIG_DATA_SERVER') {
     ensureBigDataServerParams(step)
   }
+  if (step.toolCode === TOOL_SERVER_SERVICE_STATUS) {
+    ensureServiceStatusParams(step)
+  }
 }
 
 function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
@@ -2686,6 +2800,10 @@ function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
     next.path = ''
     next.username = ''
     next.password = ''
+  }
+  if (toolCode === TOOL_SERVER_SERVICE_STATUS) {
+    next.port = next.port || SERVER_FILE_DEFAULT_SSH_PORT
+    next.username = next.username || SERVER_FILE_DEFAULT_USERNAME
   }
   return next
 }
@@ -2722,6 +2840,24 @@ function normalizeStepForSave(step) {
     next.targetIds = servers.filter((server) => server.targetId).map((server) => server.targetId)
     return next
   }
+  if (next.toolCode === TOOL_SERVER_SERVICE_STATUS) {
+    ensureServiceStatusParams(next)
+    const params = {
+      ...defaultServiceStatusParams(),
+      ...next.stepParams,
+      serviceName: String(next.stepParams?.serviceName || '').trim(),
+      autoRestart: String(next.stepParams?.autoRestart || 'false'),
+      restartWaitSeconds: Number(next.stepParams?.restartWaitSeconds || 5)
+    }
+    next.target = normalizeStepTarget({
+      ...next.target,
+      path: params.serviceName,
+      extraParams: JSON.stringify(params)
+    }, next.toolCode, next.stepName)
+    next.stepParams = params
+    next.targetIds = next.target?.targetId ? [next.target.targetId] : []
+    return next
+  }
   next.target = normalizeStepTarget(next.target, next.toolCode, next.stepName)
   next.targetIds = next.target?.targetId ? [next.target.targetId] : []
   next.stepParams = {}
@@ -2740,6 +2876,20 @@ function validateStepDraft(step) {
   if (step.toolCode === 'SERVER_FILE_COUNT') {
     return validateServerFileTargets(step.stepParams?.serverTargets || [])
   }
+  if (step.toolCode === TOOL_SERVER_SERVICE_STATUS) {
+    ensureServiceStatusParams(step)
+    const params = {
+      ...defaultServiceStatusParams(),
+      ...step.stepParams,
+      serviceName: String(step.stepParams?.serviceName || '').trim()
+    }
+    const target = normalizeStepTarget({
+      ...step.target,
+      path: params.serviceName,
+      extraParams: JSON.stringify(params)
+    }, step.toolCode, step.stepName)
+    return validateTargetBusiness(target)
+  }
   const target = normalizeStepTarget(step.target, step.toolCode, step.stepName)
   return validateTargetBusiness(target)
 }
@@ -2749,7 +2899,7 @@ function getTargetTypeByTool(toolCode) {
   if (toolCode === 'HTTP_COUNT' || toolCode === TOOL_HTTP_HEALTH) return 'HTTP'
   if (toolCode === 'FTP_FILE_COUNT') return 'FTP'
   if (toolCode === 'BIG_DATA_SERVER_DISK') return 'BIG_DATA_SERVER'
-  if (toolCode === TOOL_TCP_PORT_CHECK) return 'SERVER'
+  if ([TOOL_TCP_PORT_CHECK, TOOL_SERVER_SERVICE_STATUS].includes(toolCode)) return 'SERVER'
   return 'SERVER'
 }
 
@@ -2769,6 +2919,11 @@ function formatStepTarget(step) {
   if (step?.toolCode === TOOL_TCP_PORT_CHECK) {
     const target = step?.target || {}
     return target.targetName || `${target.host || '未配置主机'}:${target.port || '-'}`
+  }
+  if (step?.toolCode === TOOL_SERVER_SERVICE_STATUS) {
+    const target = step?.target || {}
+    const params = step.stepParams || parseCronConfig(target.extraParams) || {}
+    return `${target.targetName || target.host || '未配置服务器'} · ${params.serviceName || target.path || '未配置服务'}`
   }
   const target = step?.target || {}
   if (!target.targetName && step?.targetIds?.length) return `已绑定 ${step.targetIds.length} 个目标`
@@ -2948,7 +3103,7 @@ function compatibleTargets(step) {
   if (tool.toolType === 'KAFKA_LAG') return targetOptions.value.filter((item) => item.targetType === 'KAFKA')
   if (['HTTP_COUNT', TOOL_HTTP_HEALTH].includes(tool.toolType)) return targetOptions.value.filter((item) => item.targetType === 'HTTP')
   if (tool.toolType === 'FTP_FILE_COUNT') return targetOptions.value.filter((item) => item.targetType === 'FTP')
-  if (['SERVER_FILE_COUNT', 'SERVER_DISK', TOOL_TCP_PORT_CHECK].includes(tool.toolType)) return targetOptions.value.filter((item) => item.targetType === 'SERVER')
+  if (['SERVER_FILE_COUNT', 'SERVER_DISK', TOOL_TCP_PORT_CHECK, TOOL_SERVER_SERVICE_STATUS].includes(tool.toolType)) return targetOptions.value.filter((item) => item.targetType === 'SERVER')
   if (tool.toolType === 'BIG_DATA_SERVER_DISK') return targetOptions.value.filter((item) => item.targetType === 'BIG_DATA_SERVER')
   return targetOptions.value
 }
@@ -2997,6 +3152,15 @@ function normalizeStepFromServer(step) {
     params.serverTargets = serverTargets.length ? serverTargets : [defaultBigDataServerTarget()]
     params.includePseudo = params.includePseudo || 'false'
   }
+  if (step.toolCode === TOOL_SERVER_SERVICE_STATUS) {
+    const targetParams = parseCronConfig(step.target?.extraParams) || {}
+    Object.assign(params, defaultServiceStatusParams(), targetParams, params)
+    params.serviceName = params.serviceName || step.target?.path || ''
+    params.privilegeMode = params.privilegeMode || 'SUDO'
+    params.privilegeUser = params.privilegeUser || SITE_SERVER_LOGIN_ROOT
+    params.autoRestart = String(params.autoRestart || 'false')
+    params.restartWaitSeconds = Number(params.restartWaitSeconds || 5)
+  }
   return {
     ...step,
     stepParams: params,
@@ -3041,6 +3205,12 @@ function getTargetTypeLabel(value) {
   return targetTypeOptions.find((item) => item.value === value)?.label || value || '-'
 }
 
+function labelPrivilegeMode(value) {
+  if (value === 'NONE') return '不提权'
+  if (value === 'SU') return 'su 切换'
+  return 'sudo 执行'
+}
+
 function getToolLabel(value) {
   return toolList.value.find((item) => item.toolCode === value)?.toolName || value || '-'
 }
@@ -3059,7 +3229,7 @@ function getToolCategory(toolCode) {
   if (toolCode === 'KAFKA_LAG') return '消息队列'
   if (['HTTP_COUNT', TOOL_HTTP_HEALTH].includes(toolCode)) return 'HTTP接口'
   if (toolCode === 'FTP_FILE_COUNT') return '文件目录'
-  if (['SERVER_FILE_COUNT', 'SERVER_DISK', 'BIG_DATA_SERVER_DISK'].includes(toolCode)) return '服务器'
+  if (['SERVER_FILE_COUNT', 'SERVER_DISK', 'BIG_DATA_SERVER_DISK', TOOL_SERVER_SERVICE_STATUS].includes(toolCode)) return '服务器'
   if (toolCode === TOOL_TCP_PORT_CHECK) return '网络端口'
   return '自定义'
 }
@@ -3072,7 +3242,7 @@ function getToolTagType(toolCode) {
   if (toolCode === 'KAFKA_LAG') return 'warning'
   if (['HTTP_COUNT', TOOL_HTTP_HEALTH].includes(toolCode)) return 'success'
   if (toolCode === 'FTP_FILE_COUNT') return 'info'
-  if (['SERVER_FILE_COUNT', 'SERVER_DISK', 'BIG_DATA_SERVER_DISK'].includes(toolCode)) return 'primary'
+  if (['SERVER_FILE_COUNT', 'SERVER_DISK', 'BIG_DATA_SERVER_DISK', TOOL_SERVER_SERVICE_STATUS].includes(toolCode)) return 'primary'
   if (toolCode === TOOL_TCP_PORT_CHECK) return 'danger'
   return ''
 }
@@ -3131,6 +3301,11 @@ function formatStepCallTarget(step) {
     const targets = step.stepParams?.serverTargets || step.targets || []
     return targets.length ? targets.map((target, index) => `${target.targetName || `服务器${index + 1}`}（${target.host || '-'}:${target.port || BIG_DATA_DEFAULT_SSH_PORT}）`).join('；') : '-'
   }
+  if (step?.toolCode === TOOL_SERVER_SERVICE_STATUS) {
+    const target = step?.target || {}
+    const params = step.stepParams || parseCronConfig(target.extraParams) || {}
+    return `${target.targetName || '服务器'}（${target.host || target.serverAddress || target.serverId || '-'}:${target.port || SERVER_FILE_DEFAULT_SSH_PORT} ${params.serviceName || target.path || '-'}）`
+  }
   return formatTargetAddress(step?.target || {})
 }
 
@@ -3170,6 +3345,14 @@ function getStepDetailItems(step) {
   } else if (target.targetType === 'SERVER') {
     if (step.toolCode === TOOL_TCP_PORT_CHECK) {
       items.push({ label: '主机IP', value: target.host || target.serverAddress || '-' }, { label: '服务端口', value: target.port || '-' })
+    } else if (step.toolCode === TOOL_SERVER_SERVICE_STATUS) {
+      const params = step.stepParams || parseCronConfig(target.extraParams) || {}
+      items.push(
+        { label: '服务名称', value: params.serviceName || target.path || '-' },
+        { label: '提权方式', value: labelPrivilegeMode(params.privilegeMode) },
+        { label: '自动拉起', value: params.autoRestart === 'true' ? `开启，等待 ${params.restartWaitSeconds || 5} 秒复查` : '关闭' },
+        { label: 'SSH账号', value: target.username || '-' }
+      )
     } else {
       items.push({ label: '检测路径', value: target.path || '-' }, { label: 'SSH账号', value: target.username || '-' })
     }

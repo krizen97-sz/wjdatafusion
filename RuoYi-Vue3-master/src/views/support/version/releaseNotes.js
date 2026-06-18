@@ -1,5 +1,24 @@
 export const releaseNotes = [
   {
+    version: 'v3.6.4',
+    submitTime: '2026-06-18 10:00:50',
+    level: 'minor',
+    levelLabel: '功能版本',
+    tagType: 'warning',
+    title: '自动化巡检新增服务器服务状态检测',
+    summary: '新增服务器服务状态巡检工具，可通过 SSH 执行 systemctl 检查指定服务状态，并支持异常时自动拉起后复查。',
+    changes: [
+      '巡检工具箱新增“服务器服务状态检测”，归类到服务器资源检测。',
+      '配置项支持服务器资产选择、服务名称、巡检 SSH 账号密码、sudo/su 提权方式、提权密码、异常自动重启和复查等待时间。',
+      '后端执行 systemctl is-active/status 获取服务状态，active 映射为 1，异常状态映射为 0，默认低于 1 告警。',
+      '开启自动拉起后，服务异常时执行 systemctl restart，并在配置的等待时间后再次检查状态。',
+      'sudo/su 提权密码使用现有密文字段保存，不新增业务表字段。'
+    ],
+    scope: ['自动化巡检', '巡检工具', '服务器服务状态', 'SSH提权', '自动拉起', '版本记录'],
+    database: '不修改表结构；新增内置工具种子数据 SERVER_SERVICE_STATUS。',
+    scripts: ['WDF100.0/sql/support_upgrade_20260618_auto_inspection_service_status_v3_6_4.sql']
+  },
+  {
     version: 'v3.6.3',
     submitTime: '2026-06-18 09:39:33',
     level: 'patch',

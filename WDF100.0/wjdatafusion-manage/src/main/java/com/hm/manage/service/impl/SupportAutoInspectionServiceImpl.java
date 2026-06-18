@@ -1,6 +1,7 @@
 package com.hm.manage.service.impl;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -115,7 +116,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final String TOOL_SERVER_DISK = "SERVER_DISK";
     private static final String TOOL_BIG_DATA_SERVER_DISK = "BIG_DATA_SERVER_DISK";
     private static final String TOOL_TCP_PORT_CHECK = "TCP_PORT_CHECK";
+    private static final String TOOL_SERVER_SERVICE_STATUS = "SERVER_SERVICE_STATUS";
     private static final String TARGET_BIG_DATA_SERVER = "BIG_DATA_SERVER";
+    private static final String PRIVILEGE_NONE = "NONE";
+    private static final String PRIVILEGE_SUDO = "SUDO";
+    private static final String PRIVILEGE_SU = "SU";
     private static final String SERVER_LOGIN_HIK = "hik";
     private static final String SERVER_LOGIN_ROOT = "root";
     private static final int BIG_DATA_DEFAULT_SSH_PORT = 2343;
@@ -1225,6 +1230,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 case TOOL_TCP_PORT_CHECK:
                     result = checkTcpPort(step, target);
                     break;
+                case TOOL_SERVER_SERVICE_STATUS:
+                    result = checkServerServiceStatus(step, target);
+                    break;
                 default:
                     throw new ServiceException("不支持的巡检工具类型：" + str(tool, "toolType"));
             }
@@ -1492,6 +1500,64 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return TargetCheckResult.normal(target, latency, "ms",
                 "调用方式：TCP端口连通性检测；目标：" + host + ":" + port
                         + "；响应耗时：" + formatDecimal(latency) + "ms");
+    }
+
+    private TargetCheckResult checkServerServiceStatus(Map<String, Object> step, Map<String, Object> target) throws Exception
+    {
+        SupportServer server = resolveOptionalServer(target);
+        String serviceName = normalizeSystemdServiceName(resolveServiceName(step, target));
+        Map<String, Object> params = readServiceParams(step, target);
+        int timeout = resolveTimeout(step);
+        boolean autoRestart = "true".equalsIgnoreCase(str(params, "autoRestart"));
+        int restartWaitSeconds = Math.min(Math.max(toInt(params.get("restartWaitSeconds"), 5), 1), 60);
+        String checkCommand = buildSystemctlCommand("is-active", serviceName)
+                + " ; " + buildSystemctlCommand("status", serviceName) + " --no-pager -l | sed -n '1,30p'";
+
+        SshCommandResult initial = executePrivilegedServerCommand(server, target, params, checkCommand, timeout);
+        String initialOutput = initial.combinedOutput();
+        String initialState = parseSystemctlActiveState(initialOutput);
+        String finalState = initialState;
+        boolean active = "active".equals(initialState);
+        StringBuilder detail = new StringBuilder("调用方式：SSH服务状态检测；服务器：")
+                .append(formatServerTargetName(server, target))
+                .append("；服务：").append(serviceName)
+                .append("；初次状态：").append(initialState);
+
+        if (!active && autoRestart)
+        {
+            SshCommandResult restart = executePrivilegedServerCommand(server, target, params,
+                    buildSystemctlCommand("restart", serviceName), timeout);
+            detail.append("；自动拉起：已执行 restart，退出码").append(restart.exitStatus);
+            if (StringUtils.isNotBlank(restart.combinedOutput()))
+            {
+                detail.append("，输出：").append(abbreviate(restart.combinedOutput()));
+            }
+            sleepSeconds(restartWaitSeconds);
+            SshCommandResult afterRestart = executePrivilegedServerCommand(server, target, params, checkCommand, timeout);
+            String afterOutput = afterRestart.combinedOutput();
+            String afterState = parseSystemctlActiveState(afterOutput);
+            finalState = afterState;
+            active = "active".equals(afterState);
+            detail.append("；等待").append(restartWaitSeconds).append("秒后复查状态：").append(afterState);
+            if (StringUtils.isNotBlank(afterOutput))
+            {
+                detail.append("；复查输出：").append(abbreviate(afterOutput));
+            }
+        }
+        else if (StringUtils.isNotBlank(initialOutput))
+        {
+            detail.append("；状态输出：").append(abbreviate(initialOutput));
+        }
+
+        BigDecimal value = active ? BigDecimal.ONE : BigDecimal.ZERO;
+        TargetCheckResult result = active
+                ? TargetCheckResult.normal(target, value, "状态", detail.toString())
+                : TargetCheckResult.abnormal(target, value, "状态", detail.toString());
+        if (!active)
+        {
+            result.errorMessage = "服务未处于 active 状态：" + finalState;
+        }
+        return result;
     }
 
     private HttpEndpoint resolveHikEndpoint(String requestUrl, String hostInput)
@@ -2108,6 +2174,13 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             Map<String, Object> tool = requireTool(TOOL_TCP_PORT_CHECK);
             return runSingleTarget(defaultStep(TOOL_TCP_PORT_CHECK, "ms"), tool, target, false);
         }
+        if (TOOL_SERVER_SERVICE_STATUS.equals(str(target, "toolCode")))
+        {
+            Map<String, Object> tool = requireTool(TOOL_SERVER_SERVICE_STATUS);
+            Map<String, Object> step = defaultStep(TOOL_SERVER_SERVICE_STATUS, "状态");
+            step.put("stepParams", target.get("extraParams"));
+            return runSingleTarget(step, tool, target, false);
+        }
         try
         {
             SupportServer server = resolveOptionalServer(target);
@@ -2305,7 +2378,19 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                     {
                         requireText(str(target, "password"), "SSH密码不能为空");
                     }
-                    requireText(str(target, "path"), "检测路径不能为空");
+                    if (TOOL_SERVER_SERVICE_STATUS.equals(toolCode))
+                    {
+                        requireText(str(target, "path"), "服务名称不能为空");
+                        Map<String, Object> options = readServiceParams(new HashMap<>(), target);
+                        if (PRIVILEGE_SU.equals(normalizePrivilegeMode(str(options, "privilegeMode"))) && !update)
+                        {
+                            requireText(str(target, "secret"), "su 提权密码不能为空");
+                        }
+                    }
+                    else
+                    {
+                        requireText(str(target, "path"), "检测路径不能为空");
+                    }
                 }
                 break;
             case TARGET_BIG_DATA_SERVER:
@@ -2621,6 +2706,20 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             target.put("path", params.get("path"));
         }
+        if (TOOL_SERVER_SERVICE_STATUS.equals(str(step, "toolCode")))
+        {
+            if (StringUtils.isBlank(str(target, "path")) && StringUtils.isNotBlank(str(params, "serviceName")))
+            {
+                target.put("path", params.get("serviceName"));
+            }
+            Map<String, Object> serviceParams = new LinkedHashMap<>();
+            serviceParams.put("serviceName", StringUtils.defaultIfBlank(str(params, "serviceName"), str(target, "path")));
+            serviceParams.put("privilegeMode", StringUtils.defaultIfBlank(str(params, "privilegeMode"), PRIVILEGE_SUDO));
+            serviceParams.put("privilegeUser", StringUtils.defaultIfBlank(str(params, "privilegeUser"), SERVER_LOGIN_ROOT));
+            serviceParams.put("autoRestart", StringUtils.defaultIfBlank(str(params, "autoRestart"), "false"));
+            serviceParams.put("restartWaitSeconds", toInt(params.get("restartWaitSeconds"), 5));
+            target.put("extraParams", JSON.toJSONString(serviceParams));
+        }
     }
 
     private String resolveTargetTypeByTool(String toolCode)
@@ -2641,7 +2740,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             return TARGET_BIG_DATA_SERVER;
         }
-        if (TOOL_SERVER_FILE_COUNT.equals(toolCode) || TOOL_SERVER_DISK.equals(toolCode) || TOOL_TCP_PORT_CHECK.equals(toolCode))
+        if (TOOL_SERVER_FILE_COUNT.equals(toolCode) || TOOL_SERVER_DISK.equals(toolCode)
+                || TOOL_TCP_PORT_CHECK.equals(toolCode) || TOOL_SERVER_SERVICE_STATUS.equals(toolCode))
         {
             return "SERVER";
         }
@@ -2794,6 +2894,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 "{\"fields\":[\"serverTargets\",\"includePseudo\"]}");
         insertBuiltinTool(TOOL_TCP_PORT_CHECK, "TCP端口连通性检测", TOOL_TCP_PORT_CHECK, "ms", RULE_MAX, new BigDecimal("1000"), 5, 0,
                 "{\"fields\":[\"host\",\"port\",\"timeoutSeconds\"]}");
+        insertBuiltinTool(TOOL_SERVER_SERVICE_STATUS, "服务器服务状态检测", TOOL_SERVER_SERVICE_STATUS, "状态", RULE_MIN, BigDecimal.ONE, 15, 0,
+                "{\"fields\":[\"serviceName\",\"privilegeMode\",\"autoRestart\",\"restartWaitSeconds\"]}");
     }
 
     private void insertBuiltinTool(String code, String name, String type, String unit, String rule,
@@ -2918,6 +3020,39 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return executeSshCommand(host, port, username, password, command, timeoutSeconds);
     }
 
+    private SshCommandResult executePrivilegedServerCommand(SupportServer server, Map<String, Object> target,
+                                                            Map<String, Object> params, String command, int timeoutSeconds) throws Exception
+    {
+        withPlainSecret(target);
+        String host = StringUtils.defaultIfBlank(str(target, "host"), server == null ? null : server.getServerAddress());
+        int fallbackPort = server == null ? SERVER_DEFAULT_SSH_PORT : (server.getSshPort() == null ? SERVER_DEFAULT_SSH_PORT : server.getSshPort());
+        int port = toInt(target.get("port"), fallbackPort);
+        String username = str(target, "username");
+        String password = str(target, "password");
+        requireText(host, "服务器IP不能为空");
+        requireText(username, "请在巡检配置中填写 SSH 登录账号和密码");
+        requireText(password, "请在巡检配置中填写 SSH 登录账号和密码");
+
+        String privilegeMode = normalizePrivilegeMode(str(params, "privilegeMode"));
+        String privilegeUser = StringUtils.defaultIfBlank(str(params, "privilegeUser"), SERVER_LOGIN_ROOT);
+        String configuredPrivilegePassword = str(target, "secret");
+        String privilegePassword = StringUtils.defaultIfBlank(configuredPrivilegePassword, password);
+        if (PRIVILEGE_NONE.equals(privilegeMode))
+        {
+            return executeSshCommandResult(host, port, username, password, command, timeoutSeconds, null, false);
+        }
+        if (PRIVILEGE_SU.equals(privilegeMode))
+        {
+            requireText(configuredPrivilegePassword, "su 提权需要填写 root 或目标用户密码");
+            String suCommand = "su - " + shellQuote(privilegeUser) + " -c " + shellQuote(command);
+            return executeSshCommandResult(host, port, username, password, suCommand, timeoutSeconds,
+                    configuredPrivilegePassword + "\n", true);
+        }
+        String sudoCommand = "sudo -S -p '' sh -c " + shellQuote(command);
+        return executeSshCommandResult(host, port, username, password, sudoCommand, timeoutSeconds,
+                privilegePassword + "\n", true);
+    }
+
     private String formatServerTargetName(SupportServer server, Map<String, Object> target)
     {
         if (server != null)
@@ -2929,15 +3064,32 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private String executeSshCommand(String host, int port, String username, String password, String command, int timeoutSeconds) throws Exception
     {
+        return executeSshCommandResult(host, port, username, password, command, timeoutSeconds, null, false).stdout;
+    }
+
+    private SshCommandResult executeSshCommandResult(String host, int port, String username, String password,
+                                                    String command, int timeoutSeconds, String input, boolean pty) throws Exception
+    {
         Session session = createSshSession(host, port, username, password, timeoutSeconds);
         ChannelExec channel = null;
         try
         {
             channel = (ChannelExec) session.openChannel("exec");
             channel.setCommand(command);
+            channel.setPty(pty);
             InputStream inputStream = channel.getInputStream();
+            ByteArrayOutputStream errorStream = new ByteArrayOutputStream();
+            channel.setErrStream(errorStream);
+            OutputStream outputStream = channel.getOutputStream();
             channel.connect(timeoutSeconds * 1000);
-            return readStream(inputStream);
+            if (StringUtils.isNotEmpty(input))
+            {
+                outputStream.write(input.getBytes(StandardCharsets.UTF_8));
+                outputStream.flush();
+            }
+            String output = readChannelOutput(channel, inputStream, errorStream, timeoutSeconds);
+            String error = new String(errorStream.toByteArray(), StandardCharsets.UTF_8);
+            return new SshCommandResult(output, error, channel.getExitStatus());
         }
         finally
         {
@@ -2947,6 +3099,31 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             }
             session.disconnect();
         }
+    }
+
+    private String readChannelOutput(ChannelExec channel, InputStream inputStream, ByteArrayOutputStream errorStream, int timeoutSeconds) throws Exception
+    {
+        StringBuilder builder = new StringBuilder();
+        byte[] buffer = new byte[2048];
+        long deadline = System.currentTimeMillis() + (long) Math.max(timeoutSeconds, 3) * 1000L + 1000L;
+        while (!channel.isClosed() || inputStream.available() > 0)
+        {
+            while (inputStream.available() > 0)
+            {
+                int read = inputStream.read(buffer);
+                if (read < 0)
+                {
+                    break;
+                }
+                builder.append(new String(buffer, 0, read, StandardCharsets.UTF_8));
+            }
+            if (System.currentTimeMillis() > deadline)
+            {
+                throw new ServiceException("SSH命令执行超时：" + abbreviate(builder + new String(errorStream.toByteArray(), StandardCharsets.UTF_8)));
+            }
+            Thread.sleep(50L);
+        }
+        return builder.toString();
     }
 
     private Session createSshSession(String host, int port, String username, String password, int timeoutSeconds) throws Exception
@@ -3199,6 +3376,98 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private String resolvePath(Map<String, Object> step, Map<String, Object> target)
     {
         return StringUtils.defaultIfBlank(str(readParams(step), "path"), str(target, "path"));
+    }
+
+    private String resolveServiceName(Map<String, Object> step, Map<String, Object> target)
+    {
+        Map<String, Object> params = readServiceParams(step, target);
+        return StringUtils.defaultIfBlank(str(params, "serviceName"), str(target, "path"));
+    }
+
+    private Map<String, Object> readServiceParams(Map<String, Object> step, Map<String, Object> target)
+    {
+        Map<String, Object> params = new HashMap<>();
+        String extraParams = str(target, "extraParams");
+        if (StringUtils.isNotBlank(extraParams))
+        {
+            try
+            {
+                params.putAll(JSON.parseObject(extraParams, Map.class));
+            }
+            catch (Exception ignored)
+            {
+                // Ignore malformed legacy extra params and fall back to step params.
+            }
+        }
+        params.putAll(readParams(step));
+        return params;
+    }
+
+    private String normalizeSystemdServiceName(String serviceName)
+    {
+        String value = StringUtils.trimToEmpty(serviceName);
+        requireText(value, "服务名称不能为空");
+        if (!value.matches("[A-Za-z0-9_.@:\\-]+"))
+        {
+            throw new ServiceException("服务名称只允许包含字母、数字、点、下划线、横线、冒号和@");
+        }
+        return value;
+    }
+
+    private String normalizePrivilegeMode(String value)
+    {
+        String mode = StringUtils.defaultIfBlank(value, PRIVILEGE_SUDO).toUpperCase();
+        if (PRIVILEGE_NONE.equals(mode) || PRIVILEGE_SUDO.equals(mode) || PRIVILEGE_SU.equals(mode))
+        {
+            return mode;
+        }
+        return PRIVILEGE_SUDO;
+    }
+
+    private String buildSystemctlCommand(String action, String serviceName)
+    {
+        return "systemctl " + action + " " + shellQuote(serviceName);
+    }
+
+    private String parseSystemctlActiveState(String output)
+    {
+        if (StringUtils.isBlank(output))
+        {
+            return "unknown";
+        }
+        String[] lines = output.split("\\R");
+        for (String line : lines)
+        {
+            String state = StringUtils.trimToEmpty(line).toLowerCase();
+            if ("active".equals(state) || "inactive".equals(state) || "failed".equals(state)
+                    || "activating".equals(state) || "deactivating".equals(state)
+                    || "reloading".equals(state) || "unknown".equals(state))
+            {
+                return state;
+            }
+        }
+        String lower = output.toLowerCase();
+        for (String candidate : new String[] { "active", "inactive", "failed", "activating", "deactivating", "reloading" })
+        {
+            if (lower.contains("active: " + candidate))
+            {
+                return candidate;
+            }
+        }
+        return "unknown";
+    }
+
+    private void sleepSeconds(int seconds)
+    {
+        try
+        {
+            Thread.sleep(Math.max(seconds, 1) * 1000L);
+        }
+        catch (InterruptedException e)
+        {
+            Thread.currentThread().interrupt();
+            throw new ServiceException("等待服务复查时被中断");
+        }
     }
 
     private Map<String, Object> readParams(Map<String, Object> step)
@@ -3622,6 +3891,33 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         public OutputStream getOutputStream(Socket socket) throws IOException
         {
             return socket.getOutputStream();
+        }
+    }
+
+    private static class SshCommandResult
+    {
+        private final String stdout;
+        private final String stderr;
+        private final int exitStatus;
+
+        private SshCommandResult(String stdout, String stderr, int exitStatus)
+        {
+            this.stdout = StringUtils.defaultString(stdout);
+            this.stderr = StringUtils.defaultString(stderr);
+            this.exitStatus = exitStatus;
+        }
+
+        private String combinedOutput()
+        {
+            if (StringUtils.isBlank(stderr))
+            {
+                return stdout.trim();
+            }
+            if (StringUtils.isBlank(stdout))
+            {
+                return stderr.trim();
+            }
+            return (stdout + "\n" + stderr).trim();
         }
     }
 

@@ -1182,6 +1182,9 @@ WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'BIG_
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
 SELECT 'TCP_PORT_CHECK', 'TCP端口连通性检测', 'TCP_PORT_CHECK', 'ms', 'MAX', 1000, 5, 0, '{"fields":["host","port","timeoutSeconds"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
 WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'TCP_PORT_CHECK');
+INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
+SELECT 'SERVER_SERVICE_STATUS', '服务器服务状态检测', 'SERVER_SERVICE_STATUS', '状态', 'MIN', 1, 15, 0, '{"fields":["serviceName","privilegeMode","autoRestart","restartWaitSeconds"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
+WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'SERVER_SERVICE_STATUS');
 
 UPDATE sys_menu SET visible = '1', update_time = NOW(), remark = '已由自动化巡检模块替代，保留旧数据入口隐藏'
 WHERE menu_id = 2206;
