@@ -532,9 +532,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     {
         LocalDate today = LocalDate.now();
         LocalDate monthBegin = today.withDayOfMonth(1);
+        LocalDate weekBegin = today.with(DayOfWeek.MONDAY);
         LocalDate trendBegin = today.minusDays(6);
+        LocalDate queryBegin = Collections.min(List.of(monthBegin, weekBegin, trendBegin));
         Map<String, Object> query = new HashMap<>();
-        query.put("beginTime", toDate(monthBegin.atStartOfDay()));
+        query.put("beginTime", toDate(queryBegin.atStartOfDay()));
         query.put("endTime", toDate(today.plusDays(1).atStartOfDay()));
         List<Map<String, Object>> records = autoInspectionMapper.selectRecordList(query);
         List<Long> todayRecordIds = records.stream()
@@ -547,6 +549,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
         Map<String, Object> dashboard = new LinkedHashMap<>();
         dashboard.put("summary", buildDashboardSummary(today, records, steps, targets));
+        dashboard.put("weekSummary", buildDashboardWeekSummary(weekBegin, today, records));
         dashboard.put("trend", buildDashboardTrend(trendBegin, today, records));
         dashboard.put("calendar", buildDashboardCalendar(today, records));
         dashboard.put("toolStats", buildDashboardToolStats(today, records, steps, targets));
@@ -591,6 +594,43 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         summary.put("abnormalTargetCount", abnormalTargetCount);
         summary.put("successRate", formatPercent(normalCount, todayRecords.size()));
         summary.put("status", todayRecords.isEmpty() ? RESULT_SKIP : (abnormalCount > 0 || abnormalTargetCount > 0 ? RESULT_ABNORMAL : RESULT_NORMAL));
+        summary.put("latestInspectionTime", latest == null ? "" : latest.get("inspectionTime"));
+        summary.put("latestRecord", latest);
+        return summary;
+    }
+
+    private Map<String, Object> buildDashboardWeekSummary(LocalDate begin, LocalDate end, List<Map<String, Object>> records)
+    {
+        List<Map<String, Object>> weekRecords = records.stream()
+                .filter(record -> {
+                    LocalDate day = toLocalDate(record.get("inspectionTime"));
+                    return day != null && !day.isBefore(begin) && !day.isAfter(end);
+                })
+                .collect(Collectors.toList());
+        long normalCount = weekRecords.stream().filter(row -> RESULT_NORMAL.equals(str(row, "resultStatus"))).count();
+        long abnormalCount = weekRecords.stream().filter(row -> RESULT_ABNORMAL.equals(str(row, "resultStatus"))).count();
+        long skippedCount = weekRecords.stream().filter(row -> RESULT_SKIP.equals(str(row, "resultStatus"))).count();
+        long abnormalTargetCount = weekRecords.stream()
+                .mapToLong(row -> toLongValue(row.get("abnormalCount")))
+                .sum();
+        long activeDays = weekRecords.stream()
+                .map(row -> toLocalDate(row.get("inspectionTime")))
+                .filter(day -> day != null)
+                .distinct()
+                .count();
+        Map<String, Object> latest = weekRecords.isEmpty() ? null : dashboardRecordRow(weekRecords.get(0));
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("beginDate", begin.toString());
+        summary.put("endDate", end.toString());
+        summary.put("recordCount", weekRecords.size());
+        summary.put("normalCount", normalCount);
+        summary.put("abnormalCount", abnormalCount);
+        summary.put("skippedCount", skippedCount);
+        summary.put("abnormalTargetCount", abnormalTargetCount);
+        summary.put("activeDays", activeDays);
+        summary.put("successRate", formatPercent(normalCount, weekRecords.size()));
+        summary.put("status", weekRecords.isEmpty() ? RESULT_SKIP : (abnormalCount > 0 || abnormalTargetCount > 0 ? RESULT_ABNORMAL : RESULT_NORMAL));
         summary.put("latestInspectionTime", latest == null ? "" : latest.get("inspectionTime"));
         summary.put("latestRecord", latest);
         return summary;

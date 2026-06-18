@@ -1,19 +1,5 @@
 <template>
   <div class="app-container auto-page">
-    <section class="auto-hero">
-      <div>
-        <span class="auto-hero__eyebrow">自动化巡检</span>
-        <h2>可编排的巡检工作台</h2>
-        <p>把 Kafka、海康接口、FTP、服务器目录和磁盘检测抽象为基础工具，再组合成模板、计划和报告。</p>
-      </div>
-      <div class="auto-hero__stats">
-        <span><strong>{{ templateTotal }}</strong><em>模板</em></span>
-        <span><strong>{{ toolList.length }}</strong><em>工具</em></span>
-        <span><strong>{{ planTotal }}</strong><em>计划</em></span>
-        <span><strong>{{ latestRecordLabel }}</strong><em>最近结果</em></span>
-      </div>
-    </section>
-
     <section v-show="activeTab === 'dashboard'" class="auto-content-section">
         <section class="record-board record-board--primary">
           <header class="record-board__head">
@@ -23,42 +9,23 @@
             </div>
             <el-button icon="Refresh" @click="getRecordList">刷新记录</el-button>
           </header>
-          <section class="dashboard-brief" :class="`dashboard-brief--${dashboardSummary.status || '3'}`">
+          <section class="dashboard-brief" :class="`dashboard-brief--${dashboardWeekSummary.status || '3'}`">
             <div class="dashboard-brief__status">
-              <span class="status-dot" :class="`status-dot--${dashboardSummary.status || '3'}`"></span>
+              <span class="status-dot" :class="`status-dot--${dashboardWeekSummary.status || '3'}`"></span>
               <div>
-                <strong>{{ formatResult(dashboardSummary.status) }}</strong>
-                <em>今日巡检 {{ dashboardSummary.recordCount || 0 }} 次 · 异常 {{ dashboardSummary.abnormalCount || 0 }} 条 · 正常率 {{ dashboardSummary.successRate || '0%' }}</em>
+                <strong>本周巡检情况</strong>
+                <em>巡检 {{ dashboardWeekSummary.recordCount || 0 }} 次 · 正常 {{ dashboardWeekSummary.normalCount || 0 }} 次 · 异常 {{ dashboardWeekSummary.abnormalCount || 0 }} 次 · 正常率 {{ dashboardWeekSummary.successRate || '0%' }}</em>
               </div>
             </div>
             <div class="dashboard-brief__metrics">
-              <span><strong>{{ dashboardSummary.abnormalTargetCount || 0 }}</strong><em>异常子项</em></span>
-              <span><strong>{{ dashboardToolStats.length || 0 }}</strong><em>工具结果</em></span>
-              <span><strong>{{ latestRecordLabel }}</strong><em>最近结果</em></span>
+              <span><strong>{{ dashboardWeekSummary.recordCount || 0 }}</strong><em>本周巡检</em></span>
+              <span><strong>{{ dashboardWeekSummary.abnormalTargetCount || 0 }}</strong><em>异常子项</em></span>
+              <span><strong>{{ dashboardWeekSummary.activeDays || 0 }}</strong><em>巡检天数</em></span>
             </div>
             <div class="dashboard-brief__actions">
-              <el-button icon="Refresh" :loading="dashboardLoading" @click="getDashboard">刷新</el-button>
               <el-button type="primary" plain icon="DataAnalysis" @click="openDashboardDrawer">展开看板</el-button>
             </div>
           </section>
-          <div class="record-insight-strip">
-            <span>
-              <strong>{{ recordPageSummary.total }}</strong>
-              <em>当前页记录</em>
-            </span>
-            <span>
-              <strong>{{ recordPageSummary.normal }}</strong>
-              <em>正常</em>
-            </span>
-            <span>
-              <strong>{{ recordPageSummary.abnormal }}</strong>
-              <em>异常</em>
-            </span>
-            <span>
-              <strong>{{ recordPageSummary.latestTime }}</strong>
-              <em>最近巡检</em>
-            </span>
-          </div>
           <el-form :model="recordQuery" :inline="true" class="auto-query-bar">
             <el-form-item label="模板">
               <el-input v-model="recordQuery.templateName" clearable placeholder="模板名称" @keyup.enter="getRecordList" />
@@ -1541,6 +1508,7 @@ const stepTargetSectionHint = computed(() => {
   return '服务器目录或磁盘检测复用服务器资产，并配置检测路径。'
 })
 const dashboardSummary = computed(() => dashboardData.value?.summary || {})
+const dashboardWeekSummary = computed(() => dashboardData.value?.weekSummary || {})
 const dashboardTrend = computed(() => dashboardData.value?.trend || [])
 const dashboardCalendar = computed(() => dashboardData.value?.calendar || {})
 const dashboardCalendarDays = computed(() => dashboardCalendar.value?.days || [])
@@ -1571,25 +1539,6 @@ const dashboardAbnormalStepData = computed(() => {
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 8)
-})
-const dashboardStatusText = computed(() => {
-  const summary = dashboardSummary.value
-  if (!summary.recordCount) return '今天还没有巡检记录，建议先执行一次模板或检查计划是否启用。'
-  if (summary.status === '2') return `今日发现 ${summary.abnormalCount || 0} 条异常记录、${summary.abnormalTargetCount || 0} 个异常子项，需要优先处理。`
-  return '今日巡检结果正常，平台运行状态稳定。'
-})
-const latestRecordLabel = computed(() => {
-  const row = recordList.value?.[0]
-  return row ? formatResult(row.resultStatus) : '暂无'
-})
-const recordPageSummary = computed(() => {
-  const rows = recordList.value || []
-  return {
-    total: rows.length,
-    normal: rows.filter((row) => row.resultStatus === '1').length,
-    abnormal: rows.filter((row) => row.resultStatus === '2').length,
-    latestTime: rows[0]?.inspectionTime || '-'
-  }
 })
 const detailTargetStats = computed(() => {
   const rows = detail.value?.targetResults || []
@@ -3580,7 +3529,7 @@ function defaultPlanForm() {
 }
 
 function defaultDashboardData() {
-  return { summary: {}, trend: [], calendar: {}, toolStats: [], latestAbnormalTargets: [], recentRecords: [], generatedTime: '' }
+  return { summary: {}, weekSummary: {}, trend: [], calendar: {}, toolStats: [], latestAbnormalTargets: [], recentRecords: [], generatedTime: '' }
 }
 
 function parseCronConfig(value) {
