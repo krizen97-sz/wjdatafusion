@@ -2274,6 +2274,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             return "共" + results.size() + "个目标，异常" + abnormal + "个：" + StringUtils.join(details, "；");
         }
+        if (TOOL_SERVER_SERVICE_STATUS.equals(str(step, "toolCode")))
+        {
+            return "共" + results.size() + "个目标，服务均处于 active (running)，状态正常";
+        }
         BigDecimal actual = resolveStepActualValue(step, results);
         return "共" + results.size() + "个目标，检测正常，代表值" + formatDecimal(actual) + StringUtils.defaultString(str(step, "thresholdUnit"));
     }
@@ -3638,17 +3642,39 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             return "-";
         }
+        if (isServiceStatusResult(row))
+        {
+            if ("1".equals(value))
+            {
+                return "active (running)";
+            }
+            if ("0".equals(value))
+            {
+                return "非 active，查看调用信息";
+            }
+        }
         return value + StringUtils.defaultString(str(row, "actualUnit"));
     }
 
     private String formatThreshold(Map<String, Object> row)
     {
+        if (isServiceStatusResult(row))
+        {
+            return "期望 active (running)，非 active 告警";
+        }
         String threshold = str(row, "thresholdValue");
         if (StringUtils.isBlank(threshold))
         {
             return "-";
         }
         return labelCompareRule(str(row, "compareRule")) + " " + threshold + StringUtils.defaultString(str(row, "thresholdUnit"));
+    }
+
+    private boolean isServiceStatusResult(Map<String, Object> row)
+    {
+        return TOOL_SERVER_SERVICE_STATUS.equals(str(row, "toolCode"))
+                || TOOL_SERVER_SERVICE_STATUS.equals(str(row, "toolType"))
+                || "状态".equals(str(row, "actualUnit"));
     }
 
     private String labelCompareRule(String compareRule)

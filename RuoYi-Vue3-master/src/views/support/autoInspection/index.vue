@@ -466,7 +466,7 @@
           </div>
           <div class="step-summary-grid">
             <span><label>目标</label><strong>{{ formatStepTarget(activeStep) }}</strong></span>
-            <span><label>阈值</label><strong>{{ activeStep.compareRule === 'MIN' ? '不低于' : '不高于' }} {{ activeStep.thresholdValue ?? '-' }}{{ activeStep.thresholdUnit || '' }}</strong></span>
+            <span><label>判定规则</label><strong>{{ formatStepThreshold(activeStep) }}</strong></span>
             <span><label>窗口/超时</label><strong>{{ activeStep.timeWindowMinutes || 0 }} 分钟 / {{ activeStep.timeoutSeconds || 10 }} 秒</strong></span>
             <span><label>状态</label><strong>{{ activeStep.enabledFlag === 'Y' ? '启用' : '停用' }}</strong></span>
           </div>
@@ -513,22 +513,34 @@
         <section class="target-section">
           <header>
             <strong>判定规则</strong>
-            <span>定义本步骤什么情况下算异常，阈值、窗口和超时时间集中在这里维护。</span>
+            <span>{{ isServiceStatusStep ? '服务状态检测按 systemctl 返回的运行状态判定，不需要用户理解数值阈值。' : '定义本步骤什么情况下算异常，阈值、窗口和超时时间集中在这里维护。' }}</span>
           </header>
+          <div v-if="isServiceStatusStep" class="service-rule-card">
+            <span>
+              <label>正常条件</label>
+              <strong>服务处于 active (running)</strong>
+              <em>系统执行 systemctl is-active/status，并把 active 视为正常。</em>
+            </span>
+            <span>
+              <label>异常条件</label>
+              <strong>inactive / failed / dead / unknown</strong>
+              <em>服务不是 active 时判定异常；开启自动拉起后会 restart 并复查。</em>
+            </span>
+          </div>
           <div class="step-rule-grid">
-            <el-form-item label="比较规则">
+            <el-form-item v-if="!isServiceStatusStep" label="比较规则">
               <el-select v-model="stepDraft.compareRule" style="width: 100%">
                 <el-option label="实际值不得低于阈值" value="MIN" />
                 <el-option label="实际值不得高于阈值" value="MAX" />
               </el-select>
             </el-form-item>
-            <el-form-item label="告警阈值">
+            <el-form-item v-if="!isServiceStatusStep" label="告警阈值">
               <el-input-number v-model="stepDraft.thresholdValue" :min="0" controls-position="right" style="width: 100%" />
             </el-form-item>
-            <el-form-item label="阈值单位">
+            <el-form-item v-if="!isServiceStatusStep" label="阈值单位">
               <el-input v-model="stepDraft.thresholdUnit" placeholder="条 / 个 / %" />
             </el-form-item>
-            <el-form-item label="统计窗口">
+            <el-form-item v-if="!isServiceStatusStep" label="统计窗口">
               <el-input-number v-model="stepDraft.timeWindowMinutes" :min="0" controls-position="right" style="width: 100%" />
               <small>分钟，0 表示按当前目标实时取值。</small>
             </el-form-item>
@@ -995,10 +1007,12 @@
           <el-table-column label="实际值" width="120" align="center">
             <template #default="scope">{{ formatActualValue(scope.row) }}</template>
           </el-table-column>
-          <el-table-column label="阈值" width="140" align="center">
-            <template #default="scope">{{ scope.row.compareRule === 'MIN' ? '不低于' : '不高于' }} {{ scope.row.thresholdValue ?? '-' }}{{ scope.row.thresholdUnit || '' }}</template>
+          <el-table-column label="判定规则" width="210" align="center">
+            <template #default="scope">{{ formatStepThreshold(scope.row) }}</template>
           </el-table-column>
-          <el-table-column label="摘要" prop="resultSummary" min-width="280" show-overflow-tooltip />
+          <el-table-column label="摘要" min-width="280" show-overflow-tooltip>
+            <template #default="scope">{{ formatStepResultSummary(scope.row) }}</template>
+          </el-table-column>
         </el-table>
       </section>
       <section class="detail-section target-detail-section">
@@ -3074,8 +3088,8 @@ function handleExportRecord(rangeType, extraParams = {}) {
 function exportWord(row) {
   getAutoInspectionRecord(row.recordId).then((res) => {
     const data = res.data || {}
-    const steps = (data.steps || []).map((item) => `<tr><td>${escapeHtml(item.stepName)}</td><td>${escapeHtml(item.toolName)}</td><td>${formatResult(item.resultStatus)}</td><td>${escapeHtml(item.actualValue ?? '-')}${escapeHtml(item.actualUnit || '')}</td><td>${escapeHtml(item.resultSummary || '')}</td></tr>`).join('')
-    const targets = (data.targetResults || []).map((item) => `<tr><td>${escapeHtml(item.stepName)}</td><td>${escapeHtml(item.targetName)}</td><td>${escapeHtml(getTargetTypeLabel(item.targetType))}</td><td>${formatResult(item.resultStatus)}</td><td>${escapeHtml(item.actualValue ?? '-')}${escapeHtml(item.actualUnit || '')}</td><td>${escapeHtml(item.resultDetail || '')}</td><td>${escapeHtml(item.errorMessage || '')}</td></tr>`).join('')
+    const steps = (data.steps || []).map((item) => `<tr><td>${escapeHtml(item.stepName)}</td><td>${escapeHtml(item.toolName)}</td><td>${formatResult(item.resultStatus)}</td><td>${escapeHtml(formatActualValue(item))}</td><td>${escapeHtml(formatStepResultSummary(item))}</td></tr>`).join('')
+    const targets = (data.targetResults || []).map((item) => `<tr><td>${escapeHtml(item.stepName)}</td><td>${escapeHtml(item.targetName)}</td><td>${escapeHtml(getTargetTypeLabel(item.targetType))}</td><td>${formatResult(item.resultStatus)}</td><td>${escapeHtml(formatActualValue(item))}</td><td>${escapeHtml(item.resultDetail || '')}</td><td>${escapeHtml(item.errorMessage || '')}</td></tr>`).join('')
     const html = `<html><head><meta charset="utf-8"><style>body{font-family:Microsoft YaHei;color:#1f3554}table{border-collapse:collapse;width:100%;margin-top:12px}td,th{border:1px solid #d8e3f3;padding:8px;text-align:left}h2,h3{margin:12px 0}</style></head><body><h2>自动化巡检报告</h2><p>巡检时间：${escapeHtml(data.inspectionTime || '')}</p><p>模板：${escapeHtml(data.templateName || '')}</p><p>计划：${escapeHtml(data.planName || '-')}</p><p>结果：${formatResult(data.resultStatus)}</p><p>摘要：${escapeHtml(data.summary || '')}</p><p>异常摘要：${escapeHtml(data.abnormalSummary || '')}</p><h3>步骤结果</h3><table><tr><th>步骤</th><th>工具</th><th>结果</th><th>实际值</th><th>摘要</th></tr>${steps}</table><h3>目标明细</h3><table><tr><th>步骤</th><th>目标</th><th>类型</th><th>结果</th><th>实际值</th><th>调用信息</th><th>异常原因</th></tr>${targets}</table></body></html>`
     saveAs(new Blob([html], { type: 'application/msword;charset=utf-8' }), `自动化巡检_${row.recordId}.doc`)
   })
@@ -3390,9 +3404,53 @@ function getTargetResultGroupKey(target) {
   return ''
 }
 
+function isServiceStatusResult(row) {
+  if (!row) return false
+  return row.toolCode === TOOL_SERVER_SERVICE_STATUS || row.toolType === TOOL_SERVER_SERVICE_STATUS || row.actualUnit === '状态'
+}
+
+function formatStepThreshold(row) {
+  if (isServiceStatusResult(row)) return '期望 active (running)，非 active 告警'
+  if (!row) return '-'
+  if (row.thresholdValue === undefined || row.thresholdValue === null || row.thresholdValue === '') return '-'
+  return `${row.compareRule === 'MIN' ? '不低于' : '不高于'} ${row.thresholdValue}${row.thresholdUnit || ''}`
+}
+
+function extractServiceStatusText(row) {
+  if (!row) return '-'
+  const text = [row.resultDetail, row.resultSummary, row.errorMessage].filter(Boolean).join(' ')
+  const activeLine = text.match(/Active:\s*([a-zA-Z]+(?:\s+\([^)]+\))?)/)
+  if (activeLine?.[1]) return activeLine[1]
+  const recheck = text.match(/复查状态[:：]\s*([^；,，\\n]+)/)
+  if (recheck?.[1]) return normalizeServiceStatusLabel(recheck[1])
+  const initial = text.match(/初次状态[:：]\s*([^；,，\\n]+)/)
+  if (initial?.[1]) return normalizeServiceStatusLabel(initial[1])
+  if (String(row.actualValue) === '1') return 'active (running)'
+  if (String(row.actualValue) === '0') return '非 active（查看调用信息）'
+  return '-'
+}
+
+function normalizeServiceStatusLabel(value) {
+  const state = String(value || '').trim()
+  if (!state) return '-'
+  if (state === 'active') return 'active (running)'
+  return state
+}
+
 function formatActualValue(row) {
+  if (isServiceStatusResult(row)) return extractServiceStatusText(row)
   if (!row || row.actualValue === undefined || row.actualValue === null || row.actualValue === '') return '-'
   return `${row.actualValue}${row.actualUnit || ''}`
+}
+
+function formatStepResultSummary(row) {
+  if (!isServiceStatusResult(row)) return row?.resultSummary || '-'
+  if (row?.resultStatus === '1') return '服务处于 active (running)，状态正常'
+  if (row?.resultStatus === '2') {
+    const state = extractServiceStatusText(row)
+    return `服务状态异常：${state}`
+  }
+  return row?.resultSummary || '未检测'
 }
 
 function formatTargetResultDetail(row) {
@@ -4475,6 +4533,42 @@ function resultTagType(value) {
   small {
     color: #7b8fa8;
     line-height: 1.4;
+  }
+}
+
+.service-rule-card {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+
+  span {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    padding: 12px 14px;
+    border: 1px solid #d8e8ff;
+    border-radius: 8px;
+    background: #f7fbff;
+  }
+
+  label {
+    margin: 0;
+    color: #5b7390;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  strong {
+    color: #1d3554;
+    font-size: 15px;
+  }
+
+  em {
+    color: #6d839c;
+    font-size: 12px;
+    font-style: normal;
+    line-height: 1.45;
   }
 }
 

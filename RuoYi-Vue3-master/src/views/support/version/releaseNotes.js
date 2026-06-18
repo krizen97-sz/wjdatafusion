@@ -1,5 +1,23 @@
 export const releaseNotes = [
   {
+    version: 'v3.6.6',
+    submitTime: '2026-06-18 15:26:18',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '服务器服务状态检测展示语义优化',
+    summary: '优化服务器服务状态检测在模板步骤、巡检详情和导出报告中的判定规则与实际值展示，避免用户看到难理解的数值阈值。',
+    changes: [
+      '服务状态检测步骤不再展示“阈值 1”这类底层判定值，改为展示“期望 active (running)，非 active 告警”。',
+      '步骤配置页增加服务状态专用说明，明确正常条件、异常条件和自动拉起复查逻辑。',
+      '巡检详情和导出报告中的实际值优先展示 active (running)、inactive/dead 等服务状态语义。',
+      '后端新生成的服务状态步骤摘要改为业务语言，避免出现“代表值1状态”。'
+    ],
+    scope: ['自动化巡检', '服务器服务状态', '巡检模板', '巡检详情', '导出报告', '版本记录'],
+    database: '无数据库结构变化，无需执行 SQL。',
+    scripts: []
+  },
+  {
     version: 'v3.6.5',
     submitTime: '2026-06-18 10:18:42',
     level: 'patch',
