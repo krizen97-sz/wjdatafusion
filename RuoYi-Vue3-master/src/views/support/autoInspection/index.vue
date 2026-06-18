@@ -14,8 +14,7 @@
       </div>
     </section>
 
-    <el-tabs v-model="activeTab" class="auto-tabs" @tab-change="handleTabChange">
-      <el-tab-pane label="巡检看板" name="dashboard">
+    <section v-show="activeTab === 'dashboard'" class="auto-content-section">
         <div v-loading="dashboardLoading" class="dashboard-shell">
           <section class="dashboard-status" :class="`dashboard-status--${dashboardSummary.status || '3'}`">
             <div>
@@ -115,9 +114,9 @@
             </article>
           </section>
         </div>
-      </el-tab-pane>
+    </section>
 
-      <el-tab-pane label="巡检配置" name="config">
+    <section v-show="activeTab === 'config'" class="auto-content-section">
         <div class="config-shell">
           <div class="config-guide">
             <button :class="{ active: configTab === 'template' }" @click="switchConfigTab('template')">
@@ -230,9 +229,9 @@
         <pagination v-show="planTotal > 0" :total="planTotal" v-model:page="planQuery.pageNum" v-model:limit="planQuery.pageSize" @pagination="getPlanList" />
           </section>
         </div>
-      </el-tab-pane>
+    </section>
 
-      <el-tab-pane label="巡检记录" name="record">
+    <section v-show="activeTab === 'record'" class="auto-content-section">
         <div class="record-insight-strip">
           <span>
             <strong>{{ recordPageSummary.total }}</strong>
@@ -309,8 +308,7 @@
         </el-table>
 
         <pagination v-show="recordTotal > 0" :total="recordTotal" v-model:page="recordQuery.pageNum" v-model:limit="recordQuery.pageSize" @pagination="getRecordList" />
-      </el-tab-pane>
-    </el-tabs>
+    </section>
 
     <el-dialog v-model="targetDialogOpen" width="860px" append-to-body class="auto-dialog target-dialog">
       <template #header><div class="dialog-title"><span>{{ targetForm.targetId ? '编辑目标' : '新增目标' }}</span><strong>巡检目标</strong></div></template>
@@ -1617,6 +1615,7 @@ function resolveRouteTab(tab, path = '') {
   if (tab === 'dashboard') return 'dashboard'
   if (tab === 'record') return 'record'
   if (tab === 'config' || configTabNames.includes(tab)) return 'config'
+  if (String(path).endsWith('/dashboard')) return 'dashboard'
   if (String(path).endsWith('/record')) return 'record'
   if (String(path).endsWith('/config') || String(path).endsWith('/plan')) return 'config'
   return 'dashboard'
@@ -1627,14 +1626,6 @@ function resolveConfigTab(tab, subTab, path = '') {
   if (configTabNames.includes(subTab)) return subTab
   if (String(path).endsWith('/plan')) return 'plan'
   return 'template'
-}
-
-function handleTabChange(tab) {
-  if (tab === 'dashboard') {
-    navigateAutoInspection('dashboard', configTab.value)
-    return
-  }
-  navigateAutoInspection(tab === 'record' ? 'record' : 'config', configTab.value)
 }
 
 function switchConfigTab(tab) {
@@ -1653,7 +1644,7 @@ function navigateAutoInspection(tab, config = configTab.value) {
 
 function resolveAutoInspectionPath(tab) {
   const path = String(route.path || '')
-  const targetLeaf = tab === 'record' ? 'record' : 'config'
+  const targetLeaf = tab === 'dashboard' ? 'dashboard' : (tab === 'record' ? 'record' : 'config')
   if (/\/(dashboard|config|record|plan|target)$/.test(path)) {
     return path.replace(/\/(dashboard|config|record|plan|target)$/, `/${targetLeaf}`)
   }
@@ -3171,8 +3162,7 @@ function handleRunTemplate(row) {
   templateRunId.value = row.templateId
   runAutoInspectionTemplate(row.templateId).then((res) => {
     proxy.$modal.msgSuccess(`执行完成：${formatResult(res.data?.resultStatus)}`)
-    activeTab.value = 'record'
-    router.replace({ path: route.path, query: { ...route.query, tab: 'record' } })
+    navigateAutoInspection('record')
     getRecordList()
     getDashboard()
   }).finally(() => { templateRunId.value = null })
@@ -3221,8 +3211,7 @@ function handleRunPlan(row) {
   planRunId.value = row.planId
   runAutoInspectionPlan(row.planId).then((res) => {
     proxy.$modal.msgSuccess(`执行完成：${formatResult(res.data?.resultStatus)}`)
-    activeTab.value = 'record'
-    router.replace({ path: route.path, query: { ...route.query, tab: 'record' } })
+    navigateAutoInspection('record')
     getRecordList()
     getDashboard()
   }).finally(() => { planRunId.value = null })
@@ -3742,18 +3731,13 @@ function resultTagType(value) {
   }
 }
 
-.auto-tabs {
+.auto-content-section {
   width: 100%;
   min-width: 0;
   background: #fff;
   border: 1px solid #e2ebf7;
   border-radius: 10px;
   padding: 14px;
-
-  :deep(.el-tabs__content),
-  :deep(.el-tab-pane) {
-    min-width: 0;
-  }
 }
 
 .dashboard-shell {
