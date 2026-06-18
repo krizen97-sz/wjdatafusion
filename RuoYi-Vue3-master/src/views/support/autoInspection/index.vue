@@ -737,21 +737,41 @@
         <aside class="tool-picker-list">
           <el-input v-model="toolPickerKeyword" clearable prefix-icon="Search" placeholder="搜索工具名称 / 场景 / 案例" />
           <div class="tool-picker-list__body">
-            <button
-              v-for="tool in filteredToolList"
-              :key="tool.toolCode"
-              type="button"
-              :class="{ active: toolPickerPreviewCode === tool.toolCode }"
-              @click="previewTool(tool.toolCode)"
-              @dblclick="confirmToolPicker(tool.toolCode)"
-            >
-              <span>
-                <strong>{{ tool.toolName }}</strong>
-                <em>{{ getToolGuide(tool.toolCode).brief }}</em>
-              </span>
-              <el-tag size="small" :type="getToolTagType(tool.toolCode)">{{ getToolCategory(tool.toolCode) }}</el-tag>
-            </button>
-            <el-empty v-if="!filteredToolList.length" description="没有匹配的巡检工具" />
+            <div v-if="toolPickerTreeGroups.length" class="tool-picker-tree">
+              <section
+                v-for="group in toolPickerTreeGroups"
+                :key="group.key"
+                class="tool-picker-group"
+                :class="{ active: isToolGroupActive(group) }"
+              >
+                <button type="button" class="tool-picker-group__head" @click="toggleToolGroup(group.key)">
+                  <i :class="{ collapsed: isToolGroupCollapsed(group.key) }"></i>
+                  <span>
+                    <strong>{{ group.label }}</strong>
+                    <em>{{ group.brief }}</em>
+                  </span>
+                  <b>{{ group.tools.length }}</b>
+                </button>
+                <div v-show="!isToolGroupCollapsed(group.key)" class="tool-picker-children">
+                  <button
+                    v-for="tool in group.tools"
+                    :key="tool.toolCode"
+                    type="button"
+                    class="tool-picker-tool"
+                    :class="{ active: toolPickerPreviewCode === tool.toolCode }"
+                    @click="previewTool(tool.toolCode)"
+                    @dblclick="confirmToolPicker(tool.toolCode)"
+                  >
+                    <span>
+                      <strong>{{ tool.toolName }}</strong>
+                      <em>{{ getToolGuide(tool.toolCode).brief }}</em>
+                    </span>
+                    <el-tag size="small" :type="getToolTagType(tool.toolCode)">{{ getToolCategory(tool.toolCode) }}</el-tag>
+                  </button>
+                </div>
+              </section>
+            </div>
+            <el-empty v-else description="没有匹配的巡检工具" />
           </div>
         </aside>
         <section class="tool-picker-detail" v-if="toolPickerPreviewTool">
@@ -1102,6 +1122,7 @@ const toolPickerOpen = ref(false)
 const toolPickerKeyword = ref('')
 const toolPickerPreviewCode = ref('')
 const toolPickerMode = ref('change')
+const collapsedToolGroupKeys = ref([])
 const bigDataServerSelectOpen = ref(false)
 const bigDataServerSelectLoading = ref(false)
 const bigDataSelectedServerIds = ref([])
@@ -1206,6 +1227,45 @@ const toolGuideMap = {
   }
 }
 
+const toolTreeCategoryList = [
+  {
+    key: 'queue',
+    label: '消息队列检测',
+    brief: 'Kafka Topic、消费组积压等链路堵塞类检查。',
+    matcher: (toolCode) => toolCode === 'KAFKA_LAG'
+  },
+  {
+    key: 'api',
+    label: '接口与平台探测',
+    brief: 'HTTP 计数接口、健康检查和平台可用性检查。',
+    matcher: (toolCode) => ['HTTP_COUNT', TOOL_HTTP_HEALTH].includes(toolCode)
+  },
+  {
+    key: 'file',
+    label: '文件目录检测',
+    brief: 'FTP 目录和服务器目录文件数量检查。',
+    matcher: (toolCode) => ['FTP_FILE_COUNT', 'SERVER_FILE_COUNT'].includes(toolCode)
+  },
+  {
+    key: 'server',
+    label: '服务器资源检测',
+    brief: '服务器磁盘、大数据节点分区占用等资源类检查。',
+    matcher: (toolCode) => ['SERVER_DISK', 'BIG_DATA_SERVER_DISK'].includes(toolCode)
+  },
+  {
+    key: 'network',
+    label: '网络连通检测',
+    brief: '主机端口、服务连通性和响应耗时检查。',
+    matcher: (toolCode) => toolCode === TOOL_TCP_PORT_CHECK
+  },
+  {
+    key: 'custom',
+    label: '自定义扩展工具',
+    brief: '项目扩展或暂未归类的专用巡检工具。',
+    matcher: () => false
+  }
+]
+
 const targetRules = {
   targetName: [{ required: true, message: '目标名称不能为空', trigger: 'blur' }],
   targetType: [{ required: true, message: '请选择目标类型', trigger: 'change' }]
@@ -1236,6 +1296,17 @@ const filteredToolList = computed(() => {
       guide.example
     ].join(' ')).includes(keyword)
   })
+})
+const toolPickerTreeGroups = computed(() => {
+  const groupMap = new Map(toolTreeCategoryList.map((group) => [group.key, { ...group, tools: [] }]))
+  filteredToolList.value.forEach((tool) => {
+    const group = getToolTreeCategory(tool.toolCode)
+    if (!groupMap.has(group.key)) {
+      groupMap.set(group.key, { ...group, tools: [] })
+    }
+    groupMap.get(group.key).tools.push(tool)
+  })
+  return Array.from(groupMap.values()).filter((group) => group.tools.length)
 })
 const toolPickerPreviewTool = computed(() => {
   return toolList.value.find((item) => item.toolCode === toolPickerPreviewCode.value)
@@ -2378,6 +2449,7 @@ function openNewStepToolPicker() {
   stepEditingIndex.value = null
   toolPickerMode.value = 'new'
   toolPickerKeyword.value = ''
+  collapsedToolGroupKeys.value = []
   toolPickerPreviewCode.value = toolList.value[0]?.toolCode || ''
   toolPickerOpen.value = true
 }
@@ -2385,12 +2457,29 @@ function openNewStepToolPicker() {
 function openToolPicker() {
   toolPickerMode.value = 'change'
   toolPickerKeyword.value = ''
+  collapsedToolGroupKeys.value = []
   toolPickerPreviewCode.value = stepDraft.value.toolCode || toolList.value[0]?.toolCode || ''
   toolPickerOpen.value = true
 }
 
 function previewTool(toolCode) {
   toolPickerPreviewCode.value = toolCode
+}
+
+function toggleToolGroup(groupKey) {
+  if (isToolGroupCollapsed(groupKey)) {
+    collapsedToolGroupKeys.value = collapsedToolGroupKeys.value.filter((key) => key !== groupKey)
+  } else {
+    collapsedToolGroupKeys.value = [...collapsedToolGroupKeys.value, groupKey]
+  }
+}
+
+function isToolGroupCollapsed(groupKey) {
+  return collapsedToolGroupKeys.value.includes(groupKey)
+}
+
+function isToolGroupActive(group) {
+  return group?.tools?.some((tool) => tool.toolCode === toolPickerPreviewCode.value)
 }
 
 function confirmToolPicker(toolCode) {
@@ -2973,6 +3062,10 @@ function getToolCategory(toolCode) {
   if (['SERVER_FILE_COUNT', 'SERVER_DISK', 'BIG_DATA_SERVER_DISK'].includes(toolCode)) return '服务器'
   if (toolCode === TOOL_TCP_PORT_CHECK) return '网络端口'
   return '自定义'
+}
+
+function getToolTreeCategory(toolCode) {
+  return toolTreeCategoryList.find((group) => group.matcher(toolCode)) || toolTreeCategoryList[toolTreeCategoryList.length - 1]
 }
 
 function getToolTagType(toolCode) {
@@ -3761,55 +3854,153 @@ function resultTagType(value) {
 }
 
 .tool-picker-list__body {
-  display: grid;
-  align-content: start;
-  gap: 8px;
   max-height: 500px;
   overflow-y: auto;
+}
 
-  button {
+.tool-picker-tree {
+  display: grid;
+  gap: 8px;
+}
+
+.tool-picker-group {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #dce8f6;
+  border-radius: 8px;
+  background: #fff;
+
+  &.active {
+    border-color: #9bc8ff;
+    box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.08);
+  }
+}
+
+.tool-picker-group__head {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 10px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    background: #f5f9ff;
+  }
+
+  i {
+    width: 0;
+    height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 6px solid #6f8cad;
+    transition: transform 0.18s ease;
+    transform: rotate(90deg);
+
+    &.collapsed {
+      transform: rotate(0deg);
+    }
+  }
+
+  span {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid #dce8f6;
-    border-radius: 8px;
-    background: #fff;
-    cursor: pointer;
-    text-align: left;
+    gap: 3px;
+    min-width: 0;
+  }
 
-    &:hover,
-    &.active {
-      border-color: #409eff;
-      background: #f2f8ff;
-    }
+  strong {
+    overflow: hidden;
+    color: #18324f;
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-    span {
-      display: grid;
-      gap: 4px;
-      min-width: 0;
-    }
+  em {
+    overflow: hidden;
+    color: #71879f;
+    font-size: 12px;
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 
-    strong {
-      overflow: hidden;
-      color: #1d3554;
-      font-size: 14px;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
+  b {
+    min-width: 24px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: #edf5ff;
+    color: #2f80ed;
+    font-size: 12px;
+    font-weight: 700;
+    text-align: center;
+  }
+}
 
-    em {
-      display: -webkit-box;
-      overflow: hidden;
-      color: #71879f;
-      font-size: 12px;
-      font-style: normal;
-      line-height: 1.4;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
-    }
+.tool-picker-children {
+  display: grid;
+  gap: 6px;
+  margin: 0 8px 8px 18px;
+  padding-left: 10px;
+  border-left: 1px dashed #cbdcf0;
+}
+
+.tool-picker-tool {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #e0eaf5;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+
+  &::before {
+    position: absolute;
+    top: 50%;
+    left: -11px;
+    width: 10px;
+    border-top: 1px dashed #cbdcf0;
+    content: '';
+  }
+
+  &:hover,
+  &.active {
+    border-color: #409eff;
+    background: #f2f8ff;
+  }
+
+  span {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  strong {
+    overflow: hidden;
+    color: #1d3554;
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  em {
+    display: -webkit-box;
+    overflow: hidden;
+    color: #71879f;
+    font-size: 12px;
+    font-style: normal;
+    line-height: 1.4;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 }
 
