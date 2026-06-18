@@ -109,10 +109,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private static final String TOOL_KAFKA_LAG = "KAFKA_LAG";
     private static final String TOOL_HTTP_COUNT = "HTTP_COUNT";
+    private static final String TOOL_HTTP_HEALTH = "HTTP_HEALTH";
     private static final String TOOL_FTP_FILE_COUNT = "FTP_FILE_COUNT";
     private static final String TOOL_SERVER_FILE_COUNT = "SERVER_FILE_COUNT";
     private static final String TOOL_SERVER_DISK = "SERVER_DISK";
     private static final String TOOL_BIG_DATA_SERVER_DISK = "BIG_DATA_SERVER_DISK";
+    private static final String TOOL_TCP_PORT_CHECK = "TCP_PORT_CHECK";
     private static final String TARGET_BIG_DATA_SERVER = "BIG_DATA_SERVER";
     private static final String SERVER_LOGIN_HIK = "hik";
     private static final String SERVER_LOGIN_ROOT = "root";
@@ -1215,9 +1217,16 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                     result = checkBigDataServerDisk(step, target);
                     break;
                 case TOOL_HTTP_COUNT:
-                default:
                     result = checkHttpCount(step, target);
                     break;
+                case TOOL_HTTP_HEALTH:
+                    result = checkHttpHealth(step, target);
+                    break;
+                case TOOL_TCP_PORT_CHECK:
+                    result = checkTcpPort(step, target);
+                    break;
+                default:
+                    throw new ServiceException("不支持的巡检工具类型：" + str(tool, "toolType"));
             }
             if (thresholdEnabled)
             {
@@ -1397,6 +1406,94 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                         + "；返回计数：" + formatDecimal(value) + certNote);
     }
 
+    private TargetCheckResult checkHttpHealth(Map<String, Object> step, Map<String, Object> target) throws Exception
+    {
+        requireText(str(target, "url"), "HTTP目标URL不能为空");
+        int timeout = resolveTimeout(step);
+        LocalDateTime end = LocalDateTime.now();
+        LocalDateTime begin = end.minusMinutes(toInt(step.get("timeWindowMinutes"), 0));
+        String url = replaceTimePlaceholders(str(target, "url"), begin, end);
+        String body = replaceTimePlaceholders(StringUtils.defaultString(str(target, "extraParams")), begin, end);
+        String method = StringUtils.defaultIfBlank(str(target, "httpMethod"), "GET").toUpperCase();
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(timeout))
+                .header("Content-Type", "application/json");
+        if (StringUtils.isNotBlank(str(target, "appKey")))
+        {
+            builder.header("X-App-Key", str(target, "appKey"));
+        }
+        if (StringUtils.isNotBlank(str(target, "secret")))
+        {
+            builder.header("X-App-Secret", str(target, "secret"));
+        }
+        if ("POST".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method))
+        {
+            builder.method(method, HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
+        }
+        else
+        {
+            builder.GET();
+        }
+        HttpRequest request = builder.build();
+        long start = System.nanoTime();
+        HttpResponse<String> response;
+        boolean trustedInternalCertificate = false;
+        try
+        {
+            response = buildHttpClient(timeout, false).send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        }
+        catch (Exception e)
+        {
+            if (!isSslCertificateException(e))
+            {
+                throw e;
+            }
+            response = buildHttpClient(timeout, true).send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            trustedInternalCertificate = true;
+        }
+        BigDecimal latency = new BigDecimal(Duration.ofNanos(System.nanoTime() - start).toMillis());
+        Map<String, Object> options = parseExtraParamsMap(target);
+        int statusCode = response.statusCode();
+        String expected = formatExpectedHttpStatus(options);
+        String certNote = trustedInternalCertificate ? "；证书：已兼容内网自签名证书" : "";
+        String detail = "调用方式：HTTP健康检测 " + method
+                + "；接口地址：" + url
+                + "；状态码：" + statusCode
+                + "；期望状态：" + expected
+                + "；响应耗时：" + formatDecimal(latency) + "ms"
+                + "；响应长度：" + (response.body() == null ? 0 : response.body().length()) + certNote;
+        if (!isExpectedHttpStatus(statusCode, options))
+        {
+            TargetCheckResult result = TargetCheckResult.abnormal(target, latency, "ms", detail);
+            result.errorMessage = "HTTP状态码异常：" + statusCode + "，期望：" + expected;
+            return result;
+        }
+        return TargetCheckResult.normal(target, latency, "ms", detail);
+    }
+
+    private TargetCheckResult checkTcpPort(Map<String, Object> step, Map<String, Object> target) throws Exception
+    {
+        SupportServer server = resolveOptionalServer(target);
+        String host = StringUtils.defaultIfBlank(str(target, "host"), server == null ? null : server.getServerAddress());
+        int fallbackPort = server == null || server.getSshPort() == null ? 0 : server.getSshPort();
+        int port = toInt(target.get("port"), fallbackPort);
+        int timeout = resolveTimeout(step);
+        requireText(host, "TCP目标主机不能为空");
+        if (port <= 0 || port > 65535)
+        {
+            throw new ServiceException("TCP目标端口不能为空或无效");
+        }
+        long start = System.nanoTime();
+        try (Socket socket = new Socket(Proxy.NO_PROXY))
+        {
+            socket.connect(new InetSocketAddress(host, port), timeout * 1000);
+        }
+        BigDecimal latency = new BigDecimal(Duration.ofNanos(System.nanoTime() - start).toMillis());
+        return TargetCheckResult.normal(target, latency, "ms",
+                "调用方式：TCP端口连通性检测；目标：" + host + ":" + port
+                        + "；响应耗时：" + formatDecimal(latency) + "ms");
+    }
+
     private HttpEndpoint resolveHikEndpoint(String requestUrl, String hostInput)
     {
         String trimmedUrl = StringUtils.trimToEmpty(requestUrl);
@@ -1529,6 +1626,64 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             // 仅按字符串体提交，不做额外 header 注入
         }
         return headers;
+    }
+
+    private Map<String, Object> parseExtraParamsMap(Map<String, Object> target)
+    {
+        Object extra = target == null ? null : target.get("extraParams");
+        if (extra == null || StringUtils.isBlank(extra.toString()))
+        {
+            return new HashMap<>();
+        }
+        try
+        {
+            Map<String, Object> extraMap = JSON.parseObject(extra.toString(), Map.class);
+            return extraMap == null ? new HashMap<>() : extraMap;
+        }
+        catch (Exception ignored)
+        {
+            return new HashMap<>();
+        }
+    }
+
+    private boolean isExpectedHttpStatus(int statusCode, Map<String, Object> options)
+    {
+        String expected = StringUtils.defaultIfBlank(str(options, "expectedStatus"), str(options, "expectedStatuses"));
+        if (StringUtils.isNotBlank(expected))
+        {
+            for (String item : expected.split("[,，\\s]+"))
+            {
+                if (StringUtils.isBlank(item))
+                {
+                    continue;
+                }
+                try
+                {
+                    if (statusCode == Integer.parseInt(item.trim()))
+                    {
+                        return true;
+                    }
+                }
+                catch (NumberFormatException ignored)
+                {
+                    // 非数字配置继续交给范围配置判断
+                }
+            }
+            return false;
+        }
+        int min = toInt(options.get("expectedStatusMin"), 200);
+        int max = toInt(options.get("expectedStatusMax"), 399);
+        return statusCode >= min && statusCode <= max;
+    }
+
+    private String formatExpectedHttpStatus(Map<String, Object> options)
+    {
+        String expected = StringUtils.defaultIfBlank(str(options, "expectedStatus"), str(options, "expectedStatuses"));
+        if (StringUtils.isNotBlank(expected))
+        {
+            return expected;
+        }
+        return toInt(options.get("expectedStatusMin"), 200) + "-" + toInt(options.get("expectedStatusMax"), 399);
     }
 
     private Map<String, String> parseQueryParamsToMap(String queryString)
@@ -1934,8 +2089,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private TargetCheckResult testHttpTarget(Map<String, Object> target)
     {
-        Map<String, Object> step = defaultStep(TOOL_HTTP_COUNT, "个");
-        return runSingleTarget(step, requireTool(TOOL_HTTP_COUNT), target, false);
+        String toolCode = TOOL_HTTP_HEALTH.equals(str(target, "toolCode")) ? TOOL_HTTP_HEALTH : TOOL_HTTP_COUNT;
+        Map<String, Object> tool = requireTool(toolCode);
+        Map<String, Object> step = defaultStep(toolCode, StringUtils.defaultIfBlank(str(tool, "valueUnit"), TOOL_HTTP_HEALTH.equals(toolCode) ? "ms" : "个"));
+        return runSingleTarget(step, tool, target, false);
     }
 
     private TargetCheckResult testFtpTarget(Map<String, Object> target)
@@ -1946,6 +2103,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private TargetCheckResult testServerTarget(Map<String, Object> target)
     {
+        if (TOOL_TCP_PORT_CHECK.equals(str(target, "toolCode")))
+        {
+            Map<String, Object> tool = requireTool(TOOL_TCP_PORT_CHECK);
+            return runSingleTarget(defaultStep(TOOL_TCP_PORT_CHECK, "ms"), tool, target, false);
+        }
         try
         {
             SupportServer server = resolveOptionalServer(target);
@@ -1983,6 +2145,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private void applyThreshold(Map<String, Object> step, Map<String, Object> tool, TargetCheckResult result)
     {
+        if (RESULT_ABNORMAL.equals(result.status) && StringUtils.isNotBlank(result.errorMessage))
+        {
+            return;
+        }
         BigDecimal threshold = toBigDecimal(step.get("thresholdValue"));
         if (result.actualValue == null || threshold == null)
         {
@@ -2088,6 +2254,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         target.put("targetName", StringUtils.trimToEmpty(str(target, "targetName")));
         requireText(str(target, "targetName"), "巡检目标名称不能为空");
         String targetType = StringUtils.defaultIfBlank(str(target, "targetType"), "").toUpperCase();
+        String toolCode = str(target, "toolCode");
         target.put("targetType", targetType);
         target.put("status", STATUS_DISABLED.equals(str(target, "status")) ? STATUS_DISABLED : STATUS_NORMAL);
         switch (targetType)
@@ -2099,8 +2266,15 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 break;
             case "HTTP":
                 requireText(str(target, "url"), "HTTP接口地址不能为空");
-                target.put("httpMethod", StringUtils.defaultIfBlank(str(target, "httpMethod"), "POST").toUpperCase());
-                target.put("resultPath", StringUtils.defaultIfBlank(str(target, "resultPath"), "data.total"));
+                target.put("httpMethod", StringUtils.defaultIfBlank(str(target, "httpMethod"), TOOL_HTTP_HEALTH.equals(toolCode) ? "GET" : "POST").toUpperCase());
+                if (TOOL_HTTP_HEALTH.equals(toolCode))
+                {
+                    target.put("resultPath", "");
+                }
+                else
+                {
+                    target.put("resultPath", StringUtils.defaultIfBlank(str(target, "resultPath"), "data.total"));
+                }
                 break;
             case "FTP":
                 requireText(str(target, "host"), "FTP主机不能为空");
@@ -2114,12 +2288,25 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                     throw new ServiceException("请选择服务器资产或填写服务器IP");
                 }
                 target.put("port", toInt(target.get("port"), SERVER_DEFAULT_SSH_PORT));
-                requireText(str(target, "username"), "SSH账号不能为空");
-                if (!update)
+                if (TOOL_TCP_PORT_CHECK.equals(toolCode))
                 {
-                    requireText(str(target, "password"), "SSH密码不能为空");
+                    if (toInt(target.get("port"), 0) <= 0)
+                    {
+                        throw new ServiceException("TCP目标端口不能为空");
+                    }
+                    target.put("path", "");
+                    target.put("username", "");
+                    target.put("password", "");
                 }
-                requireText(str(target, "path"), "检测路径不能为空");
+                else
+                {
+                    requireText(str(target, "username"), "SSH账号不能为空");
+                    if (!update)
+                    {
+                        requireText(str(target, "password"), "SSH密码不能为空");
+                    }
+                    requireText(str(target, "path"), "检测路径不能为空");
+                }
                 break;
             case TARGET_BIG_DATA_SERVER:
                 requireText(str(target, "host"), "服务器IP不能为空");
@@ -2209,6 +2396,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private Long saveInlineStepTarget(Map<String, Object> step, Map<String, Object> tool, Map<String, Object> target)
     {
         target.put("targetType", StringUtils.defaultIfBlank(str(target, "targetType"), resolveTargetTypeByTool(str(step, "toolCode"))));
+        target.put("toolCode", str(step, "toolCode"));
         target.put("targetName", StringUtils.defaultIfBlank(str(target, "targetName"), str(step, "stepName") + "目标"));
         target.put("status", STATUS_DISABLED.equals(str(target, "status")) ? STATUS_DISABLED : STATUS_NORMAL);
         mergeStepParamsToTarget(step, target);
@@ -2441,7 +2629,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             return "KAFKA";
         }
-        if (TOOL_HTTP_COUNT.equals(toolCode))
+        if (TOOL_HTTP_COUNT.equals(toolCode) || TOOL_HTTP_HEALTH.equals(toolCode))
         {
             return "HTTP";
         }
@@ -2453,7 +2641,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             return TARGET_BIG_DATA_SERVER;
         }
-        return "SERVER";
+        if (TOOL_SERVER_FILE_COUNT.equals(toolCode) || TOOL_SERVER_DISK.equals(toolCode) || TOOL_TCP_PORT_CHECK.equals(toolCode))
+        {
+            return "SERVER";
+        }
+        throw new ServiceException("不支持的巡检工具：" + toolCode);
     }
 
     private void normalizePlan(Map<String, Object> plan)
@@ -2590,6 +2782,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 "{\"fields\":[\"topic\",\"consumerGroup\"]}");
         insertBuiltinTool(TOOL_HTTP_COUNT, "海康接口数量检测", TOOL_HTTP_COUNT, "条", RULE_MIN, new BigDecimal("0"), 10, 480,
                 "{\"fields\":[\"resultPath\",\"extraParams\",\"timeWindowMinutes\"]}");
+        insertBuiltinTool(TOOL_HTTP_HEALTH, "HTTP接口健康检测", TOOL_HTTP_HEALTH, "ms", RULE_MAX, new BigDecimal("3000"), 10, 0,
+                "{\"fields\":[\"url\",\"httpMethod\",\"expectedStatus\",\"timeoutSeconds\"]}");
         insertBuiltinTool(TOOL_FTP_FILE_COUNT, "FTP目录文件数量检测", TOOL_FTP_FILE_COUNT, "个", RULE_MAX, new BigDecimal("50"), 10, 0,
                 "{\"fields\":[\"path\"]}");
         insertBuiltinTool(TOOL_SERVER_FILE_COUNT, "服务器目录文件数量检测", TOOL_SERVER_FILE_COUNT, "个", RULE_MAX, new BigDecimal("20"), 10, 0,
@@ -2598,6 +2792,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 "{\"fields\":[\"path\"]}");
         insertBuiltinTool(TOOL_BIG_DATA_SERVER_DISK, "大数据服务器爆盘检测", TOOL_BIG_DATA_SERVER_DISK, "%", RULE_MAX, new BigDecimal("85"), 15, 0,
                 "{\"fields\":[\"serverTargets\",\"includePseudo\"]}");
+        insertBuiltinTool(TOOL_TCP_PORT_CHECK, "TCP端口连通性检测", TOOL_TCP_PORT_CHECK, "ms", RULE_MAX, new BigDecimal("1000"), 5, 0,
+                "{\"fields\":[\"host\",\"port\",\"timeoutSeconds\"]}");
     }
 
     private void insertBuiltinTool(String code, String name, String type, String unit, String rule,

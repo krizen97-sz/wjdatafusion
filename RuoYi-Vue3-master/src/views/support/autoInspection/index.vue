@@ -540,10 +540,11 @@
             <el-col :span="12"><el-form-item label="消费组" required><el-input v-model="stepDraft.target.consumerGroup" placeholder="例如：tim-analysis-group" /></el-form-item></el-col>
           </el-row>
           <el-row v-if="stepTargetType === 'HTTP'" :gutter="16">
-            <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：海康过车数量接口" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" :placeholder="isHttpHealthStep ? '例如：海康平台登录页健康检测' : '例如：海康过车数量接口'" /></el-form-item></el-col>
             <el-col :span="12"><el-form-item label="请求方法"><el-select v-model="stepDraft.target.httpMethod" style="width: 100%"><el-option label="POST" value="POST" /><el-option label="GET" value="GET" /></el-select></el-form-item></el-col>
-            <el-col :span="24"><el-form-item label="接口URL" required><el-input v-model="stepDraft.target.url" placeholder="https://host/api/count?date=${today}" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="结果路径"><el-input v-model="stepDraft.target.resultPath" placeholder="例如：data.total" /></el-form-item></el-col>
+            <el-col :span="24"><el-form-item label="接口URL" required><el-input v-model="stepDraft.target.url" :placeholder="isHttpHealthStep ? 'https://host/health 或 https://host/api/status' : 'https://host/api/count?date=${today}'" /></el-form-item></el-col>
+            <el-col v-if="!isHttpHealthStep" :span="12"><el-form-item label="结果路径"><el-input v-model="stepDraft.target.resultPath" placeholder="例如：data.total" /></el-form-item></el-col>
+            <el-col v-else :span="12"><el-form-item label="期望状态码"><el-input v-model="stepDraft.target.extraParams" placeholder='可选：{"expectedStatus": "200"} 或 {"expectedStatusMin":200,"expectedStatusMax":399}' /></el-form-item></el-col>
             <el-col :span="12"><el-form-item label="AppKey"><el-input v-model="stepDraft.target.appKey" /></el-form-item></el-col>
             <el-col :span="12"><el-form-item label="Secret"><el-input v-model="stepDraft.target.secret" show-password /></el-form-item></el-col>
             <el-col :span="12">
@@ -555,7 +556,7 @@
                 </button>
               </div>
             </el-col>
-            <el-col :span="24"><el-form-item label="请求体模板"><el-input v-model="stepDraft.target.extraParams" type="textarea" :rows="4" placeholder='例如：{"startTime":"${todayStart}","endTime":"${todayEnd}"}' /></el-form-item></el-col>
+            <el-col v-if="!isHttpHealthStep" :span="24"><el-form-item label="请求体模板"><el-input v-model="stepDraft.target.extraParams" type="textarea" :rows="4" placeholder='例如：{"startTime":"${todayStart}","endTime":"${todayEnd}"}' /></el-form-item></el-col>
           </el-row>
           <div v-if="stepTargetType === 'FTP'" class="bigdata-server-config ftp-target-config">
             <div class="bigdata-server-toolbar">
@@ -639,7 +640,7 @@
             </div>
           </div>
           <el-row v-if="stepTargetType === 'SERVER' && stepDraft.toolCode !== 'SERVER_FILE_COUNT'" :gutter="16">
-            <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：大数据服务器磁盘" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" :placeholder="isTcpPortStep ? '例如：Kafka 9092端口检测' : '例如：服务器磁盘检测'" /></el-form-item></el-col>
             <el-col :span="12">
               <el-form-item label="服务器资产" required>
                 <el-tree-select
@@ -656,9 +657,11 @@
                 />
               </el-form-item>
             </el-col>
-            <el-col :span="12"><el-form-item label="检测路径" required><el-input v-model="stepDraft.target.path" placeholder="目录路径或磁盘挂载点" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="巡检登录账号" required><el-input v-model="stepDraft.target.username" placeholder="本次巡检使用的登录账号" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="巡检登录密码" required><el-input v-model="stepDraft.target.password" show-password placeholder="本次巡检使用的登录密码" /></el-form-item></el-col>
+            <el-col v-if="isTcpPortStep" :span="12"><el-form-item label="主机IP"><el-input v-model="stepDraft.target.host" placeholder="可选择服务器自动带出，也可手工填写" /></el-form-item></el-col>
+            <el-col v-if="isTcpPortStep" :span="12"><el-form-item label="服务端口" required><el-input-number v-model="stepDraft.target.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+            <el-col v-if="!isTcpPortStep" :span="12"><el-form-item label="检测路径" required><el-input v-model="stepDraft.target.path" placeholder="目录路径或磁盘挂载点" /></el-form-item></el-col>
+            <el-col v-if="!isTcpPortStep" :span="12"><el-form-item label="巡检登录账号" required><el-input v-model="stepDraft.target.username" placeholder="本次巡检使用的登录账号" /></el-form-item></el-col>
+            <el-col v-if="!isTcpPortStep" :span="12"><el-form-item label="巡检登录密码" required><el-input v-model="stepDraft.target.password" show-password placeholder="本次巡检使用的登录密码" /></el-form-item></el-col>
           </el-row>
           <div v-if="stepTargetType === 'BIG_DATA_SERVER'" class="bigdata-server-config">
             <div class="bigdata-server-toolbar">
@@ -971,6 +974,8 @@ const SITE_SERVER_LOGIN_ROOT = 'root'
 const BIG_DATA_DEFAULT_USERNAME = 'root'
 const SERVER_FILE_DEFAULT_SSH_PORT = 55555
 const SERVER_FILE_DEFAULT_USERNAME = SITE_SERVER_LOGIN_HIK
+const TOOL_HTTP_HEALTH = 'HTTP_HEALTH'
+const TOOL_TCP_PORT_CHECK = 'TCP_PORT_CHECK'
 const configTabNames = ['template', 'plan']
 const activeTab = ref(resolveRouteTab(route.query.tab, route.path))
 const configTab = ref(resolveConfigTab(route.query.tab, route.query.configTab, route.path))
@@ -1119,18 +1124,24 @@ const serverAssetPickerHint = computed(() => {
   return '可按现场、平台、服务器名称或 IP 搜索，多选后会自动带出服务器 IP、SSH 端口、root账号和root密码；后续仍可在步骤里单独调整登录信息。'
 })
 const stepTargetType = computed(() => getTargetTypeByTool(stepDraft.value.toolCode))
+const isHttpHealthStep = computed(() => stepDraft.value.toolCode === TOOL_HTTP_HEALTH)
+const isTcpPortStep = computed(() => stepDraft.value.toolCode === TOOL_TCP_PORT_CHECK)
 const stepTargetSectionTitle = computed(() => {
   if (stepTargetType.value === 'KAFKA') return 'Kafka 目标'
+  if (isHttpHealthStep.value) return 'HTTP 健康目标'
   if (stepTargetType.value === 'HTTP') return 'HTTP 接口目标'
   if (stepTargetType.value === 'FTP') return 'FTP 目录目标'
   if (stepTargetType.value === 'BIG_DATA_SERVER') return '大数据服务器'
+  if (isTcpPortStep.value) return 'TCP 端口目标'
   return '服务器资产目标'
 })
 const stepTargetSectionHint = computed(() => {
   if (stepTargetType.value === 'KAFKA') return '消费积压检测只需要 bootstrap、topic 和消费组。'
+  if (isHttpHealthStep.value) return '健康检测关注接口是否可访问、状态码是否符合预期，以及接口响应耗时。'
   if (stepTargetType.value === 'HTTP') return '接口数量检测关注请求地址、参数模板、认证信息和结果取值路径。'
   if (stepTargetType.value === 'FTP') return 'FTP 文件数量检测只需要连接信息和目录路径。'
   if (stepTargetType.value === 'BIG_DATA_SERVER') return '逐台配置服务器 IP、SSH 端口和登录信息，执行时读取每台服务器的所有磁盘分区。'
+  if (isTcpPortStep.value) return '端口连通性检测只需要服务器或主机 IP 和端口，不需要 SSH 账号密码。'
   return '服务器目录或磁盘检测复用服务器资产，并配置检测路径。'
 })
 const dashboardSummary = computed(() => dashboardData.value?.summary || {})
@@ -1539,6 +1550,11 @@ async function applySelectedServerAsset(target, serverId, toolOrType) {
   }
   target.host = server.serverAddress || target.host || ''
   target.port = target.port || server.sshPort || getDefaultServerPort(toolOrType)
+  if (toolOrType === TOOL_TCP_PORT_CHECK) {
+    target.username = ''
+    target.password = ''
+    return
+  }
   const credential = await loadDefaultServerCredential(serverId, toolOrType)
   if (Number(target.serverId) !== Number(serverId)) return
   target.username = credential.username
@@ -1716,7 +1732,7 @@ function handleTestStepTarget() {
     })
   }
   if (stepTargetType.value !== 'BIG_DATA_SERVER') {
-    return handleTestTarget(stepDraft.value.target)
+    return handleTestTarget({ ...stepDraft.value.target, toolCode: stepDraft.value.toolCode })
   }
   const warning = validateBigDataServerTargets(stepDraft.value.stepParams?.serverTargets || [])
   if (warning) {
@@ -1747,6 +1763,10 @@ function validateTargetBusiness(target) {
   }
   if (target.targetType === 'SERVER') {
     if (!target.serverId && !String(target.host || '').trim()) return '请选择服务器资产或填写服务器 IP'
+    if (target.toolCode === TOOL_TCP_PORT_CHECK) {
+      if (!Number(target.port)) return '请填写 TCP 目标端口'
+      return ''
+    }
     if (!String(target.path || '').trim()) return '请填写服务器检测路径'
     if (!String(target.username || '').trim()) return '请填写 SSH 登录账号'
     if (!String(target.password || '').trim()) return '请填写 SSH 登录密码'
@@ -1808,7 +1828,13 @@ function cleanTargetPayload(target) {
     payload.resultPath = ''
     payload.extraParams = ''
     payload.port = payload.port || SERVER_FILE_DEFAULT_SSH_PORT
-    payload.username = payload.username || SERVER_FILE_DEFAULT_USERNAME
+    if (payload.toolCode === TOOL_TCP_PORT_CHECK) {
+      payload.path = ''
+      payload.username = ''
+      payload.password = ''
+    } else {
+      payload.username = payload.username || SERVER_FILE_DEFAULT_USERNAME
+    }
   }
   if (payload.targetType === 'BIG_DATA_SERVER') {
     if (payload.sourceType === 'SITE_SERVER' || payload.sourceServerId) {
@@ -2350,16 +2376,22 @@ function applyToolDefaults(step, forceName = false) {
 
 function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
   const targetType = getTargetTypeByTool(toolCode)
-  const next = cleanTargetPayload({ ...defaultTargetForm(), ...target, targetType, status: '0' })
+  const next = cleanTargetPayload({ ...defaultTargetForm(), ...target, targetType, toolCode, status: '0' })
   if (!next.targetName) next.targetName = fallbackName || getToolLabel(toolCode)
   if (targetType === 'FTP' && !next.port) next.port = 21
   if (targetType === 'HTTP') {
-    next.httpMethod = next.httpMethod || 'POST'
-    next.resultPath = next.resultPath || 'data.total'
+    next.httpMethod = next.httpMethod || (toolCode === TOOL_HTTP_HEALTH ? 'GET' : 'POST')
+    next.resultPath = toolCode === TOOL_HTTP_HEALTH ? '' : (next.resultPath || 'data.total')
   }
   if (targetType === 'BIG_DATA_SERVER') {
     next.port = next.port || BIG_DATA_DEFAULT_SSH_PORT
     next.username = next.username || BIG_DATA_DEFAULT_USERNAME
+  }
+  if (toolCode === TOOL_TCP_PORT_CHECK) {
+    next.port = next.port || undefined
+    next.path = ''
+    next.username = ''
+    next.password = ''
   }
   return next
 }
@@ -2420,9 +2452,10 @@ function validateStepDraft(step) {
 
 function getTargetTypeByTool(toolCode) {
   if (toolCode === 'KAFKA_LAG') return 'KAFKA'
-  if (toolCode === 'HTTP_COUNT') return 'HTTP'
+  if (toolCode === 'HTTP_COUNT' || toolCode === TOOL_HTTP_HEALTH) return 'HTTP'
   if (toolCode === 'FTP_FILE_COUNT') return 'FTP'
   if (toolCode === 'BIG_DATA_SERVER_DISK') return 'BIG_DATA_SERVER'
+  if (toolCode === TOOL_TCP_PORT_CHECK) return 'SERVER'
   return 'SERVER'
 }
 
@@ -2438,6 +2471,10 @@ function formatStepTarget(step) {
   if (step?.toolCode === 'SERVER_FILE_COUNT') {
     const count = getServerFileTargetsFromStep(step).length
     return count ? `${count} 台目录检测服务器` : '未配置目录检测服务器'
+  }
+  if (step?.toolCode === TOOL_TCP_PORT_CHECK) {
+    const target = step?.target || {}
+    return target.targetName || `${target.host || '未配置主机'}:${target.port || '-'}`
   }
   const target = step?.target || {}
   if (!target.targetName && step?.targetIds?.length) return `已绑定 ${step.targetIds.length} 个目标`
@@ -2615,9 +2652,9 @@ function compatibleTargets(step) {
   const tool = toolList.value.find((item) => item.toolCode === step.toolCode)
   if (!tool) return targetOptions.value
   if (tool.toolType === 'KAFKA_LAG') return targetOptions.value.filter((item) => item.targetType === 'KAFKA')
-  if (tool.toolType === 'HTTP_COUNT') return targetOptions.value.filter((item) => item.targetType === 'HTTP')
+  if (['HTTP_COUNT', TOOL_HTTP_HEALTH].includes(tool.toolType)) return targetOptions.value.filter((item) => item.targetType === 'HTTP')
   if (tool.toolType === 'FTP_FILE_COUNT') return targetOptions.value.filter((item) => item.targetType === 'FTP')
-  if (['SERVER_FILE_COUNT', 'SERVER_DISK'].includes(tool.toolType)) return targetOptions.value.filter((item) => item.targetType === 'SERVER')
+  if (['SERVER_FILE_COUNT', 'SERVER_DISK', TOOL_TCP_PORT_CHECK].includes(tool.toolType)) return targetOptions.value.filter((item) => item.targetType === 'SERVER')
   if (tool.toolType === 'BIG_DATA_SERVER_DISK') return targetOptions.value.filter((item) => item.targetType === 'BIG_DATA_SERVER')
   return targetOptions.value
 }
@@ -2798,9 +2835,18 @@ function getStepDetailItems(step) {
   } else if (target.targetType === 'KAFKA') {
     items.push({ label: 'Topic', value: target.topic || '-' }, { label: '消费组', value: target.consumerGroup || '-' })
   } else if (target.targetType === 'HTTP') {
-    items.push({ label: '请求方法', value: target.httpMethod || 'POST' }, { label: '结果路径', value: target.resultPath || '-' })
+    items.push({ label: '请求方法', value: target.httpMethod || (step.toolCode === TOOL_HTTP_HEALTH ? 'GET' : 'POST') })
+    if (step.toolCode === TOOL_HTTP_HEALTH) {
+      items.push({ label: '接口URL', value: target.url || '-' }, { label: '期望状态', value: target.extraParams || '200-399' })
+    } else {
+      items.push({ label: '结果路径', value: target.resultPath || '-' })
+    }
   } else if (target.targetType === 'SERVER') {
-    items.push({ label: '检测路径', value: target.path || '-' }, { label: 'SSH账号', value: target.username || '-' })
+    if (step.toolCode === TOOL_TCP_PORT_CHECK) {
+      items.push({ label: '主机IP', value: target.host || target.serverAddress || '-' }, { label: '服务端口', value: target.port || '-' })
+    } else {
+      items.push({ label: '检测路径', value: target.path || '-' }, { label: 'SSH账号', value: target.username || '-' })
+    }
   } else if (step.toolCode === 'BIG_DATA_SERVER_DISK') {
     items.push(
       { label: '服务器数量', value: `${step.stepParams?.serverTargets?.length || step.targets?.length || 0} 台` },

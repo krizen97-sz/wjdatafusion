@@ -1,5 +1,24 @@
 export const releaseNotes = [
   {
+    version: 'v3.6.0',
+    submitTime: '2026-06-18 09:12:21',
+    level: 'minor',
+    levelLabel: '小版本',
+    tagType: 'warning',
+    title: '自动化巡检黑盒检测工具增补',
+    summary: '参考成熟巡检平台的黑盒探测思路，为自动化巡检补充 HTTP 接口健康检测和 TCP 端口连通性检测，并修复未知工具被错误按 HTTP 数量检测执行的隐性缺陷。',
+    changes: [
+      '新增“HTTP接口健康检测”工具，可检测接口可访问性、HTTP 状态码、响应耗时和响应长度，支持内网自签名证书兼容和期望状态码配置。',
+      '新增“TCP端口连通性检测”工具，可按服务器资产或手工主机 IP 检测指定端口连通性和响应耗时，不需要 SSH 账号密码。',
+      '后端执行器对未知巡检工具改为明确报错，避免配置错误被默认落到 HTTP 数量检测而产生误判。',
+      '目标测试和正式巡检分离连通/正确性失败与阈值异常，HTTP 状态码异常不会再被耗时阈值覆盖成正常。',
+      '前端步骤配置根据巡检工具动态展示必要字段，HTTP 健康检测隐藏结果路径，TCP 端口检测隐藏检测路径和 SSH 凭据。'
+    ],
+    scope: ['自动化巡检', '巡检工具', 'HTTP健康检测', 'TCP端口检测', '前后端接口', '版本记录'],
+    database: '不修改表结构；新增两条 sup_auto_inspection_tool 内置工具数据 HTTP_HEALTH、TCP_PORT_CHECK。',
+    scripts: ['WDF100.0/sql/support_upgrade_20260618_auto_inspection_blackbox_tools_v3_6_0.sql']
+  },
+  {
     version: 'v3.5.2',
     submitTime: '2026-06-18 08:50:54',
     level: 'patch',

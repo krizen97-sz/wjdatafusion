@@ -872,6 +872,9 @@ INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit
 SELECT 'HTTP_COUNT', '海康接口数量检测', 'HTTP_COUNT', '条', 'MIN', 0, 10, 480, '{"fields":["resultPath","extraParams","timeWindowMinutes"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
 WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'HTTP_COUNT');
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
+SELECT 'HTTP_HEALTH', 'HTTP接口健康检测', 'HTTP_HEALTH', 'ms', 'MAX', 3000, 10, 0, '{"fields":["url","httpMethod","expectedStatus","timeoutSeconds"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
+WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'HTTP_HEALTH');
+INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
 SELECT 'FTP_FILE_COUNT', 'FTP目录文件数量检测', 'FTP_FILE_COUNT', '个', 'MAX', 50, 10, 0, '{"fields":["path"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
 WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'FTP_FILE_COUNT');
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
@@ -883,6 +886,9 @@ WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'SERV
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
 SELECT 'BIG_DATA_SERVER_DISK', '大数据服务器爆盘检测', 'BIG_DATA_SERVER_DISK', '%', 'MAX', 85, 15, 0, '{"fields":["serverTargets","includePseudo"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
 WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'BIG_DATA_SERVER_DISK');
+INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
+SELECT 'TCP_PORT_CHECK', 'TCP端口连通性检测', 'TCP_PORT_CHECK', 'ms', 'MAX', 1000, 5, 0, '{"fields":["host","port","timeoutSeconds"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
+WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'TCP_PORT_CHECK');
 
 UPDATE sys_menu SET visible = '1', update_time = NOW(), remark = '已由自动化巡检模块替代，保留旧数据入口隐藏'
 WHERE menu_id = 2206;
