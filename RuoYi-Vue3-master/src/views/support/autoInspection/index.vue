@@ -494,7 +494,17 @@
           </header>
           <el-row :gutter="16">
             <el-col :span="12"><el-form-item label="步骤名称" required><el-input v-model="stepDraft.stepName" placeholder="例如：原始Kafka积压" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="巡检工具" required><el-select v-model="stepDraft.toolCode" placeholder="选择工具" style="width: 100%" @change="handleStepToolChange"><el-option v-for="tool in toolList" :key="tool.toolCode" :label="tool.toolName" :value="tool.toolCode" /></el-select></el-form-item></el-col>
+            <el-col :span="12">
+              <el-form-item label="巡检工具" required>
+                <button type="button" class="tool-select-trigger" @click="openToolPicker">
+                  <span>
+                    <strong>{{ currentStepTool?.toolName || '选择巡检工具' }}</strong>
+                    <em>{{ currentStepToolGuide.brief }}</em>
+                  </span>
+                  <i>选择</i>
+                </button>
+              </el-form-item>
+            </el-col>
             <el-col :span="12"><el-form-item label="启用状态"><el-switch v-model="stepDraft.enabledFlag" active-value="Y" inactive-value="N" active-text="启用" inactive-text="停用" inline-prompt /></el-form-item></el-col>
             <el-col :span="12"><el-form-item label="步骤排序"><el-input-number v-model="stepDraft.sortOrder" :min="1" controls-position="right" style="width: 100%" /></el-form-item></el-col>
           </el-row>
@@ -713,6 +723,70 @@
         <el-button @click="stepDialogOpen = false">取消</el-button>
         <el-button :loading="targetTesting" @click="handleTestStepTarget">测试目标</el-button>
         <el-button type="primary" @click="submitStepDraft">保存步骤</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="toolPickerOpen" width="980px" append-to-body class="auto-dialog tool-picker-dialog">
+      <template #header>
+        <div class="dialog-title">
+          <span>巡检工具箱</span>
+          <strong>选择一个工具作为模板步骤</strong>
+        </div>
+      </template>
+      <div class="tool-picker">
+        <aside class="tool-picker-list">
+          <el-input v-model="toolPickerKeyword" clearable prefix-icon="Search" placeholder="搜索工具名称 / 场景 / 案例" />
+          <div class="tool-picker-list__body">
+            <button
+              v-for="tool in filteredToolList"
+              :key="tool.toolCode"
+              type="button"
+              :class="{ active: toolPickerPreviewCode === tool.toolCode }"
+              @click="previewTool(tool.toolCode)"
+              @dblclick="confirmToolPicker(tool.toolCode)"
+            >
+              <span>
+                <strong>{{ tool.toolName }}</strong>
+                <em>{{ getToolGuide(tool.toolCode).brief }}</em>
+              </span>
+              <el-tag size="small" :type="getToolTagType(tool.toolCode)">{{ getToolCategory(tool.toolCode) }}</el-tag>
+            </button>
+            <el-empty v-if="!filteredToolList.length" description="没有匹配的巡检工具" />
+          </div>
+        </aside>
+        <section class="tool-picker-detail" v-if="toolPickerPreviewTool">
+          <div class="tool-picker-detail__head">
+            <div>
+              <el-tag :type="getToolTagType(toolPickerPreviewTool.toolCode)">{{ getToolCategory(toolPickerPreviewTool.toolCode) }}</el-tag>
+              <h3>{{ toolPickerPreviewTool.toolName }}</h3>
+              <p>{{ toolPickerPreviewGuide.description }}</p>
+            </div>
+            <el-button type="primary" icon="Check" @click="confirmToolPicker(toolPickerPreviewTool.toolCode)">使用这个工具</el-button>
+          </div>
+          <div class="tool-picker-meta">
+            <span><label>默认规则</label><strong>{{ toolPickerPreviewTool.defaultCompareRule === 'MIN' ? '不得低于' : '不得高于' }} {{ toolPickerPreviewTool.defaultThresholdValue ?? '-' }}{{ toolPickerPreviewTool.valueUnit || '' }}</strong></span>
+            <span><label>超时</label><strong>{{ toolPickerPreviewTool.defaultTimeoutSeconds || 10 }} 秒</strong></span>
+            <span><label>统计窗口</label><strong>{{ toolPickerPreviewTool.defaultTimeWindowMinutes || 0 }} 分钟</strong></span>
+          </div>
+          <div class="tool-guide-block">
+            <h4>适合用来做什么</h4>
+            <p>{{ toolPickerPreviewGuide.scenario }}</p>
+          </div>
+          <div class="tool-guide-block">
+            <h4>配置时需要关注</h4>
+            <ul>
+              <li v-for="item in toolPickerPreviewGuide.configs" :key="item">{{ item }}</li>
+            </ul>
+          </div>
+          <div class="tool-guide-example">
+            <h4>使用案例</h4>
+            <p>{{ toolPickerPreviewGuide.example }}</p>
+          </div>
+        </section>
+      </div>
+      <template #footer>
+        <el-button @click="toolPickerOpen = false">取消</el-button>
+        <el-button type="primary" :disabled="!toolPickerPreviewTool" @click="confirmToolPicker()">确认选择</el-button>
       </template>
     </el-dialog>
 
@@ -1024,6 +1098,9 @@ const activeStepIndex = ref(0)
 const stepDialogOpen = ref(false)
 const stepEditingIndex = ref(null)
 const stepDraft = ref(defaultStepForm())
+const toolPickerOpen = ref(false)
+const toolPickerKeyword = ref('')
+const toolPickerPreviewCode = ref('')
 const bigDataServerSelectOpen = ref(false)
 const bigDataServerSelectLoading = ref(false)
 const bigDataSelectedServerIds = ref([])
@@ -1069,6 +1146,65 @@ const httpDatePlaceholders = [
   { value: '${endTime}', label: '窗口结束', example: '当前执行时间' }
 ]
 
+const toolGuideMap = {
+  KAFKA_LAG: {
+    brief: '检测 Kafka Topic 在指定消费组下的消息积压。',
+    description: '连接 Kafka 集群，读取 Topic 各分区的最新位点和消费组提交位点，计算最大积压与平均积压。',
+    scenario: '适合判断数据处理链路是否堵塞，例如原始过车 Topic、二次分析 Topic 是否被消费服务及时处理。',
+    configs: ['填写 Kafka bootstrap 地址。', '填写需要检测的 Topic。', '填写对应消费组 consumer group。', '阈值通常设置为最大允许积压条数。'],
+    example: '例如“原始Kafka积压”：Topic 填 tim-pass-record，消费组填 tim-analysis-group，阈值设置为 2000 条，高于阈值告警。'
+  },
+  HTTP_COUNT: {
+    brief: '调用接口并从响应里提取一个数量字段。',
+    description: '向海康或普通 HTTP 接口发起请求，支持日期变量、请求体模板和 JSON 结果路径解析。',
+    scenario: '适合做过车数量、违法数量、任务数量等“接口返回一个计数值”的巡检。',
+    configs: ['填写接口 URL，可使用 ${today}、${todayStart} 等日期变量。', '配置 GET 或 POST。', '填写结果路径，例如 data.total。', '按业务设置最低数量或最高数量阈值。'],
+    example: '例如“今日过车数量”：请求体使用 {"startTime":"${todayStart}","endTime":"${todayEnd}"}，结果路径填 data.total，低于 1 条告警。'
+  },
+  HTTP_HEALTH: {
+    brief: '黑盒探测 HTTP 接口是否可访问、是否足够快。',
+    description: '请求目标 URL，记录 HTTP 状态码、响应耗时和响应长度，可配置期望状态码范围。',
+    scenario: '适合判断平台首页、网关接口、健康检查地址是否可访问，先发现服务不可用或响应过慢的问题。',
+    configs: ['填写健康检查 URL。', '默认 GET 请求，必要时可改 POST。', '可在期望状态码里填写 {"expectedStatus":"200"}。', '阈值通常设置为最大允许响应耗时，单位 ms。'],
+    example: '例如“海康平台健康检测”：URL 填 https://host/artemis/api/status，期望状态码 200，耗时高于 3000ms 告警。'
+  },
+  FTP_FILE_COUNT: {
+    brief: '统计一个或多个 FTP 目录下的文件数量。',
+    description: '连接 FTP 服务器，进入指定目录，统计目录内文件数量，可在一个步骤里维护多个 FTP 目录目标。',
+    scenario: '适合检查数据交换目录、入库目录、回传目录是否堆积或是否长时间没有文件。',
+    configs: ['每个目标填写 FTP 主机、端口、目录、账号和密码。', '一个步骤可以添加多个目录目标。', '阈值通常设置为最大允许文件数。'],
+    example: '例如“FTP入库目录积压”：添加三个 FTP 目录目标，阈值 50 个，高于阈值表示文件没有被及时处理。'
+  },
+  SERVER_FILE_COUNT: {
+    brief: '通过 SSH 统计服务器目录下的文件数量。',
+    description: '连接服务器执行目录统计命令，可手动添加服务器，也可从现场服务器树中选择多台服务器。',
+    scenario: '适合替代 SFTP/DataI 文件数量检测，检查服务器本地目录是否堆积、是否产生文件。',
+    configs: ['选择或填写服务器 IP 和 SSH 端口。', '填写巡检专用账号密码。', '填写检测目录，可选择是否递归统计子目录。', '可配置文件匹配规则，例如 *.dat。'],
+    example: '例如“DataI目录文件数”：选择两台服务器，目录填 /data/datai/input，开启递归，文件数高于 20 个告警。'
+  },
+  SERVER_DISK: {
+    brief: '检测单台服务器指定挂载点的磁盘使用率。',
+    description: '通过 SSH 执行磁盘命令，读取指定路径或挂载点的使用率并与阈值比较。',
+    scenario: '适合对关键服务器某个目录或分区做固定磁盘阈值监控。',
+    configs: ['选择服务器资产或手工填写 IP。', '填写巡检专用账号密码。', '填写检测路径或挂载点。', '阈值通常设置为最大使用率百分比。'],
+    example: '例如“应用服务器 /data 磁盘”：检测路径填 /data，阈值 80%，高于阈值告警。'
+  },
+  BIG_DATA_SERVER_DISK: {
+    brief: '检测多台大数据服务器所有分区是否爆盘。',
+    description: '逐台连接大数据服务器，读取所有磁盘分区占用率，任意分区超过阈值即标记异常。',
+    scenario: '适合 HDFS、Spark、Kafka、ClickHouse 等大数据节点的整机磁盘巡检。',
+    configs: ['可以从现场服务器树批量选择，也可以手动添加。', '默认使用 root 账号口径，实际以步骤内填写的账号密码为准。', '可选择是否包含临时文件系统。', '阈值通常设置为最大磁盘使用率。'],
+    example: '例如“大数据服务器爆盘检测”：选择 5 台大数据节点，阈值 85%，任一分区超过 85% 即告警。'
+  },
+  TCP_PORT_CHECK: {
+    brief: '黑盒检测某个主机端口是否能连通。',
+    description: '直接建立 TCP 连接，记录端口连通性和连接耗时，不需要 SSH 登录。',
+    scenario: '适合检查 Kafka 9092、MySQL 3306、Redis 6379、Web 80/443 等关键端口是否可达。',
+    configs: ['选择服务器资产或手工填写主机 IP。', '填写需要检测的服务端口。', '阈值通常设置为最大允许连接耗时，单位 ms。'],
+    example: '例如“Kafka 端口检测”：选择 Kafka 服务器，端口填 9092，耗时高于 1000ms 或端口不可达时告警。'
+  }
+}
+
 const targetRules = {
   targetName: [{ required: true, message: '目标名称不能为空', trigger: 'blur' }],
   targetType: [{ required: true, message: '请选择目标类型', trigger: 'change' }]
@@ -1082,6 +1218,30 @@ const planRules = {
 }
 
 const activeStep = computed(() => templateForm.value.steps?.[activeStepIndex.value])
+const currentStepTool = computed(() => toolList.value.find((item) => item.toolCode === stepDraft.value.toolCode))
+const currentStepToolGuide = computed(() => getToolGuide(stepDraft.value.toolCode))
+const filteredToolList = computed(() => {
+  const keyword = normalizeSearchText(toolPickerKeyword.value)
+  if (!keyword) return toolList.value
+  return toolList.value.filter((tool) => {
+    const guide = getToolGuide(tool.toolCode)
+    return normalizeSearchText([
+      tool.toolName,
+      tool.toolCode,
+      getToolCategory(tool.toolCode),
+      guide.brief,
+      guide.description,
+      guide.scenario,
+      guide.example
+    ].join(' ')).includes(keyword)
+  })
+})
+const toolPickerPreviewTool = computed(() => {
+  return toolList.value.find((item) => item.toolCode === toolPickerPreviewCode.value)
+    || currentStepTool.value
+    || toolList.value[0]
+})
+const toolPickerPreviewGuide = computed(() => getToolGuide(toolPickerPreviewTool.value?.toolCode))
 const templateOptions = computed(() => allTemplateList.value.filter((item) => item.status !== '1'))
 const bigDataStepTargets = computed(() => stepDraft.value?.stepParams?.serverTargets || [])
 const serverFileStepTargets = computed(() => stepDraft.value?.stepParams?.serverTargets || [])
@@ -2207,6 +2367,28 @@ function openStepDialog(index = null) {
   stepDialogOpen.value = true
 }
 
+function openToolPicker() {
+  toolPickerKeyword.value = ''
+  toolPickerPreviewCode.value = stepDraft.value.toolCode || toolList.value[0]?.toolCode || ''
+  toolPickerOpen.value = true
+}
+
+function previewTool(toolCode) {
+  toolPickerPreviewCode.value = toolCode
+}
+
+function confirmToolPicker(toolCode) {
+  const nextToolCode = toolCode || toolPickerPreviewTool.value?.toolCode
+  if (!nextToolCode) {
+    proxy.$modal.msgWarning('请选择巡检工具')
+    return
+  }
+  if (nextToolCode !== stepDraft.value.toolCode) {
+    handleStepToolChange(nextToolCode)
+  }
+  toolPickerOpen.value = false
+}
+
 function handleStepToolChange(toolCode) {
   const draft = stepDraft.value
   draft.toolCode = toolCode
@@ -2749,6 +2931,34 @@ function getTargetTypeLabel(value) {
 
 function getToolLabel(value) {
   return toolList.value.find((item) => item.toolCode === value)?.toolName || value || '-'
+}
+
+function getToolGuide(toolCode) {
+  return toolGuideMap[toolCode] || {
+    brief: '自定义巡检工具，请按目标类型配置必要参数。',
+    description: '该工具尚未配置专门说明，建议先确认检测目标、阈值规则和执行超时时间。',
+    scenario: '适合项目中扩展的专用巡检场景。',
+    configs: ['确认工具目标类型。', '配置目标地址和认证信息。', '设置符合业务含义的阈值。'],
+    example: '例如新增一个业务接口检测工具时，需要先确认接口地址、请求参数、返回值和阈值含义。'
+  }
+}
+
+function getToolCategory(toolCode) {
+  if (toolCode === 'KAFKA_LAG') return '消息队列'
+  if (['HTTP_COUNT', TOOL_HTTP_HEALTH].includes(toolCode)) return 'HTTP接口'
+  if (toolCode === 'FTP_FILE_COUNT') return '文件目录'
+  if (['SERVER_FILE_COUNT', 'SERVER_DISK', 'BIG_DATA_SERVER_DISK'].includes(toolCode)) return '服务器'
+  if (toolCode === TOOL_TCP_PORT_CHECK) return '网络端口'
+  return '自定义'
+}
+
+function getToolTagType(toolCode) {
+  if (toolCode === 'KAFKA_LAG') return 'warning'
+  if (['HTTP_COUNT', TOOL_HTTP_HEALTH].includes(toolCode)) return 'success'
+  if (toolCode === 'FTP_FILE_COUNT') return 'info'
+  if (['SERVER_FILE_COUNT', 'SERVER_DISK', 'BIG_DATA_SERVER_DISK'].includes(toolCode)) return 'primary'
+  if (toolCode === TOOL_TCP_PORT_CHECK) return 'danger'
+  return ''
 }
 
 function formatTargetAddress(row) {
@@ -3446,6 +3656,226 @@ function resultTagType(value) {
 
 .target-section--subtle {
   background: #fff;
+}
+
+.tool-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid #d7e5f6;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+
+  &:hover {
+    border-color: #409eff;
+    background: #f5f9ff;
+  }
+
+  span {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  strong {
+    overflow: hidden;
+    color: #1d3554;
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  em {
+    overflow: hidden;
+    color: #7890aa;
+    font-size: 12px;
+    font-style: normal;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  i {
+    flex: 0 0 auto;
+    color: #2f80ed;
+    font-size: 12px;
+    font-style: normal;
+    font-weight: 700;
+  }
+}
+
+.tool-picker-dialog {
+  :deep(.el-dialog__body) {
+    padding-top: 8px;
+  }
+}
+
+.tool-picker {
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr);
+  gap: 14px;
+  min-height: 560px;
+}
+
+.tool-picker-list,
+.tool-picker-detail {
+  min-height: 0;
+  border: 1px solid #e1eaf6;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.tool-picker-list {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 12px;
+}
+
+.tool-picker-list__body {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  max-height: 500px;
+  overflow-y: auto;
+
+  button {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #dce8f6;
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
+    text-align: left;
+
+    &:hover,
+    &.active {
+      border-color: #409eff;
+      background: #f2f8ff;
+    }
+
+    span {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    strong {
+      overflow: hidden;
+      color: #1d3554;
+      font-size: 14px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    em {
+      display: -webkit-box;
+      overflow: hidden;
+      color: #71879f;
+      font-size: 12px;
+      font-style: normal;
+      line-height: 1.4;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+    }
+  }
+}
+
+.tool-picker-detail {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 16px;
+}
+
+.tool-picker-detail__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e4edf7;
+
+  h3 {
+    margin: 10px 0 6px;
+    color: #18324f;
+    font-size: 22px;
+  }
+
+  p {
+    margin: 0;
+    color: #6f86a1;
+    line-height: 1.6;
+  }
+}
+
+.tool-picker-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+
+  span {
+    display: grid;
+    gap: 4px;
+    padding: 10px 12px;
+    border: 1px solid #e2ebf7;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  label {
+    color: #7890aa;
+    font-size: 12px;
+  }
+
+  strong {
+    overflow: hidden;
+    color: #1d3554;
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.tool-guide-block,
+.tool-guide-example {
+  padding: 12px 14px;
+  border: 1px solid #e2ebf7;
+  border-radius: 8px;
+  background: #fff;
+
+  h4 {
+    margin: 0 0 8px;
+    color: #1d3554;
+    font-size: 14px;
+  }
+
+  p {
+    margin: 0;
+    color: #617890;
+    line-height: 1.7;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 18px;
+    color: #617890;
+    line-height: 1.8;
+  }
+}
+
+.tool-guide-example {
+  border-color: #cfe3ff;
+  background: #f5f9ff;
 }
 
 .placeholder-panel {
