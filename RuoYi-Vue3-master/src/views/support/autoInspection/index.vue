@@ -114,6 +114,90 @@
             </article>
           </section>
         </div>
+        <section class="record-board">
+          <header class="record-board__head">
+            <div>
+              <strong>巡检记录明细</strong>
+              <span>上方用于判断整体状态，下方用于筛选、追溯和导出具体巡检结果。</span>
+            </div>
+            <el-button icon="Refresh" @click="getRecordList">刷新记录</el-button>
+          </header>
+          <div class="record-insight-strip">
+            <span>
+              <strong>{{ recordPageSummary.total }}</strong>
+              <em>当前页记录</em>
+            </span>
+            <span>
+              <strong>{{ recordPageSummary.normal }}</strong>
+              <em>正常</em>
+            </span>
+            <span>
+              <strong>{{ recordPageSummary.abnormal }}</strong>
+              <em>异常</em>
+            </span>
+            <span>
+              <strong>{{ recordPageSummary.latestTime }}</strong>
+              <em>最近巡检</em>
+            </span>
+          </div>
+          <el-form :model="recordQuery" :inline="true" class="auto-query-bar">
+            <el-form-item label="模板">
+              <el-input v-model="recordQuery.templateName" clearable placeholder="模板名称" @keyup.enter="getRecordList" />
+            </el-form-item>
+            <el-form-item label="计划">
+              <el-input v-model="recordQuery.planName" clearable placeholder="计划名称" @keyup.enter="getRecordList" />
+            </el-form-item>
+            <el-form-item label="来源">
+              <el-select v-model="recordQuery.sourceType" clearable placeholder="全部来源" style="width: 130px">
+                <el-option label="自动" value="AUTO" />
+                <el-option label="手动" value="MANUAL" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="结果">
+              <el-select v-model="recordQuery.resultStatus" clearable placeholder="全部结果" style="width: 130px">
+                <el-option label="正常" value="1" />
+                <el-option label="异常" value="2" />
+                <el-option label="未检测" value="3" />
+              </el-select>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" icon="Search" @click="getRecordList">搜索</el-button>
+              <el-button icon="Refresh" @click="resetRecordQuery">重置</el-button>
+            </el-form-item>
+          </el-form>
+
+          <div class="auto-toolbar">
+            <el-button type="warning" plain icon="Download" :disabled="!recordSelection.length" @click="handleExportSelectedRecord" v-hasPermi="['support:autoInspection:export']">导出选中</el-button>
+            <el-button type="primary" plain icon="Calendar" @click="handleExportRecord('THIS_WEEK')" v-hasPermi="['support:autoInspection:export']">导出本周</el-button>
+            <el-button type="success" plain icon="Calendar" @click="handleExportRecord('THIS_MONTH')" v-hasPermi="['support:autoInspection:export']">导出本月</el-button>
+          </div>
+
+          <el-table v-loading="recordLoading" :data="recordList" class="auto-table record-table" @selection-change="handleRecordSelectionChange">
+            <el-table-column type="selection" width="48" align="center" />
+            <el-table-column label="巡检时间" prop="inspectionTime" width="170" align="center" />
+            <el-table-column label="结果" prop="resultStatus" width="90" align="center">
+              <template #default="scope"><el-tag class="soft-status-tag" size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
+            </el-table-column>
+            <el-table-column label="来源" prop="sourceType" width="90" align="center">
+              <template #default="scope"><el-tag size="small" :type="scope.row.sourceType === 'MANUAL' ? 'success' : 'info'">{{ scope.row.sourceType === 'MANUAL' ? '手动' : '自动' }}</el-tag></template>
+            </el-table-column>
+            <el-table-column label="模板" prop="templateName" min-width="160" show-overflow-tooltip />
+            <el-table-column label="计划" prop="planName" min-width="140" show-overflow-tooltip />
+            <el-table-column label="摘要" prop="summary" min-width="260" show-overflow-tooltip />
+            <el-table-column label="异常摘要" prop="abnormalSummary" min-width="260" show-overflow-tooltip />
+            <el-table-column label="步骤/目标/异常" width="130" align="center">
+              <template #default="scope">{{ scope.row.enabledStepCount || 0 }} / {{ scope.row.targetCount || 0 }} / {{ scope.row.abnormalCount || 0 }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="150" fixed="right" align="center">
+              <template #default="scope">
+                <el-button link type="primary" @click="handleRecordDetail(scope.row)" v-hasPermi="['support:autoInspection:query']">详情</el-button>
+                <el-button link type="success" @click="exportWord(scope.row)" v-hasPermi="['support:autoInspection:export']">Word</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <pagination v-show="recordTotal > 0" :total="recordTotal" v-model:page="recordQuery.pageNum" v-model:limit="recordQuery.pageSize" @pagination="getRecordList" />
+        </section>
     </section>
 
     <section v-show="activeTab === 'config'" class="auto-content-section">
@@ -229,85 +313,6 @@
         <pagination v-show="planTotal > 0" :total="planTotal" v-model:page="planQuery.pageNum" v-model:limit="planQuery.pageSize" @pagination="getPlanList" />
           </section>
         </div>
-    </section>
-
-    <section v-show="activeTab === 'record'" class="auto-content-section">
-        <div class="record-insight-strip">
-          <span>
-            <strong>{{ recordPageSummary.total }}</strong>
-            <em>当前页记录</em>
-          </span>
-          <span>
-            <strong>{{ recordPageSummary.normal }}</strong>
-            <em>正常</em>
-          </span>
-          <span>
-            <strong>{{ recordPageSummary.abnormal }}</strong>
-            <em>异常</em>
-          </span>
-          <span>
-            <strong>{{ recordPageSummary.latestTime }}</strong>
-            <em>最近巡检</em>
-          </span>
-        </div>
-        <el-form :model="recordQuery" :inline="true" class="auto-query-bar">
-          <el-form-item label="模板">
-            <el-input v-model="recordQuery.templateName" clearable placeholder="模板名称" @keyup.enter="getRecordList" />
-          </el-form-item>
-          <el-form-item label="计划">
-            <el-input v-model="recordQuery.planName" clearable placeholder="计划名称" @keyup.enter="getRecordList" />
-          </el-form-item>
-          <el-form-item label="来源">
-            <el-select v-model="recordQuery.sourceType" clearable placeholder="全部来源" style="width: 130px">
-              <el-option label="自动" value="AUTO" />
-              <el-option label="手动" value="MANUAL" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="结果">
-            <el-select v-model="recordQuery.resultStatus" clearable placeholder="全部结果" style="width: 130px">
-              <el-option label="正常" value="1" />
-              <el-option label="异常" value="2" />
-              <el-option label="未检测" value="3" />
-            </el-select>
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" icon="Search" @click="getRecordList">搜索</el-button>
-            <el-button icon="Refresh" @click="resetRecordQuery">重置</el-button>
-          </el-form-item>
-        </el-form>
-
-        <div class="auto-toolbar">
-          <el-button type="warning" plain icon="Download" :disabled="!recordSelection.length" @click="handleExportSelectedRecord" v-hasPermi="['support:autoInspection:export']">导出选中</el-button>
-          <el-button type="primary" plain icon="Calendar" @click="handleExportRecord('THIS_WEEK')" v-hasPermi="['support:autoInspection:export']">导出本周</el-button>
-          <el-button type="success" plain icon="Calendar" @click="handleExportRecord('THIS_MONTH')" v-hasPermi="['support:autoInspection:export']">导出本月</el-button>
-          <el-button icon="Refresh" @click="getRecordList">刷新</el-button>
-        </div>
-
-        <el-table v-loading="recordLoading" :data="recordList" class="auto-table record-table" @selection-change="handleRecordSelectionChange">
-          <el-table-column type="selection" width="48" align="center" />
-          <el-table-column label="巡检时间" prop="inspectionTime" width="170" align="center" />
-          <el-table-column label="结果" prop="resultStatus" width="90" align="center">
-            <template #default="scope"><el-tag class="soft-status-tag" size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
-          </el-table-column>
-          <el-table-column label="来源" prop="sourceType" width="90" align="center">
-            <template #default="scope"><el-tag size="small" :type="scope.row.sourceType === 'MANUAL' ? 'success' : 'info'">{{ scope.row.sourceType === 'MANUAL' ? '手动' : '自动' }}</el-tag></template>
-          </el-table-column>
-          <el-table-column label="模板" prop="templateName" min-width="160" show-overflow-tooltip />
-          <el-table-column label="计划" prop="planName" min-width="140" show-overflow-tooltip />
-          <el-table-column label="摘要" prop="summary" min-width="260" show-overflow-tooltip />
-          <el-table-column label="异常摘要" prop="abnormalSummary" min-width="260" show-overflow-tooltip />
-          <el-table-column label="步骤/目标/异常" width="130" align="center">
-            <template #default="scope">{{ scope.row.enabledStepCount || 0 }} / {{ scope.row.targetCount || 0 }} / {{ scope.row.abnormalCount || 0 }}</template>
-          </el-table-column>
-          <el-table-column label="操作" width="150" fixed="right" align="center">
-            <template #default="scope">
-              <el-button link type="primary" @click="handleRecordDetail(scope.row)" v-hasPermi="['support:autoInspection:query']">详情</el-button>
-              <el-button link type="success" @click="exportWord(scope.row)" v-hasPermi="['support:autoInspection:export']">Word</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
-
-        <pagination v-show="recordTotal > 0" :total="recordTotal" v-model:page="recordQuery.pageNum" v-model:limit="recordQuery.pageSize" @pagination="getRecordList" />
     </section>
 
     <el-dialog v-model="targetDialogOpen" width="860px" append-to-body class="auto-dialog target-dialog">
@@ -1613,10 +1618,10 @@ async function initPage() {
 
 function resolveRouteTab(tab, path = '') {
   if (tab === 'dashboard') return 'dashboard'
-  if (tab === 'record') return 'record'
+  if (tab === 'record') return 'dashboard'
   if (tab === 'config' || configTabNames.includes(tab)) return 'config'
   if (String(path).endsWith('/dashboard')) return 'dashboard'
-  if (String(path).endsWith('/record')) return 'record'
+  if (String(path).endsWith('/record')) return 'dashboard'
   if (String(path).endsWith('/config') || String(path).endsWith('/plan')) return 'config'
   return 'dashboard'
 }
@@ -1652,9 +1657,15 @@ function resolveAutoInspectionPath(tab) {
 }
 
 function loadActiveTab() {
-  if (activeTab.value === 'dashboard') getDashboard()
+  if (activeTab.value === 'dashboard') {
+    getDashboard()
+    getRecordList()
+  }
   if (activeTab.value === 'config') loadConfigTab()
-  if (activeTab.value === 'record') getRecordList()
+  if (activeTab.value === 'record') {
+    getDashboard()
+    getRecordList()
+  }
 }
 
 function loadConfigTab(tab = configTab.value) {
@@ -3162,7 +3173,7 @@ function handleRunTemplate(row) {
   templateRunId.value = row.templateId
   runAutoInspectionTemplate(row.templateId).then((res) => {
     proxy.$modal.msgSuccess(`执行完成：${formatResult(res.data?.resultStatus)}`)
-    navigateAutoInspection('record')
+    navigateAutoInspection('dashboard')
     getRecordList()
     getDashboard()
   }).finally(() => { templateRunId.value = null })
@@ -3211,7 +3222,7 @@ function handleRunPlan(row) {
   planRunId.value = row.planId
   runAutoInspectionPlan(row.planId).then((res) => {
     proxy.$modal.msgSuccess(`执行完成：${formatResult(res.data?.resultStatus)}`)
-    navigateAutoInspection('record')
+    navigateAutoInspection('dashboard')
     getRecordList()
     getDashboard()
   }).finally(() => { planRunId.value = null })
@@ -3743,6 +3754,32 @@ function resultTagType(value) {
 .dashboard-shell {
   display: grid;
   gap: 14px;
+}
+
+.record-board {
+  display: grid;
+  gap: 14px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #e3ecf7;
+}
+
+.record-board__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+
+  strong {
+    display: block;
+    color: #1d3554;
+    font-size: 17px;
+  }
+
+  span {
+    color: #7890aa;
+    font-size: 13px;
+  }
 }
 
 .dashboard-status {
@@ -5492,6 +5529,11 @@ function resultTagType(value) {
 
   .dashboard-status__metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .record-board__head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .trend-days {
