@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -530,21 +531,24 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     public Map<String, Object> selectDashboard(Map<String, Object> params)
     {
         LocalDate today = LocalDate.now();
+        LocalDate monthBegin = today.withDayOfMonth(1);
         LocalDate trendBegin = today.minusDays(6);
         Map<String, Object> query = new HashMap<>();
-        query.put("beginTime", toDate(trendBegin.atStartOfDay()));
+        query.put("beginTime", toDate(monthBegin.atStartOfDay()));
         query.put("endTime", toDate(today.plusDays(1).atStartOfDay()));
         List<Map<String, Object>> records = autoInspectionMapper.selectRecordList(query);
-        List<Long> recordIds = records.stream()
+        List<Long> todayRecordIds = records.stream()
+                .filter(record -> isSameDate(record.get("inspectionTime"), today))
                 .map(item -> toLong(item.get("recordId")))
                 .filter(id -> id != null)
                 .collect(Collectors.toList());
-        List<Map<String, Object>> steps = recordIds.isEmpty() ? new ArrayList<>() : autoInspectionMapper.selectStepResultsByRecordIds(recordIds);
-        List<Map<String, Object>> targets = recordIds.isEmpty() ? new ArrayList<>() : autoInspectionMapper.selectTargetResultsByRecordIds(recordIds);
+        List<Map<String, Object>> steps = todayRecordIds.isEmpty() ? new ArrayList<>() : autoInspectionMapper.selectStepResultsByRecordIds(todayRecordIds);
+        List<Map<String, Object>> targets = todayRecordIds.isEmpty() ? new ArrayList<>() : autoInspectionMapper.selectTargetResultsByRecordIds(todayRecordIds);
 
         Map<String, Object> dashboard = new LinkedHashMap<>();
         dashboard.put("summary", buildDashboardSummary(today, records, steps, targets));
         dashboard.put("trend", buildDashboardTrend(trendBegin, today, records));
+        dashboard.put("calendar", buildDashboardCalendar(today, records));
         dashboard.put("toolStats", buildDashboardToolStats(today, records, steps, targets));
         dashboard.put("latestAbnormalTargets", buildLatestAbnormalTargets(today, records, targets));
         dashboard.put("recentRecords", buildDashboardRecentRecords(today, records));
@@ -631,6 +635,51 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             trend.add(item);
         }
         return trend;
+    }
+
+    private Map<String, Object> buildDashboardCalendar(LocalDate today, List<Map<String, Object>> records)
+    {
+        YearMonth month = YearMonth.from(today);
+        LocalDate firstDay = month.atDay(1);
+        LocalDate lastDay = month.atEndOfMonth();
+        Map<String, List<Map<String, Object>>> recordsByDate = new LinkedHashMap<>();
+        for (Map<String, Object> record : records)
+        {
+            LocalDate day = toLocalDate(record.get("inspectionTime"));
+            if (day != null && YearMonth.from(day).equals(month))
+            {
+                recordsByDate.computeIfAbsent(day.toString(), key -> new ArrayList<>()).add(record);
+            }
+        }
+
+        List<Map<String, Object>> days = new ArrayList<>();
+        LocalDate cursor = firstDay;
+        while (!cursor.isAfter(lastDay))
+        {
+            List<Map<String, Object>> rows = recordsByDate.getOrDefault(cursor.toString(), new ArrayList<>());
+            long abnormal = rows.stream().filter(row -> RESULT_ABNORMAL.equals(str(row, "resultStatus"))).count();
+            long normal = rows.stream().filter(row -> RESULT_NORMAL.equals(str(row, "resultStatus"))).count();
+            long skipped = rows.stream().filter(row -> RESULT_SKIP.equals(str(row, "resultStatus"))).count();
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("date", cursor.toString());
+            item.put("day", cursor.getDayOfMonth());
+            item.put("total", rows.size());
+            item.put("normal", normal);
+            item.put("abnormal", abnormal);
+            item.put("skipped", skipped);
+            item.put("status", rows.isEmpty() ? RESULT_SKIP : (abnormal > 0 ? RESULT_ABNORMAL : RESULT_NORMAL));
+            item.put("today", cursor.equals(today));
+            item.put("future", cursor.isAfter(today));
+            days.add(item);
+            cursor = cursor.plusDays(1);
+        }
+
+        Map<String, Object> calendar = new LinkedHashMap<>();
+        calendar.put("month", month.toString());
+        calendar.put("monthLabel", month.getYear() + "年" + month.getMonthValue() + "月");
+        calendar.put("weekStartOffset", firstDay.getDayOfWeek().getValue() - 1);
+        calendar.put("days", days);
+        return calendar;
     }
 
     private List<Map<String, Object>> buildDashboardToolStats(LocalDate today, List<Map<String, Object>> records,

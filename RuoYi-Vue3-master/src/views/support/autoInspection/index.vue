@@ -140,6 +140,41 @@
           </div>
         </section>
 
+        <section class="dashboard-calendar-panel">
+          <header>
+            <div>
+              <strong>当月巡检日历</strong>
+              <span>{{ dashboardCalendar.monthLabel || '-' }}，按天查看巡检次数和结果</span>
+            </div>
+            <div class="dashboard-calendar-legend">
+              <span><i class="calendar-legend-dot calendar-legend-dot--1"></i>正常</span>
+              <span><i class="calendar-legend-dot calendar-legend-dot--2"></i>异常</span>
+              <span><i class="calendar-legend-dot calendar-legend-dot--3"></i>无记录</span>
+            </div>
+          </header>
+          <div class="dashboard-calendar-weekdays">
+            <span v-for="item in calendarWeekdays" :key="item">{{ item }}</span>
+          </div>
+          <div class="dashboard-calendar-grid">
+            <span v-for="item in dashboardCalendarOffset" :key="`empty-${item}`" class="dashboard-calendar-empty"></span>
+            <button
+              v-for="day in dashboardCalendarDays"
+              :key="day.date"
+              class="dashboard-calendar-day"
+              :class="[
+                `dashboard-calendar-day--${day.status || '3'}`,
+                { 'is-today': day.today, 'is-future': day.future }
+              ]"
+              type="button"
+              :disabled="day.future"
+            >
+              <strong>{{ day.day }}</strong>
+              <em>{{ day.total || 0 }} 次</em>
+              <small>{{ formatCalendarDayResult(day) }}</small>
+            </button>
+          </div>
+        </section>
+
         <section class="dashboard-chart-grid">
           <article class="dashboard-chart-panel dashboard-chart-panel--wide">
             <header><strong>近 7 天巡检趋势</strong><span>巡检总量 / 异常数</span></header>
@@ -1182,6 +1217,7 @@ const serverAssetNodeMap = ref({})
 const serverAssetNodeKeysMap = ref({})
 const allTemplateList = ref([])
 const targetOptions = ref([])
+const calendarWeekdays = ['一', '二', '三', '四', '五', '六', '日']
 
 const templateLoading = ref(false)
 const templateList = ref([])
@@ -1506,6 +1542,12 @@ const stepTargetSectionHint = computed(() => {
 })
 const dashboardSummary = computed(() => dashboardData.value?.summary || {})
 const dashboardTrend = computed(() => dashboardData.value?.trend || [])
+const dashboardCalendar = computed(() => dashboardData.value?.calendar || {})
+const dashboardCalendarDays = computed(() => dashboardCalendar.value?.days || [])
+const dashboardCalendarOffset = computed(() => {
+  const offset = Number(dashboardCalendar.value?.weekStartOffset || 0)
+  return Array.from({ length: Math.max(0, Math.min(offset, 6)) }, (_, index) => index + 1)
+})
 const dashboardToolStats = computed(() => dashboardData.value?.toolStats || [])
 const dashboardAbnormalTargets = computed(() => dashboardData.value?.latestAbnormalTargets || [])
 const dashboardRecentRecords = computed(() => dashboardData.value?.recentRecords || [])
@@ -2124,6 +2166,13 @@ function disposeDashboardCharts() {
 function parsePercent(value) {
   const parsed = Number(String(value || '0').replace('%', ''))
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function formatCalendarDayResult(day) {
+  if (!day || day.future) return '待巡检'
+  if (!Number(day.total || 0)) return '无记录'
+  if (Number(day.abnormal || 0) > 0) return `${day.abnormal} 异常`
+  return '正常'
 }
 
 function resetTemplateQuery() {
@@ -3531,7 +3580,7 @@ function defaultPlanForm() {
 }
 
 function defaultDashboardData() {
-  return { summary: {}, trend: [], toolStats: [], latestAbnormalTargets: [], recentRecords: [], generatedTime: '' }
+  return { summary: {}, trend: [], calendar: {}, toolStats: [], latestAbnormalTargets: [], recentRecords: [], generatedTime: '' }
 }
 
 function parseCronConfig(value) {
@@ -4279,6 +4328,160 @@ function resultTagType(value) {
   strong {
     color: #c45656;
   }
+}
+
+.dashboard-calendar-panel {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #e1ebf7;
+  border-radius: 8px;
+  background: #fff;
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+
+    strong {
+      display: block;
+      color: #1d3554;
+      font-size: 14px;
+    }
+
+    span {
+      color: #7890aa;
+      font-size: 12px;
+    }
+  }
+}
+
+.dashboard-calendar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px 12px;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+}
+
+.calendar-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #c0c4cc;
+}
+
+.calendar-legend-dot--1 {
+  background: #67c23a;
+}
+
+.calendar-legend-dot--2 {
+  background: #f56c6c;
+}
+
+.calendar-legend-dot--3 {
+  background: #a8b5c5;
+}
+
+.dashboard-calendar-weekdays,
+.dashboard-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.dashboard-calendar-weekdays {
+  margin-bottom: 6px;
+
+  span {
+    color: #7890aa;
+    font-size: 12px;
+    text-align: center;
+  }
+}
+
+.dashboard-calendar-empty,
+.dashboard-calendar-day {
+  min-height: 66px;
+  border-radius: 7px;
+}
+
+.dashboard-calendar-empty {
+  background: #f7f9fc;
+}
+
+.dashboard-calendar-day {
+  display: grid;
+  gap: 2px;
+  align-content: center;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid #e4edf8;
+  background: #fbfdff;
+  text-align: left;
+  cursor: default;
+
+  strong,
+  em,
+  small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: #1d3554;
+    font-size: 15px;
+    line-height: 1.1;
+  }
+
+  em {
+    color: #60758d;
+    font-size: 12px;
+    font-style: normal;
+  }
+
+  small {
+    color: #7890aa;
+    font-size: 11px;
+  }
+}
+
+.dashboard-calendar-day--1 {
+  border-color: #cfebdc;
+  background: #f5fbf7;
+
+  small {
+    color: #3b9d61;
+  }
+}
+
+.dashboard-calendar-day--2 {
+  border-color: #ffd6d6;
+  background: #fff7f7;
+
+  strong,
+  small {
+    color: #c45656;
+  }
+}
+
+.dashboard-calendar-day--3 {
+  background: #f8fbff;
+}
+
+.dashboard-calendar-day.is-today {
+  box-shadow: inset 0 0 0 2px rgba(47, 128, 237, 0.22);
+}
+
+.dashboard-calendar-day.is-future {
+  opacity: 0.52;
 }
 
 .dashboard-chart-grid {
@@ -5941,6 +6144,20 @@ function resultTagType(value) {
 
   .dashboard-drawer__summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-calendar-panel header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .dashboard-calendar-legend {
+    justify-content: flex-start;
+  }
+
+  .dashboard-calendar-empty,
+  .dashboard-calendar-day {
+    min-height: 58px;
   }
 
   .record-board__head {
