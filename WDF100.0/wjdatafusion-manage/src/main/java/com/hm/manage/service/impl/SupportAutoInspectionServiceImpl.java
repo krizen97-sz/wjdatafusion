@@ -2475,6 +2475,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             return saveServerFileTargets(step);
         }
+        if (TOOL_SERVER_SERVICE_STATUS.equals(str(step, "toolCode")))
+        {
+            return saveServiceStatusTargets(step);
+        }
         Map<String, Object> inlineTarget = castMap(step.get("target"));
         if (!inlineTarget.isEmpty())
         {
@@ -2640,6 +2644,85 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return targetIds;
     }
 
+    private List<Long> saveServiceStatusTargets(Map<String, Object> step)
+    {
+        Map<String, Object> params = readParams(step);
+        List<Map<String, Object>> serverTargets = castList(params.get("serverTargets"));
+        if (serverTargets.isEmpty())
+        {
+            Map<String, Object> inlineTarget = castMap(step.get("target"));
+            if (!inlineTarget.isEmpty())
+            {
+                serverTargets = Collections.singletonList(inlineTarget);
+            }
+        }
+        if (serverTargets.isEmpty())
+        {
+            throw new ServiceException("服务器服务状态检测至少需要配置一个服务子项");
+        }
+        List<Long> targetIds = new ArrayList<>();
+        List<Map<String, Object>> sanitizedTargets = new ArrayList<>();
+        int index = 1;
+        for (Map<String, Object> serverTarget : serverTargets)
+        {
+            Map<String, Object> target = new HashMap<>(serverTarget);
+            target.put("targetType", "SERVER");
+            target.put("targetName", StringUtils.defaultIfBlank(str(target, "targetName"),
+                    str(step, "stepName") + "-" + index));
+            target.put("status", STATUS_DISABLED.equals(str(target, "status")) ? STATUS_DISABLED : STATUS_NORMAL);
+            if (target.get("sourceServerId") != null && target.get("serverId") == null)
+            {
+                target.put("serverId", target.get("sourceServerId"));
+            }
+            target.put("toolCode", TOOL_SERVER_SERVICE_STATUS);
+            target.put("port", toInt(target.get("port"), SERVER_DEFAULT_SSH_PORT));
+            Map<String, Object> serviceParams = buildServiceTargetParams(params, target);
+            target.put("path", serviceParams.get("serviceName"));
+            target.put("extraParams", JSON.toJSONString(serviceParams));
+            Long targetId = toLong(target.get("targetId"));
+            if (targetId == null)
+            {
+                normalizeTarget(target, false);
+                encryptTargetSecret(target);
+                target.put("createBy", getCurrentUsername());
+                target.put("createTime", DateUtils.getNowDate());
+                target.put("updateBy", getCurrentUsername());
+                target.put("updateTime", DateUtils.getNowDate());
+                autoInspectionMapper.insertTarget(target);
+                targetId = toLong(target.get("targetId"));
+            }
+            else
+            {
+                updateTarget(target);
+            }
+            targetIds.add(targetId);
+            Map<String, Object> sanitized = new LinkedHashMap<>();
+            sanitized.put("targetId", targetId);
+            sanitized.put("targetName", target.get("targetName"));
+            sanitized.put("targetType", "SERVER");
+            sanitized.put("serverId", target.get("serverId"));
+            sanitized.put("sourceType", target.get("sourceType"));
+            sanitized.put("sourceServerId", target.get("sourceServerId"));
+            sanitized.put("sourceLabel", target.get("sourceLabel"));
+            sanitized.put("host", target.get("host"));
+            sanitized.put("port", target.get("port"));
+            sanitized.put("path", target.get("path"));
+            sanitized.put("serviceName", serviceParams.get("serviceName"));
+            sanitized.put("privilegeMode", serviceParams.get("privilegeMode"));
+            sanitized.put("privilegeUser", serviceParams.get("privilegeUser"));
+            sanitized.put("autoRestart", serviceParams.get("autoRestart"));
+            sanitized.put("restartWaitSeconds", serviceParams.get("restartWaitSeconds"));
+            sanitized.put("username", target.get("username"));
+            sanitized.put("status", target.get("status"));
+            sanitizedTargets.add(sanitized);
+            index++;
+        }
+        Map<String, Object> sanitizedParams = new HashMap<>();
+        sanitizedParams.put("serverTargets", sanitizedTargets);
+        step.put("stepParams", JSON.toJSONString(sanitizedParams));
+        return targetIds;
+    }
+
     private List<Long> saveBigDataServerTargets(Map<String, Object> step)
     {
         Map<String, Object> params = readParams(step);
@@ -2725,6 +2808,37 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             serviceParams.put("restartWaitSeconds", toInt(params.get("restartWaitSeconds"), 5));
             target.put("extraParams", JSON.toJSONString(serviceParams));
         }
+    }
+
+    private Map<String, Object> buildServiceTargetParams(Map<String, Object> stepParams, Map<String, Object> target)
+    {
+        Map<String, Object> targetExtra = new HashMap<>();
+        if (StringUtils.isNotBlank(str(target, "extraParams")))
+        {
+            try
+            {
+                targetExtra.putAll(JSON.parseObject(str(target, "extraParams"), Map.class));
+            }
+            catch (Exception ignored)
+            {
+                // Ignore malformed legacy extra params and use explicit target fields.
+            }
+        }
+        Map<String, Object> serviceParams = new LinkedHashMap<>();
+        serviceParams.put("serviceName", StringUtils.defaultIfBlank(str(target, "serviceName"),
+                StringUtils.defaultIfBlank(str(targetExtra, "serviceName"),
+                        StringUtils.defaultIfBlank(str(target, "path"), str(stepParams, "serviceName")))));
+        serviceParams.put("privilegeMode", normalizePrivilegeMode(StringUtils.defaultIfBlank(str(target, "privilegeMode"),
+                StringUtils.defaultIfBlank(str(targetExtra, "privilegeMode"), StringUtils.defaultIfBlank(str(stepParams, "privilegeMode"), PRIVILEGE_SUDO)))));
+        serviceParams.put("privilegeUser", StringUtils.defaultIfBlank(str(target, "privilegeUser"),
+                StringUtils.defaultIfBlank(str(targetExtra, "privilegeUser"),
+                        StringUtils.defaultIfBlank(str(stepParams, "privilegeUser"), SERVER_LOGIN_ROOT))));
+        serviceParams.put("autoRestart", StringUtils.defaultIfBlank(str(target, "autoRestart"),
+                StringUtils.defaultIfBlank(str(targetExtra, "autoRestart"), StringUtils.defaultIfBlank(str(stepParams, "autoRestart"), "false"))));
+        serviceParams.put("restartWaitSeconds", toInt(StringUtils.defaultIfBlank(str(target, "restartWaitSeconds"),
+                StringUtils.defaultIfBlank(str(targetExtra, "restartWaitSeconds"), str(stepParams, "restartWaitSeconds"))), 5));
+        requireText(str(serviceParams, "serviceName"), "服务名称不能为空");
+        return serviceParams;
     }
 
     private String resolveTargetTypeByTool(String toolCode)
@@ -2900,7 +3014,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         insertBuiltinTool(TOOL_TCP_PORT_CHECK, "TCP端口连通性检测", TOOL_TCP_PORT_CHECK, "ms", RULE_MAX, new BigDecimal("1000"), 5, 0,
                 "{\"fields\":[\"host\",\"port\",\"timeoutSeconds\"]}");
         insertBuiltinTool(TOOL_SERVER_SERVICE_STATUS, "服务器服务状态检测", TOOL_SERVER_SERVICE_STATUS, "状态", RULE_MIN, BigDecimal.ONE, 15, 0,
-                "{\"fields\":[\"serviceName\",\"privilegeMode\",\"autoRestart\",\"restartWaitSeconds\"]}");
+                "{\"fields\":[\"serverTargets\",\"serviceName\",\"privilegeMode\",\"autoRestart\",\"restartWaitSeconds\"]}");
     }
 
     private void insertBuiltinTool(String code, String name, String type, String unit, String rule,
@@ -3401,6 +3515,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private Map<String, Object> readServiceParams(Map<String, Object> step, Map<String, Object> target)
     {
         Map<String, Object> params = new HashMap<>();
+        params.putAll(readParams(step));
         String extraParams = str(target, "extraParams");
         if (StringUtils.isNotBlank(extraParams))
         {
@@ -3413,8 +3528,20 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 // Ignore malformed legacy extra params and fall back to step params.
             }
         }
-        params.putAll(readParams(step));
+        putIfNotBlank(params, "serviceName", target == null ? null : target.get("serviceName"));
+        putIfNotBlank(params, "privilegeMode", target == null ? null : target.get("privilegeMode"));
+        putIfNotBlank(params, "privilegeUser", target == null ? null : target.get("privilegeUser"));
+        putIfNotBlank(params, "autoRestart", target == null ? null : target.get("autoRestart"));
+        putIfNotBlank(params, "restartWaitSeconds", target == null ? null : target.get("restartWaitSeconds"));
         return params;
+    }
+
+    private void putIfNotBlank(Map<String, Object> map, String key, Object value)
+    {
+        if (value != null && StringUtils.isNotBlank(value.toString()))
+        {
+            map.put(key, value);
+        }
     }
 
     private String normalizeSystemdServiceName(String serviceName)
