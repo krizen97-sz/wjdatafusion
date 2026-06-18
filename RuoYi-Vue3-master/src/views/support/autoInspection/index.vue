@@ -15,113 +15,32 @@
     </section>
 
     <section v-show="activeTab === 'dashboard'" class="auto-content-section">
-        <div v-loading="dashboardLoading" class="dashboard-shell">
-          <section class="dashboard-status" :class="`dashboard-status--${dashboardSummary.status || '3'}`">
-            <div>
-              <span class="dashboard-status__eyebrow">今日运行状态</span>
-              <h3>{{ formatResult(dashboardSummary.status) }}</h3>
-              <p>{{ dashboardStatusText }}</p>
-            </div>
-            <div class="dashboard-status__metrics">
-              <span><strong>{{ dashboardSummary.recordCount || 0 }}</strong><em>今日巡检</em></span>
-              <span><strong>{{ dashboardSummary.abnormalCount || 0 }}</strong><em>异常记录</em></span>
-              <span><strong>{{ dashboardSummary.abnormalTargetCount || 0 }}</strong><em>异常子项</em></span>
-              <span><strong>{{ dashboardSummary.successRate || '0%' }}</strong><em>正常率</em></span>
-            </div>
-            <el-button icon="Refresh" @click="getDashboard">刷新看板</el-button>
-          </section>
-
-          <section class="dashboard-grid">
-            <article class="dashboard-panel dashboard-panel--trend">
-              <header>
-                <div>
-                  <strong>近 7 天巡检状态</strong>
-                  <span>按天查看平台运行趋势</span>
-                </div>
-              </header>
-              <div class="trend-days">
-                <div v-for="item in dashboardTrend" :key="item.date" class="trend-day" :class="`trend-day--${item.status}`">
-                  <span>{{ formatTrendDate(item.date) }}</span>
-                  <strong>{{ item.total }}</strong>
-                  <em>{{ item.abnormal ? `${item.abnormal} 异常` : (item.total ? '正常' : '无记录') }}</em>
-                </div>
-              </div>
-            </article>
-
-            <article class="dashboard-panel dashboard-panel--records">
-              <header>
-                <div>
-                  <strong>今日最新巡检</strong>
-                  <span>最近执行的模板和结果</span>
-                </div>
-              </header>
-              <el-empty v-if="!dashboardRecentRecords.length" description="今日暂无巡检记录" :image-size="76" />
-              <div v-else class="recent-records">
-                <button v-for="item in dashboardRecentRecords" :key="item.recordId" @click="handleRecordDetail(item)">
-                  <span :class="`status-dot status-dot--${item.resultStatus}`"></span>
-                  <div>
-                    <strong>{{ item.templateName || '未命名模板' }}</strong>
-                    <em>{{ item.inspectionTime || '-' }} · {{ item.sourceLabel || '-' }}</em>
-                  </div>
-                  <label>{{ item.abnormalCount || 0 }} 异常</label>
-                </button>
-              </div>
-            </article>
-          </section>
-
-          <section class="dashboard-grid dashboard-grid--bottom">
-            <article class="dashboard-panel">
-              <header>
-                <div>
-                  <strong>工具健康度</strong>
-                  <span>按巡检工具聚合今日步骤结果</span>
-                </div>
-              </header>
-              <el-empty v-if="!dashboardToolStats.length" description="今日暂无工具结果" :image-size="76" />
-              <div v-else class="tool-health-list">
-                <div v-for="item in dashboardToolStats" :key="item.toolCode" class="tool-health-item">
-                  <div class="tool-health-item__head">
-                    <strong>{{ item.toolName || item.toolCode }}</strong>
-                    <el-tag class="soft-status-tag" size="small" :type="resultTagType(item.status)">{{ formatResult(item.status) }}</el-tag>
-                  </div>
-                  <div class="tool-health-item__bar">
-                    <span :style="{ width: item.healthRate || '0%' }"></span>
-                  </div>
-                  <p>步骤 {{ item.total || 0 }} · 子项 {{ item.targetCount || 0 }} · 异常子项 {{ item.abnormalTargetCount || 0 }} · 正常率 {{ item.healthRate || '0%' }}</p>
-                </div>
-              </div>
-            </article>
-
-            <article class="dashboard-panel">
-              <header>
-                <div>
-                  <strong>今日异常子项</strong>
-                  <span>优先展示需要处理的具体检查对象</span>
-                </div>
-              </header>
-              <el-empty v-if="!dashboardAbnormalTargets.length" description="今日暂无异常子项" :image-size="76" />
-              <div v-else class="abnormal-target-list">
-                <article v-for="(item, index) in dashboardAbnormalTargets" :key="`${item.recordId}-${item.resultId || index}`">
-                  <span>{{ index + 1 }}</span>
-                  <div>
-                    <strong>{{ item.stepName || '未命名步骤' }} / {{ item.targetName || '未命名子项' }}</strong>
-                    <em>{{ item.templateName || '-' }} · {{ item.inspectionTime || '-' }}</em>
-                    <p>{{ item.errorMessage || item.resultDetail || '未记录异常详情' }}</p>
-                  </div>
-                  <label>{{ item.actualText || '-' }}</label>
-                </article>
-              </div>
-            </article>
-          </section>
-        </div>
-        <section class="record-board">
+        <section class="record-board record-board--primary">
           <header class="record-board__head">
             <div>
-              <strong>巡检记录明细</strong>
-              <span>上方用于判断整体状态，下方用于筛选、追溯和导出具体巡检结果。</span>
+              <strong>巡检记录</strong>
+              <span>打开页面优先处理巡检结果，右侧按钮可展开图表看板。</span>
             </div>
             <el-button icon="Refresh" @click="getRecordList">刷新记录</el-button>
           </header>
+          <section class="dashboard-brief" :class="`dashboard-brief--${dashboardSummary.status || '3'}`">
+            <div class="dashboard-brief__status">
+              <span class="status-dot" :class="`status-dot--${dashboardSummary.status || '3'}`"></span>
+              <div>
+                <strong>{{ formatResult(dashboardSummary.status) }}</strong>
+                <em>今日巡检 {{ dashboardSummary.recordCount || 0 }} 次 · 异常 {{ dashboardSummary.abnormalCount || 0 }} 条 · 正常率 {{ dashboardSummary.successRate || '0%' }}</em>
+              </div>
+            </div>
+            <div class="dashboard-brief__metrics">
+              <span><strong>{{ dashboardSummary.abnormalTargetCount || 0 }}</strong><em>异常子项</em></span>
+              <span><strong>{{ dashboardToolStats.length || 0 }}</strong><em>工具结果</em></span>
+              <span><strong>{{ latestRecordLabel }}</strong><em>最近结果</em></span>
+            </div>
+            <div class="dashboard-brief__actions">
+              <el-button icon="Refresh" :loading="dashboardLoading" @click="getDashboard">刷新</el-button>
+              <el-button type="primary" plain icon="DataAnalysis" @click="openDashboardDrawer">展开看板</el-button>
+            </div>
+          </section>
           <div class="record-insight-strip">
             <span>
               <strong>{{ recordPageSummary.total }}</strong>
@@ -199,6 +118,73 @@
           <pagination v-show="recordTotal > 0" :total="recordTotal" v-model:page="recordQuery.pageNum" v-model:limit="recordQuery.pageSize" @pagination="getRecordList" />
         </section>
     </section>
+
+    <el-drawer v-model="dashboardDrawerOpen" title="巡检看板" direction="rtl" size="820px" append-to-body class="dashboard-drawer" @opened="renderDashboardCharts">
+      <div v-loading="dashboardLoading" class="dashboard-drawer__body">
+        <section class="dashboard-drawer__summary" :class="`dashboard-drawer__summary--${dashboardSummary.status || '3'}`">
+          <div>
+            <span>今日运行状态</span>
+            <strong>{{ formatResult(dashboardSummary.status) }}</strong>
+          </div>
+          <div>
+            <span>今日巡检</span>
+            <strong>{{ dashboardSummary.recordCount || 0 }}</strong>
+          </div>
+          <div>
+            <span>异常子项</span>
+            <strong>{{ dashboardSummary.abnormalTargetCount || 0 }}</strong>
+          </div>
+          <div>
+            <span>正常率</span>
+            <strong>{{ dashboardSummary.successRate || '0%' }}</strong>
+          </div>
+        </section>
+
+        <section class="dashboard-chart-grid">
+          <article class="dashboard-chart-panel dashboard-chart-panel--wide">
+            <header><strong>近 7 天巡检趋势</strong><span>巡检总量 / 异常数</span></header>
+            <div ref="trendChartRef" class="dashboard-chart"></div>
+          </article>
+          <article class="dashboard-chart-panel">
+            <header><strong>今日结果占比</strong><span>正常 / 异常</span></header>
+            <div ref="resultPieChartRef" class="dashboard-chart"></div>
+          </article>
+          <article class="dashboard-chart-panel dashboard-chart-panel--wide">
+            <header><strong>工具健康度</strong><span>按工具聚合正常率</span></header>
+            <div ref="toolHealthChartRef" class="dashboard-chart"></div>
+          </article>
+          <article class="dashboard-chart-panel">
+            <header><strong>异常分布</strong><span>按步骤聚合</span></header>
+            <div ref="abnormalChartRef" class="dashboard-chart"></div>
+          </article>
+        </section>
+
+        <section class="dashboard-drawer__lists">
+          <article>
+            <header><strong>今日最新巡检</strong></header>
+            <el-empty v-if="!dashboardRecentRecords.length" description="暂无记录" :image-size="64" />
+            <div v-else class="dashboard-drawer__list">
+              <button v-for="item in dashboardRecentRecords" :key="item.recordId" @click="handleRecordDetail(item)">
+                <span :class="`status-dot status-dot--${item.resultStatus}`"></span>
+                <strong>{{ item.templateName || '未命名模板' }}</strong>
+                <em>{{ item.inspectionTime || '-' }}</em>
+              </button>
+            </div>
+          </article>
+          <article>
+            <header><strong>今日异常子项</strong></header>
+            <el-empty v-if="!dashboardAbnormalTargets.length" description="暂无异常" :image-size="64" />
+            <div v-else class="dashboard-drawer__list">
+              <button v-for="item in dashboardAbnormalTargets" :key="`${item.recordId}-${item.resultId}`" @click="handleRecordDetail(item)">
+                <span :class="`status-dot status-dot--${item.resultStatus}`"></span>
+                <strong>{{ item.stepName || '未命名步骤' }} / {{ item.targetName || '未命名子项' }}</strong>
+                <em>{{ item.actualText || item.errorMessage || '-' }}</em>
+              </button>
+            </div>
+          </article>
+        </section>
+      </div>
+    </el-drawer>
 
     <section v-show="activeTab === 'config'" class="auto-content-section">
         <div class="config-shell">
@@ -1141,6 +1127,7 @@
 </template>
 
 <script setup name="SupportAutoInspection">
+import * as echarts from 'echarts'
 import { saveAs } from 'file-saver'
 import {
   addAutoInspectionPlan,
@@ -1217,6 +1204,11 @@ const planQuery = ref({ pageNum: 1, pageSize: 10, planName: '', templateId: unde
 
 const dashboardLoading = ref(false)
 const dashboardData = ref(defaultDashboardData())
+const dashboardDrawerOpen = ref(false)
+const trendChartRef = ref(null)
+const resultPieChartRef = ref(null)
+const toolHealthChartRef = ref(null)
+const abnormalChartRef = ref(null)
 const recordLoading = ref(false)
 const recordList = ref([])
 const recordTotal = ref(0)
@@ -1251,6 +1243,7 @@ const planForm = ref(defaultPlanForm())
 const detailOpen = ref(false)
 const detail = ref({})
 const serverPasswordRevealLoadingKey = ref('')
+const dashboardChartInstances = {}
 
 const targetTypeOptions = [
   { label: 'Kafka', value: 'KAFKA' },
@@ -1516,6 +1509,27 @@ const dashboardTrend = computed(() => dashboardData.value?.trend || [])
 const dashboardToolStats = computed(() => dashboardData.value?.toolStats || [])
 const dashboardAbnormalTargets = computed(() => dashboardData.value?.latestAbnormalTargets || [])
 const dashboardRecentRecords = computed(() => dashboardData.value?.recentRecords || [])
+const dashboardResultPieData = computed(() => {
+  const total = Number(dashboardSummary.value.recordCount || 0)
+  const abnormal = Number(dashboardSummary.value.abnormalCount || 0)
+  const normal = Math.max(total - abnormal, 0)
+  if (!total) return [{ name: '暂无记录', value: 1 }]
+  return [
+    { name: '正常', value: normal },
+    { name: '异常', value: abnormal }
+  ].filter((item) => item.value > 0)
+})
+const dashboardAbnormalStepData = computed(() => {
+  const grouped = new Map()
+  dashboardAbnormalTargets.value.forEach((item) => {
+    const name = item.stepName || item.toolName || item.targetName || '未命名子项'
+    grouped.set(name, (grouped.get(name) || 0) + 1)
+  })
+  return Array.from(grouped.entries())
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8)
+})
 const dashboardStatusText = computed(() => {
   const summary = dashboardSummary.value
   if (!summary.recordCount) return '今天还没有巡检记录，建议先执行一次模板或检查计划是否启用。'
@@ -1603,12 +1617,26 @@ watch(configTab, () => {
   if (activeTab.value === 'config') loadConfigTab()
 })
 
+watch(dashboardDrawerOpen, (open) => {
+  if (open) renderDashboardCharts()
+})
+
+watch(dashboardData, () => {
+  if (dashboardDrawerOpen.value) renderDashboardCharts()
+}, { deep: true })
+
 watch(bigDataServerTreeKeyword, (value) => {
   bigDataServerTreeRef.value?.filter(value)
 })
 
 onMounted(() => {
+  window.addEventListener('resize', resizeDashboardCharts)
   initPage()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', resizeDashboardCharts)
+  disposeDashboardCharts()
 })
 
 async function initPage() {
@@ -1980,7 +2008,122 @@ function getDashboard() {
   dashboardLoading.value = true
   return getAutoInspectionDashboard().then((res) => {
     dashboardData.value = { ...defaultDashboardData(), ...(res.data || {}) }
+    if (dashboardDrawerOpen.value) renderDashboardCharts()
   }).finally(() => { dashboardLoading.value = false })
+}
+
+function openDashboardDrawer() {
+  dashboardDrawerOpen.value = true
+  getDashboard()
+}
+
+function getDashboardChart(refValue, key) {
+  const dom = refValue?.value
+  if (!dom) return null
+  if (!dashboardChartInstances[key]) {
+    dashboardChartInstances[key] = echarts.init(dom)
+  }
+  return dashboardChartInstances[key]
+}
+
+function renderDashboardCharts() {
+  nextTick(() => {
+    if (!dashboardDrawerOpen.value) return
+    renderTrendChart()
+    renderResultPieChart()
+    renderToolHealthChart()
+    renderAbnormalChart()
+  })
+}
+
+function renderTrendChart() {
+  const chart = getDashboardChart(trendChartRef, 'trend')
+  if (!chart) return
+  const dates = dashboardTrend.value.map((item) => formatTrendDate(item.date))
+  chart.setOption({
+    color: ['#2f80ed', '#f56c6c'],
+    grid: { top: 30, right: 18, bottom: 30, left: 36 },
+    tooltip: { trigger: 'axis' },
+    legend: { top: 0, right: 0, itemWidth: 10, itemHeight: 10 },
+    xAxis: { type: 'category', data: dates, axisTick: { show: false } },
+    yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: '#edf2f7' } } },
+    series: [
+      { name: '巡检总量', type: 'line', smooth: true, symbolSize: 7, areaStyle: { opacity: 0.08 }, data: dashboardTrend.value.map((item) => Number(item.total || 0)) },
+      { name: '异常数', type: 'line', smooth: true, symbolSize: 7, data: dashboardTrend.value.map((item) => Number(item.abnormal || 0)) }
+    ]
+  })
+}
+
+function renderResultPieChart() {
+  const chart = getDashboardChart(resultPieChartRef, 'resultPie')
+  if (!chart) return
+  chart.setOption({
+    color: ['#67c23a', '#f56c6c', '#c0c4cc'],
+    tooltip: { trigger: 'item' },
+    legend: { bottom: 0, left: 'center', itemWidth: 10, itemHeight: 10 },
+    series: [{
+      type: 'pie',
+      radius: ['56%', '78%'],
+      center: ['50%', '45%'],
+      avoidLabelOverlap: true,
+      label: { formatter: '{b}\n{d}%' },
+      data: dashboardResultPieData.value
+    }]
+  })
+}
+
+function renderToolHealthChart() {
+  const chart = getDashboardChart(toolHealthChartRef, 'toolHealth')
+  if (!chart) return
+  const rows = dashboardToolStats.value.slice(0, 8)
+  chart.setOption({
+    color: ['#2f80ed'],
+    grid: { top: 18, right: 42, bottom: 24, left: 120 },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    xAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' }, splitLine: { lineStyle: { color: '#edf2f7' } } },
+    yAxis: { type: 'category', data: rows.map((item) => item.toolName || item.toolCode || '-'), axisTick: { show: false } },
+    series: [{
+      name: '正常率',
+      type: 'bar',
+      barWidth: 12,
+      itemStyle: { borderRadius: [0, 8, 8, 0] },
+      label: { show: true, position: 'right', formatter: '{c}%' },
+      data: rows.map((item) => parsePercent(item.healthRate))
+    }]
+  })
+}
+
+function renderAbnormalChart() {
+  const chart = getDashboardChart(abnormalChartRef, 'abnormal')
+  if (!chart) return
+  const rows = dashboardAbnormalStepData.value.length ? dashboardAbnormalStepData.value : [{ name: '暂无异常', value: 1 }]
+  chart.setOption({
+    color: ['#f56c6c', '#e6a23c', '#909399', '#2f80ed', '#67c23a'],
+    tooltip: { trigger: 'item' },
+    series: [{
+      type: 'pie',
+      radius: ['42%', '72%'],
+      center: ['50%', '48%'],
+      label: { formatter: '{b}\n{c}' },
+      data: rows
+    }]
+  })
+}
+
+function resizeDashboardCharts() {
+  Object.values(dashboardChartInstances).forEach((chart) => chart?.resize())
+}
+
+function disposeDashboardCharts() {
+  Object.keys(dashboardChartInstances).forEach((key) => {
+    dashboardChartInstances[key]?.dispose()
+    delete dashboardChartInstances[key]
+  })
+}
+
+function parsePercent(value) {
+  const parsed = Number(String(value || '0').replace('%', ''))
+  return Number.isFinite(parsed) ? parsed : 0
 }
 
 function resetTemplateQuery() {
@@ -3756,12 +3899,105 @@ function resultTagType(value) {
   gap: 14px;
 }
 
+.dashboard-brief {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #dfeaf6;
+  border-radius: 8px;
+  background: #f8fbff;
+}
+
+.dashboard-brief--1 {
+  border-color: #cfeadc;
+  background: #f6fbf8;
+}
+
+.dashboard-brief--2 {
+  border-color: #ffd6d6;
+  background: #fff8f8;
+}
+
+.dashboard-brief__status {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+
+  strong,
+  em {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: #1d3554;
+    font-size: 15px;
+  }
+
+  em {
+    color: #6f8299;
+    font-size: 12px;
+    font-style: normal;
+  }
+}
+
+.dashboard-brief__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 72px);
+  gap: 6px;
+
+  span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid #e2ebf7;
+    border-radius: 7px;
+    background: #fff;
+    text-align: center;
+  }
+
+  strong {
+    overflow: hidden;
+    color: #1d5da6;
+    font-size: 14px;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  em {
+    color: #7890aa;
+    font-size: 11px;
+    font-style: normal;
+  }
+}
+
+.dashboard-brief__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  white-space: nowrap;
+}
+
 .record-board {
   display: grid;
   gap: 14px;
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid #e3ecf7;
+}
+
+.record-board--primary {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .record-board__head {
@@ -3985,6 +4221,168 @@ function resultTagType(value) {
 
 .status-dot--2 {
   background: #f56c6c;
+}
+
+.status-dot--3 {
+  background: #a8b5c5;
+}
+
+.dashboard-drawer__body {
+  display: grid;
+  gap: 14px;
+}
+
+:deep(.dashboard-drawer .el-drawer__body) {
+  padding: 16px;
+  background: #f5f8fc;
+}
+
+.dashboard-drawer__summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+
+  div {
+    display: grid;
+    gap: 5px;
+    min-height: 70px;
+    padding: 12px;
+    border: 1px solid #e1ebf7;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  span {
+    color: #7890aa;
+    font-size: 12px;
+  }
+
+  strong {
+    overflow: hidden;
+    color: #1d3554;
+    font-size: 22px;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.dashboard-drawer__summary--1 div:first-child {
+  border-color: #cfeadc;
+  background: #f6fbf8;
+}
+
+.dashboard-drawer__summary--2 div:first-child {
+  border-color: #ffd6d6;
+  background: #fff8f8;
+
+  strong {
+    color: #c45656;
+  }
+}
+
+.dashboard-chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  gap: 12px;
+}
+
+.dashboard-chart-panel {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #e1ebf7;
+  border-radius: 8px;
+  background: #fff;
+
+  header {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  strong {
+    color: #1d3554;
+    font-size: 14px;
+  }
+
+  span {
+    color: #7890aa;
+    font-size: 12px;
+  }
+}
+
+.dashboard-chart-panel--wide {
+  min-height: 292px;
+}
+
+.dashboard-chart {
+  width: 100%;
+  height: 250px;
+}
+
+.dashboard-drawer__lists {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+
+  article {
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid #e1ebf7;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  header {
+    margin-bottom: 10px;
+    color: #1d3554;
+  }
+}
+
+.dashboard-drawer__list {
+  display: grid;
+  gap: 8px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.dashboard-drawer__list button {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 7px 9px;
+  align-items: center;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #e6eef8;
+  border-radius: 7px;
+  background: #fbfdff;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    border-color: #9bc8ff;
+    background: #f4f9ff;
+  }
+
+  strong,
+  em {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: #1d3554;
+    font-size: 13px;
+  }
+
+  em {
+    grid-column: 2;
+    color: #7890aa;
+    font-size: 12px;
+    font-style: normal;
+  }
 }
 
 .tool-health-list {
@@ -5528,6 +5926,20 @@ function resultTagType(value) {
   }
 
   .dashboard-status__metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-brief,
+  .dashboard-chart-grid,
+  .dashboard-drawer__lists {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-brief__actions {
+    justify-content: flex-start;
+  }
+
+  .dashboard-drawer__summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
