@@ -188,11 +188,17 @@
       </div>
     </el-drawer>
 
-    <el-drawer v-model="operationGuideOpen" title="自动化巡检操作指引" direction="rtl" size="760px" append-to-body class="operation-guide-drawer">
+    <el-drawer v-model="operationGuideOpen" title="自动化巡检操作指引" direction="rtl" size="860px" append-to-body class="operation-guide-drawer">
       <div class="operation-guide">
         <section class="operation-guide__intro">
           <strong>推荐配置路径</strong>
           <p>先把巡检能力沉淀成模板，再把模板交给计划定时执行，最后在巡检总览查看结果和导出报告。</p>
+          <div class="operation-guide__images operation-guide__images--intro">
+            <figure v-for="(image, imageIndex) in operationGuideIntroImages" :key="image.src">
+              <el-image :src="image.src" :preview-src-list="operationGuideIntroImages.map((item) => item.src)" :initial-index="imageIndex" fit="cover" lazy />
+              <figcaption>{{ image.title }}</figcaption>
+            </figure>
+          </div>
         </section>
         <ol class="operation-guide__steps">
           <li v-for="item in operationGuideSteps" :key="item.index">
@@ -203,9 +209,19 @@
                 <em>{{ item.place }}</em>
               </header>
               <p>{{ item.desc }}</p>
+              <div v-if="item.manual?.length" class="operation-guide__manual">
+                <strong>操作说明</strong>
+                <p v-for="line in item.manual" :key="line">{{ line }}</p>
+              </div>
               <ul>
                 <li v-for="action in item.actions" :key="action">{{ action }}</li>
               </ul>
+              <div v-if="item.images?.length" class="operation-guide__images">
+                <figure v-for="(image, imageIndex) in item.images" :key="image.src">
+                  <el-image :src="image.src" :preview-src-list="item.images.map((item) => item.src)" :initial-index="imageIndex" fit="cover" lazy />
+                  <figcaption>{{ image.title }}</figcaption>
+                </figure>
+              </div>
             </div>
           </li>
         </ol>
@@ -213,6 +229,13 @@
           <strong>关键提醒</strong>
           <p>服务器目录、磁盘和服务状态类巡检实际执行时只使用巡检配置里保存的 SSH 账号和密码；从现场服务器选择只是带出 IP、端口和账号提示。</p>
           <p>部署时可同步带上文档：WDF100.0/doc/自动化巡检功能操作手册.md。</p>
+        </section>
+        <section class="operation-guide__manual-link">
+          <div>
+            <strong>完整操作手册</strong>
+            <p>需要按章节阅读或交付部署时，可以打开完整 Markdown 文档。</p>
+          </div>
+          <el-link type="primary" :underline="false" :href="operationGuideManualUrl" target="_blank">打开完整文档</el-link>
         </section>
       </div>
     </el-drawer>
@@ -1291,6 +1314,19 @@ const detailOpen = ref(false)
 const detail = ref({})
 const serverPasswordRevealLoadingKey = ref('')
 const dashboardChartInstances = {}
+const operationGuideManualUrl = '/docs/auto-inspection/auto-inspection-manual.md'
+const operationGuideAssetBase = '/docs/auto-inspection/auto-inspection-manual-assets/'
+
+function guideImage(file, title) {
+  return {
+    src: `${operationGuideAssetBase}${file}`,
+    title
+  }
+}
+
+const operationGuideIntroImages = [
+  guideImage('10-operation-guide.png', '巡检配置页操作指引入口与页面步骤标注')
+]
 
 const operationGuideSteps = [
   {
@@ -1298,42 +1334,89 @@ const operationGuideSteps = [
     title: '创建巡检模板',
     place: '巡检配置 / 巡检模板',
     desc: '模板用于沉淀一套可重复执行的巡检方案，适合按系统、平台或业务场景拆分。',
-    actions: ['点击“新增模板”填写模板名称和说明。', '模板可以一键复制，复制后再微调步骤，适合快速生成同类巡检方案。']
+    manual: [
+      '进入“巡检配置”后，先停留在“巡检模板”区域。这里是自动化巡检的起点，模板用于保存一组可重复执行的巡检步骤。',
+      '模板名称建议按系统、平台或业务场景命名，例如“TIM 平台每日巡检”。说明字段用于记录巡检范围和适用时机。'
+    ],
+    actions: ['点击“新增模板”填写模板名称和说明。', '模板可以一键复制，复制后再微调步骤，适合快速生成同类巡检方案。'],
+    images: [
+      guideImage('01-config-template.png', '巡检模板列表和配置入口'),
+      guideImage('02-template-dialog.png', '新增巡检模板弹窗')
+    ]
   },
   {
     index: '02',
     title: '添加巡检步骤',
     place: '模板弹窗 / 添加步骤',
     desc: '一个模板可以包含多个步骤，每个步骤选择一个巡检工具并配置目标、阈值和展示名称。',
-    actions: ['点击“添加步骤”打开工具列表。', '按工具分类选择 Kafka、HTTP、FTP、服务器目录、磁盘、TCP 端口或服务状态检测。']
+    manual: [
+      '点击“添加步骤”后，系统会先打开巡检工具箱。工具按数据源和检测方式分类，避免用户在下拉框里盲选。',
+      '右侧会展示工具说明、默认规则、需要配置的字段和使用案例。确认工具适合当前场景后，再进入具体配置页面。'
+    ],
+    actions: ['点击“添加步骤”打开工具列表。', '按工具分类选择 Kafka、HTTP、FTP、服务器目录、磁盘、TCP 端口或服务状态检测。'],
+    images: [
+      guideImage('03-tool-picker.png', '巡检工具箱和工具使用说明')
+    ]
   },
   {
     index: '03',
     title: '配置目标和阈值',
     place: '步骤配置弹窗',
     desc: '目标决定去哪里取数，阈值决定什么情况算异常；服务器类目标需要单独确认巡检登录账号。',
-    actions: ['HTTP 接口可使用日期变量生成当天参数。', '服务器类目标可从现场服务器树选择，也可以手工填写 IP、端口、账号和密码。', '配置完成后先点击“测试目标”，确认能取到真实返回值。']
+    manual: [
+      '步骤配置页会根据工具类型展示不同字段。HTTP 类工具重点填写 URL、请求方式、参数、结果路径和阈值；服务器类工具重点填写 IP、SSH 端口、巡检账号和密码。',
+      'HTTP 接口支持日期变量，适合每天自动替换当天开始时间、结束时间或查询日期。服务器类巡检实际执行时只使用本步骤保存的巡检凭据。'
+    ],
+    actions: ['HTTP 接口可使用日期变量生成当天参数。', '服务器类目标可从现场服务器树选择，也可以手工填写 IP、端口、账号和密码。', '配置完成后先点击“测试目标”，确认能取到真实返回值。'],
+    images: [
+      guideImage('04-step-http-config.png', 'HTTP / 海康接口类步骤配置示例')
+    ]
   },
   {
     index: '04',
     title: '保存并手动验证',
     place: '模板列表 / 执行',
     desc: '模板保存后建议先手动执行一次，确认巡检记录、步骤结果和目标明细都符合预期。',
-    actions: ['点击模板行里的“执行”。', '到“巡检总览”查看结果，异常时进入详情查看调用信息和错误原因。']
+    manual: [
+      '模板保存后不要直接交给计划执行，建议先在模板列表点击“执行”做一次手动验证。',
+      '验证重点看三件事：是否生成巡检记录、步骤结果是否符合预期、目标明细里是否能看到调用信息和异常原因。'
+    ],
+    actions: ['点击模板行里的“执行”。', '到“巡检总览”查看结果，异常时进入详情查看调用信息和错误原因。'],
+    images: [
+      guideImage('07-dashboard-records.png', '巡检总览中的手动执行结果'),
+      guideImage('09-record-detail.png', '巡检详情中的步骤结果和目标明细')
+    ]
   },
   {
     index: '05',
     title: '配置巡检计划',
     place: '巡检配置 / 巡检计划',
     desc: '计划把模板交给若依定时任务调度，页面使用可视化周期配置生成 Cron。',
-    actions: ['选择巡检模板和执行周期。', '检查生成的任务编码和 Cron 预览。', '启用计划后，系统会按配置自动生成巡检记录。']
+    manual: [
+      '巡检计划用于把一个已经验证过的模板交给若依定时任务调度。页面采用可视化周期配置，不要求用户手写 Cron。',
+      '保存计划前要确认模板、任务编码、执行周期和状态。计划启用后，系统会按周期自动生成巡检记录。'
+    ],
+    actions: ['选择巡检模板和执行周期。', '检查生成的任务编码和 Cron 预览。', '启用计划后，系统会按配置自动生成巡检记录。'],
+    images: [
+      guideImage('05-plan-list.png', '巡检计划列表'),
+      guideImage('06-plan-dialog.png', '新增巡检计划和可视化周期配置')
+    ]
   },
   {
     index: '06',
     title: '查看记录和导出报告',
     place: '巡检总览',
     desc: '巡检总览默认优先展示记录，展开看板可查看图表、当月日历和异常分布。',
-    actions: ['可按模板、计划、来源、结果筛选记录。', '支持导出选中、本周、本月结果，也可在单条记录中导出 Word 报告。']
+    manual: [
+      '巡检总览默认优先展示巡检记录，便于运维人员第一时间处理结果。可以按模板、计划、来源和结果筛选记录。',
+      '点击“展开看板”后，可通过图表查看本周趋势、结果分布、工具健康度、异常目标和当月巡检日历。'
+    ],
+    actions: ['可按模板、计划、来源、结果筛选记录。', '支持导出选中、本周、本月结果，也可在单条记录中导出 Word 报告。'],
+    images: [
+      guideImage('07-dashboard-records.png', '巡检记录优先展示的总览页面'),
+      guideImage('08-dashboard-drawer.png', '巡检看板图表和当月日历'),
+      guideImage('09-record-detail.png', '单次巡检详情与目标明细')
+    ]
   }
 ]
 
@@ -4670,6 +4753,39 @@ function resultTagType(value) {
   }
 }
 
+.operation-guide__manual-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid #cfe3ff;
+  border-radius: 8px;
+  background: #f2f8ff;
+
+  div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  strong {
+    color: #1d3554;
+    font-size: 15px;
+  }
+
+  p {
+    margin: 0;
+    color: #6f8299;
+    font-size: 13px;
+  }
+
+  .el-link {
+    flex: 0 0 auto;
+    font-weight: 700;
+  }
+}
+
 .operation-guide__steps {
   display: grid;
   gap: 10px;
@@ -4733,6 +4849,72 @@ function resultTagType(value) {
     color: #4f6680;
     font-size: 13px;
     line-height: 1.5;
+  }
+}
+
+.operation-guide__manual {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 10px;
+  padding: 10px 12px;
+  border-left: 3px solid #409eff;
+  border-radius: 6px;
+  background: #f7fbff;
+
+  strong {
+    color: #1d5da6;
+    font-size: 13px;
+  }
+
+  p {
+    margin: 0;
+    color: #536b85;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+}
+
+.operation-guide__images {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+
+  figure {
+    overflow: hidden;
+    margin: 0;
+    border: 1px solid #dfeaf6;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  :deep(.el-image) {
+    display: block;
+    width: 100%;
+    height: 150px;
+    background: #f1f6fc;
+  }
+
+  :deep(.el-image__inner) {
+    object-position: top left;
+  }
+
+  figcaption {
+    overflow: hidden;
+    padding: 8px 10px;
+    border-top: 1px solid #eef3fa;
+    color: #536b85;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.operation-guide__images--intro {
+  grid-template-columns: 1fr;
+
+  :deep(.el-image) {
+    height: 180px;
   }
 }
 
@@ -6426,13 +6608,18 @@ function resultTagType(value) {
   }
 
   .config-help-strip,
-  .operation-guide__steps header {
+  .operation-guide__steps header,
+  .operation-guide__manual-link {
     align-items: flex-start;
     flex-direction: column;
   }
 
   .config-help-strip span {
     white-space: normal;
+  }
+
+  .operation-guide__images {
+    grid-template-columns: 1fr;
   }
 }
 </style>
