@@ -235,10 +235,11 @@
             <template #default="scope"><el-tag size="small" :type="scope.row.status === '1' ? 'info' : 'success'">{{ scope.row.status === '1' ? '停用' : '正常' }}</el-tag></template>
           </el-table-column>
           <el-table-column label="更新时间" prop="updateTime" width="170" align="center" />
-          <el-table-column label="操作" width="260" fixed="right" align="center">
+          <el-table-column label="操作" width="300" fixed="right" align="center">
             <template #default="scope">
               <el-button link type="primary" @click="handleUpdateTemplate(scope.row)" v-hasPermi="['support:autoInspection:template']">编辑</el-button>
               <el-button link type="success" :loading="templateRunId === scope.row.templateId" @click="handleRunTemplate(scope.row)" v-hasPermi="['support:autoInspection:run']">执行</el-button>
+              <el-button link type="warning" :loading="templateCopyId === scope.row.templateId" @click="handleCopyTemplate(scope.row)" v-hasPermi="['support:autoInspection:template']">复制</el-button>
               <el-button link type="danger" @click="handleDeleteTemplate(scope.row)" v-hasPermi="['support:autoInspection:template']">删除</el-button>
             </template>
           </el-table-column>
@@ -1137,6 +1138,7 @@ import {
   addAutoInspectionTemplate,
   batchAutoInspectionServerCredentialPlain,
   changeAutoInspectionPlanStatus,
+  copyAutoInspectionTemplate,
   delAutoInspectionPlan,
   delAutoInspectionTarget,
   delAutoInspectionTemplate,
@@ -1190,6 +1192,7 @@ const templateLoading = ref(false)
 const templateList = ref([])
 const templateTotal = ref(0)
 const templateRunId = ref(null)
+const templateCopyId = ref(null)
 const templateQuery = ref({ pageNum: 1, pageSize: 10, templateName: '', status: '' })
 
 const targetLoading = ref(false)
@@ -3308,6 +3311,15 @@ function handleDeleteTemplate(row) {
     getTemplateList()
     getTemplateOptions()
   })
+}
+
+function handleCopyTemplate(row) {
+  templateCopyId.value = row.templateId
+  copyAutoInspectionTemplate(row.templateId).then(() => {
+    proxy.$modal.msgSuccess('复制成功')
+    getTemplateList()
+    getTemplateOptions()
+  }).finally(() => { templateCopyId.value = null })
 }
 
 function handleRunTemplate(row) {

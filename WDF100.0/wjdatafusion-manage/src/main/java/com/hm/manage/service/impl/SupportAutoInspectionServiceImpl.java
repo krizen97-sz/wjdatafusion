@@ -439,6 +439,22 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public Long copyTemplate(Long templateId)
+    {
+        Map<String, Object> source = selectTemplateById(templateId);
+        Map<String, Object> copied = JSON.parseObject(JSON.toJSONString(source), Map.class);
+        copied.remove("templateId");
+        copied.put("templateName", StringUtils.defaultIfBlank(str(source, "templateName"), "巡检模板") + "（复制）");
+        clearAuditFields(copied);
+        for (Map<String, Object> step : castList(copied.get("steps")))
+        {
+            prepareCopiedTemplateStep(step);
+        }
+        return saveTemplate(copied);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public int deleteTemplateById(Long templateId)
     {
         if (autoInspectionMapper.countPlanByTemplateId(templateId) > 0)
@@ -3014,6 +3030,77 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             }
         }
         template.put("steps", steps);
+    }
+
+    private void prepareCopiedTemplateStep(Map<String, Object> step)
+    {
+        step.remove("stepId");
+        step.remove("templateId");
+        step.remove("targetIds");
+        clearAuditFields(step);
+        stripTargetIdentity(castMap(step.get("target")));
+        List<Map<String, Object>> copiedTargets = castList(step.get("targets"));
+        for (Map<String, Object> target : castList(step.get("targets")))
+        {
+            stripTargetIdentity(target);
+        }
+        Map<String, Object> params = readParams(step);
+        if (!copiedTargets.isEmpty())
+        {
+            if (TOOL_FTP_FILE_COUNT.equals(str(step, "toolCode")))
+            {
+                params.put("ftpTargets", copiedTargets);
+            }
+            else if (TOOL_SERVER_FILE_COUNT.equals(str(step, "toolCode"))
+                    || TOOL_SERVER_SERVICE_STATUS.equals(str(step, "toolCode"))
+                    || TOOL_BIG_DATA_SERVER_DISK.equals(str(step, "toolCode")))
+            {
+                params.put("serverTargets", copiedTargets);
+            }
+        }
+        else
+        {
+            stripTargetListIdentity(params.get("serverTargets"));
+            stripTargetListIdentity(params.get("ftpTargets"));
+        }
+        if (!params.isEmpty())
+        {
+            step.put("stepParams", JSON.toJSONString(params));
+        }
+    }
+
+    private void stripTargetListIdentity(Object value)
+    {
+        for (Map<String, Object> target : castList(value))
+        {
+            stripTargetIdentity(target);
+        }
+    }
+
+    private void stripTargetIdentity(Map<String, Object> target)
+    {
+        if (target == null || target.isEmpty())
+        {
+            return;
+        }
+        target.remove("targetId");
+        target.remove("stepId");
+        target.remove("templateId");
+        target.remove("relationId");
+        target.remove("resultId");
+        clearAuditFields(target);
+    }
+
+    private void clearAuditFields(Map<String, Object> value)
+    {
+        if (value == null)
+        {
+            return;
+        }
+        value.remove("createBy");
+        value.remove("createTime");
+        value.remove("updateBy");
+        value.remove("updateTime");
     }
 
     private Map<String, Object> treeNode(String id, String label, String type, Long value, boolean disabled)

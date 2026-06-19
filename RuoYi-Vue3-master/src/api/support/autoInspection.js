@@ -60,6 +60,10 @@ export function updateAutoInspectionTemplate(data) {
   return request({ url: '/support/autoInspection/template', method: 'put', data })
 }
 
+export function copyAutoInspectionTemplate(templateId) {
+  return request({ url: '/support/autoInspection/template/copy/' + templateId, method: 'post' })
+}
+
 export function delAutoInspectionTemplate(templateId) {
   return request({ url: '/support/autoInspection/template/' + templateId, method: 'delete' })
 }

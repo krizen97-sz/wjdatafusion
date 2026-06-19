@@ -36,6 +36,8 @@ public interface ISupportAutoInspectionService
 
     Long saveTemplate(Map<String, Object> template);
 
+    Long copyTemplate(Long templateId);
+
     int deleteTemplateById(Long templateId);
 
     List<Map<String, Object>> selectPlanList(Map<String, Object> plan);

@@ -148,6 +148,14 @@ public class SupportAutoInspectionController extends BaseController
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:template')")
+    @Log(title = "自动化巡检模板", businessType = BusinessType.INSERT)
+    @PostMapping("/template/copy/{templateId}")
+    public AjaxResult copyTemplate(@PathVariable Long templateId)
+    {
+        return success(autoInspectionService.copyTemplate(templateId));
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:autoInspection:template')")
     @Log(title = "自动化巡检模板", businessType = BusinessType.DELETE)
     @DeleteMapping("/template/{templateId}")
     public AjaxResult deleteTemplate(@PathVariable Long templateId)
