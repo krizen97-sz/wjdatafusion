@@ -1,0 +1,6 @@
+Lucide Icons
+Source: https://lucide.dev
+Repository: https://github.com/lucide-icons/lucide
+License: ISC
+
+The refreshed local SVG icons in this project are bundled for offline deployment and use Lucide's open-source line icon system as the selected visual reference.

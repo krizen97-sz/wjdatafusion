@@ -67,6 +67,9 @@ $--color-info: #7d90a6;
 
 // CSS变量定义
 :root {
+  --app-text: #35506d;
+  --app-heading: #17314d;
+  --app-muted: #6d8298;
   --page-bg:
     radial-gradient(circle at top left, rgba(194, 224, 255, 0.5), transparent 28%),
     radial-gradient(circle at top right, rgba(222, 240, 255, 0.72), transparent 32%),
@@ -101,51 +104,71 @@ $--color-info: #7d90a6;
 // 暗黑模式变量
 html.dark {
   /* 默认通用 */
-  --el-bg-color: #141414;
-  --el-bg-color-overlay: #1d1e1f;
-  --el-text-color-primary: #ffffff;
-  --el-text-color-regular: #d0d0d0;
-  --el-border-color: #434343;
-  --el-border-color-light: #434343;
+  --app-text: #d8e2f0;
+  --app-heading: #f4f8ff;
+  --app-muted: #91a1b6;
+  --page-bg:
+    radial-gradient(circle at top left, rgba(45, 126, 247, 0.16), transparent 30%),
+    radial-gradient(circle at top right, rgba(47, 128, 237, 0.12), transparent 34%),
+    linear-gradient(180deg, #0b111a 0%, #101722 100%);
+  --surface-bg: rgba(17, 24, 34, 0.88);
+  --surface-strong: #151d29;
+  --surface-muted: #101722;
+  --surface-border: rgba(116, 142, 174, 0.24);
+  --surface-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+  --el-bg-color: #101722;
+  --el-bg-color-page: #0b111a;
+  --el-bg-color-overlay: #151d29;
+  --el-text-color-primary: #f4f8ff;
+  --el-text-color-regular: #d8e2f0;
+  --el-text-color-secondary: #91a1b6;
+  --el-text-color-placeholder: #6f7f95;
+  --el-border-color: rgba(116, 142, 174, 0.32);
+  --el-border-color-light: rgba(116, 142, 174, 0.24);
+  --el-border-color-lighter: rgba(116, 142, 174, 0.16);
+  --el-fill-color-blank: #151d29;
+  --el-fill-color-light: #182232;
+  --el-fill-color-lighter: #101722;
   
   /* primary */
-  --primary-bg: #18212b;
+  --primary-bg: rgba(45, 126, 247, 0.14);
 
   /* 侧边栏 */
-  --sidebar-bg: #141414;
-  --sidebar-text: #ffffff;
-  --menu-hover: #2d2d2d;
+  --sidebar-bg: rgba(9, 13, 19, 0.92);
+  --sidebar-text: #d8e2f0;
+  --sidebar-border: rgba(116, 142, 174, 0.2);
+  --menu-hover: rgba(45, 126, 247, 0.12);
   --menu-active-text: #{$menuActiveText};
 
   /* 顶部导航栏 */
-  --navbar-bg: #141414;
-  --navbar-text: #ffffff;
-  --navbar-hover: #141414;
+  --navbar-bg: rgba(9, 13, 19, 0.88);
+  --navbar-text: #d8e2f0;
+  --navbar-hover: rgba(45, 126, 247, 0.12);
 
   /* 标签栏 */
-  --tags-bg: #141414;
-  --tags-item-bg: #1d1e1f;
-  --tags-item-border: #303030;
-  --tags-item-text: #d0d0d0;
-  --tags-item-hover: #2d2d2d;
-  --tags-close-hover: #64666a;
+  --tags-bg: rgba(11, 17, 26, 0.9);
+  --tags-item-bg: rgba(21, 29, 41, 0.92);
+  --tags-item-border: rgba(116, 142, 174, 0.24);
+  --tags-item-text: #d8e2f0;
+  --tags-item-hover: rgba(45, 126, 247, 0.14);
+  --tags-close-hover: rgba(116, 142, 174, 0.6);
 
   /* splitpanes 组件暗黑模式变量 */
-  --splitpanes-bg: #141414;
-  --splitpanes-border: #303030;
-  --splitpanes-splitter-bg: #1d1e1f;
-  --splitpanes-splitter-hover-bg: #2d2d2d;
+  --splitpanes-bg: #101722;
+  --splitpanes-border: rgba(116, 142, 174, 0.24);
+  --splitpanes-splitter-bg: #151d29;
+  --splitpanes-splitter-hover-bg: #1b2636;
 
   /* blockquote 暗黑模式变量 */
-  --blockquote-bg: #1d1e1f;
-  --blockquote-border: #303030;
-  --blockquote-text: #d0d0d0;
+  --blockquote-bg: #151d29;
+  --blockquote-border: rgba(116, 142, 174, 0.28);
+  --blockquote-text: #d8e2f0;
   
   /* Cron 时间表达式 模式变量 */
-  --cron-border: #303030;
+  --cron-border: rgba(116, 142, 174, 0.28);
 
   /* splitpanes default-theme 暗黑模式变量 */
-  --splitpanes-default-bg: #141414;
+  --splitpanes-default-bg: #101722;
 
   /* 侧边栏菜单覆盖 */
   .sidebar-container {

@@ -1,1 +1,8 @@
-<?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg t="1547360688278" class="icon" style="" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="6717" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="200"><defs><style type="text/css"></style></defs><path d="M890 120H134a70 70 0 0 0-70 70v500a70 70 0 0 0 70 70h756a70 70 0 0 0 70-70V190a70 70 0 0 0-70-70z m-10 520a40 40 0 0 1-40 40H712V448a40 40 0 0 0-80 0v232h-80V368a40 40 0 0 0-80 0v312h-80V512a40 40 0 0 0-80 0v168H184a40 40 0 0 1-40-40V240a40 40 0 0 1 40-40h656a40 40 0 0 1 40 40zM696 824H328a40 40 0 0 0 0 80h368a40 40 0 0 0 0-80z" p-id="6718"></path></svg>
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg">
+  <rect x="3" y="3" width="18" height="7" rx="2"/>
+  <rect x="3" y="14" width="18" height="7" rx="2"/>
+  <path d="M7 6.5h.01"/>
+  <path d="M7 17.5h.01"/>
+  <path d="M11 6.5h6"/>
+  <path d="M11 17.5h6"/>
+</svg>

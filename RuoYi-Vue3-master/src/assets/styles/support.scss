@@ -1,10 +1,14 @@
 .support-page {
   --support-bg: #f4f9ff;
   --support-panel: rgba(255, 255, 255, 0.92);
+  --support-panel-strong: #ffffff;
+  --support-panel-muted: #f8fbff;
   --support-line: #dce9f6;
   --support-strong: #173452;
   --support-muted: #6d8298;
   --support-accent: #2f7cf6;
+  --support-accent-soft: #eaf4ff;
+  --support-shadow: 0 14px 34px rgba(30, 69, 107, 0.06);
   min-height: calc(100vh - 84px);
   padding: 18px;
   background:
@@ -22,7 +26,7 @@
   border: 1px solid var(--support-line);
   border-radius: 20px;
   background: var(--support-panel);
-  box-shadow: 0 14px 34px rgba(30, 69, 107, 0.06);
+  box-shadow: var(--support-shadow);
 }
 
 .support-query-bar .el-form-item {
@@ -47,7 +51,7 @@
   min-height: 36px;
   border-radius: 12px;
   background: #fbfdff;
-  box-shadow: 0 0 0 1px #dce8f5 inset;
+  box-shadow: 0 0 0 1px var(--support-line) inset;
 }
 
 .support-table-toolbar {
@@ -58,7 +62,7 @@
   padding: 12px 14px;
   border: 1px solid var(--support-line);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.86);
+  background: var(--support-panel);
 }
 
 .support-table-toolbar .el-col {
@@ -80,7 +84,7 @@
   border: 1px solid var(--support-line);
   border-radius: 18px;
   overflow: hidden;
-  box-shadow: 0 16px 36px rgba(30, 69, 107, 0.05);
+  box-shadow: var(--support-shadow);
 }
 
 .support-table::before {
@@ -89,14 +93,14 @@
 
 .support-table .el-table__header th {
   height: 48px;
-  background: #eef6ff !important;
+  background: var(--support-panel-muted) !important;
   color: var(--support-strong);
   font-weight: 700;
 }
 
 .support-table .el-table__body td {
   height: 54px;
-  color: #2f4964;
+  color: var(--support-strong);
 }
 
 .support-table .cell {
@@ -126,10 +130,10 @@
   justify-content: center;
   min-height: 28px;
   padding: 0 10px;
-  border: 1px solid #d7e6f6;
+  border: 1px solid var(--support-line);
   border-radius: 999px;
-  background: #f5faff;
-  color: #5f7893;
+  background: var(--support-panel-muted);
+  color: var(--support-muted);
   font-size: 12px;
   line-height: 1;
   white-space: nowrap;
@@ -151,17 +155,952 @@
   border: 1px solid var(--support-line);
   border-radius: 22px;
   background: var(--support-panel);
-  box-shadow: 0 14px 34px rgba(30, 69, 107, 0.06);
+  box-shadow: var(--support-shadow);
   overflow: hidden;
 }
 
 .support-panel-card .el-card__header {
   min-height: 58px;
   padding: 16px 18px;
-  border-bottom: 1px solid #e4eff9;
-  background: linear-gradient(135deg, #f2f8ff 0%, #ffffff 100%);
+  border-bottom: 1px solid var(--support-line);
+  background: linear-gradient(135deg, var(--support-panel-muted) 0%, var(--support-panel-strong) 100%);
   color: var(--support-strong);
   font-weight: 700;
+}
+
+html.dark .support-page,
+html.dark .auto-page,
+html.dark .version-center-page,
+html.dark .tim-page,
+html.dark .site-config-shell,
+html.dark .platform-canvas-dialog,
+html.dark .support-hardware-asset-dialog,
+html.dark .server-credential-dialog,
+html.dark .server-credential-form-dialog,
+html.dark .equipment-type-dialog,
+html.dark .hardware-asset-form-dialog,
+html.dark .support-server-manager-dialog,
+html.dark .support-server-batch-dialog,
+html.dark .support-server-import-dialog,
+html.dark .support-transfer-dialog,
+html.dark .support-change-log-detail-dialog,
+html.dark .site-message-detail-drawer {
+  --support-bg: #0f1620;
+  --support-panel: rgba(21, 29, 41, 0.92);
+  --support-panel-strong: #151d29;
+  --support-panel-muted: #101722;
+  --support-line: rgba(116, 142, 174, 0.24);
+  --support-strong: #f4f8ff;
+  --support-muted: #91a1b6;
+  --support-accent: #6aa8ff;
+  --support-accent-soft: rgba(45, 126, 247, 0.14);
+  --support-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+  color: var(--support-strong);
+}
+
+html.dark .support-page {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(45, 126, 247, 0.14), transparent 30%),
+    linear-gradient(180deg, #0f1620 0%, #101722 100%);
+}
+
+html.dark .support-query-bar,
+html.dark .support-table-toolbar,
+html.dark .support-table,
+html.dark .support-panel-card,
+html.dark .readonly-tip {
+  border-color: var(--support-line) !important;
+  background: var(--support-panel) !important;
+  box-shadow: var(--support-shadow) !important;
+}
+
+html.dark .support-query-bar .el-form-item__label,
+html.dark .support-panel-card .el-card__header,
+html.dark .support-table .el-table__header th {
+  color: var(--support-strong) !important;
+}
+
+html.dark .support-query-bar .el-input__wrapper,
+html.dark .support-query-bar .el-select__wrapper,
+html.dark .support-query-bar .el-cascader .el-input__wrapper {
+  background: var(--support-panel-strong) !important;
+  box-shadow: 0 0 0 1px var(--support-line) inset !important;
+}
+
+html.dark .support-table .el-table__header th {
+  background: var(--support-panel-muted) !important;
+}
+
+html.dark .support-table .el-table__body td {
+  color: var(--support-strong);
+}
+
+html.dark .support-panel-card .el-card__header {
+  border-bottom-color: var(--support-line);
+  background: linear-gradient(135deg, var(--support-panel-muted), var(--support-panel-strong));
+}
+
+html.dark .readonly-tip {
+  color: var(--support-muted);
+}
+
+html.dark .support-editor-dialog .el-dialog,
+html.dark .site-overview-dialog .el-dialog,
+html.dark .auto-dialog .el-dialog,
+html.dark .tool-picker-dialog .el-dialog,
+html.dark .template-dialog .el-dialog,
+html.dark .step-dialog .el-dialog,
+html.dark .asset-transfer-dialog .el-dialog,
+html.dark .support-role-dialog .el-dialog,
+html.dark .site-import-dialog .el-dialog {
+  background: var(--support-panel-strong) !important;
+  border-color: var(--support-line) !important;
+}
+
+html.dark .support-editor-dialog .el-dialog__body,
+html.dark .site-overview-dialog .el-dialog__body,
+html.dark .auto-dialog .el-dialog__body,
+html.dark .template-dialog .el-dialog__body,
+html.dark .step-dialog .el-dialog__body,
+html.dark .asset-transfer-dialog .el-dialog__body,
+html.dark .site-import-dialog .el-dialog__body,
+html.dark .dashboard-drawer .el-drawer__body,
+html.dark .inspection-detail-drawer .el-drawer__body {
+  background: var(--support-bg) !important;
+  color: var(--support-strong);
+}
+
+html.dark .editor-hero,
+html.dark .editor-section,
+html.dark .editor-preview-card,
+html.dark .contact-org-field,
+html.dark .site-filter-banner,
+html.dark .site-import-dialog__lead,
+html.dark .overview-hero-panel,
+html.dark .overview-stat-card,
+html.dark .overview-panel,
+html.dark .overview-platform-card,
+html.dark .overview-resource-card,
+html.dark .overview-empty-state,
+html.dark .overview-hero-panel__hint,
+html.dark .overview-platform-badge,
+html.dark .overview-link-indicator,
+html.dark .overview-panel__meta span,
+html.dark .overview-resource-card__meta span,
+html.dark .editor-preview-card__meta span,
+html.dark .editor-chip,
+html.dark .overview-chip,
+html.dark .overview-sub-chip,
+html.dark .site-region-chip {
+  border-color: var(--support-line) !important;
+  background: var(--support-panel) !important;
+  color: var(--support-muted);
+  box-shadow: none !important;
+}
+
+html.dark .editor-hero,
+html.dark .overview-hero-panel,
+html.dark .editor-preview-card,
+html.dark .overview-platform-card,
+html.dark .overview-resource-card,
+html.dark .site-filter-banner,
+html.dark .site-import-dialog__lead {
+  background:
+    radial-gradient(circle at top left, rgba(45, 126, 247, 0.13), transparent 34%),
+    linear-gradient(135deg, var(--support-panel), var(--support-panel-muted)) !important;
+}
+
+html.dark .editor-hero__icon {
+  background: var(--support-panel-strong);
+  border-color: var(--support-line);
+  color: var(--support-strong);
+  box-shadow: none;
+}
+
+.support-editor-dialog .editor-hero__icon,
+.site-config-shell .editor-hero__icon {
+  position: relative;
+  overflow: hidden;
+  color: #2d7ef7;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.92), rgba(234, 244, 255, 0.86)) !important;
+  border-color: rgba(45, 126, 247, 0.22) !important;
+  box-shadow: 0 14px 30px rgba(45, 126, 247, 0.12) !important;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.support-editor-dialog .editor-hero__icon::after,
+.site-config-shell .editor-hero__icon::after {
+  position: absolute;
+  inset: -40% auto -40% -70%;
+  width: 42%;
+  content: '';
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+  transform: rotate(18deg);
+  transition: left 0.48s ease;
+}
+
+.support-editor-dialog .editor-hero:hover .editor-hero__icon,
+.site-config-shell .editor-hero:hover .editor-hero__icon {
+  transform: translateY(-1px);
+  border-color: rgba(45, 126, 247, 0.34) !important;
+  box-shadow: 0 18px 36px rgba(45, 126, 247, 0.16) !important;
+}
+
+.support-editor-dialog .editor-hero:hover .editor-hero__icon::after,
+.site-config-shell .editor-hero:hover .editor-hero__icon::after {
+  left: 128%;
+}
+
+html.dark .support-editor-dialog .editor-hero__icon,
+html.dark .site-config-shell .editor-hero__icon {
+  color: var(--support-accent);
+  background:
+    linear-gradient(145deg, rgba(21, 29, 41, 0.96), rgba(16, 23, 34, 0.92)) !important;
+  border-color: rgba(106, 168, 255, 0.28) !important;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.26) !important;
+}
+
+.site-config-shell .canvas-layout-switch__icon {
+  transition: transform 0.2s ease, color 0.2s ease;
+}
+
+.site-config-shell .canvas-layout-switch__option:hover .canvas-layout-switch__icon {
+  transform: translateY(-1px) scale(1.08);
+}
+
+html.dark .editor-hero__copy h3,
+html.dark .editor-section__head strong,
+html.dark .editor-preview-card strong,
+html.dark .site-filter-banner__content strong,
+html.dark .site-import-dialog__lead strong,
+html.dark .site-overview-dialog .el-dialog__title,
+html.dark .overview-hero-panel__copy h3,
+html.dark .overview-stat-card strong,
+html.dark .overview-panel__head strong,
+html.dark .overview-platform-card__head strong,
+html.dark .overview-resource-card__main strong,
+html.dark .overview-empty-state strong,
+html.dark .contact-org-field,
+html.dark .site-region-chip.is-active {
+  color: var(--support-strong) !important;
+}
+
+html.dark .editor-hero__eyebrow,
+html.dark .editor-hero__copy p,
+html.dark .editor-section__head p,
+html.dark .editor-form .el-form-item__label,
+html.dark .editor-preview-card p,
+html.dark .editor-preview-card__eyebrow,
+html.dark .site-filter-banner__eyebrow,
+html.dark .site-filter-banner__hint,
+html.dark .site-import-dialog__lead span,
+html.dark .overview-hero-panel__eyebrow,
+html.dark .overview-hero-panel__copy p,
+html.dark .overview-hero-panel__hint,
+html.dark .overview-stat-card__label,
+html.dark .overview-stat-card__hint,
+html.dark .overview-panel__eyebrow,
+html.dark .overview-panel__head p,
+html.dark .overview-platform-card__head span,
+html.dark .overview-resource-card__main span,
+html.dark .contact-option-line__org {
+  color: var(--support-muted) !important;
+}
+
+html.dark .editor-form .el-input__wrapper,
+html.dark .editor-form .el-textarea__inner,
+html.dark .editor-form .el-select__wrapper,
+html.dark .editor-form .el-input-number,
+html.dark .editor-form .el-input-number .el-input__wrapper {
+  background: var(--support-panel-strong) !important;
+  box-shadow: 0 0 0 1px var(--support-line) inset !important;
+}
+
+html.dark .site-region-chip:hover,
+html.dark .overview-platform-card--clickable:hover,
+html.dark .overview-resource-card--clickable:hover,
+html.dark .overview-sub-chip:hover {
+  border-color: rgba(106, 168, 255, 0.46) !important;
+  background: var(--support-accent-soft) !important;
+}
+
+html.dark .site-region-chip.is-active {
+  background: var(--el-color-primary) !important;
+  border-color: var(--el-color-primary) !important;
+}
+
+html.dark .auto-page {
+  background: var(--support-bg) !important;
+}
+
+html.dark .auto-page :is(
+  .auto-hero,
+  .auto-content-section,
+  .dashboard-brief,
+  .record-board,
+  .dashboard-status,
+  .dashboard-panel,
+  .trend-day,
+  .recent-records button,
+  .dashboard-calendar-panel,
+  .dashboard-chart-panel,
+  .dashboard-drawer__summary div,
+  .dashboard-drawer__lists article,
+  .dashboard-drawer__list button,
+  .tool-health-item,
+  .config-guide button,
+  .auto-query-bar,
+  .auto-table,
+  .record-insight-strip span,
+  .target-section,
+  .tool-select-trigger,
+  .tool-picker-list,
+  .tool-picker-detail,
+  .tool-picker-group,
+  .tool-picker-tool,
+  .tool-guide-block,
+  .tool-guide-example,
+  .placeholder-panel,
+  .step-list,
+  .step-list button,
+  .step-editor,
+  .service-rule-card span,
+  .bigdata-server-toolbar,
+  .bigdata-server-card,
+  .server-file-options,
+  .tree-transfer-panel,
+  .server-tree-box,
+  .selected-server-box,
+  .selected-server-item,
+  .step-summary-grid span,
+  .step-detail-lines,
+  .inspection-detail-hero,
+  .detail-kpi-grid span,
+  .detail-section,
+  .target-step-group,
+  .target-step-group__head,
+  .target-step-summary span,
+  .target-result-card,
+  .target-result-meta span,
+  .target-call-box,
+  .target-error-box,
+  .abnormal-target-list article
+) {
+  border-color: var(--support-line) !important;
+  background: var(--support-panel) !important;
+  color: var(--support-strong);
+  box-shadow: none !important;
+}
+
+html.dark .auto-page :is(
+  .auto-hero h2,
+  .auto-hero__stats strong,
+  .dashboard-brief__status strong,
+  .dashboard-brief__metrics strong,
+  .record-board__head strong,
+  .dashboard-status h3,
+  .dashboard-status__metrics strong,
+  .dashboard-panel > header strong,
+  .trend-day strong,
+  .recent-records button strong,
+  .dashboard-calendar-panel header strong,
+  .dashboard-calendar-day strong,
+  .dashboard-chart-panel strong,
+  .dashboard-drawer__summary strong,
+  .dashboard-drawer__lists header,
+  .dashboard-drawer__list button strong,
+  .tool-health-item__head strong,
+  .abnormal-target-list article strong,
+  .config-guide button strong,
+  .record-insight-strip strong,
+  .target-section header strong,
+  .tool-select-trigger strong,
+  .tool-picker-group__head strong,
+  .tool-picker-tool strong,
+  .tool-picker-detail__head h3,
+  .tool-picker-meta strong,
+  .tool-guide-block h4,
+  .tool-guide-example h4,
+  .dialog-title strong,
+  .step-list button strong,
+  .step-editor label,
+  .service-rule-card strong,
+  .bigdata-server-toolbar span,
+  .bigdata-server-card__head strong,
+  .server-tree-node strong,
+  .selected-server-item strong,
+  .step-summary-head strong,
+  .step-summary-grid strong,
+  .step-detail-lines span,
+  .target-call-info,
+  .inspection-detail-hero h3,
+  .detail-kpi-grid strong,
+  .detail-section > header strong,
+  .target-step-group__head strong,
+  .target-step-summary strong,
+  .target-result-card header strong,
+  .target-result-meta strong,
+  .target-call-box p
+) {
+  color: var(--support-strong) !important;
+}
+
+html.dark .auto-page :is(
+  .auto-hero p,
+  .auto-hero__stats em,
+  .dashboard-brief__status em,
+  .dashboard-brief__metrics em,
+  .record-board__head span,
+  .dashboard-status p,
+  .dashboard-status__metrics em,
+  .dashboard-panel > header span,
+  .trend-day span,
+  .trend-day em,
+  .recent-records button em,
+  .recent-records button label,
+  .dashboard-calendar-panel header span,
+  .dashboard-calendar-weekdays span,
+  .dashboard-calendar-day em,
+  .dashboard-calendar-day small,
+  .dashboard-chart-panel span,
+  .dashboard-drawer__summary span,
+  .dashboard-drawer__list button em,
+  .tool-health-item p,
+  .abnormal-target-list article em,
+  .config-guide button em,
+  .record-insight-strip em,
+  .target-section header span,
+  .tool-select-trigger em,
+  .tool-picker-group__head em,
+  .tool-picker-tool em,
+  .tool-picker-detail__head p,
+  .tool-picker-meta label,
+  .tool-guide-block p,
+  .tool-guide-block ul,
+  .tool-guide-example p,
+  .tool-guide-example ul,
+  .placeholder-panel span,
+  .dialog-title span,
+  .step-list button em,
+  .step-rule-grid small,
+  .service-rule-card label,
+  .service-rule-card em,
+  .field-hint,
+  .credential-source-tip,
+  .asset-transfer-panel p,
+  .tree-transfer-panel header span,
+  .tree-transfer-actions,
+  .server-tree-node em,
+  .selected-server-item em,
+  .selected-server-item small,
+  .step-summary-head span,
+  .step-summary-head em,
+  .step-summary-grid label,
+  .step-detail-lines label,
+  .inspection-detail-hero span,
+  .inspection-detail-hero p,
+  .detail-kpi-grid em,
+  .detail-section > header span,
+  .target-step-group__head em,
+  .target-step-summary label,
+  .target-result-card header em,
+  .target-result-meta label,
+  .target-call-box label
+) {
+  color: var(--support-muted) !important;
+}
+
+html.dark .auto-page :is(.dashboard-brief--1, .dashboard-status--1, .trend-day--1, .dashboard-calendar-day--1, .dashboard-drawer__summary--1 div:first-child) {
+  border-color: rgba(103, 194, 58, 0.35) !important;
+  background: rgba(40, 98, 67, 0.2) !important;
+}
+
+html.dark .auto-page :is(.dashboard-brief--2, .dashboard-status--2, .trend-day--2, .dashboard-calendar-day--2, .dashboard-drawer__summary--2 div:first-child, .abnormal-target-list article, .target-error-box) {
+  border-color: rgba(245, 108, 108, 0.38) !important;
+  background: rgba(105, 38, 46, 0.22) !important;
+}
+
+html.dark .auto-page :is(.config-guide button.active, .tool-picker-group.active, .tool-picker-tool.active, .tool-picker-tool:hover, .tool-select-trigger:hover, .step-list button.active, .dashboard-drawer__list button:hover) {
+  border-color: rgba(106, 168, 255, 0.5) !important;
+  background: var(--support-accent-soft) !important;
+}
+
+html.dark .auto-page :is(.auto-hero__eyebrow, .dashboard-status__eyebrow, .tool-select-trigger i, .tool-picker-group__head b, .tool-picker-tool.active strong, .target-step-index, .target-result-index, .server-tree-node small) {
+  color: var(--support-accent) !important;
+}
+
+html.dark .auto-page :is(.config-guide button span, .tool-picker-group__head b, .target-step-index, .target-result-index, .server-tree-node small, .tree-transfer-actions strong) {
+  background: var(--support-accent-soft) !important;
+  border-color: rgba(106, 168, 255, 0.35) !important;
+}
+
+html.dark .auto-page .tool-picker-children,
+html.dark .auto-page .tool-picker-tool::before {
+  border-color: var(--support-line) !important;
+}
+
+html.dark .version-center-page {
+  color: var(--support-strong);
+}
+
+html.dark .version-center-page :is(
+  .version-hero,
+  .version-workspace,
+  .version-list-panel,
+  .quick-filter-panel__head button,
+  .version-filter-row button,
+  .major-jump-row button,
+  .major-range-row button,
+  .version-group__head,
+  .version-list-item,
+  .version-detail,
+  .version-focus-card,
+  .version-detail-section,
+  .version-info-block,
+  .version-focus,
+  .version-change-item,
+  .version-scope-list span,
+  .version-script-list span,
+  .version-script-empty,
+  .version-hero__meta span
+) {
+  border-color: var(--support-line) !important;
+  background: var(--support-panel) !important;
+  color: var(--support-strong);
+  box-shadow: none !important;
+}
+
+html.dark .version-center-page .version-hero {
+  background:
+    radial-gradient(circle at top left, rgba(45, 126, 247, 0.13), transparent 34%),
+    linear-gradient(135deg, var(--support-panel), var(--support-panel-muted)) !important;
+}
+
+html.dark .version-center-page :is(.version-filter-row button.is-active, .major-jump-row button.is-active, .major-range-row button.is-active, .version-group.is-active .version-group__head, .version-list-item:hover, .version-list-item.is-active) {
+  border-color: rgba(106, 168, 255, 0.5) !important;
+  background: var(--support-accent-soft) !important;
+}
+
+html.dark .version-center-page :is(.version-hero h2, .version-list-panel h3, .version-detail h3, .section-title strong, .version-group__head strong, .version-list-item__title) {
+  color: var(--support-strong) !important;
+}
+
+html.dark .version-center-page :is(.version-eyebrow, .section-title span, .version-hero__meta strong, .version-list-item__top strong, .version-focus span) {
+  color: var(--support-accent) !important;
+}
+
+html.dark .version-center-page :is(.version-hero p, .version-hero__meta em, .quick-filter-panel__head em, .version-filter-row button small, .major-range-row button, .version-group__head small, .version-group__head em, .version-list-item__focus, .version-list-item__foot em, .version-list-item__foot small, .version-focus p, .version-database, .version-change-item p, .version-script-empty) {
+  color: var(--support-muted) !important;
+}
+
+html.dark .version-list::-webkit-scrollbar-thumb,
+html.dark .version-detail::-webkit-scrollbar-thumb,
+html.dark .dashboard-drawer__list::-webkit-scrollbar-thumb,
+html.dark .tool-picker-list__body::-webkit-scrollbar-thumb,
+html.dark .overview-workbench::-webkit-scrollbar-thumb {
+  background: rgba(116, 142, 174, 0.42);
+}
+
+html.dark .tim-page {
+  background: var(--support-bg) !important;
+}
+
+html.dark .tim-page :is(
+  .tim-hero,
+  .tim-hero__stats span,
+  .detail-summary span,
+  .tim-tabs,
+  .config-card,
+  .config-card__head,
+  .plan-section-head,
+  .plan-editor,
+  .plan-item-list,
+  .plan-item-option,
+  .plan-item-detail__target,
+  .plan-item-detail__summary
+) {
+  border-color: var(--support-line) !important;
+  background: var(--support-panel) !important;
+  color: var(--support-strong);
+  box-shadow: none !important;
+}
+
+html.dark .tim-page :is(
+  .tim-hero h2,
+  .tim-hero__stats strong,
+  .detail-summary strong,
+  .config-card__head strong,
+  .drawer-title strong,
+  .dialog-title strong,
+  .plan-section-head span,
+  .plan-item-option__main strong,
+  .plan-item-detail__head strong,
+  .plan-field-title span
+) {
+  color: var(--support-strong) !important;
+}
+
+html.dark .tim-page :is(
+  .tim-hero p,
+  .tim-hero__stats em,
+  .detail-summary em,
+  .config-card__body label,
+  .config-card__foot span,
+  .drawer-title span,
+  .dialog-title span,
+  .plan-section-head strong,
+  .plan-item-option__main em,
+  .plan-item-detail__head em,
+  .plan-field-title em,
+  .plan-item-detail__summary
+) {
+  color: var(--support-muted) !important;
+}
+
+html.dark .tim-page :is(.tim-hero__eyebrow, .config-card__head span, .plan-item-option__index, .plan-item-detail__head span, .plan-item-detail__summary span) {
+  color: var(--support-accent) !important;
+}
+
+html.dark .tim-page :is(.plan-item-option:hover, .plan-item-option.is-active, .config-card__head span, .plan-item-option__index) {
+  border-color: rgba(106, 168, 255, 0.5) !important;
+  background: var(--support-accent-soft) !important;
+}
+
+html.dark .site-config-shell,
+html.dark .site-config-shell .fusion-canvas__transform {
+  --node-text: var(--support-strong);
+  --node-muted: var(--support-muted);
+  --tree-line: rgba(106, 168, 255, 0.42);
+  --tree-line-strong: rgba(106, 168, 255, 0.78);
+  --tree-line-faint: rgba(106, 168, 255, 0.1);
+  --tree-line-soft: rgba(106, 168, 255, 0.18);
+}
+
+html.dark .site-config-shell :is(
+  .workspace-hero,
+  .workspace-panel,
+  .fusion-workbench,
+  .fusion-workbench__toolbar,
+  .fusion-main-lane,
+  .fusion-inspector,
+  .fusion-inspector__tabs,
+  .fusion-inspector__facts,
+  .fusion-inspector__editor,
+  .site-message-board__composer,
+  .site-message-board__empty,
+  .site-message-board__list li,
+  .fusion-change-log__empty,
+  .fusion-change-log__list li,
+  .topology-board__pager,
+  .topology-pager-nav,
+  .topology-page-chip,
+  .legend-chip,
+  .platform-lane,
+  .resource-canvas,
+  .resource-pool,
+  .pool-node,
+  .platform-node,
+  .subplatform-card,
+  .endpoint-card,
+  .server-count-chip,
+  .chip-add-button,
+  .ghost-chip,
+  .contact-chip,
+  .organization-studio,
+  .organization-studio__rail,
+  .organization-studio__detail,
+  .org-directory-card,
+  .organization-summary-card,
+  .organization-panel,
+  .organization-contact-summary__chip,
+  .organization-contact-card,
+  .organization-platform-chip,
+  .empty-state,
+  .compact-empty,
+  .fusion-node,
+  .fusion-add-node,
+  .fusion-page-node,
+  .fusion-server-pill,
+  .fusion-sub-node,
+  .fusion-empty-node,
+  .fusion-layer__label,
+  .site-summary-pills span,
+  .canvas-layout-switch,
+  .canvas-layout-switch__option,
+  .canvas-layout-switch__icon,
+  .fusion-workbench__version,
+  .fusion-workbench__meta span,
+  .canvas-view-toolbar,
+  .canvas-view-toolbar button,
+  .fusion-inspector__tabs button,
+  .site-message-barrage,
+  .fusion-server-summary
+) {
+  border-color: var(--support-line) !important;
+  background: var(--support-panel) !important;
+  color: var(--support-strong) !important;
+  box-shadow: none !important;
+}
+
+html.dark .site-config-shell :is(
+  .fusion-workbench.is-fullscreen,
+  .fusion-canvas,
+  .platform-canvas__stage,
+  .resource-canvas,
+  .organization-studio,
+  .workspace-panel,
+  .fusion-workbench
+) {
+  background:
+    radial-gradient(circle at top left, rgba(45, 126, 247, 0.1), transparent 34%),
+    linear-gradient(135deg, var(--support-panel), var(--support-panel-muted)) !important;
+}
+
+html.dark .site-config-shell :is(
+  .hero-copy h2,
+  .site-summary-pills strong,
+  .fusion-workbench__title strong,
+  .fusion-node strong,
+  .fusion-sub-node__head strong,
+  .fusion-empty-node strong,
+  .fusion-inspector__head strong,
+  .fusion-inspector__editor-head strong,
+  .fusion-inspector__section strong,
+  .site-message-board__head strong,
+  .site-message-board__list strong,
+  .fusion-change-log__head strong,
+  .fusion-change-log__list strong,
+  .panel-head h3,
+  .section-headline h4,
+  .section-heading,
+  .topology-board__pager-meta strong,
+  .resource-canvas__head h4,
+  .organization-studio__title h4,
+  .organization-studio__rail-head strong,
+  .org-directory-card__head strong,
+  .organization-studio__hero-copy h5,
+  .organization-summary-card strong,
+  .organization-panel__head strong,
+  .organization-platform-chip strong,
+  .resource-pool__head span,
+  .pool-node strong,
+  .platform-node__title strong,
+  .endpoint-card__main strong
+) {
+  color: var(--support-strong) !important;
+}
+
+html.dark .site-config-shell :is(
+  .hero-kicker,
+  .hero-subline,
+  .site-summary-pills em,
+  .fusion-workbench__title small,
+  .fusion-workbench__meta span,
+  .canvas-layout-switch__text small,
+  .site-message-barrage span,
+  .fusion-node span,
+  .fusion-node small,
+  .fusion-sub-node__head span,
+  .fusion-sub-node__head small,
+  .fusion-empty-node span,
+  .fusion-inspector__head small,
+  .fusion-inspector__facts dt,
+  .fusion-inspector__facts dd,
+  .fusion-inspector__editor label,
+  .fusion-inspector__hint,
+  .site-message-board__head small,
+  .site-message-board__list small,
+  .site-message-board__list p,
+  .fusion-change-log__head small,
+  .fusion-change-log__list small,
+  .panel-head p,
+  .section-headline p,
+  .topology-board__pager-meta,
+  .topology-page-chip__meta,
+  .resource-canvas__head p,
+  .organization-studio__title p,
+  .organization-studio__rail-head span,
+  .org-directory-card__meta,
+  .org-directory-card__stats,
+  .organization-studio__hero-copy p,
+  .organization-summary-card__label,
+  .organization-summary-card small,
+  .organization-panel__head p,
+  .organization-contact-card__main span,
+  .organization-platform-chip span,
+  .pool-node span,
+  .pool-node small
+) {
+  color: var(--support-muted) !important;
+}
+
+html.dark .site-config-shell :is(
+  .fusion-workbench__title span,
+  .fusion-workbench__version,
+  .fusion-inspector__head span,
+  .fusion-inspector__editor-head button,
+  .fusion-change-log__head button,
+  .pool-link,
+  .topology-page-chip__index,
+  .site-message-barrage strong,
+  .fusion-change-log__badge
+) {
+  color: var(--support-accent) !important;
+}
+
+html.dark .site-config-shell :is(
+  .site-focus-hero.is-active,
+  .fusion-node.is-active,
+  .fusion-page-node.is-active,
+  .fusion-server-pill.is-active,
+  .fusion-sub-node.is-active,
+  .fusion-main-lane.is-active,
+  .topology-page-chip.is-visible,
+  .topology-page-chip.is-focused,
+  .pool-node.is-active,
+  .platform-node.is-active,
+  .org-directory-card.is-active,
+  .canvas-layout-switch__option.is-active,
+  .fusion-inspector__tabs button.is-active,
+  .site-message-board__actions button.is-active
+) {
+  border-color: rgba(106, 168, 255, 0.55) !important;
+  background: var(--support-accent-soft) !important;
+  box-shadow: 0 0 0 2px rgba(106, 168, 255, 0.12) !important;
+}
+
+html.dark .site-config-shell :is(
+  .fusion-node:hover,
+  .fusion-add-node:hover,
+  .fusion-page-node:hover,
+  .fusion-server-pill:hover,
+  .fusion-sub-node:hover,
+  .topology-pager-nav:hover:not(:disabled),
+  .topology-page-chip:hover,
+  .pool-node:hover,
+  .platform-node:hover,
+  .org-directory-card:hover,
+  .organization-platform-chip:hover,
+  .canvas-layout-switch__option:hover,
+  .canvas-view-toolbar button:hover,
+  .fusion-inspector__tabs button:hover
+) {
+  border-color: rgba(106, 168, 255, 0.48) !important;
+  background: var(--support-accent-soft) !important;
+}
+
+html.dark :is(
+  .platform-canvas-dialog,
+  .support-hardware-asset-dialog,
+  .server-credential-dialog,
+  .server-credential-form-dialog,
+  .equipment-type-dialog,
+  .hardware-asset-form-dialog,
+  .support-server-manager-dialog,
+  .support-server-batch-dialog,
+  .support-server-import-dialog,
+  .support-transfer-dialog,
+  .support-change-log-detail-dialog
+) .el-dialog__body,
+html.dark .site-message-detail-drawer .el-drawer__body {
+  background: var(--support-bg) !important;
+  color: var(--support-strong);
+}
+
+html.dark :is(
+  .platform-canvas-dialog,
+  .support-hardware-asset-dialog,
+  .server-credential-dialog,
+  .server-credential-form-dialog,
+  .equipment-type-dialog,
+  .hardware-asset-form-dialog,
+  .support-server-manager-dialog,
+  .support-server-batch-dialog,
+  .support-server-import-dialog,
+  .support-transfer-dialog,
+  .support-change-log-detail-dialog,
+  .site-message-detail-drawer
+) :is(
+  .canvas-editor-hero,
+  .platform-canvas,
+  .canvas-sub-card,
+  .canvas-add-node,
+  .transfer-dialog-hero,
+  .hardware-asset-shell,
+  .hardware-asset-table-panel,
+  .hardware-asset-querybar,
+  .equipment-category-card,
+  .equipment-server-inline,
+  .server-manager-create,
+  .server-manager-list-panel,
+  .server-create-action,
+  .server-manager-target,
+  .server-batch-preview,
+  .server-manager-card,
+  .server-credential-panel,
+  .server-credential-head,
+  .equipment-type-card,
+  .hardware-form-section,
+  .server-manager-shell,
+  .server-batch-confirm,
+  .server-batch-confirm__toolbar,
+  .server-batch-reuse-control,
+  .server-import-panel,
+  .server-import-xlsx-card,
+  .topology-transfer,
+  .change-log-detail__summary,
+  .change-log-detail__meta div,
+  .site-message-detail__empty,
+  .site-message-detail__list li
+) {
+  border-color: var(--support-line) !important;
+  background: var(--support-panel) !important;
+  color: var(--support-strong) !important;
+  box-shadow: none !important;
+}
+
+html.dark :is(
+  .platform-canvas-dialog,
+  .support-hardware-asset-dialog,
+  .server-credential-dialog,
+  .equipment-type-dialog,
+  .hardware-asset-form-dialog,
+  .support-server-manager-dialog,
+  .support-server-batch-dialog,
+  .support-server-import-dialog,
+  .support-transfer-dialog,
+  .support-change-log-detail-dialog,
+  .site-message-detail-drawer
+) :is(h3, h4, h5, strong, .dialog-title strong, .drawer-title strong) {
+  color: var(--support-strong) !important;
+}
+
+html.dark :is(
+  .platform-canvas-dialog,
+  .support-hardware-asset-dialog,
+  .server-credential-dialog,
+  .equipment-type-dialog,
+  .hardware-asset-form-dialog,
+  .support-server-manager-dialog,
+  .support-server-batch-dialog,
+  .support-server-import-dialog,
+  .support-transfer-dialog,
+  .support-change-log-detail-dialog,
+  .site-message-detail-drawer
+) :is(p, span, small, em, label, dt, dd, .dialog-title span, .drawer-title span) {
+  color: var(--support-muted) !important;
+}
+
+html.dark :is(
+  .platform-canvas-dialog,
+  .support-hardware-asset-dialog,
+  .support-server-manager-dialog,
+  .support-server-batch-dialog,
+  .support-server-import-dialog,
+  .support-transfer-dialog
+) :is(.transfer-dialog-hero__eyebrow, .canvas-editor-hero__eyebrow, .server-manager-selected, .server-batch-row-tip) {
+  color: var(--support-accent) !important;
 }
 
 .support-panel-card .el-card__body {

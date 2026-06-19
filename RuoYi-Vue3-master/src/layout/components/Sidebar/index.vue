@@ -1,5 +1,5 @@
 <template>
-  <div :class="{ 'has-logo': showLogo }" class="sidebar-container">
+  <div :class="{ 'has-logo': showLogo, 'has-sidebar-mascot': !isCollapse }" class="sidebar-container">
     <logo v-if="showLogo" :collapse="isCollapse" />
     <el-scrollbar wrap-class="scrollbar-wrapper">
       <el-menu
@@ -21,11 +21,13 @@
         />
       </el-menu>
     </el-scrollbar>
+    <sidebar-mascot :collapsed="isCollapse" />
   </div>
 </template>
 
 <script setup>
 import Logo from './Logo'
+import SidebarMascot from './SidebarMascot.vue'
 import SidebarItem from './SidebarItem'
 import variables from '@/assets/styles/variables.module.scss'
 import useAppStore from '@/store/modules/app'
@@ -72,8 +74,15 @@ const activeMenu = computed(() => {
 .sidebar-container {
   background-color: v-bind(getMenuBackground);
   
-  .scrollbar-wrapper {
+  :deep(.scrollbar-wrapper) {
     background-color: v-bind(getMenuBackground);
+  }
+
+  &.has-sidebar-mascot {
+    :deep(.scrollbar-wrapper) {
+      padding-bottom: 220px;
+      box-sizing: border-box;
+    }
   }
 
   .el-menu {

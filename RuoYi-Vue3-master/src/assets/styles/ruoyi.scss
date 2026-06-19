@@ -96,8 +96,8 @@
   .el-table__header-wrapper, .el-table__fixed-header-wrapper {
     th {
       word-break: break-word;
-      background-color: #f2f7fe !important;
-      color: #47627f;
+      background-color: var(--surface-muted) !important;
+      color: var(--app-text);
       height: 40px !important;
       font-size: 13px;
     }
@@ -112,8 +112,8 @@
 /** 表单布局 **/
 .form-header {
   font-size:15px;
-  color:#6379bb;
-  border-bottom:1px solid #ddd;
+  color: var(--el-color-primary);
+  border-bottom:1px solid var(--surface-border);
   margin:8px 10px 25px 10px;
   padding-bottom:5px
 }
@@ -205,8 +205,8 @@
 }
 
 .list-group-item {
-  border-bottom: 1px solid #e7eaec;
-  border-top: 1px solid #e7eaec;
+  border-bottom: 1px solid var(--surface-border);
+  border-top: 1px solid var(--surface-border);
   margin-bottom: -1px;
   padding: 11px 0px;
   font-size: 13px;
@@ -253,9 +253,9 @@
 
 .el-card {
   border-radius: 18px !important;
-  border: 1px solid rgba(149, 183, 223, 0.24) !important;
-  box-shadow: 0 14px 32px rgba(58, 97, 142, 0.08) !important;
-  background: rgba(255, 255, 255, 0.9) !important;
+  border: 1px solid var(--surface-border) !important;
+  box-shadow: var(--surface-shadow) !important;
+  background: var(--surface-bg) !important;
 }
 
 .el-button--primary {
@@ -277,9 +277,9 @@
 .el-textarea__inner,
 .el-select__wrapper,
 .el-date-editor.el-input__wrapper {
-  box-shadow: 0 0 0 1px rgba(149, 183, 223, 0.24) inset !important;
+  box-shadow: 0 0 0 1px var(--surface-border) inset !important;
   border-radius: 12px !important;
-  background: rgba(255, 255, 255, 0.96) !important;
+  background: var(--surface-strong) !important;
 }
 
 /* text color */
@@ -328,7 +328,7 @@
   width: 200px;
   height: 200px;
   border-radius: 50%;
-  box-shadow: 0 0 4px #ccc;
+  box-shadow: 0 0 4px var(--surface-border);
   overflow: hidden;
 }
 
@@ -347,4 +347,77 @@
 /* 分割面板样式 */
 .splitpanes.default-theme .splitpanes__pane {
   background-color: var(--splitpanes-default-bg) !important;
+}
+
+html.dark {
+  .el-dialog,
+  .el-drawer,
+  .el-card,
+  .el-table,
+  .el-popover,
+  .el-dropdown-menu,
+  .el-message-box {
+    --el-border-color-lighter: var(--surface-border);
+    background: var(--surface-strong);
+    color: var(--app-text);
+  }
+
+  .el-dialog,
+  .el-message-box,
+  .el-popover,
+  .el-dropdown-menu {
+    border-color: var(--surface-border) !important;
+    box-shadow: var(--surface-shadow) !important;
+  }
+
+  .el-dialog__header,
+  .el-drawer__header,
+  .el-message-box__header {
+    color: var(--app-heading);
+  }
+
+  .el-dialog__body,
+  .el-drawer__body,
+  .el-message-box__content {
+    color: var(--app-text);
+  }
+
+  .el-table {
+    --el-table-bg-color: var(--surface-strong);
+    --el-table-tr-bg-color: var(--surface-strong);
+    --el-table-header-bg-color: var(--surface-muted);
+    --el-table-row-hover-bg-color: rgba(45, 126, 247, 0.12);
+    --el-table-border-color: var(--surface-border);
+    color: var(--app-text);
+  }
+
+  .el-table .el-table__header-wrapper th,
+  .el-table .el-table__fixed-header-wrapper th {
+    background-color: var(--surface-muted) !important;
+    color: var(--app-heading);
+  }
+
+  .el-input__inner,
+  .el-textarea__inner,
+  .el-select__placeholder,
+  .el-select__selected-item,
+  .el-pagination,
+  .el-pagination__total,
+  .el-pagination__jump {
+    color: var(--app-text);
+  }
+
+  .el-input__wrapper,
+  .el-textarea__inner,
+  .el-select__wrapper,
+  .el-date-editor.el-input__wrapper {
+    background: var(--surface-strong) !important;
+    box-shadow: 0 0 0 1px var(--surface-border) inset !important;
+  }
+
+  .tree-border,
+  .list-group-item {
+    background: var(--surface-strong);
+    border-color: var(--surface-border);
+  }
 }

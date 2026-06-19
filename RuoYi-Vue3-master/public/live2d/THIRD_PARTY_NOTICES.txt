@@ -1,0 +1,6 @@
+Live2D local assets for the sidebar mascot.
+
+Runtime: live2d-widgets 1.0.1, GPL-3.0-or-later, redistributed locally under public/live2d/vendor/live2d-widget/.
+Cubism 2 core: live2d.min.js redistributable runtime included by live2d-widgets.
+Model: Potion-Maker/Pio from fghrsh/live2d_api, mirrored locally for offline deployment.
+These files are loaded only from this application origin at runtime.

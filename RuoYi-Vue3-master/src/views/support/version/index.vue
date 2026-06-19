@@ -41,39 +41,98 @@
           />
         </div>
 
-        <div class="version-filter-row">
-          <button
-            v-for="item in moduleFilters"
-            :key="item.value"
-            type="button"
-            :class="{ 'is-active': moduleFilter === item.value }"
-            @click="moduleFilter = item.value"
-          >
-            {{ item.label }}
-          </button>
+        <div class="quick-filter-panel">
+          <div class="quick-filter-panel__head">
+            <span>模块快捷标签</span>
+            <button type="button" @click="resetFilters">重置</button>
+          </div>
+          <div class="version-filter-row">
+            <button
+              v-for="item in categoryFilters"
+              :key="item.value"
+              type="button"
+              :class="{ 'is-active': categoryFilter === item.value }"
+              @click="categoryFilter = item.value"
+            >
+              {{ item.label }}
+              <small>{{ item.count }}</small>
+            </button>
+          </div>
+        </div>
+
+        <div class="quick-filter-panel">
+          <div class="quick-filter-panel__head">
+            <span>大版本穿梭</span>
+            <em>{{ activeMajorFilterLabel }}</em>
+          </div>
+          <div class="major-jump-row">
+            <button
+              type="button"
+              :class="{ 'is-active': majorVersionMode === 'all' }"
+              @click="setMajorVersionFilter('all')"
+            >
+              全部
+            </button>
+            <button
+              v-for="item in majorVersionOptions"
+              :key="item.value"
+              type="button"
+              :class="{ 'is-active': majorVersionMode === 'exact' && selectedMajorVersion === item.value }"
+              @click="setMajorVersionFilter('exact', item.value)"
+            >
+              {{ item.value }}
+            </button>
+          </div>
+          <div class="major-range-row">
+            <button
+              v-for="item in majorVersionOptions"
+              :key="`lte-${item.value}`"
+              type="button"
+              :class="{ 'is-active': majorVersionMode === 'lte' && selectedMajorVersion === item.value }"
+              @click="setMajorVersionFilter('lte', item.value)"
+            >
+              {{ item.value }} 及以下
+            </button>
+          </div>
         </div>
 
         <div class="version-list">
-          <button
-            v-for="entry in filteredReleaseNotes"
-            :key="entry.version"
-            type="button"
-            class="version-list-item"
-            :class="{ 'is-active': activeVersion === entry.version }"
-            @click="activeVersion = entry.version"
+          <section
+            v-for="group in groupedFilteredReleaseNotes"
+            :key="group.key"
+            class="version-group"
+            :class="{ 'is-active': activeGroupKey === group.key }"
           >
-            <span class="version-list-item__top">
-              <strong>{{ entry.version }}</strong>
-              <el-tag :type="entry.tagType" size="small" effect="light">{{ entry.levelLabel }}</el-tag>
-            </span>
-            <span class="version-list-item__title">{{ entry.title }}</span>
-            <span class="version-list-item__focus">{{ entry.focus }}</span>
-            <span class="version-list-item__foot">
-              <em>{{ entry.primaryModule }}</em>
-              <small>{{ entry.submitTime }}</small>
-            </span>
-          </button>
-          <el-empty v-if="!filteredReleaseNotes.length" description="没有匹配的版本记录" />
+            <div class="version-group__head">
+              <span>
+                <strong>{{ group.label }}</strong>
+                <small>{{ group.count }} 条记录</small>
+              </span>
+              <em>{{ group.sqlCount }} 个 SQL</em>
+            </div>
+            <div class="version-group__items">
+              <button
+                v-for="entry in group.items"
+                :key="entry.version"
+                type="button"
+                class="version-list-item"
+                :class="{ 'is-active': activeVersion === entry.version }"
+                @click="activeVersion = entry.version"
+              >
+                <span class="version-list-item__top">
+                  <strong>{{ entry.version }}</strong>
+                  <el-tag :type="entry.tagType" size="small" effect="light">{{ entry.levelLabel }}</el-tag>
+                </span>
+                <span class="version-list-item__title">{{ entry.title }}</span>
+                <span class="version-list-item__focus">{{ entry.focus }}</span>
+                <span class="version-list-item__foot">
+                  <em>{{ entry.moduleCategories[0] || entry.primaryModule }}</em>
+                  <small>{{ entry.submitTime }}</small>
+                </span>
+              </button>
+            </div>
+          </section>
+          <el-empty v-if="!groupedFilteredReleaseNotes.length" description="没有匹配的版本记录" />
         </div>
       </aside>
 
@@ -81,7 +140,10 @@
         <section class="version-focus-card">
           <div class="version-focus-card__meta">
             <span>{{ activeRelease.submitTime }}</span>
-            <el-tag :type="activeRelease.tagType" effect="light">{{ activeRelease.levelLabel }}</el-tag>
+            <span class="version-focus-card__tags">
+              <el-tag effect="plain">{{ activeRelease.majorVersion }} 系列</el-tag>
+              <el-tag :type="activeRelease.tagType" effect="light">{{ activeRelease.levelLabel }}</el-tag>
+            </span>
           </div>
           <h3>{{ activeRelease.version }} {{ activeRelease.title }}</h3>
           <div class="version-focus">
@@ -137,25 +199,56 @@ import { latestSupportRelease, releaseNotes } from './releaseNotes'
 
 const activeVersion = ref(latestSupportRelease.version)
 const keyword = ref('')
-const moduleFilter = ref('ALL')
+const categoryFilter = ref('ALL')
+const majorVersionMode = ref('all')
+const selectedMajorVersion = ref('')
 
 const latestRelease = computed(() => enhanceRelease(latestSupportRelease))
 const normalizedReleaseNotes = computed(() => releaseNotes.map(enhanceRelease))
-const majorReleaseCount = computed(() => releaseNotes.filter((item) => item.level === 'major').length)
+const majorReleaseCount = computed(() => groupReleaseNotes(normalizedReleaseNotes.value).length)
 const sqlReleaseCount = computed(() => releaseNotes.filter((item) => item.scripts && item.scripts.length).length)
+const activeGroupKey = computed(() => activeRelease.value.majorVersion)
 
-const moduleFilters = computed(() => {
-  const modules = [...new Set(normalizedReleaseNotes.value.map((item) => item.primaryModule))]
+const categoryFilters = computed(() => {
+  const categoryMap = new Map()
+  normalizedReleaseNotes.value.forEach((entry) => {
+    entry.moduleCategories.forEach((category) => {
+      categoryMap.set(category, (categoryMap.get(category) || 0) + 1)
+    })
+  })
+  const categories = [...categoryMap.entries()]
+    .map(([label, count]) => ({ label, value: label, count }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'zh-Hans-CN'))
+
   return [
-    { label: '全部', value: 'ALL' },
-    ...modules.map((item) => ({ label: item, value: item }))
+    { label: '全部', value: 'ALL', count: normalizedReleaseNotes.value.length },
+    ...categories
   ]
+})
+
+const majorVersionOptions = computed(() => {
+  return groupReleaseNotes(normalizedReleaseNotes.value).map((group) => ({
+    label: group.label,
+    value: group.key,
+    count: group.count
+  }))
+})
+
+const activeMajorFilterLabel = computed(() => {
+  if (majorVersionMode.value === 'exact') {
+    return `仅 ${selectedMajorVersion.value}`
+  }
+  if (majorVersionMode.value === 'lte') {
+    return `${selectedMajorVersion.value} 及以下`
+  }
+  return '全部版本'
 })
 
 const filteredReleaseNotes = computed(() => {
   const text = keyword.value.trim().toLowerCase()
   return normalizedReleaseNotes.value.filter((entry) => {
-    const matchModule = moduleFilter.value === 'ALL' || entry.primaryModule === moduleFilter.value
+    const matchCategory = categoryFilter.value === 'ALL' || entry.moduleCategories.includes(categoryFilter.value)
+    const matchMajorVersion = matchMajorVersionFilter(entry)
     const searchable = [
       entry.version,
       entry.title,
@@ -163,12 +256,16 @@ const filteredReleaseNotes = computed(() => {
       entry.submitTime,
       entry.levelLabel,
       entry.primaryModule,
+      entry.majorVersion,
+      ...entry.moduleCategories,
       ...(entry.scope || []),
       ...(entry.details || [])
     ].join(' ').toLowerCase()
-    return matchModule && (!text || searchable.includes(text))
+    return matchCategory && matchMajorVersion && (!text || searchable.includes(text))
   })
 })
+
+const groupedFilteredReleaseNotes = computed(() => groupReleaseNotes(filteredReleaseNotes.value))
 
 const activeRelease = computed(() => {
   return normalizedReleaseNotes.value.find((item) => item.version === activeVersion.value) || normalizedReleaseNotes.value[0]
@@ -186,8 +283,205 @@ function enhanceRelease(entry) {
     ...entry,
     focus: entry.focus || entry.summary || entry.title,
     details: entry.details || entry.changes || [],
-    primaryModule: getPrimaryModule(entry)
+    primaryModule: getPrimaryModule(entry),
+    majorVersion: getMajorVersion(entry.version),
+    moduleCategories: getModuleCategories(entry)
   }
+}
+
+function groupReleaseNotes(list) {
+  const groupMap = new Map()
+  list.forEach((entry) => {
+    if (!groupMap.has(entry.majorVersion)) {
+      groupMap.set(entry.majorVersion, {
+        key: entry.majorVersion,
+        label: `${entry.majorVersion} 版本系列`,
+        count: 0,
+        sqlCount: 0,
+        items: []
+      })
+    }
+    const group = groupMap.get(entry.majorVersion)
+    group.count += 1
+    group.sqlCount += entry.scripts && entry.scripts.length ? entry.scripts.length : 0
+    group.items.push(entry)
+  })
+  return [...groupMap.values()]
+}
+
+function getMajorVersion(version) {
+  const matched = String(version || '').match(/^v?(\d+)\.(\d+)/i)
+  if (matched) {
+    return `v${matched[1]}.${matched[2]}`
+  }
+  return version || '未归类'
+}
+
+function setMajorVersionFilter(mode, value = '') {
+  majorVersionMode.value = mode
+  selectedMajorVersion.value = mode === 'all' ? '' : value
+}
+
+function resetFilters() {
+  categoryFilter.value = 'ALL'
+  keyword.value = ''
+  setMajorVersionFilter('all')
+}
+
+function matchMajorVersionFilter(entry) {
+  if (majorVersionMode.value === 'all' || !selectedMajorVersion.value) {
+    return true
+  }
+  if (majorVersionMode.value === 'exact') {
+    return entry.majorVersion === selectedMajorVersion.value
+  }
+  if (majorVersionMode.value === 'lte') {
+    return compareMajorVersion(entry.majorVersion, selectedMajorVersion.value) <= 0
+  }
+  return true
+}
+
+function compareMajorVersion(left, right) {
+  const [leftMajor, leftMinor] = getVersionParts(left)
+  const [rightMajor, rightMinor] = getVersionParts(right)
+  if (leftMajor !== rightMajor) {
+    return leftMajor - rightMajor
+  }
+  return leftMinor - rightMinor
+}
+
+function getVersionParts(version) {
+  const matched = String(version || '').match(/^v?(\d+)\.(\d+)/i)
+  if (!matched) {
+    return [0, 0]
+  }
+  return [Number(matched[1]), Number(matched[2])]
+}
+
+function getModuleCategories(entry) {
+  const text = buildReleaseText(entry)
+  const categories = new Set()
+
+  addCategoryByKeywords(categories, text, '自动化巡检模块', [
+    '自动化巡检',
+    '自动巡检',
+    'TIM系统巡检',
+    '巡检模板',
+    '巡检计划',
+    '巡检记录',
+    '巡检看板',
+    '巡检工具',
+    '服务器服务状态',
+    'HTTP健康检测',
+    'TCP端口检测',
+    '大数据服务器爆盘'
+  ])
+  addCategoryByKeywords(categories, text, '现场融合管理模块', [
+    '现场融合管理',
+    '现场管理',
+    '现场画布',
+    '现场留言',
+    '设备资产',
+    '硬件资产',
+    '服务器管理',
+    '服务器多凭据',
+    '主平台',
+    '联系人',
+    '组织'
+  ])
+  addCategoryByKeywords(categories, text, '白名单管理模块', [
+    '白名单',
+    '车牌',
+    'whitelist',
+    'plate'
+  ])
+  addCategoryByKeywords(categories, text, '页面显示优化模块', [
+    '页面显示',
+    '页面布局',
+    '前端交互',
+    '前端样式',
+    '前端展示',
+    '显示优化',
+    '弹窗优化',
+    '样式修复',
+    '布局',
+    '按钮文案',
+    '菜单导航',
+    '路由修复',
+    '首页',
+    '工作台',
+    '视觉'
+  ])
+
+  getDynamicScopeCategories(entry).forEach((category) => categories.add(category))
+
+  if (!categories.size) {
+    categories.add(`${getPrimaryModule(entry)}模块`)
+  }
+  return [...categories]
+}
+
+function buildReleaseText(entry) {
+  return [
+    entry.version,
+    entry.title,
+    entry.summary,
+    entry.focus,
+    entry.database,
+    ...(entry.scope || []),
+    ...(entry.changes || []),
+    ...(entry.details || [])
+  ].filter(Boolean).join(' ')
+}
+
+function addCategoryByKeywords(categories, text, label, keywords) {
+  const lowerText = text.toLowerCase()
+  if (keywords.some((keyword) => lowerText.includes(keyword.toLowerCase()))) {
+    categories.add(label)
+  }
+}
+
+function getDynamicScopeCategories(entry) {
+  const categories = new Set()
+  const ignoredScopes = new Set([
+    '版本记录',
+    '版本记录页',
+    '版本中心',
+    'SQL脚本',
+    '数据库脚本',
+    '菜单权限',
+    '前后端接口',
+    '后端修复',
+    '前端修复',
+    '前端交互',
+    '前端样式',
+    '前端展示',
+    '页面布局',
+    '若依动态路由',
+    '操作记录',
+    '权限',
+    '权限策略',
+    'SQL索引'
+  ])
+
+  ;(entry.scope || []).forEach((scope) => {
+    if (!scope || ignoredScopes.has(scope)) {
+      return
+    }
+    if (scope.includes('自动化巡检') || scope.includes('TIM系统巡检') || scope.includes('巡检')) {
+      return
+    }
+    if (scope.includes('现场') || scope.includes('服务器') || scope.includes('设备资产') || scope.includes('硬件资产')) {
+      return
+    }
+    if (scope.includes('白名单')) {
+      return
+    }
+    if (scope.includes('管理') || scope.includes('模块') || scope.includes('中心') || scope.includes('工作台')) {
+      categories.add(scope.endsWith('模块') ? scope : `${scope}模块`)
+    }
+  })
+  return [...categories]
 }
 
 function getPrimaryModule(entry) {
@@ -205,7 +499,11 @@ function getPrimaryModule(entry) {
 <style scoped>
 .version-center-page {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 18px;
+  height: calc(100vh - 84px);
+  min-height: 660px;
+  overflow: hidden;
   color: #17314d;
 }
 
@@ -288,7 +586,7 @@ function getPrimaryModule(entry) {
 .version-workspace {
   display: grid;
   grid-template-columns: 380px minmax(0, 1fr);
-  min-height: 640px;
+  min-height: 0;
   border: 1px solid #dbe7f4;
   border-radius: 8px;
   background: #fff;
@@ -297,12 +595,14 @@ function getPrimaryModule(entry) {
 
 .version-list-panel {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr);
   gap: 12px;
   min-width: 0;
+  min-height: 0;
   padding: 16px;
   border-right: 1px solid #e3edf7;
   background: #f8fbff;
+  overflow: hidden;
 }
 
 .version-list-panel__head {
@@ -315,14 +615,66 @@ function getPrimaryModule(entry) {
   font-size: 20px;
 }
 
+.quick-filter-panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.quick-filter-panel__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  color: #17314d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.quick-filter-panel__head button {
+  flex: 0 0 auto;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #d5e4f4;
+  border-radius: 12px;
+  background: #fff;
+  color: #5f7892;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.quick-filter-panel__head button:hover {
+  border-color: #9fc8ef;
+  color: #1f6fc2;
+}
+
+.quick-filter-panel__head em {
+  overflow: hidden;
+  color: #7d91a5;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .version-filter-row {
   display: flex;
   gap: 8px;
   overflow-x: auto;
   padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.version-filter-row::-webkit-scrollbar {
+  display: none;
 }
 
 .version-filter-row button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex: 0 0 auto;
   height: 30px;
   padding: 0 12px;
@@ -334,6 +686,19 @@ function getPrimaryModule(entry) {
   font-size: 12px;
 }
 
+.version-filter-row button small {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #eef4fb;
+  color: #6b8198;
+  font-size: 11px;
+  line-height: 18px;
+}
+
 .version-filter-row button.is-active {
   border-color: #2f7fdb;
   background: #eaf4ff;
@@ -341,13 +706,128 @@ function getPrimaryModule(entry) {
   font-weight: 700;
 }
 
+.version-filter-row button.is-active small {
+  background: #d8ebff;
+  color: #1f6fc2;
+}
+
+.major-jump-row,
+.major-range-row {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.major-jump-row::-webkit-scrollbar,
+.major-range-row::-webkit-scrollbar {
+  display: none;
+}
+
+.major-jump-row button,
+.major-range-row button {
+  flex: 0 0 auto;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid #d5e4f4;
+  border-radius: 8px;
+  background: #fff;
+  color: #5c748d;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.major-range-row button {
+  height: 26px;
+  color: #6d8195;
+}
+
+.major-jump-row button.is-active,
+.major-range-row button.is-active {
+  border-color: #2f7fdb;
+  background: #eaf4ff;
+  color: #1f6fc2;
+  font-weight: 800;
+}
+
 .version-list {
   display: grid;
   align-content: start;
-  gap: 10px;
+  gap: 14px;
   min-height: 0;
   overflow-y: auto;
-  padding-right: 2px;
+  padding-right: 6px;
+  overscroll-behavior: contain;
+}
+
+.version-list::-webkit-scrollbar,
+.version-detail::-webkit-scrollbar {
+  width: 8px;
+}
+
+.version-list::-webkit-scrollbar-thumb,
+.version-detail::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #c7d9eb;
+}
+
+.version-list::-webkit-scrollbar-track,
+.version-detail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.version-group {
+  display: grid;
+  gap: 8px;
+}
+
+.version-group__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 38px;
+  padding: 8px 10px;
+  border: 1px solid #dce9f7;
+  border-radius: 8px;
+  background: rgba(248, 251, 255, 0.96);
+  backdrop-filter: blur(8px);
+}
+
+.version-group.is-active .version-group__head {
+  border-color: #a8cdef;
+  background: #eef7ff;
+}
+
+.version-group__head span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.version-group__head strong {
+  overflow: hidden;
+  color: #17314d;
+  font-size: 13px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.version-group__head small,
+.version-group__head em {
+  color: #7d91a5;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.version-group__items {
+  display: grid;
+  gap: 8px;
 }
 
 .version-list-item {
@@ -417,8 +897,11 @@ function getPrimaryModule(entry) {
   align-content: start;
   gap: 16px;
   min-width: 0;
+  min-height: 0;
   padding: 22px;
   background: #fff;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .version-focus-card,
@@ -442,6 +925,13 @@ function getPrimaryModule(entry) {
   gap: 12px;
   color: #6b8198;
   font-size: 13px;
+}
+
+.version-focus-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .version-detail h3 {
@@ -573,6 +1063,16 @@ function getPrimaryModule(entry) {
     display: grid;
   }
 
+  .version-center-page {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .version-workspace {
+    grid-template-rows: minmax(240px, 38vh) minmax(480px, 1fr);
+  }
+
   .version-hero__meta {
     min-width: 0;
   }
@@ -583,7 +1083,7 @@ function getPrimaryModule(entry) {
   }
 
   .version-list {
-    max-height: 360px;
+    max-height: none;
   }
 }
 

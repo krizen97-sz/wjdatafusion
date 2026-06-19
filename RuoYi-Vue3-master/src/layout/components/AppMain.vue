@@ -113,11 +113,11 @@ function addIframe() {
 }
 
 ::-webkit-scrollbar-track {
-  background-color: #f1f1f1;
+  background-color: var(--surface-muted);
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: #c0c0c0;
+  background-color: rgba(116, 142, 174, 0.42);
   border-radius: 3px;
 }
 </style>
