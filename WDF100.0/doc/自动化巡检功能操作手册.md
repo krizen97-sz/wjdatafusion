@@ -1,6 +1,6 @@
 # 自动化巡检功能操作手册
 
-适用版本：`v3.6.16`
+适用版本：`v3.6.17`
 适用模块：自动化巡检 / 巡检配置 / 巡检总览
 编写时间：2026-06-19
 
@@ -66,7 +66,7 @@ flowchart LR
 
 ![操作指引入口](auto-inspection-manual-assets/10-operation-guide.png)
 
-操作指引打开后，会用抽屉说明从“创建模板、添加步骤、配置目标、手动验证、配置计划、查看记录”的完整路径，并在当前页面上用小标签标注关键操作位置。指引内已经整合本手册的关键说明和截图，底部也提供完整 Markdown 文档入口。
+操作指引打开后，会用抽屉说明从“创建模板、添加步骤、配置目标、手动验证、配置计划、查看记录”的完整路径，并在当前页面上用小标签标注关键操作位置。指引内已经整合本手册的关键说明和截图，底部提供离线渲染版 HTML 文档入口。
 
 ## 5. 创建巡检模板
 
@@ -286,7 +286,10 @@ TCP 端口工具只检查主机和端口是否可连通，适合验证 Kafka、�
 
 | 文件 | 用途 |
 | --- | --- |
-| `WDF100.0/doc/自动化巡检功能操作手册.md` | 自动化巡检操作手册正文。 |
+| `WDF100.0/doc/自动化巡检功能操作手册.html` | 可直接打开的离线渲染版操作手册。 |
+| `WDF100.0/doc/自动化巡检功能操作手册.md` | 自动化巡检操作手册 Markdown 源文档。 |
 | `WDF100.0/doc/auto-inspection-manual-assets/` | 手册截图素材目录。 |
+| `RuoYi-Vue3-master/public/docs/auto-inspection/auto-inspection-manual.html` | 前端部署后“打开完整文档”使用的渲染版手册。 |
+| `RuoYi-Vue3-master/public/docs/auto-inspection/auto-inspection-manual-assets/` | 前端静态截图资源，打包后会进入 `dist/docs/auto-inspection/`。 |
 
 本次手册和前端操作指引不涉及数据库结构变化，不需要新增 SQL 升级脚本。

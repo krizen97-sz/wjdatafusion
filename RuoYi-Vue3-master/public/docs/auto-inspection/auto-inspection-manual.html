@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>自动化巡检功能操作手册</title>
+  <style>
+    :root {
+      --page-bg: #f4f7fb;
+      --surface: #ffffff;
+      --surface-soft: #f7fbff;
+      --border: #dce8f6;
+      --border-soft: #e7eef8;
+      --text: #18324f;
+      --muted: #657d98;
+      --subtle: #7890aa;
+      --primary: #2f80ed;
+      --primary-soft: #eaf4ff;
+      --danger: #c45656;
+      --success: #34865a;
+      --shadow: 0 16px 36px rgba(24, 50, 79, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--page-bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      line-height: 1.75;
+    }
+
+    a {
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+      gap: 18px;
+      max-width: 1480px;
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    .toc {
+      position: sticky;
+      top: 18px;
+      align-self: start;
+      max-height: calc(100vh - 36px);
+      overflow-y: auto;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .toc strong {
+      display: block;
+      margin-bottom: 10px;
+      font-size: 16px;
+    }
+
+    .toc a {
+      display: block;
+      padding: 6px 8px;
+      border-radius: 6px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .toc a:hover {
+      background: var(--primary-soft);
+      color: var(--primary);
+      text-decoration: none;
+    }
+
+    main {
+      min-width: 0;
+    }
+
+    .hero,
+    .section {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: 26px 30px;
+      margin-bottom: 18px;
+    }
+
+    .eyebrow {
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    h1 {
+      margin: 8px 0 10px;
+      font-size: 32px;
+      line-height: 1.2;
+    }
+
+    .hero p {
+      max-width: 920px;
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .meta span,
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 4px 10px;
+      border: 1px solid #cfe3ff;
+      border-radius: 999px;
+      background: var(--primary-soft);
+      color: #1d6fc9;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .section {
+      margin-bottom: 16px;
+      padding: 22px 24px;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-soft);
+      color: var(--text);
+      font-size: 22px;
+      line-height: 1.3;
+    }
+
+    h3 {
+      margin: 20px 0 8px;
+      color: var(--text);
+      font-size: 17px;
+    }
+
+    p {
+      margin: 8px 0;
+      color: var(--muted);
+    }
+
+    ul,
+    ol {
+      margin: 8px 0 8px 22px;
+      padding: 0;
+      color: var(--muted);
+    }
+
+    li + li {
+      margin-top: 4px;
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: #edf3fa;
+      color: #1d3554;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+    }
+
+    pre {
+      overflow-x: auto;
+      padding: 14px;
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+      background: #f7fbff;
+      color: #1d3554;
+      line-height: 1.55;
+    }
+
+    table {
+      width: 100%;
+      margin: 12px 0;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: #fff;
+    }
+
+    th,
+    td {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border-soft);
+      border-right: 1px solid var(--border-soft);
+      color: var(--muted);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f4f8fd;
+      color: #31506f;
+      font-weight: 700;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    th:last-child,
+    td:last-child {
+      border-right: 0;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 8px;
+      margin: 14px 0;
+    }
+
+    .flow span {
+      display: grid;
+      align-content: center;
+      min-height: 58px;
+      padding: 8px 10px;
+      border: 1px solid #cfe3ff;
+      border-radius: 8px;
+      background: #f4f9ff;
+      color: #1d5da6;
+      font-size: 13px;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .image-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin: 14px 0;
+    }
+
+    .image-grid.single {
+      grid-template-columns: 1fr;
+    }
+
+    figure {
+      margin: 0;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: #fff;
+    }
+
+    figure img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+
+    figcaption {
+      padding: 9px 12px;
+      border-top: 1px solid var(--border-soft);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .notice {
+      padding: 12px 14px;
+      border: 1px solid #cfe3ff;
+      border-left: 4px solid var(--primary);
+      border-radius: 8px;
+      background: #f7fbff;
+      color: var(--muted);
+    }
+
+    .danger {
+      border-color: #ffd6d6;
+      border-left-color: var(--danger);
+      background: #fff8f8;
+    }
+
+    .success {
+      border-color: #cfeadc;
+      border-left-color: var(--success);
+      background: #f7fbf9;
+    }
+
+    .doc-files {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .doc-files span {
+      padding: 9px 10px;
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+      background: #fbfdff;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 1080px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      .toc {
+        position: static;
+        max-height: none;
+      }
+
+      .flow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (max-width: 720px) {
+      .layout {
+        padding: 10px;
+      }
+
+      .hero,
+      .section {
+        padding: 16px;
+      }
+
+      h1 {
+        font-size: 26px;
+      }
+
+      .image-grid {
+        grid-template-columns: 1fr;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+      }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .layout {
+        display: block;
+        max-width: none;
+      }
+
+      .toc {
+        display: none;
+      }
+
+      .hero,
+      .section {
+        box-shadow: none;
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="toc">
+      <strong>目录</strong>
+      <a href="#intro">1. 功能定位</a>
+      <a href="#permission">2. 权限说明</a>
+      <a href="#entry">3. 页面入口</a>
+      <a href="#config">4. 巡检配置总览</a>
+      <a href="#template">5. 创建巡检模板</a>
+      <a href="#tools">6. 选择巡检工具</a>
+      <a href="#steps">7. 配置巡检步骤</a>
+      <a href="#plan">8. 配置巡检计划</a>
+      <a href="#records">9. 查看巡检总览和记录</a>
+      <a href="#detail">10. 查看巡检详情</a>
+      <a href="#flow">11. 推荐配置流程</a>
+      <a href="#faq">12. 常见问题</a>
+      <a href="#deploy">13. 部署携带文件</a>
+    </aside>
+
+    <main>
+      <section class="hero">
+        <div class="eyebrow">自动化巡检 / 操作手册</div>
+        <h1>自动化巡检功能操作手册</h1>
+        <p>本手册用于指导用户配置巡检模板、巡检步骤、巡检计划，查看巡检记录、看板和导出报告。文档为离线静态页面，所有截图均来自本地资源目录。</p>
+        <div class="meta">
+          <span>适用版本：v3.6.17</span>
+          <span>适用模块：自动化巡检</span>
+          <span>编写时间：2026-06-19</span>
+          <span>离线资源：本地图片 + 本地样式</span>
+        </div>
+      </section>
+
+      <section id="intro" class="section">
+        <h2>1. 功能定位</h2>
+        <p>自动化巡检用于把 Kafka 积压、海康接口取数、FTP 文件数量、服务器目录、磁盘空间、TCP 端口和服务状态等检查动作，抽象成可复用的巡检工具。用户可以把多个工具编排成巡检模板，再配置巡检计划定时执行，最终形成巡检记录、看板图表和导出报告。</p>
+        <p>它解决的问题是：巡检脚本分散、检查目标写死、阈值调整需要改代码、巡检结果难追溯、多人交接时不知道每个检查项如何配置，以及服务器账号和巡检账号混用导致的安全风险。</p>
+        <div class="flow">
+          <span>巡检工具</span>
+          <span>巡检步骤</span>
+          <span>巡检模板</span>
+          <span>巡检计划</span>
+          <span>巡检记录</span>
+          <span>导出报告</span>
+        </div>
+      </section>
+
+      <section id="permission" class="section">
+        <h2>2. 权限说明</h2>
+        <p>拥有 <code>datafusion</code> 权限字符的用户，默认具备自动化巡检相关权限。常用细分权限如下：</p>
+        <table>
+          <thead><tr><th>操作</th><th>权限字符</th></tr></thead>
+          <tbody>
+            <tr><td>查看巡检记录和配置</td><td><code>support:autoInspection:query</code></td></tr>
+            <tr><td>维护巡检模板</td><td><code>support:autoInspection:template</code></td></tr>
+            <tr><td>维护巡检计划</td><td><code>support:autoInspection:plan</code></td></tr>
+            <tr><td>手动执行巡检</td><td><code>support:autoInspection:run</code></td></tr>
+            <tr><td>导出巡检结果</td><td><code>support:autoInspection:export</code></td></tr>
+            <tr><td>查看巡检密码明文</td><td><code>support:credential:viewPlain</code></td></tr>
+          </tbody>
+        </table>
+        <p class="notice">如果页面按钮不可见，优先检查用户角色是否绑定了对应菜单权限；如果用户拥有 <code>datafusion</code> 权限字符，后端会按现场融合体系放行。</p>
+      </section>
+
+      <section id="entry" class="section">
+        <h2>3. 页面入口</h2>
+        <p>登录系统后，在左侧菜单进入：</p>
+        <ul>
+          <li><code>自动化巡检</code> -> <code>巡检配置</code></li>
+          <li><code>自动化巡检</code> -> <code>巡检总览</code></li>
+        </ul>
+        <p><code>巡检配置</code> 负责维护模板和计划；<code>巡检总览</code> 负责查看结果、展开看板和导出报告。</p>
+      </section>
+
+      <section id="config" class="section">
+        <h2>4. 巡检配置总览</h2>
+        <p>巡检配置页面分为“巡检模板”和“巡检计划”两个区域。页面右侧提供“操作指引”入口，适合新用户按步骤完成第一次配置。</p>
+        <div class="image-grid">
+          <figure>
+            <img src="auto-inspection-manual-assets/01-config-template.png" alt="巡检配置模板列表" loading="lazy">
+            <figcaption>巡检配置模板列表</figcaption>
+          </figure>
+          <figure>
+            <img src="auto-inspection-manual-assets/10-operation-guide.png" alt="操作指引入口" loading="lazy">
+            <figcaption>操作指引入口和页面步骤标注</figcaption>
+          </figure>
+        </div>
+        <table>
+          <thead><tr><th>区域</th><th>用途</th></tr></thead>
+          <tbody>
+            <tr><td>巡检模板</td><td>创建可复用的巡检方案，一个模板可以包含多个巡检步骤。</td></tr>
+            <tr><td>巡检计划</td><td>为模板配置执行周期，并交给若依定时任务调度。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="template" class="section">
+        <h2>5. 创建巡检模板</h2>
+        <p>在 <code>巡检配置</code> -> <code>巡检模板</code> 中点击“新增模板”。模板用于沉淀一套可重复执行的巡检方案，适合按系统、平台或业务场景拆分。</p>
+        <div class="image-grid">
+          <figure>
+            <img src="auto-inspection-manual-assets/01-config-template.png" alt="巡检模板列表" loading="lazy">
+            <figcaption>巡检模板列表和配置入口</figcaption>
+          </figure>
+          <figure>
+            <img src="auto-inspection-manual-assets/02-template-dialog.png" alt="新增巡检模板" loading="lazy">
+            <figcaption>新增巡检模板弹窗</figcaption>
+          </figure>
+        </div>
+        <table>
+          <thead><tr><th>字段</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>模板名称</td><td>建议按系统或业务场景命名，例如“TIM 平台每日巡检”。</td></tr>
+            <tr><td>模板说明</td><td>简要说明巡检范围、适用系统和执行时机。</td></tr>
+            <tr><td>状态</td><td>正常表示可执行；停用后不建议绑定新计划。</td></tr>
+          </tbody>
+        </table>
+        <p>模板列表支持编辑、执行、复制和删除。复制模板会生成一份相同配置的新模板，名称会追加“（复制）”，适合快速创建同类系统的巡检方案。</p>
+      </section>
+
+      <section id="tools" class="section">
+        <h2>6. 选择巡检工具</h2>
+        <p>在模板弹窗中点击“添加步骤”，系统会先打开工具选择弹窗。工具按场景树状分类展示，右侧会展示工具用途、默认规则、配置项和使用案例。推荐先看右侧说明，再点击“进入配置”。</p>
+        <div class="image-grid single">
+          <figure>
+            <img src="auto-inspection-manual-assets/03-tool-picker.png" alt="巡检工具选择" loading="lazy">
+            <figcaption>巡检工具选择和工具说明</figcaption>
+          </figure>
+        </div>
+        <table>
+          <thead><tr><th>工具</th><th>典型用途</th></tr></thead>
+          <tbody>
+            <tr><td>Kafka 消费积压检测</td><td>检查 topic 和 consumer group 的 lag 是否超阈值。</td></tr>
+            <tr><td>海康接口数量检测</td><td>调用海康平台接口统计过车数量、违法数量等。</td></tr>
+            <tr><td>HTTP 接口健康检测</td><td>检查普通 HTTP 接口是否可访问、返回是否符合预期。</td></tr>
+            <tr><td>FTP 目录文件数量检测</td><td>统计一个或多个 FTP 目录下的文件数量。</td></tr>
+            <tr><td>服务器目录文件数量检测</td><td>登录指定服务器，统计目录文件数量。</td></tr>
+            <tr><td>服务器磁盘使用率检测</td><td>登录指定服务器，检查磁盘分区使用率。</td></tr>
+            <tr><td>大数据服务器爆盘检测</td><td>检查一个或多个大数据服务器所有分区占用情况。</td></tr>
+            <tr><td>TCP 端口连通性检测</td><td>检查主机端口是否可连通。</td></tr>
+            <tr><td>服务器服务状态检测</td><td>执行 <code>systemctl status 服务名</code>，可按配置自动重启异常服务。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="steps" class="section">
+        <h2>7. 配置巡检步骤</h2>
+        <p>选择工具后进入具体步骤配置页。步骤配置页会根据工具类型展示不同字段，目标决定去哪里取数，阈值决定什么情况算异常。</p>
+        <div class="image-grid single">
+          <figure>
+            <img src="auto-inspection-manual-assets/04-step-http-config.png" alt="HTTP 步骤配置" loading="lazy">
+            <figcaption>HTTP / 海康接口类步骤配置示例</figcaption>
+          </figure>
+        </div>
+        <table>
+          <thead><tr><th>字段</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>步骤名称</td><td>展示在巡检记录和报告里，建议写清业务含义。</td></tr>
+            <tr><td>巡检工具</td><td>当前步骤使用的检测能力。</td></tr>
+            <tr><td>目标名称</td><td>当前检查对象的业务名称，例如“过车接口”“主 Kafka”。</td></tr>
+            <tr><td>阈值和比较规则</td><td>定义正常和异常的判断条件。</td></tr>
+            <tr><td>超时时间</td><td>单个目标检测允许等待的最长时间。</td></tr>
+            <tr><td>备注</td><td>记录接口来源、联系人或配置说明。</td></tr>
+          </tbody>
+        </table>
+
+        <h3>7.1 HTTP / 海康接口类</h3>
+        <p>HTTP 类工具主要配置 URL、请求方法、请求头、请求体、返回结果路径和阈值。接口参数中可以使用日期变量，例如当天日期、开始时间、结束时间等，用于每天自动生成请求参数。</p>
+        <ol>
+          <li>先在步骤里填好接口地址、方法和参数。</li>
+          <li>在“结果路径”中填写返回体里的计数字段，例如 <code>data.total</code>。</li>
+          <li>点击“测试目标”，确认系统可以拿到实际值。</li>
+          <li>再保存步骤，避免把不可用接口加入模板。</li>
+        </ol>
+
+        <h3>7.2 Kafka 类</h3>
+        <p>Kafka 工具用于检查指定 topic 和 consumer group 的消费积压。需要填写 bootstrap server、topic、consumer group 和 lag 阈值。</p>
+
+        <h3>7.3 FTP 目录文件数量</h3>
+        <p>FTP 工具支持一个步骤配置多个 FTP 目录目标。每个目标需要配置目标名称、主机、端口、目录、账号、密码和文件数量阈值。可使用复制功能快速复制一个已填写好的目标，再修改目录或名称。</p>
+
+        <h3>7.4 服务器目录、磁盘和大数据服务器</h3>
+        <p>服务器类工具可以手动添加服务器，也可以从现场融合管理里的服务器资产树中选择。选择现场服务器时，系统只带出服务器名称、IP、SSH 端口和账号提示；实际执行时只使用巡检配置中保存的巡检登录账号和密码。</p>
+        <table>
+          <thead><tr><th>工具</th><th>默认账号</th><th>默认端口</th></tr></thead>
+          <tbody>
+            <tr><td>服务器目录文件数量检测</td><td><code>hik</code></td><td>优先使用服务器 SSH 端口，空值时用 <code>55555</code></td></tr>
+            <tr><td>服务器磁盘使用率检测</td><td><code>hik</code></td><td>优先使用服务器 SSH 端口，空值时用 <code>55555</code></td></tr>
+            <tr><td>大数据服务器爆盘检测</td><td><code>root</code></td><td>优先使用服务器 SSH 端口，空值时用 <code>2343</code></td></tr>
+          </tbody>
+        </table>
+        <p class="notice danger">如果现场不允许 root 直接登录，应在步骤中填写实际可登录账号，并按需要配置 sudo 或 su 提权方式。</p>
+
+        <h3>7.5 TCP 端口连通性</h3>
+        <p>TCP 端口工具只检查主机和端口是否可连通，适合验证 Kafka、数据库、接口网关、FTP 端口等基础连通性。</p>
+
+        <h3>7.6 服务器服务状态检测</h3>
+        <p>服务状态工具会登录服务器执行 <code>systemctl status 服务名</code>，并解析服务状态。正常结果通常为 <code>active (running)</code>，异常结果可能为 <code>inactive (dead)</code>、<code>failed</code> 等。</p>
+        <table>
+          <thead><tr><th>配置</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>提权方式</td><td>可选择不提权、sudo 或 su。</td></tr>
+            <tr><td>异常自动拉起</td><td>开启后异常时执行 <code>systemctl restart 服务名</code>。</td></tr>
+            <tr><td>复查等待秒数</td><td>重启后等待一段时间，再次检查服务状态。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="plan" class="section">
+        <h2>8. 配置巡检计划</h2>
+        <p>进入 <code>巡检配置</code> -> <code>巡检计划</code>，点击“新增计划”。计划把模板交给若依定时任务调度，页面使用可视化周期配置生成 Cron，不要求用户手写 Cron。</p>
+        <div class="image-grid">
+          <figure>
+            <img src="auto-inspection-manual-assets/05-plan-list.png" alt="巡检计划列表" loading="lazy">
+            <figcaption>巡检计划列表</figcaption>
+          </figure>
+          <figure>
+            <img src="auto-inspection-manual-assets/06-plan-dialog.png" alt="新增巡检计划" loading="lazy">
+            <figcaption>新增巡检计划和可视化周期配置</figcaption>
+          </figure>
+        </div>
+        <table>
+          <thead><tr><th>字段</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>计划名称</td><td>建议按系统和周期命名，例如“TIM 每日 9 点巡检”。</td></tr>
+            <tr><td>巡检模板</td><td>选择已经配置好的模板。</td></tr>
+            <tr><td>任务编码</td><td>对应若依定时任务编码，用于排查定时调度。</td></tr>
+            <tr><td>执行周期</td><td>页面可视化配置每日、每周、每月或间隔执行。</td></tr>
+            <tr><td>Cron 预览</td><td>系统自动生成，只读展示，不要求用户手写 Cron。</td></tr>
+            <tr><td>状态</td><td>启用后按计划执行；暂停后不会继续触发。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="records" class="section">
+        <h2>9. 查看巡检总览和记录</h2>
+        <p>进入 <code>自动化巡检</code> -> <code>巡检总览</code>。页面默认优先展示巡检记录，可以按模板、计划、来源、结果筛选，也可以刷新记录。</p>
+        <div class="image-grid">
+          <figure>
+            <img src="auto-inspection-manual-assets/07-dashboard-records.png" alt="巡检总览记录" loading="lazy">
+            <figcaption>巡检记录优先展示的总览页面</figcaption>
+          </figure>
+          <figure>
+            <img src="auto-inspection-manual-assets/08-dashboard-drawer.png" alt="巡检看板" loading="lazy">
+            <figcaption>巡检看板图表和当月日历</figcaption>
+          </figure>
+        </div>
+        <table>
+          <thead><tr><th>操作</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>详情</td><td>查看单次巡检的步骤结果和目标明细。</td></tr>
+            <tr><td>Word</td><td>导出单次巡检 Word 报告。</td></tr>
+            <tr><td>导出选中</td><td>多选记录后导出 Excel 汇总。</td></tr>
+            <tr><td>导出本周</td><td>导出本周巡检结果 Excel。</td></tr>
+            <tr><td>导出本月</td><td>导出本月巡检结果 Excel。</td></tr>
+          </tbody>
+        </table>
+        <p>点击“展开看板”可以查看图表化统计。看板包含本周趋势、结果分布、工具健康度、异常目标排行和当月巡检日历。异常日期会突出显示，方便快速定位问题发生时间。</p>
+      </section>
+
+      <section id="detail" class="section">
+        <h2>10. 查看巡检详情</h2>
+        <p>在巡检记录行点击“详情”。详情页包含基础信息、步骤结果和目标明细。目标明细按“步骤 / 子项”分组展示每个目标的调用信息、实际值、错误原因。</p>
+        <div class="image-grid single">
+          <figure>
+            <img src="auto-inspection-manual-assets/09-record-detail.png" alt="巡检详情" loading="lazy">
+            <figcaption>巡检详情中的步骤结果和目标明细</figcaption>
+          </figure>
+        </div>
+        <table>
+          <thead><tr><th>区域</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>基础信息</td><td>展示巡检时间、模板、计划、整体结果、摘要。</td></tr>
+            <tr><td>步骤结果</td><td>按步骤展示工具、结果、实际值、阈值和摘要。</td></tr>
+            <tr><td>目标明细</td><td>按“步骤 / 子项”分组展示每个目标的调用信息、实际值、错误原因。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="flow" class="section">
+        <h2>11. 推荐配置流程</h2>
+        <ol>
+          <li>进入 <code>巡检配置</code>，点击“操作指引”了解流程。</li>
+          <li>新增一个巡检模板。</li>
+          <li>添加一个步骤，选择巡检工具。</li>
+          <li>配置目标、账号、阈值并点击“测试目标”。</li>
+          <li>保存模板后手动执行一次。</li>
+          <li>在 <code>巡检总览</code> 查看记录和详情。</li>
+          <li>确认结果正确后，再配置巡检计划。</li>
+          <li>第二天或下一次定时执行后，检查计划是否正常生成记录。</li>
+        </ol>
+        <p class="notice success">第一次上线建议先做手动执行验证，再启用定时计划。这样能把网络、账号、证书、结果路径等问题提前暴露出来。</p>
+      </section>
+
+      <section id="faq" class="section">
+        <h2>12. 常见问题</h2>
+        <h3>12.1 测试目标成功，但计划执行失败</h3>
+        <p>优先检查计划绑定的模板是否保存了最新步骤。服务器类工具还要确认巡检配置里保存的 SSH 账号和密码正确，系统不会回退使用现场服务器资产里登记的密码。</p>
+
+        <h3>12.2 服务器密码显示为星号</h3>
+        <p>星号只是前端脱敏展示。如果需要查看明文，需要用户具备 <code>support:credential:viewPlain</code> 权限，并点击密码框右侧的小眼睛。</p>
+
+        <h3>12.3 HTTP 接口返回了数据但提示无法解析计数字段</h3>
+        <p>检查“结果路径”是否与接口返回结构一致。例如返回为：</p>
+        <pre><code>{
+  "data": {
+    "total": 12
+  }
+}</code></pre>
+        <p>结果路径应填写 <code>data.total</code>。</p>
+
+        <h3>12.4 服务器服务状态检测显示异常</h3>
+        <p>检查服务名是否正确，例如 <code>firewalld</code>、<code>nginx</code>、<code>mysql</code>。如果服务器需要提权执行 <code>systemctl</code>，应配置 sudo 或 su，并填写对应提权密码。</p>
+
+        <h3>12.5 导出没有数据</h3>
+        <p>导出选中需要先勾选记录；导出本周和导出本月按巡检时间过滤，如果当前周期没有记录，Excel 里只会有表头或空汇总。</p>
+      </section>
+
+      <section id="deploy" class="section">
+        <h2>13. 部署携带文件</h2>
+        <p>本页面为离线静态 HTML 手册，不依赖外部资源。部署时建议同步带上以下文件：</p>
+        <div class="doc-files">
+          <span><code>WDF100.0/doc/自动化巡检功能操作手册.html</code>：可直接打开的渲染版操作手册。</span>
+          <span><code>WDF100.0/doc/自动化巡检功能操作手册.md</code>：Markdown 源文档。</span>
+          <span><code>WDF100.0/doc/auto-inspection-manual-assets/</code>：手册截图素材目录。</span>
+          <span><code>RuoYi-Vue3-master/public/docs/auto-inspection/auto-inspection-manual.html</code>：前端部署后页面按钮打开的渲染版手册。</span>
+          <span><code>RuoYi-Vue3-master/public/docs/auto-inspection/auto-inspection-manual-assets/</code>：前端静态截图资源，Vite 打包时会复制到 <code>dist/docs/auto-inspection/</code>。</span>
+        </div>
+        <p class="notice">本次手册和前端操作指引不涉及数据库结构变化，不需要新增 SQL 升级脚本。</p>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

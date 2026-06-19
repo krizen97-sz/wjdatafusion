@@ -233,7 +233,7 @@
         <section class="operation-guide__manual-link">
           <div>
             <strong>完整操作手册</strong>
-            <p>需要按章节阅读或交付部署时，可以打开完整 Markdown 文档。</p>
+            <p>需要按章节阅读或交付部署时，可以打开离线渲染版 HTML 文档。</p>
           </div>
           <el-link type="primary" :underline="false" :href="operationGuideManualUrl" target="_blank">打开完整文档</el-link>
         </section>
@@ -1314,7 +1314,7 @@ const detailOpen = ref(false)
 const detail = ref({})
 const serverPasswordRevealLoadingKey = ref('')
 const dashboardChartInstances = {}
-const operationGuideManualUrl = '/docs/auto-inspection/auto-inspection-manual.md'
+const operationGuideManualUrl = '/docs/auto-inspection/auto-inspection-manual.html'
 const operationGuideAssetBase = '/docs/auto-inspection/auto-inspection-manual-assets/'
 
 function guideImage(file, title) {

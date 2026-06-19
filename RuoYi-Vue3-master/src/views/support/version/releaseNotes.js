@@ -1,5 +1,23 @@
 export const releaseNotes = [
   {
+    version: 'v3.6.17',
+    submitTime: '2026-06-19 15:54:54',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '自动化巡检完整文档离线渲染',
+    summary: '修正“打开完整文档”直接展示 Markdown 源码的问题，新增离线 HTML 渲染版操作手册，并确保手册截图和静态资源随前端一起打包。',
+    changes: [
+      '新增自动化巡检 HTML 渲染版操作手册，使用内置 CSS 和本地图片，不依赖外部 CDN、字体、脚本或图片。',
+      '巡检配置页“打开完整文档”改为打开 HTML 手册，用户看到的是排版后的完整文档，而不是 Markdown 源码。',
+      '前端 public 目录同步保存 HTML 手册、Markdown 源文档和截图资产，Vite 打包时会进入 dist/docs/auto-inspection 目录。',
+      'README 和 Markdown 手册同步补充离线部署携带文件说明。'
+    ],
+    scope: ['自动化巡检', '操作手册', '离线部署', '静态资源', '前端交互', '版本记录'],
+    database: '无数据库结构变化，无需执行 SQL。',
+    scripts: []
+  },
+  {
     version: 'v3.6.16',
     submitTime: '2026-06-19 15:43:54',
     level: 'patch',
