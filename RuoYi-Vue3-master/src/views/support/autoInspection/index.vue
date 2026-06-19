@@ -188,9 +188,39 @@
       </div>
     </el-drawer>
 
+    <el-drawer v-model="operationGuideOpen" title="自动化巡检操作指引" direction="rtl" size="760px" append-to-body class="operation-guide-drawer">
+      <div class="operation-guide">
+        <section class="operation-guide__intro">
+          <strong>推荐配置路径</strong>
+          <p>先把巡检能力沉淀成模板，再把模板交给计划定时执行，最后在巡检总览查看结果和导出报告。</p>
+        </section>
+        <ol class="operation-guide__steps">
+          <li v-for="item in operationGuideSteps" :key="item.index">
+            <span>{{ item.index }}</span>
+            <div>
+              <header>
+                <strong>{{ item.title }}</strong>
+                <em>{{ item.place }}</em>
+              </header>
+              <p>{{ item.desc }}</p>
+              <ul>
+                <li v-for="action in item.actions" :key="action">{{ action }}</li>
+              </ul>
+            </div>
+          </li>
+        </ol>
+        <section class="operation-guide__note">
+          <strong>关键提醒</strong>
+          <p>服务器目录、磁盘和服务状态类巡检实际执行时只使用巡检配置里保存的 SSH 账号和密码；从现场服务器选择只是带出 IP、端口和账号提示。</p>
+          <p>部署时可同步带上文档：WDF100.0/doc/自动化巡检功能操作手册.md。</p>
+        </section>
+      </div>
+    </el-drawer>
+
     <section v-show="activeTab === 'config'" class="auto-content-section">
         <div class="config-shell">
           <div class="config-guide">
+            <span v-if="operationGuideOpen" class="guide-page-badge guide-page-badge--flow">1 选择配置区</span>
             <button :class="{ active: configTab === 'template' }" @click="switchConfigTab('template')">
               <span>1</span>
               <strong>巡检模板</strong>
@@ -201,6 +231,14 @@
               <strong>巡检计划</strong>
               <em>选择模板和执行周期，交给若依定时任务调度</em>
             </button>
+          </div>
+
+          <div class="config-help-strip">
+            <div>
+              <strong>第一次配置自动化巡检？</strong>
+              <span>按“模板、步骤、计划、记录”的顺序完成配置，遇到服务器类巡检时优先确认巡检账号和密码。</span>
+            </div>
+            <el-button type="primary" plain icon="QuestionFilled" @click="openOperationGuide">操作指引</el-button>
           </div>
 
           <section v-show="configTab === 'template'" class="config-panel">
@@ -220,7 +258,8 @@
           </el-form-item>
         </el-form>
 
-        <div class="auto-toolbar">
+        <div class="auto-toolbar guide-toolbar">
+          <span v-if="operationGuideOpen" class="guide-page-badge guide-page-badge--inline">2 新增模板并添加步骤</span>
           <el-button type="primary" plain icon="Plus" @click="handleAddTemplate" v-hasPermi="['support:autoInspection:template']">新增模板</el-button>
           <el-button icon="Refresh" @click="getTemplateList">刷新</el-button>
         </div>
@@ -270,7 +309,8 @@
           </el-form-item>
         </el-form>
 
-        <div class="auto-toolbar">
+        <div class="auto-toolbar guide-toolbar">
+          <span v-if="operationGuideOpen" class="guide-page-badge guide-page-badge--inline">5 新增计划并绑定模板</span>
           <el-button type="primary" plain icon="Plus" @click="handleAddPlan" v-hasPermi="['support:autoInspection:plan']">新增计划</el-button>
           <el-button icon="Refresh" @click="getPlanList">刷新</el-button>
         </div>
@@ -1211,6 +1251,7 @@ const planQuery = ref({ pageNum: 1, pageSize: 10, planName: '', templateId: unde
 const dashboardLoading = ref(false)
 const dashboardData = ref(defaultDashboardData())
 const dashboardDrawerOpen = ref(false)
+const operationGuideOpen = ref(false)
 const trendChartRef = ref(null)
 const resultPieChartRef = ref(null)
 const toolHealthChartRef = ref(null)
@@ -1250,6 +1291,51 @@ const detailOpen = ref(false)
 const detail = ref({})
 const serverPasswordRevealLoadingKey = ref('')
 const dashboardChartInstances = {}
+
+const operationGuideSteps = [
+  {
+    index: '01',
+    title: '创建巡检模板',
+    place: '巡检配置 / 巡检模板',
+    desc: '模板用于沉淀一套可重复执行的巡检方案，适合按系统、平台或业务场景拆分。',
+    actions: ['点击“新增模板”填写模板名称和说明。', '模板可以一键复制，复制后再微调步骤，适合快速生成同类巡检方案。']
+  },
+  {
+    index: '02',
+    title: '添加巡检步骤',
+    place: '模板弹窗 / 添加步骤',
+    desc: '一个模板可以包含多个步骤，每个步骤选择一个巡检工具并配置目标、阈值和展示名称。',
+    actions: ['点击“添加步骤”打开工具列表。', '按工具分类选择 Kafka、HTTP、FTP、服务器目录、磁盘、TCP 端口或服务状态检测。']
+  },
+  {
+    index: '03',
+    title: '配置目标和阈值',
+    place: '步骤配置弹窗',
+    desc: '目标决定去哪里取数，阈值决定什么情况算异常；服务器类目标需要单独确认巡检登录账号。',
+    actions: ['HTTP 接口可使用日期变量生成当天参数。', '服务器类目标可从现场服务器树选择，也可以手工填写 IP、端口、账号和密码。', '配置完成后先点击“测试目标”，确认能取到真实返回值。']
+  },
+  {
+    index: '04',
+    title: '保存并手动验证',
+    place: '模板列表 / 执行',
+    desc: '模板保存后建议先手动执行一次，确认巡检记录、步骤结果和目标明细都符合预期。',
+    actions: ['点击模板行里的“执行”。', '到“巡检总览”查看结果，异常时进入详情查看调用信息和错误原因。']
+  },
+  {
+    index: '05',
+    title: '配置巡检计划',
+    place: '巡检配置 / 巡检计划',
+    desc: '计划把模板交给若依定时任务调度，页面使用可视化周期配置生成 Cron。',
+    actions: ['选择巡检模板和执行周期。', '检查生成的任务编码和 Cron 预览。', '启用计划后，系统会按配置自动生成巡检记录。']
+  },
+  {
+    index: '06',
+    title: '查看记录和导出报告',
+    place: '巡检总览',
+    desc: '巡检总览默认优先展示记录，展开看板可查看图表、当月日历和异常分布。',
+    actions: ['可按模板、计划、来源、结果筛选记录。', '支持导出选中、本周、本月结果，也可在单条记录中导出 Word 报告。']
+  }
+]
 
 const targetTypeOptions = [
   { label: 'Kafka', value: 'KAFKA' },
@@ -2009,6 +2095,10 @@ function getDashboard() {
 function openDashboardDrawer() {
   dashboardDrawerOpen.value = true
   getDashboard()
+}
+
+function openOperationGuide() {
+  operationGuideOpen.value = true
 }
 
 function getDashboardChart(refValue, key) {
@@ -4549,6 +4639,103 @@ function resultTagType(value) {
   }
 }
 
+.operation-guide {
+  display: grid;
+  gap: 14px;
+}
+
+:deep(.operation-guide-drawer .el-drawer__body) {
+  padding: 16px;
+  background: #f5f8fc;
+}
+
+.operation-guide__intro,
+.operation-guide__note {
+  padding: 14px;
+  border: 1px solid #dce8f6;
+  border-radius: 8px;
+  background: #fff;
+
+  strong {
+    display: block;
+    color: #1d3554;
+    font-size: 15px;
+  }
+
+  p {
+    margin: 6px 0 0;
+    color: #6f8299;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+}
+
+.operation-guide__steps {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+
+  > li {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 12px;
+    padding: 14px;
+    border: 1px solid #e1ebf7;
+    border-radius: 8px;
+    background: #fff;
+
+    > span {
+      width: 36px;
+      height: 36px;
+      line-height: 36px;
+      border-radius: 50%;
+      background: #e8f3ff;
+      color: #2f80ed;
+      text-align: center;
+      font-weight: 800;
+    }
+  }
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+
+  strong {
+    color: #1d3554;
+    font-size: 15px;
+  }
+
+  em {
+    color: #2f80ed;
+    font-size: 12px;
+    font-style: normal;
+    white-space: nowrap;
+  }
+
+  p {
+    margin: 0 0 8px;
+    color: #6f8299;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  ul {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+    padding-left: 16px;
+    color: #4f6680;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+}
+
 .tool-health-list {
   display: grid;
   gap: 12px;
@@ -4659,6 +4846,7 @@ function resultTagType(value) {
 }
 
 .config-guide {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
@@ -4706,6 +4894,66 @@ function resultTagType(value) {
       line-height: 1.35;
     }
   }
+}
+
+.config-help-strip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border: 1px solid #dce8f6;
+  border-radius: 8px;
+  background: #f8fbff;
+
+  div {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  strong {
+    color: #1d3554;
+    font-size: 14px;
+  }
+
+  span {
+    overflow: hidden;
+    color: #6f8299;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.guide-toolbar {
+  position: relative;
+  align-items: center;
+}
+
+.guide-page-badge {
+  display: inline-flex;
+  z-index: 2;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 9px;
+  border: 1px solid #9bc8ff;
+  border-radius: 999px;
+  background: #edf6ff;
+  color: #1d6fc9;
+  font-size: 12px;
+  font-weight: 700;
+  box-shadow: 0 6px 16px rgba(47, 128, 237, 0.12);
+}
+
+.guide-page-badge--flow {
+  position: absolute;
+  top: -10px;
+  left: 12px;
+}
+
+.guide-page-badge--inline {
+  flex: 0 0 auto;
 }
 
 .config-panel {
@@ -6175,6 +6423,16 @@ function resultTagType(value) {
 
   .config-guide {
     grid-template-columns: 1fr;
+  }
+
+  .config-help-strip,
+  .operation-guide__steps header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .config-help-strip span {
+    white-space: normal;
   }
 }
 </style>
