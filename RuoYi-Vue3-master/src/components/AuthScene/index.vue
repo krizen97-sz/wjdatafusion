@@ -431,8 +431,8 @@ onBeforeUnmount(() => {
   position: relative;
   overflow: hidden;
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
   padding: 46px 54px;
   color: #ffffff;
   background: linear-gradient(145deg, #9ca3af 0%, #6b7280 48%, #4b5563 100%);
@@ -456,6 +456,9 @@ onBeforeUnmount(() => {
 }
 
 .auth-brand {
+  position: absolute;
+  top: 46px;
+  left: 54px;
   display: inline-flex;
   align-items: center;
   gap: 12px;
@@ -475,12 +478,11 @@ onBeforeUnmount(() => {
 }
 
 .auth-character-wrap {
-  flex: 1;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
-  min-height: 430px;
-  padding-bottom: 26px;
+  width: 100%;
+  min-height: 0;
 }
 
 .animated-characters {
@@ -582,7 +584,12 @@ onBeforeUnmount(() => {
 }
 
 .auth-footer {
+  position: absolute;
+  right: 54px;
+  bottom: 46px;
+  left: 54px;
   display: flex;
+  justify-content: center;
   gap: 28px;
   color: rgba(255, 255, 255, 0.72);
   font-size: 13px;
@@ -601,6 +608,17 @@ onBeforeUnmount(() => {
 @media (max-width: 1180px) {
   .auth-scene__desktop {
     padding: 40px;
+  }
+
+  .auth-brand {
+    top: 40px;
+    left: 40px;
+  }
+
+  .auth-footer {
+    right: 40px;
+    bottom: 40px;
+    left: 40px;
   }
 
   .animated-characters {

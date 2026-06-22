@@ -218,12 +218,13 @@ getCookie()
 }
 
 .auth-panel {
+  position: relative;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 48px 32px 28px;
+  padding: 48px 32px;
 }
 
 .auth-form-shell {
@@ -426,9 +427,12 @@ getCookie()
 }
 
 .auth-copyright {
+  position: absolute;
+  right: 32px;
+  bottom: 28px;
+  left: 32px;
   width: min(560px, 100%);
-  margin-top: auto;
-  padding-top: 42px;
+  margin: 0 auto;
   color: #8b98a8;
   text-align: center;
   font-size: 13px;
@@ -456,6 +460,7 @@ getCookie()
   }
 
   .auth-panel {
+    position: static;
     min-height: auto;
     padding: 18px 22px 24px;
   }
@@ -465,6 +470,7 @@ getCookie()
   }
 
   .auth-copyright {
+    position: static;
     padding-top: 30px;
   }
 }
