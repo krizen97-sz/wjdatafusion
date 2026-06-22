@@ -1,11 +1,12 @@
 AuthScene visual reference notice
 
-The login/register visual direction in this component was inspired by the
-CareerCompass authentication pages from https://github.com/arsh342/careercompass.
+The authentication-side animated character composition and interaction behavior
+in this component were adapted from the CareerCompass authentication pages at
+https://github.com/arsh342/careercompass.
 
 CareerCompass is licensed under the MIT License:
 Copyright (c) 2025 arsh342
 
 This project uses a Vue/SCSS rewrite tailored for 华东信息融合平台. It does not
 include CareerCompass Firebase authentication, Google sign-in, Tailwind setup,
-React components, or remote image dependencies.
+React runtime code, or remote image dependencies.

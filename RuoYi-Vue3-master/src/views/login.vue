@@ -10,9 +10,8 @@
     <main class="auth-panel">
       <section class="auth-form-shell" aria-label="用户登录">
         <div class="auth-heading">
-          <p>Welcome back</p>
-          <h1>用户登录</h1>
-          <span>请输入平台账号信息，进入统一运维工作台。</span>
+          <h1>登录</h1>
+          <span>华东信息融合平台</span>
         </div>
 
         <el-form ref="loginRef" :model="loginForm" :rules="loginRules" class="auth-form" @keyup.enter="handleLogin">
@@ -87,7 +86,6 @@
 
           <div class="auth-options">
             <el-checkbox v-model="loginForm.rememberMe">记住密码</el-checkbox>
-            <a href="javascript:void(0);" class="auth-link">忘记密码?</a>
           </div>
 
           <button
@@ -102,11 +100,6 @@
               <svg-icon icon-class="enter" />
             </span>
           </button>
-
-          <div class="auth-switch" v-if="register">
-            没有账户?
-            <router-link to="/register">立即注册</router-link>
-          </div>
         </el-form>
       </section>
 
@@ -149,8 +142,6 @@ const isTyping = ref(false)
 const passwordVisible = ref(false)
 // 验证码开关
 const captchaEnabled = ref(true)
-// 注册开关
-const register = ref(false)
 const redirect = ref(undefined)
 
 watch(route, (newRoute) => {
@@ -240,30 +231,23 @@ getCookie()
 }
 
 .auth-heading {
-  margin-bottom: 34px;
+  margin-bottom: 36px;
   text-align: center;
-
-  p {
-    margin: 0 0 10px;
-    color: #2d7ef7;
-    font-size: 13px;
-    font-weight: 760;
-  }
 
   h1 {
     margin: 0;
     color: #111827;
-    font-size: 32px;
+    font-size: 34px;
     line-height: 1.2;
     font-weight: 780;
   }
 
   span {
     display: block;
-    margin-top: 10px;
-    color: #66758a;
+    margin-top: 12px;
+    color: #6b788b;
     font-size: 14px;
-    line-height: 1.7;
+    line-height: 1.4;
   }
 }
 
@@ -374,7 +358,7 @@ getCookie()
 .auth-options {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   margin: 2px 0 22px;
   font-size: 14px;
@@ -386,17 +370,6 @@ getCookie()
   :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
     background-color: #2d7ef7;
     border-color: #2d7ef7;
-  }
-}
-
-.auth-link,
-.auth-switch a {
-  color: #1e6fe7;
-  font-weight: 650;
-  text-decoration: none;
-
-  &:hover {
-    text-decoration: underline;
   }
 }
 
@@ -450,17 +423,6 @@ getCookie()
   opacity: 0;
   transform: translateY(18px);
   background: #2d7ef7;
-}
-
-.auth-switch {
-  margin-top: 26px;
-  text-align: center;
-  color: #6c7a8c;
-  font-size: 14px;
-
-  a {
-    margin-left: 6px;
-  }
 }
 
 .auth-copyright {

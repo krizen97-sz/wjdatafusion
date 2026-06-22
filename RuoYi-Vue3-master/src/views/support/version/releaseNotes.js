@@ -1,5 +1,24 @@
 export const releaseNotes = [
   {
+    version: 'v3.6.20',
+    submitTime: '2026-06-22 11:02:45',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '登录页人物动效复刻',
+    summary: '进一步贴近 CareerCompass 登录页左侧人物动画，将认证入口收敛为简约登录体验，不再展示创建账户流程。',
+    changes: [
+      '左侧 AuthScene 改为四个矩形人物组合，按原项目交互行为重写鼠标跟随、眨眼、输入时互看、密码隐藏和明文查看反馈。',
+      '左侧内容减少为平台标识和少量模块标签，让人物动效成为主视觉，不再展示大段说明文案。',
+      '右侧认证区域收敛为登录表单，仅保留账号、密码、验证码、记住密码和登录按钮。',
+      '注册路由改为自动回到登录页，避免继续呈现创建账户体验。',
+      '更新 CareerCompass MIT 来源说明，明确动画结构与行为为 Vue/SCSS 本地改写。'
+    ],
+    scope: ['页面显示优化', '登录页', '前端动效', '离线部署', '授权说明', '版本记录'],
+    database: '无数据库结构变化，无需执行 SQL。',
+    scripts: []
+  },
+  {
     version: 'v3.6.19',
     submitTime: '2026-06-22 10:48:32',
     level: 'patch',
