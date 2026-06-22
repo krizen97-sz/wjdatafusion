@@ -15,37 +15,37 @@
         <div ref="characterRoot" class="animated-characters">
           <div ref="purpleRef" class="character purple-character" :style="purpleStyle">
             <div class="eyes white-eyes purple-eyes" :style="purpleEyesStyle">
-              <span class="eye-ball" :style="eyeStyle(18, isPurpleBlinking)">
-                <i :style="pupilStyle(purplePupil)"></i>
+              <span ref="purpleLeftEyeRef" class="eye-ball" :style="eyeStyle(18, isPurpleBlinking)">
+                <i v-if="!isPurpleBlinking" :style="pupilStyle(purpleLeftPupil)"></i>
               </span>
-              <span class="eye-ball" :style="eyeStyle(18, isPurpleBlinking)">
-                <i :style="pupilStyle(purplePupil)"></i>
+              <span ref="purpleRightEyeRef" class="eye-ball" :style="eyeStyle(18, isPurpleBlinking)">
+                <i v-if="!isPurpleBlinking" :style="pupilStyle(purpleRightPupil)"></i>
               </span>
             </div>
           </div>
 
           <div ref="blackRef" class="character black-character" :style="blackStyle">
             <div class="eyes white-eyes black-eyes" :style="blackEyesStyle">
-              <span class="eye-ball" :style="eyeStyle(16, isBlackBlinking)">
-                <i :style="pupilStyle(blackPupil)"></i>
+              <span ref="blackLeftEyeRef" class="eye-ball" :style="eyeStyle(16, isBlackBlinking)">
+                <i v-if="!isBlackBlinking" :style="pupilStyle(blackLeftPupil)"></i>
               </span>
-              <span class="eye-ball" :style="eyeStyle(16, isBlackBlinking)">
-                <i :style="pupilStyle(blackPupil)"></i>
+              <span ref="blackRightEyeRef" class="eye-ball" :style="eyeStyle(16, isBlackBlinking)">
+                <i v-if="!isBlackBlinking" :style="pupilStyle(blackRightPupil)"></i>
               </span>
             </div>
           </div>
 
           <div ref="orangeRef" class="character orange-character" :style="orangeStyle">
             <div class="eyes pupil-eyes orange-eyes" :style="orangeEyesStyle">
-              <span class="pupil-only" :style="pupilOnlyStyle(orangePupil)"></span>
-              <span class="pupil-only" :style="pupilOnlyStyle(orangePupil)"></span>
+              <span ref="orangeLeftPupilRef" class="pupil-only" :style="pupilOnlyStyle(orangeLeftPupil)"></span>
+              <span ref="orangeRightPupilRef" class="pupil-only" :style="pupilOnlyStyle(orangeRightPupil)"></span>
             </div>
           </div>
 
           <div ref="yellowRef" class="character yellow-character" :style="yellowStyle">
             <div class="eyes pupil-eyes yellow-eyes" :style="yellowEyesStyle">
-              <span class="pupil-only" :style="pupilOnlyStyle(yellowPupil)"></span>
-              <span class="pupil-only" :style="pupilOnlyStyle(yellowPupil)"></span>
+              <span ref="yellowLeftPupilRef" class="pupil-only" :style="pupilOnlyStyle(yellowLeftPupil)"></span>
+              <span ref="yellowRightPupilRef" class="pupil-only" :style="pupilOnlyStyle(yellowRightPupil)"></span>
             </div>
             <div class="yellow-mouth" :style="yellowMouthStyle"></div>
           </div>
@@ -87,6 +87,14 @@ const purpleRef = ref(null)
 const blackRef = ref(null)
 const orangeRef = ref(null)
 const yellowRef = ref(null)
+const purpleLeftEyeRef = ref(null)
+const purpleRightEyeRef = ref(null)
+const blackLeftEyeRef = ref(null)
+const blackRightEyeRef = ref(null)
+const orangeLeftPupilRef = ref(null)
+const orangeRightPupilRef = ref(null)
+const yellowLeftPupilRef = ref(null)
+const yellowRightPupilRef = ref(null)
 
 const mouseX = ref(0)
 const mouseY = ref(0)
@@ -126,6 +134,13 @@ function handleMouseMove(event) {
   mouseY.value = event.clientY
 }
 
+function setMouseToSceneCenter() {
+  const rect = characterRoot.value?.getBoundingClientRect()
+
+  mouseX.value = rect ? rect.left + rect.width / 2 : window.innerWidth / 2
+  mouseY.value = rect ? rect.top + rect.height / 2 : window.innerHeight / 2
+}
+
 function calculatePosition(targetRef) {
   if (!targetRef.value) {
     return { faceX: 0, faceY: 0, bodySkew: 0 }
@@ -149,46 +164,59 @@ const blackPos = computed(() => calculatePosition(blackRef))
 const orangePos = computed(() => calculatePosition(orangeRef))
 const yellowPos = computed(() => calculatePosition(yellowRef))
 
-function facePupil(pos, maxDistance = 5) {
+function calculatePupilPosition(targetRef, maxDistance = 5, forcedLook) {
+  if (forcedLook) {
+    return forcedLook
+  }
+
+  if (!targetRef.value) {
+    return { x: 0, y: 0 }
+  }
+
+  const rect = targetRef.value.getBoundingClientRect()
+  const centerX = rect.left + rect.width / 2
+  const centerY = rect.top + rect.height / 2
+  const deltaX = mouseX.value - centerX
+  const deltaY = mouseY.value - centerY
+  const distance = Math.min(Math.sqrt(deltaX ** 2 + deltaY ** 2), maxDistance)
+  const angle = Math.atan2(deltaY, deltaX)
+
   return {
-    x: clamp(pos.faceX / 2.4, -maxDistance, maxDistance),
-    y: clamp(pos.faceY / 2, -maxDistance, maxDistance),
+    x: Math.cos(angle) * distance,
+    y: Math.sin(angle) * distance,
   }
 }
 
-const purplePupil = computed(() => {
+const purpleForcedLook = computed(() => {
   if (isPasswordVisible.value) {
     return isPurplePeeking.value ? { x: 4, y: 5 } : { x: -4, y: -4 }
   }
   if (isLookingAtEachOther.value) {
     return { x: 3, y: 4 }
   }
-  return facePupil(purplePos.value, 5)
+  return null
 })
 
-const blackPupil = computed(() => {
+const blackForcedLook = computed(() => {
   if (isPasswordVisible.value) {
     return { x: -4, y: -4 }
   }
   if (isLookingAtEachOther.value) {
     return { x: 0, y: -4 }
   }
-  return facePupil(blackPos.value, 4)
+  return null
 })
 
-const orangePupil = computed(() => {
-  if (isPasswordVisible.value) {
-    return { x: -5, y: -4 }
-  }
-  return facePupil(orangePos.value, 5)
-})
+const pupilForcedLook = computed(() => isPasswordVisible.value ? { x: -5, y: -4 } : null)
 
-const yellowPupil = computed(() => {
-  if (isPasswordVisible.value) {
-    return { x: -5, y: -4 }
-  }
-  return facePupil(yellowPos.value, 5)
-})
+const purpleLeftPupil = computed(() => calculatePupilPosition(purpleLeftEyeRef, 5, purpleForcedLook.value))
+const purpleRightPupil = computed(() => calculatePupilPosition(purpleRightEyeRef, 5, purpleForcedLook.value))
+const blackLeftPupil = computed(() => calculatePupilPosition(blackLeftEyeRef, 4, blackForcedLook.value))
+const blackRightPupil = computed(() => calculatePupilPosition(blackRightEyeRef, 4, blackForcedLook.value))
+const orangeLeftPupil = computed(() => calculatePupilPosition(orangeLeftPupilRef, 5, pupilForcedLook.value))
+const orangeRightPupil = computed(() => calculatePupilPosition(orangeRightPupilRef, 5, pupilForcedLook.value))
+const yellowLeftPupil = computed(() => calculatePupilPosition(yellowLeftPupilRef, 5, pupilForcedLook.value))
+const yellowRightPupil = computed(() => calculatePupilPosition(yellowRightPupilRef, 5, pupilForcedLook.value))
 
 const purpleStyle = computed(() => {
   const position = purplePos.value
@@ -367,7 +395,9 @@ watch(() => props.isTyping, (value) => {
 watch([() => props.passwordVisible, () => props.passwordLength], schedulePeek)
 
 onMounted(() => {
+  setMouseToSceneCenter()
   window.addEventListener("mousemove", handleMouseMove)
+  window.addEventListener("resize", setMouseToSceneCenter)
   scheduleBlink(isPurpleBlinking, "purpleBlinkTimer", "purpleBlinkEndTimer")
   scheduleBlink(isBlackBlinking, "blackBlinkTimer", "blackBlinkEndTimer")
   schedulePeek()
@@ -375,6 +405,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("mousemove", handleMouseMove)
+  window.removeEventListener("resize", setMouseToSceneCenter)
   clearTimer(purpleBlinkTimer)
   clearTimer(purpleBlinkEndTimer)
   clearTimer(blackBlinkTimer)
@@ -464,6 +495,38 @@ onBeforeUnmount(() => {
   bottom: 0;
   transform-origin: bottom center;
   transition: transform 0.7s ease-in-out, height 0.7s ease-in-out;
+  animation: character-breathe 5.8s ease-in-out infinite;
+  will-change: transform, bottom;
+}
+
+.purple-character {
+  animation-delay: -0.8s;
+}
+
+.black-character {
+  animation-duration: 6.4s;
+  animation-delay: -2.2s;
+}
+
+.orange-character {
+  animation-duration: 5.4s;
+  animation-delay: -1.4s;
+}
+
+.yellow-character {
+  animation-duration: 6s;
+  animation-delay: -3s;
+}
+
+@keyframes character-breathe {
+  0%,
+  100% {
+    bottom: 0;
+  }
+
+  50% {
+    bottom: 4px;
+  }
 }
 
 .eyes {
