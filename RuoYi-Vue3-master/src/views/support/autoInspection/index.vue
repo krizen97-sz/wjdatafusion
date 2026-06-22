@@ -22,6 +22,13 @@
               <span><strong>{{ dashboardWeekSummary.abnormalTargetCount || 0 }}</strong><em>异常子项</em></span>
               <span><strong>{{ dashboardWeekSummary.activeDays || 0 }}</strong><em>巡检天数</em></span>
             </div>
+            <div class="dashboard-brief__chart">
+              <div class="dashboard-brief__chart-head">
+                <span>本周趋势</span>
+                <em>巡检 / 异常</em>
+              </div>
+              <div ref="weekBriefChartRef" class="dashboard-brief-chart"></div>
+            </div>
             <div class="dashboard-brief__actions">
               <el-button type="primary" plain icon="DataAnalysis" @click="openDashboardDrawer">展开看板</el-button>
             </div>
@@ -1275,6 +1282,7 @@ const dashboardLoading = ref(false)
 const dashboardData = ref(defaultDashboardData())
 const dashboardDrawerOpen = ref(false)
 const operationGuideOpen = ref(false)
+const weekBriefChartRef = ref(null)
 const trendChartRef = ref(null)
 const resultPieChartRef = ref(null)
 const toolHealthChartRef = ref(null)
@@ -1682,6 +1690,10 @@ const stepTargetSectionHint = computed(() => {
 const dashboardSummary = computed(() => dashboardData.value?.summary || {})
 const dashboardWeekSummary = computed(() => dashboardData.value?.weekSummary || {})
 const dashboardTrend = computed(() => dashboardData.value?.trend || [])
+const dashboardWeekTrend = computed(() => {
+  const trend = Array.isArray(dashboardTrend.value) ? dashboardTrend.value : []
+  return buildCurrentWeekTrendRows(trend)
+})
 const dashboardCalendar = computed(() => dashboardData.value?.calendar || {})
 const dashboardCalendarDays = computed(() => dashboardCalendar.value?.days || [])
 const dashboardCalendarOffset = computed(() => {
@@ -1785,6 +1797,7 @@ watch(dashboardDrawerOpen, (open) => {
 })
 
 watch(dashboardData, () => {
+  renderWeekBriefChart()
   if (dashboardDrawerOpen.value) renderDashboardCharts()
 }, { deep: true })
 
@@ -2171,6 +2184,7 @@ function getDashboard() {
   dashboardLoading.value = true
   return getAutoInspectionDashboard().then((res) => {
     dashboardData.value = { ...defaultDashboardData(), ...(res.data || {}) }
+    renderWeekBriefChart()
     if (dashboardDrawerOpen.value) renderDashboardCharts()
   }).finally(() => { dashboardLoading.value = false })
 }
@@ -2191,6 +2205,63 @@ function getDashboardChart(refValue, key) {
     dashboardChartInstances[key] = echarts.init(dom)
   }
   return dashboardChartInstances[key]
+}
+
+function renderWeekBriefChart() {
+  nextTick(() => {
+    if (activeTab.value !== 'dashboard') return
+    const chart = getDashboardChart(weekBriefChartRef, 'weekBrief')
+    if (!chart) return
+    const rows = dashboardWeekTrend.value
+    const totalData = rows.map((item) => Number(item.total || 0))
+    const abnormalData = rows.map((item) => Number(item.abnormal || 0))
+    chart.setOption({
+      color: ['#2f80ed', '#f56c6c'],
+      grid: { top: 10, right: 8, bottom: 18, left: 24 },
+      tooltip: {
+        trigger: 'axis',
+        appendToBody: true,
+        axisPointer: { type: 'shadow' },
+        formatter(params = []) {
+          const title = params[0]?.axisValue || ''
+          const total = params.find((item) => item.seriesName === '巡检次数')?.value || 0
+          const abnormal = params.find((item) => item.seriesName === '异常次数')?.value || 0
+          return `${title}<br/>巡检次数：${total}<br/>异常次数：${abnormal}`
+        }
+      },
+      xAxis: {
+        type: 'category',
+        data: rows.map((item) => formatTrendDate(item.date)),
+        axisTick: { show: false },
+        axisLine: { lineStyle: { color: '#dce7f4' } },
+        axisLabel: { color: '#7890aa', fontSize: 10 }
+      },
+      yAxis: {
+        type: 'value',
+        minInterval: 1,
+        axisLabel: { color: '#9aa9ba', fontSize: 10 },
+        splitLine: { lineStyle: { color: '#edf3f8' } }
+      },
+      series: [
+        {
+          name: '巡检次数',
+          type: 'bar',
+          barWidth: 10,
+          itemStyle: { borderRadius: [6, 6, 0, 0] },
+          data: totalData
+        },
+        {
+          name: '异常次数',
+          type: 'line',
+          smooth: true,
+          symbolSize: 5,
+          lineStyle: { width: 2 },
+          data: abnormalData
+        }
+      ]
+    }, true)
+    chart.resize()
+  })
 }
 
 function renderDashboardCharts() {
@@ -3717,6 +3788,43 @@ function defaultDashboardData() {
   return { summary: {}, weekSummary: {}, trend: [], calendar: {}, toolStats: [], latestAbnormalTargets: [], recentRecords: [], generatedTime: '' }
 }
 
+function buildCurrentWeekTrendRows(source = []) {
+  const today = new Date()
+  const dayOfWeek = today.getDay() || 7
+  const weekStart = new Date(today)
+  weekStart.setHours(0, 0, 0, 0)
+  weekStart.setDate(today.getDate() - dayOfWeek + 1)
+  const rowMap = new Map()
+  source.forEach((item) => {
+    const key = normalizeTrendDateKey(item.date)
+    if (key) rowMap.set(key, item)
+  })
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(weekStart)
+    date.setDate(weekStart.getDate() + index)
+    const key = formatDateKey(date)
+    const matched = rowMap.get(key) || {}
+    return {
+      date: key,
+      total: Number(matched.total || 0),
+      abnormal: Number(matched.abnormal || 0)
+    }
+  })
+}
+
+function normalizeTrendDateKey(value) {
+  if (!value) return ''
+  const text = String(value)
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10)
+  if (/^\d{2}-\d{2}$/.test(text)) return `${new Date().getFullYear()}-${text}`
+  return text
+}
+
+function formatDateKey(date) {
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
 function parseCronConfig(value) {
   if (!value) return null
   if (typeof value === 'object') return value
@@ -4084,7 +4192,7 @@ function resultTagType(value) {
 
 .dashboard-brief {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) auto auto;
+  grid-template-columns: minmax(280px, 1fr) auto minmax(260px, 340px) auto;
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
@@ -4160,6 +4268,49 @@ function resultTagType(value) {
     font-size: 11px;
     font-style: normal;
   }
+}
+
+.dashboard-brief__chart {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  min-height: 86px;
+  padding: 8px 10px 6px;
+  border: 1px solid #e2ebf7;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.dashboard-brief__chart-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+
+  span,
+  em {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  span {
+    color: #1d3554;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  em {
+    color: #7890aa;
+    font-size: 11px;
+    font-style: normal;
+  }
+}
+
+.dashboard-brief-chart {
+  width: 100%;
+  height: 54px;
 }
 
 .dashboard-brief__actions {
@@ -6531,6 +6682,14 @@ function resultTagType(value) {
 
   .dashboard-brief__actions {
     justify-content: flex-start;
+  }
+
+  .dashboard-brief__chart {
+    min-height: 108px;
+  }
+
+  .dashboard-brief-chart {
+    height: 76px;
   }
 
   .dashboard-drawer__summary {
