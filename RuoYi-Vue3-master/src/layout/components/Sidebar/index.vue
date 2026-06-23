@@ -1,5 +1,12 @@
 <template>
-  <div :class="{ 'has-logo': showLogo, 'has-sidebar-mascot': !isCollapse }" class="sidebar-container">
+  <div
+    :class="{
+      'has-logo': showLogo,
+      'has-sidebar-mascot': !isCollapse,
+      'is-mascot-playing': mascotPlayMode
+    }"
+    class="sidebar-container"
+  >
     <logo v-if="showLogo" :collapse="isCollapse" />
     <el-scrollbar wrap-class="scrollbar-wrapper">
       <el-menu
@@ -21,7 +28,7 @@
         />
       </el-menu>
     </el-scrollbar>
-    <sidebar-mascot :collapsed="isCollapse" />
+    <sidebar-mascot :collapsed="isCollapse" @play-change="mascotPlayMode = $event" />
   </div>
 </template>
 
@@ -38,6 +45,7 @@ const route = useRoute()
 const appStore = useAppStore()
 const settingsStore = useSettingsStore()
 const permissionStore = usePermissionStore()
+const mascotPlayMode = ref(false)
 
 const sidebarRouters = computed(() => permissionStore.sidebarRouters)
 const showLogo = computed(() => settingsStore.sidebarLogo)
@@ -83,6 +91,10 @@ const activeMenu = computed(() => {
       padding-bottom: 220px;
       box-sizing: border-box;
     }
+  }
+
+  &.is-mascot-playing {
+    overflow: visible !important;
   }
 
   .el-menu {

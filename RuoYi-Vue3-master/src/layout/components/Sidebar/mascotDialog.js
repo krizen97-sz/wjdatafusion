@@ -7,6 +7,44 @@ export const mascotDialogConfig = {
     modelError: '本地模型加载失败，请检查离线包里的 live2d 资源是否完整。',
     bodyTap: '收到，我切到当前页面的操作指引。'
   },
+  play: {
+    enabled: true,
+    enter: '我变大啦。试试点头、衣服、手边或气泡，我会陪你检查页面。',
+    exit: '我回到左下角继续值守，有需要再叫我出来。',
+    hint: '陪玩模式里，可以点不同位置让我给现场人员一点操作提示。',
+    regions: {
+      head: [
+        '摸头收到。先别急着保存，现场、平台、服务器关系再确认一遍。',
+        '我正在帮你想：如果页面异常，先看请求，再看后端日志。',
+        '今天的重点是把巡检异常闭环，不让问题停在“已发现”。'
+      ],
+      face: [
+        '我看到了。验证码、权限、接口状态这三件事最容易被忽略。',
+        '需要我提醒现场人员的话：先核对现场名称，再执行新增或保存。',
+        '这个操作如果影响巡检规则，建议先截图或记录变更原因。'
+      ],
+      body: [
+        '点到身体啦，我给你切一条当前页面的操作指引。',
+        '现场人员操作时，建议按“确认对象、填写配置、保存、查看反馈”的节奏走。',
+        '如果表格里状态不对，先清筛选条件，再看更新时间和关联现场。'
+      ],
+      hand: [
+        '拉我一起看按钮吧。执行前先确认当前筛选范围，别把整页数据误操作了。',
+        '这里适合做一步一步的现场指导：先让对方复述页面名称，再点按钮。',
+        '遇到弹窗别马上提交，先看必填项、账号、端口和现场归属。'
+      ],
+      bubble: [
+        '气泡也可以点。你可以把这些话术放进配置模块里，按项目现场继续改。',
+        '我会尽量少打扰，只在菜单、表格、按钮和弹窗附近给提示。',
+        '如果要培训现场人员，可以把常见误操作写成我的互动提示。'
+      ],
+      around: [
+        '我在这儿。你继续操作，我会盯着页面状态。',
+        '点偏了也没关系，我先给你一句巡检提醒：异常记录要看调用明细。',
+        '现场融合页面里，关系画布和配置表要一起核对。'
+      ]
+    }
+  },
   greetings: [
     { before: 6, message: '夜间值守中，异常信息优先看巡检记录和服务状态。' },
     { before: 9, message: '早上好，先看今日运行状态和待处理异常。' },
@@ -174,6 +212,15 @@ export function getMascotTopics(config = mascotDialogConfig) {
 
 export function getMascotInteractions(config = mascotDialogConfig) {
   return (config.interactions || []).filter((item) => item.enabled !== false && item.selector && item.template)
+}
+
+export function getMascotPlayMessage(region = 'around', config = mascotDialogConfig) {
+  const play = config.play || {}
+  const messages = play.regions?.[region] || play.regions?.around || []
+  if (!messages.length) {
+    return play.hint || ''
+  }
+  return messages[Math.floor(Math.random() * messages.length)]
 }
 
 export function getMascotGuide(path = '', config = mascotDialogConfig) {
