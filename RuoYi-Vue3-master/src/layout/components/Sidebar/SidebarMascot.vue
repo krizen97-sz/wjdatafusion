@@ -2,10 +2,11 @@
   <aside
     v-show="isVisible"
     class="sidebar-mascot"
+    :class="{ 'is-guiding': guideActive }"
     aria-label="平台看板娘"
-    @mouseenter="showMessage('我在左下角值守，菜单收起或移动端会自动让出空间。')"
+    @mouseenter="showMessage(mascotMessages.hoverSelf)"
   >
-    <div class="mascot-bubble" :class="{ 'is-refreshing': bubbleRefreshing }">
+    <div v-if="dialogEnabled" class="mascot-bubble" :class="{ 'is-refreshing': bubbleRefreshing }">
       {{ activeMessage }}
     </div>
 
@@ -23,10 +24,15 @@
         {{ loadError ? '模型加载失败' : '模型加载中' }}
       </div>
 
-      <div class="mascot-actions" aria-label="看板娘操作">
+      <div v-if="dialogEnabled" class="mascot-actions" aria-label="看板娘操作">
         <button type="button" title="切换提示主题" @click="switchTopic">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 3a9 9 0 0 0-8.8 7.1 1 1 0 1 0 2 .4A7 7 0 0 1 17 6.7V9a1 1 0 1 0 2 0V4a1 1 0 0 0-1-1h-5a1 1 0 1 0 0 2h2.4A8.9 8.9 0 0 0 12 3Zm7.6 10.7a1 1 0 0 0-1.2.8A7 7 0 0 1 7 17.3V15a1 1 0 1 0-2 0v5a1 1 0 0 0 1 1h5a1 1 0 1 0 0-2H8.6a8.9 8.9 0 0 0 12-4 1 1 0 0 0-1-1.3Z" />
+          </svg>
+        </button>
+        <button type="button" title="当前页面操作指引" @click="showGuideStep()">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 2.5a7 7 0 0 0-4 12.8V19a1 1 0 0 0 .6.9l3 1.5a1 1 0 0 0 .8 0l3-1.5a1 1 0 0 0 .6-.9v-3.7A7 7 0 0 0 12 2.5Zm-2 15.9v-1h4v1L12 19.4l-2-1Zm5-4.5-.4.3a1 1 0 0 0-.4.8v.4H9.8V15a1 1 0 0 0-.4-.8l-.4-.3A5 5 0 1 1 15 13.9ZM11 7.5a1 1 0 0 1 2 0V11a1 1 0 1 1-2 0V7.5Zm1 7.2a1.1 1.1 0 1 0 0-2.2 1.1 1.1 0 0 0 0 2.2Z" />
           </svg>
         </button>
         <button type="button" title="下一句提示" @click="showNextMessage">
@@ -41,6 +47,14 @@
 
 <script setup>
 import { useWindowSize } from '@vueuse/core'
+import {
+  getMascotGreeting,
+  getMascotGuide,
+  getMascotInteractions,
+  getMascotTopics,
+  mascotDialogConfig,
+  renderMascotTemplate
+} from './mascotDialog'
 
 const props = defineProps({
   collapsed: {
@@ -54,89 +68,34 @@ const LIVE2D_CORE_ID = 'ry-local-live2d-core'
 const MODEL_PATH = 'live2d/models/pio/index.json'
 const CORE_PATH = 'live2d/vendor/live2d-widget/live2d.min.js'
 
+const route = useRoute()
 const { width } = useWindowSize()
 const canvasRef = ref(null)
 const modelReady = ref(false)
 const loadError = ref(false)
 const topicIndex = ref(0)
 const messageIndex = ref(0)
-const activeMessage = ref(getGreetingMessage())
+const guideStepIndex = ref(-1)
+const guideActive = ref(false)
+const activeMessage = ref(getMascotGreeting())
 const bubbleRefreshing = ref(false)
 
 let live2dModel = null
 let loadingPromise = null
 let ticker = null
 let refreshTimer = null
+let guideTimer = null
+let pulseTimer = null
+let lastInteractionMessage = ''
+let lastInteractionAt = 0
 
 const isMobile = computed(() => width.value < WIDTH)
 const isVisible = computed(() => !props.collapsed && !isMobile.value)
-
-const topicMessages = [
-  {
-    name: '现场融合',
-    messages: [
-      '现场融合管理建议按“现场、主平台、子平台、服务器”顺序核对。',
-      '进入现场配置前，先确认组织、联系人和现场对接人是否完整。',
-      '现场融合关系画布可以看清平台和服务器挂载关系，节点异常先从这里找。',
-      '新增主平台后，记得补齐子平台入口和服务器归属。',
-      '设备资产台账最好补齐型号、序列号、安装位置和质保到期时间。',
-      '画布节点太密时，先重置视图，再切换横向或纵向布局。'
-    ]
-  },
-  {
-    name: '自动巡检',
-    messages: [
-      '自动化巡检先选测试目标，再配置工具和巡检步骤。',
-      'HTTP 健康检测适合看服务接口，TCP 端口检测适合看基础连通性。',
-      '服务器服务状态检测要对准服务器，不要把现场、平台、服务器层级混在一起。',
-      '巡检记录里的调用信息很重要，排错时别只看成功或失败。',
-      '模板改动不会改写历史报告，报告快照可以放心回溯。',
-      '今日异常要优先处理，再看最近 7 天趋势。'
-    ]
-  },
-  {
-    name: '平台运维',
-    messages: [
-      '版本记录中心可以回查菜单、接口、SQL 和前端改动。',
-      '如果页面报错，先看网络请求，再看后端日志，最后定位到服务和表。',
-      '白名单管理先确认名单状态和车牌规则，再处理导入导出。',
-      '表格批量操作前，先确认筛选条件和当前页数据范围。',
-      '离线部署时，前端资源必须全部随包发布，不能依赖外网。',
-      '变更上线后，记得用真实账号做一次菜单和核心页面烟测。'
-    ]
-  }
-]
-
-const interactiveMessages = [
-  {
-    selector: '.sidebar-container .el-sub-menu__title',
-    message: (text) => `这里是“${text || '业务'}”目录，展开后再进入具体页面。`
-  },
-  {
-    selector: '.sidebar-container .el-menu-item',
-    message: (text) => `准备进入“${text || '当前'}”页面，我继续在左下角值守。`
-  },
-  {
-    selector: '#hamburger-container',
-    message: () => '收起左侧菜单后，我会自动隐藏，给工作区让位置。'
-  },
-  {
-    selector: '.tags-view-container',
-    message: () => '页签栏可以在已打开页面之间切换，排查问题时很省时间。'
-  },
-  {
-    selector: '.el-table__row',
-    message: () => '这行记录可以重点看状态、更新时间和关联现场。'
-  },
-  {
-    selector: '.el-button--primary',
-    message: (text) => `即将执行“${text || '主要'}”操作，先确认当前页面和表单内容。`
-  },
-  {
-    selector: '.el-dialog',
-    message: () => '弹窗里的配置通常会影响现场、平台或巡检规则，保存前再扫一遍。'
-  }
-]
+const dialogEnabled = computed(() => mascotDialogConfig.enabled !== false)
+const mascotMessages = mascotDialogConfig.messages || {}
+const topicMessages = computed(() => getMascotTopics(mascotDialogConfig))
+const interactiveMessages = computed(() => getMascotInteractions(mascotDialogConfig))
+const currentGuide = computed(() => getMascotGuide(route.path, mascotDialogConfig))
 
 watch(
   () => isVisible.value,
@@ -152,9 +111,22 @@ watch(
   { immediate: true }
 )
 
+watch(
+  () => route.path,
+  () => {
+    guideStepIndex.value = -1
+    guideActive.value = false
+    if (isVisible.value && dialogEnabled.value && currentGuide.value) {
+      showMessage(`${currentGuide.value.title}已准备好，需要时点“操作指引”。`)
+    }
+  }
+)
+
 onMounted(() => {
   document.addEventListener('mouseover', handleDocumentHover, true)
   document.addEventListener('click', handleDocumentClick, true)
+  window.addEventListener('live2d:tapbody', handleBodyTap)
+  window.addEventListener('live2d:hoverbody', handleBodyHover)
   if (isVisible.value) {
     initLive2d()
   }
@@ -163,10 +135,18 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('mouseover', handleDocumentHover, true)
   document.removeEventListener('click', handleDocumentClick, true)
+  window.removeEventListener('live2d:tapbody', handleBodyTap)
+  window.removeEventListener('live2d:hoverbody', handleBodyHover)
   destroyLive2d()
   stopTicker()
   if (refreshTimer) {
     clearTimeout(refreshTimer)
+  }
+  if (guideTimer) {
+    clearTimeout(guideTimer)
+  }
+  if (pulseTimer) {
+    clearTimeout(pulseTimer)
   }
 })
 
@@ -233,11 +213,11 @@ async function initLive2d() {
       }
 
       modelReady.value = true
-      showMessage('本地 Live2D 模型已上线，我会继续盯着现场和巡检状态。')
+      showMessage(mascotMessages.modelReady)
     } catch (error) {
       console.warn('[SidebarMascot] Live2D load failed:', error)
       loadError.value = true
-      showMessage('本地模型加载失败，请检查离线包里的 live2d 资源是否完整。')
+      showMessage(mascotMessages.modelError)
     } finally {
       loadingPromise = null
     }
@@ -255,28 +235,12 @@ function destroyLive2d() {
 }
 
 function getCurrentMessages() {
-  return topicMessages[topicIndex.value].messages
-}
-
-function getGreetingMessage() {
-  const hour = new Date().getHours()
-  if (hour < 6) {
-    return '夜间值守中，异常信息优先看巡检记录和服务状态。'
-  }
-  if (hour < 9) {
-    return '早上好，先看今日运行状态和待处理异常。'
-  }
-  if (hour < 12) {
-    return '上午适合核对现场、平台、服务器配置链路。'
-  }
-  if (hour < 18) {
-    return '下午继续盯紧现场融合管理和自动化巡检结果。'
-  }
-  return '今天的变更记得留痕，版本记录中心以后能帮上忙。'
+  const topics = topicMessages.value
+  return topics[topicIndex.value]?.messages || []
 }
 
 function showMessage(message) {
-  if (!message || !isVisible.value) {
+  if (!message || !isVisible.value || !dialogEnabled.value) {
     return
   }
   activeMessage.value = message
@@ -291,20 +255,54 @@ function showMessage(message) {
 
 function showNextMessage() {
   const messages = getCurrentMessages()
+  if (!messages.length) {
+    showGuideStep()
+    return
+  }
   messageIndex.value = (messageIndex.value + 1) % messages.length
   showMessage(messages[messageIndex.value])
 }
 
 function switchTopic() {
-  topicIndex.value = (topicIndex.value + 1) % topicMessages.length
+  const topics = topicMessages.value
+  if (!topics.length) {
+    showGuideStep()
+    return
+  }
+  topicIndex.value = (topicIndex.value + 1) % topics.length
   messageIndex.value = 0
-  const topic = topicMessages[topicIndex.value]
+  const topic = topics[topicIndex.value]
   showMessage(`已切换到“${topic.name}”提示：${topic.messages[0]}`)
+}
+
+function showGuideStep(reset = false) {
+  const guide = currentGuide.value
+  if (!guide) {
+    showNextMessage()
+    return
+  }
+
+  if (reset === true) {
+    guideStepIndex.value = 0
+  } else {
+    guideStepIndex.value = (guideStepIndex.value + 1) % guide.steps.length
+  }
+
+  guideActive.value = true
+  if (guideTimer) {
+    clearTimeout(guideTimer)
+  }
+  guideTimer = setTimeout(() => {
+    guideActive.value = false
+  }, 4200)
+  showMessage(`${guide.title}：${guide.steps[guideStepIndex.value]}`)
 }
 
 function startTicker() {
   stopTicker()
-  ticker = setInterval(showNextMessage, 12000)
+  if (dialogEnabled.value) {
+    ticker = setInterval(showNextMessage, mascotDialogConfig.idleInterval || 12000)
+  }
 }
 
 function stopTicker() {
@@ -322,27 +320,64 @@ function findInteractiveMessage(target) {
   if (!(target instanceof Element)) {
     return null
   }
-  for (const item of interactiveMessages) {
+  if (target.closest('.sidebar-mascot')) {
+    return null
+  }
+  for (const item of interactiveMessages.value) {
     const element = target.closest(item.selector)
     if (element) {
-      return item.message(getElementText(element))
+      return { element, item }
     }
   }
   return null
 }
 
 function handleDocumentHover(event) {
-  const message = findInteractiveMessage(event.target)
-  if (message) {
-    showMessage(message)
+  const result = findInteractiveMessage(event.target)
+  if (result && (result.item.event === 'both' || result.item.event === 'hover')) {
+    showInteractionMessage(renderMascotTemplate(result.item.template, { text: getElementText(result.element) }))
   }
 }
 
 function handleDocumentClick(event) {
-  const message = findInteractiveMessage(event.target)
-  if (message) {
-    showMessage(`${message} 操作后记得看页面反馈。`)
+  const result = findInteractiveMessage(event.target)
+  if (result && (result.item.event === 'both' || result.item.event === 'click')) {
+    const message = renderMascotTemplate(result.item.template, { text: getElementText(result.element) })
+    showInteractionMessage(`${message} 操作后记得看页面反馈。`, true)
   }
+}
+
+function showInteractionMessage(message, immediate = false) {
+  const now = Date.now()
+  if (!immediate && message === lastInteractionMessage && now - lastInteractionAt < 3000) {
+    return
+  }
+  if (!immediate && now - lastInteractionAt < 700) {
+    return
+  }
+  lastInteractionMessage = message
+  lastInteractionAt = now
+  showMessage(message)
+}
+
+function handleBodyTap() {
+  pulseMascot()
+  showMessage(mascotMessages.bodyTap)
+  showGuideStep(true)
+}
+
+function handleBodyHover() {
+  showInteractionMessage('点击我可以切到当前页面操作指引。')
+}
+
+function pulseMascot() {
+  guideActive.value = true
+  if (pulseTimer) {
+    clearTimeout(pulseTimer)
+  }
+  pulseTimer = setTimeout(() => {
+    guideActive.value = false
+  }, 900)
 }
 </script>
 
@@ -462,6 +497,17 @@ function handleDocumentClick(event) {
   .mascot-actions {
     opacity: 1;
     transform: translateX(0);
+  }
+}
+
+.sidebar-mascot.is-guiding {
+  .mascot-bubble {
+    border-color: rgba(45, 126, 247, 0.42);
+    box-shadow: 0 12px 28px rgba(45, 126, 247, 0.18);
+  }
+
+  .mascot-canvas {
+    filter: drop-shadow(0 14px 22px rgba(45, 126, 247, 0.28));
   }
 }
 
