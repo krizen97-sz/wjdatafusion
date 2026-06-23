@@ -40,20 +40,10 @@
       </div>
 
       <div v-if="dialogEnabled" class="mascot-actions" aria-label="看板娘操作">
-        <button type="button" title="切换提示主题" @click="switchTopic">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 3a9 9 0 0 0-8.8 7.1 1 1 0 1 0 2 .4A7 7 0 0 1 17 6.7V9a1 1 0 1 0 2 0V4a1 1 0 0 0-1-1h-5a1 1 0 1 0 0 2h2.4A8.9 8.9 0 0 0 12 3Zm7.6 10.7a1 1 0 0 0-1.2.8A7 7 0 0 1 7 17.3V15a1 1 0 1 0-2 0v5a1 1 0 0 0 1 1h5a1 1 0 1 0 0-2H8.6a8.9 8.9 0 0 0 12-4 1 1 0 0 0-1-1.3Z" />
-          </svg>
-        </button>
-        <button type="button" title="当前页面操作指引" @click="showGuideStep()">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 2.5a7 7 0 0 0-4 12.8V19a1 1 0 0 0 .6.9l3 1.5a1 1 0 0 0 .8 0l3-1.5a1 1 0 0 0 .6-.9v-3.7A7 7 0 0 0 12 2.5Zm-2 15.9v-1h4v1L12 19.4l-2-1Zm5-4.5-.4.3a1 1 0 0 0-.4.8v.4H9.8V15a1 1 0 0 0-.4-.8l-.4-.3A5 5 0 1 1 15 13.9ZM11 7.5a1 1 0 0 1 2 0V11a1 1 0 1 1-2 0V7.5Zm1 7.2a1.1 1.1 0 1 0 0-2.2 1.1 1.1 0 0 0 0 2.2Z" />
-          </svg>
-        </button>
         <button
           v-if="playEnabled"
           type="button"
-          :title="playMode ? '退出陪玩模式' : '放大陪玩'"
+          :title="playMode ? '缩小看板娘' : '放大看板娘'"
           :aria-pressed="playMode"
           @click="togglePlayMode"
         >
@@ -62,11 +52,6 @@
           </svg>
           <svg v-else viewBox="0 0 24 24" aria-hidden="true">
             <path d="M9 3a1 1 0 0 1 1 1v3.5A1.5 1.5 0 0 1 8.5 9H5a1 1 0 0 1 0-2h1.6L3.3 3.7a1 1 0 1 1 1.4-1.4L8 5.6V4a1 1 0 0 1 1-1Zm6 0a1 1 0 0 1 1 1v1.6l3.3-3.3a1 1 0 1 1 1.4 1.4L17.4 7H19a1 1 0 1 1 0 2h-3.5A1.5 1.5 0 0 1 14 7.5V4a1 1 0 0 1 1-1ZM5 15h3.5a1.5 1.5 0 0 1 1.5 1.5V20a1 1 0 1 1-2 0v-1.6l-3.3 3.3a1 1 0 0 1-1.4-1.4L6.6 17H5a1 1 0 1 1 0-2Zm10.5 0H19a1 1 0 1 1 0 2h-1.6l3.3 3.3a1 1 0 0 1-1.4 1.4L16 18.4V20a1 1 0 1 1-2 0v-3.5a1.5 1.5 0 0 1 1.5-1.5Z" />
-          </svg>
-        </button>
-        <button type="button" title="下一句提示" @click="showNextMessage">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M5 5a1 1 0 0 1 1.5-.9l12 7a1 1 0 0 1 0 1.8l-12 7A1 1 0 0 1 5 19V5Z" />
           </svg>
         </button>
       </div>
@@ -81,9 +66,7 @@ import {
   getMascotGuide,
   getMascotInteractions,
   getMascotPlayMessage,
-  getMascotTopics,
-  mascotDialogConfig,
-  renderMascotTemplate
+  mascotDialogConfig
 } from './mascotDialog'
 
 const props = defineProps({
@@ -104,8 +87,6 @@ const { width } = useWindowSize()
 const canvasRef = ref(null)
 const modelReady = ref(false)
 const loadError = ref(false)
-const topicIndex = ref(0)
-const messageIndex = ref(0)
 const guideStepIndex = ref(-1)
 const guideActive = ref(false)
 const playMode = ref(false)
@@ -133,7 +114,6 @@ const dialogEnabled = computed(() => mascotDialogConfig.enabled !== false)
 const mascotMessages = mascotDialogConfig.messages || {}
 const playConfig = computed(() => mascotDialogConfig.play || {})
 const playEnabled = computed(() => playConfig.value.enabled !== false)
-const topicMessages = computed(() => getMascotTopics(mascotDialogConfig))
 const interactiveMessages = computed(() => getMascotInteractions(mascotDialogConfig))
 const currentGuide = computed(() => getMascotGuide(route.path, mascotDialogConfig))
 const mascotClasses = computed(() => ({
@@ -149,6 +129,7 @@ watch(
     if (visible) {
       startTicker()
       initLive2d()
+      showPagePrompt(true)
     } else {
       playMode.value = false
       tapRegion.value = 'idle'
@@ -165,7 +146,7 @@ watch(
     guideStepIndex.value = -1
     guideActive.value = false
     if (isVisible.value && dialogEnabled.value && currentGuide.value && !playMode.value) {
-      showMessage(`${currentGuide.value.title}已准备好，需要时点“操作指引”。`)
+      showPagePrompt(true)
     }
   }
 )
@@ -272,7 +253,7 @@ async function initLive2d() {
       }
 
       modelReady.value = true
-      showMessage(mascotMessages.modelReady)
+      showPagePrompt(true, mascotMessages.modelReady)
     } catch (error) {
       console.warn('[SidebarMascot] Live2D load failed:', error)
       loadError.value = true
@@ -291,11 +272,6 @@ function destroyLive2d() {
   }
   live2dModel = null
   modelReady.value = false
-}
-
-function getCurrentMessages() {
-  const topics = topicMessages.value
-  return topics[topicIndex.value]?.messages || []
 }
 
 function showMessage(message, options = {}) {
@@ -319,39 +295,7 @@ function handleMascotEnter() {
     showMessage(playConfig.value.hint || mascotMessages.hoverSelf, { variant: 'play' })
     return
   }
-  showMessage(mascotMessages.hoverSelf)
-}
-
-function showNextMessage() {
-  if (playMode.value) {
-    showPlayMessage('idle')
-    return
-  }
-
-  const messages = getCurrentMessages()
-  if (!messages.length) {
-    showGuideStep()
-    return
-  }
-  messageIndex.value = (messageIndex.value + 1) % messages.length
-  showMessage(messages[messageIndex.value])
-}
-
-function switchTopic() {
-  if (playMode.value) {
-    showPlayMessage('bubble')
-    return
-  }
-
-  const topics = topicMessages.value
-  if (!topics.length) {
-    showGuideStep()
-    return
-  }
-  topicIndex.value = (topicIndex.value + 1) % topics.length
-  messageIndex.value = 0
-  const topic = topics[topicIndex.value]
-  showMessage(`已切换到“${topic.name}”提示：${topic.messages[0]}`)
+  showPagePrompt()
 }
 
 function togglePlayMode() {
@@ -375,7 +319,7 @@ function togglePlayMode() {
   }
 
   startTicker()
-  showMessage(playConfig.value.exit || mascotMessages.hoverSelf)
+  showPagePrompt(true, playConfig.value.exit || mascotMessages.hoverSelf)
 }
 
 function handleBubbleClick() {
@@ -383,14 +327,14 @@ function handleBubbleClick() {
     showPlayMessage('bubble')
     return
   }
-  showNextMessage()
+  showPagePrompt()
 }
 
 function handleCanvasClick(event) {
   const region = resolveCanvasRegion(event)
 
   if (!playMode.value) {
-    showNextMessage()
+    showPagePrompt()
     return
   }
 
@@ -461,15 +405,10 @@ function playModelFeedback(region) {
   }
 }
 
-function showGuideStep(reset = false) {
-  if (playMode.value) {
-    showPlayMessage('hand')
-    return
-  }
-
+function showPagePrompt(reset = false, fallback = '') {
   const guide = currentGuide.value
   if (!guide) {
-    showNextMessage()
+    showMessage(fallback || mascotMessages.hoverSelf)
     return
   }
 
@@ -479,6 +418,10 @@ function showGuideStep(reset = false) {
     guideStepIndex.value = (guideStepIndex.value + 1) % guide.steps.length
   }
 
+  showMessage(`${guide.title}：${guide.steps[guideStepIndex.value]}`)
+}
+
+function highlightGuidePulse() {
   guideActive.value = true
   if (guideTimer) {
     clearTimeout(guideTimer)
@@ -486,13 +429,12 @@ function showGuideStep(reset = false) {
   guideTimer = setTimeout(() => {
     guideActive.value = false
   }, 4200)
-  showMessage(`${guide.title}：${guide.steps[guideStepIndex.value]}`)
 }
 
 function startTicker() {
   stopTicker()
   if (dialogEnabled.value) {
-    ticker = setInterval(showNextMessage, mascotDialogConfig.idleInterval || 12000)
+    ticker = setInterval(showPagePrompt, mascotDialogConfig.idleInterval || 12000)
   }
 }
 
@@ -501,10 +443,6 @@ function stopTicker() {
     clearInterval(ticker)
     ticker = null
   }
-}
-
-function getElementText(element) {
-  return (element?.innerText || element?.textContent || '').replace(/\s+/g, '').slice(0, 18)
 }
 
 function findInteractiveMessage(target) {
@@ -530,7 +468,7 @@ function handleDocumentHover(event) {
 
   const result = findInteractiveMessage(event.target)
   if (result && (result.item.event === 'both' || result.item.event === 'hover')) {
-    showInteractionMessage(renderMascotTemplate(result.item.template, { text: getElementText(result.element) }))
+    showPagePrompt()
   }
 }
 
@@ -541,8 +479,7 @@ function handleDocumentClick(event) {
 
   const result = findInteractiveMessage(event.target)
   if (result && (result.item.event === 'both' || result.item.event === 'click')) {
-    const message = renderMascotTemplate(result.item.template, { text: getElementText(result.element) })
-    showInteractionMessage(`${message} 操作后记得看页面反馈。`, true)
+    showPagePrompt(true)
   }
 }
 
@@ -565,8 +502,8 @@ function handleBodyTap() {
     showPlayMessage('body')
     return
   }
-  showMessage(mascotMessages.bodyTap)
-  showGuideStep(true)
+  showPagePrompt(true)
+  highlightGuidePulse()
 }
 
 function handleBodyHover() {
