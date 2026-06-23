@@ -18,6 +18,11 @@
     >
       <span class="mascot-bubble__text">{{ activeMessage }}</span>
       <span class="mascot-bubble__spark" aria-hidden="true" />
+      <span v-if="playMode" class="mascot-bubble__beat" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
     </div>
 
     <div class="mascot-stage">
@@ -159,7 +164,7 @@ watch(
   () => {
     guideStepIndex.value = -1
     guideActive.value = false
-    if (isVisible.value && dialogEnabled.value && currentGuide.value) {
+    if (isVisible.value && dialogEnabled.value && currentGuide.value && !playMode.value) {
       showMessage(`${currentGuide.value.title}已准备好，需要时点“操作指引”。`)
     }
   }
@@ -318,6 +323,11 @@ function handleMascotEnter() {
 }
 
 function showNextMessage() {
+  if (playMode.value) {
+    showPlayMessage('idle')
+    return
+  }
+
   const messages = getCurrentMessages()
   if (!messages.length) {
     showGuideStep()
@@ -328,6 +338,11 @@ function showNextMessage() {
 }
 
 function switchTopic() {
+  if (playMode.value) {
+    showPlayMessage('bubble')
+    return
+  }
+
   const topics = topicMessages.value
   if (!topics.length) {
     showGuideStep()
@@ -447,6 +462,11 @@ function playModelFeedback(region) {
 }
 
 function showGuideStep(reset = false) {
+  if (playMode.value) {
+    showPlayMessage('hand')
+    return
+  }
+
   const guide = currentGuide.value
   if (!guide) {
     showNextMessage()
@@ -504,6 +524,10 @@ function findInteractiveMessage(target) {
 }
 
 function handleDocumentHover(event) {
+  if (playMode.value) {
+    return
+  }
+
   const result = findInteractiveMessage(event.target)
   if (result && (result.item.event === 'both' || result.item.event === 'hover')) {
     showInteractionMessage(renderMascotTemplate(result.item.template, { text: getElementText(result.element) }))
@@ -511,6 +535,10 @@ function handleDocumentHover(event) {
 }
 
 function handleDocumentClick(event) {
+  if (playMode.value) {
+    return
+  }
+
   const result = findInteractiveMessage(event.target)
   if (result && (result.item.event === 'both' || result.item.event === 'click')) {
     const message = renderMascotTemplate(result.item.template, { text: getElementText(result.element) })
@@ -543,7 +571,7 @@ function handleBodyTap() {
 
 function handleBodyHover() {
   if (playMode.value) {
-    showInteractionMessage('陪玩模式里点不同部位，我会给不同提示。')
+    showInteractionMessage(playConfig.value.hover || playConfig.value.hint)
     return
   }
   showInteractionMessage('点击我可以切到当前页面操作指引。')
@@ -595,6 +623,22 @@ function pulseMascot() {
   cursor: pointer;
   pointer-events: auto;
 
+  &::after {
+    position: absolute;
+    bottom: -6px;
+    left: 42px;
+    width: 13px;
+    height: 13px;
+    content: '';
+    background: inherit;
+    border-right: inherit;
+    border-bottom: inherit;
+    border-radius: 3px;
+    opacity: 0;
+    transform: rotate(45deg) scale(0.72);
+    transform-origin: center;
+  }
+
   &.is-refreshing {
     transform: translateY(-2px);
   }
@@ -620,6 +664,35 @@ function pulseMascot() {
   border-radius: 999px;
   transform-origin: right center;
   opacity: 0;
+}
+
+.mascot-bubble__beat {
+  position: absolute;
+  right: 13px;
+  bottom: 10px;
+  z-index: 1;
+  display: none;
+  align-items: end;
+  gap: 3px;
+  height: 12px;
+  pointer-events: none;
+
+  i {
+    display: block;
+    width: 3px;
+    height: 5px;
+    background: rgba(45, 126, 247, 0.42);
+    border-radius: 999px;
+    animation: mascot-beat 0.72s ease-in-out infinite;
+
+    &:nth-child(2) {
+      animation-delay: 0.1s;
+    }
+
+    &:nth-child(3) {
+      animation-delay: 0.2s;
+    }
+  }
 }
 
 .mascot-stage {
@@ -726,10 +799,26 @@ function pulseMascot() {
     line-height: 20px;
     border-color: rgba(45, 126, 247, 0.42);
     box-shadow: 0 18px 42px rgba(45, 126, 247, 0.16);
+    overflow: visible;
+
+    &::after {
+      opacity: 1;
+      animation: mascot-tail 1.6s ease-in-out infinite;
+    }
+  }
+
+  .mascot-bubble__text {
+    max-height: 100px;
+    padding-right: 34px;
+    overflow: hidden;
   }
 
   .mascot-bubble__spark {
     animation: mascot-spark 0.62s ease both;
+  }
+
+  .mascot-bubble__beat {
+    display: flex;
   }
 
   .mascot-stage {
@@ -773,18 +862,30 @@ function pulseMascot() {
 
 .sidebar-mascot.is-play-mode.is-tap-head,
 .sidebar-mascot.is-play-mode.is-tap-face {
+  .mascot-bubble {
+    transform: rotate(-0.8deg);
+  }
+
   .mascot-canvas {
     animation: mascot-nod 0.62s cubic-bezier(0.2, 0.8, 0.2, 1), mascot-breathe 4.8s ease-in-out infinite;
   }
 }
 
 .sidebar-mascot.is-play-mode.is-tap-body {
+  .mascot-bubble {
+    transform: translateY(-2px) scale(1.01);
+  }
+
   .mascot-canvas {
     animation: mascot-bounce 0.64s cubic-bezier(0.2, 0.8, 0.2, 1), mascot-breathe 4.8s ease-in-out infinite;
   }
 }
 
 .sidebar-mascot.is-play-mode.is-tap-hand {
+  .mascot-bubble {
+    transform: rotate(0.8deg);
+  }
+
   .mascot-canvas {
     animation: mascot-wave 0.72s cubic-bezier(0.2, 0.8, 0.2, 1), mascot-breathe 4.8s ease-in-out infinite;
   }
@@ -840,6 +941,10 @@ function pulseMascot() {
   box-shadow: 0 18px 42px rgba(0, 0, 0, 0.4);
 }
 
+:global(html.dark .sidebar-mascot.is-play-mode .mascot-bubble__beat i) {
+  background: rgba(106, 169, 255, 0.58);
+}
+
 @keyframes mascot-bubble-in {
   0% {
     opacity: 0;
@@ -893,6 +998,28 @@ function pulseMascot() {
   100% {
     opacity: 0;
     transform: scaleX(0.8) translateX(-12px);
+  }
+}
+
+@keyframes mascot-tail {
+  0%, 100% {
+    transform: rotate(45deg) translate(0, 0) scale(0.72);
+  }
+
+  50% {
+    transform: rotate(45deg) translate(2px, 2px) scale(0.82);
+  }
+}
+
+@keyframes mascot-beat {
+  0%, 100% {
+    height: 5px;
+    opacity: 0.42;
+  }
+
+  50% {
+    height: 12px;
+    opacity: 0.9;
   }
 }
 
@@ -953,6 +1080,7 @@ function pulseMascot() {
   .mascot-stage,
   .mascot-canvas,
   .mascot-bubble,
+  .mascot-bubble__beat i,
   .mascot-actions {
     transition: none;
     animation: none !important;
