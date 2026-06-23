@@ -61,11 +61,13 @@
 
 <script setup>
 import { useWindowSize } from '@vueuse/core'
+import useUserStore from '@/store/modules/user'
 import {
   getMascotGreeting,
   getMascotGuide,
   getMascotInteractions,
   getMascotPlayMessage,
+  renderMascotTemplate,
   mascotDialogConfig
 } from './mascotDialog'
 
@@ -83,6 +85,7 @@ const MODEL_PATH = 'live2d/models/pio/index.json'
 const CORE_PATH = 'live2d/vendor/live2d-widget/live2d.min.js'
 
 const route = useRoute()
+const userStore = useUserStore()
 const { width } = useWindowSize()
 const canvasRef = ref(null)
 const modelReady = ref(false)
@@ -116,6 +119,7 @@ const playConfig = computed(() => mascotDialogConfig.play || {})
 const playEnabled = computed(() => playConfig.value.enabled !== false)
 const interactiveMessages = computed(() => getMascotInteractions(mascotDialogConfig))
 const currentGuide = computed(() => getMascotGuide(route.path, mascotDialogConfig))
+const userNickname = computed(() => userStore.nickName || userStore.name || '管理员')
 const mascotClasses = computed(() => ({
   'is-guiding': guideActive.value,
   'is-play-mode': playMode.value,
@@ -408,7 +412,7 @@ function playModelFeedback(region) {
 function showPagePrompt(reset = false, fallback = '') {
   const guide = currentGuide.value
   if (!guide) {
-    showMessage(fallback || mascotMessages.hoverSelf)
+    showMessage(formatMascotMessage(fallback || mascotMessages.hoverSelf))
     return
   }
 
@@ -418,7 +422,26 @@ function showPagePrompt(reset = false, fallback = '') {
     guideStepIndex.value = (guideStepIndex.value + 1) % guide.steps.length
   }
 
-  showMessage(`${guide.title}：${guide.steps[guideStepIndex.value]}`)
+  showMessage(formatGuideStep(guide, guide.steps[guideStepIndex.value]))
+}
+
+function formatGuideStep(guide, step) {
+  const routeTitle = route.meta?.title || guide.title || '当前页面'
+  return `${guide.title}：${renderMascotTemplate(step, {
+    nickname: userNickname.value,
+    routeTitle,
+    title: guide.title,
+    fallback: userNickname.value
+  })}`
+}
+
+function formatMascotMessage(message = '') {
+  return renderMascotTemplate(message, {
+    nickname: userNickname.value,
+    routeTitle: route.meta?.title || currentGuide.value?.title || '当前页面',
+    title: currentGuide.value?.title || '平台提示',
+    fallback: userNickname.value
+  })
 }
 
 function highlightGuidePulse() {
@@ -511,7 +534,7 @@ function handleBodyHover() {
     showInteractionMessage(playConfig.value.hover || playConfig.value.hint)
     return
   }
-  showInteractionMessage('点击我可以切到当前页面操作指引。')
+  showInteractionMessage(formatMascotMessage('{nickname}，点击我可以切到当前页面操作指引。'))
 }
 
 function pulseMascot() {
