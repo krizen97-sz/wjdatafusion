@@ -60,13 +60,10 @@
           </el-form>
 
           <div class="auto-toolbar">
-            <el-button type="warning" plain icon="Download" :disabled="!recordSelection.length" @click="handleExportSelectedRecord" v-hasPermi="['support:autoInspection:export']">导出选中</el-button>
-            <el-button type="primary" plain icon="Calendar" @click="handleExportRecord('THIS_WEEK')" v-hasPermi="['support:autoInspection:export']">导出本周</el-button>
-            <el-button type="success" plain icon="Calendar" @click="handleExportRecord('THIS_MONTH')" v-hasPermi="['support:autoInspection:export']">导出本月</el-button>
+            <el-button type="primary" plain icon="Document" @click="openReportExportDialog" v-hasPermi="['support:autoInspection:export']">导出周/月报</el-button>
           </div>
 
-          <el-table v-loading="recordLoading" :data="recordList" class="auto-table record-table" @selection-change="handleRecordSelectionChange">
-            <el-table-column type="selection" width="48" align="center" />
+          <el-table v-loading="recordLoading" :data="recordList" class="auto-table record-table">
             <el-table-column label="巡检时间" prop="inspectionTime" width="170" align="center" />
             <el-table-column label="结果" prop="resultStatus" width="90" align="center">
               <template #default="scope"><el-tag class="soft-status-tag" size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
@@ -246,6 +243,54 @@
         </section>
       </div>
     </el-drawer>
+
+    <el-dialog v-model="reportExportOpen" width="560px" append-to-body class="auto-dialog report-export-dialog">
+      <template #header>
+        <div class="dialog-title">
+          <span>巡检报告导出</span>
+          <strong>生成自动化巡检周报</strong>
+        </div>
+      </template>
+      <div class="report-export">
+        <p class="report-export__tip">周报会包含签字确认区、整体健康度分析、异常展示和巡检明细。选择月份时，系统会把该月份涉及的每一周分别生成 Word，并打包为 zip。</p>
+        <el-form :model="reportExportForm" label-width="92px">
+          <el-form-item label="导出方式">
+            <el-radio-group v-model="reportExportForm.mode">
+              <el-radio-button label="WEEK">按周导出</el-radio-button>
+              <el-radio-button label="MONTH">按月导出</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="reportExportForm.mode === 'WEEK'" label="选择周">
+            <el-date-picker
+              v-model="reportExportForm.weekDate"
+              type="week"
+              format="YYYY 第 ww 周"
+              :clearable="false"
+              placeholder="请选择需要导出的周"
+              style="width: 100%"
+            />
+          </el-form-item>
+          <el-form-item v-else label="选择月份">
+            <el-date-picker
+              v-model="reportExportForm.month"
+              type="month"
+              value-format="YYYY-MM"
+              :clearable="false"
+              placeholder="请选择需要导出的月份"
+              style="width: 100%"
+            />
+          </el-form-item>
+          <section class="report-export__preview">
+            <strong>{{ reportExportPreview.title }}</strong>
+            <span>{{ reportExportPreview.desc }}</span>
+          </section>
+        </el-form>
+      </div>
+      <template #footer>
+        <el-button @click="reportExportOpen = false">取消</el-button>
+        <el-button type="primary" :loading="reportExportLoading" @click="submitReportExport">开始导出</el-button>
+      </template>
+    </el-dialog>
 
     <section v-show="activeTab === 'config'" class="auto-content-section">
         <div class="config-shell">
@@ -1290,8 +1335,10 @@ const abnormalChartRef = ref(null)
 const recordLoading = ref(false)
 const recordList = ref([])
 const recordTotal = ref(0)
-const recordSelection = ref([])
 const recordQuery = ref({ pageNum: 1, pageSize: 10, templateName: '', planName: '', sourceType: '', resultStatus: '' })
+const reportExportOpen = ref(false)
+const reportExportLoading = ref(false)
+const reportExportForm = ref(defaultReportExportForm())
 
 const targetDialogOpen = ref(false)
 const targetSubmitLoading = ref(false)
@@ -1419,7 +1466,7 @@ const operationGuideSteps = [
       '巡检总览默认优先展示巡检记录，便于运维人员第一时间处理结果。可以按模板、计划、来源和结果筛选记录。',
       '点击“展开看板”后，可通过图表查看本周趋势、结果分布、工具健康度、异常目标和当月巡检日历。'
     ],
-    actions: ['可按模板、计划、来源、结果筛选记录。', '支持导出选中、本周、本月结果，也可在单条记录中导出 Word 报告。'],
+    actions: ['可按模板、计划、来源、结果筛选记录。', '支持选择自然周导出 Word 周报，也可选择月份批量导出该月所有周报压缩包。'],
     images: [
       guideImage('07-dashboard-records.png', '巡检记录优先展示的总览页面'),
       guideImage('08-dashboard-drawer.png', '巡检看板图表和当月日历'),
@@ -1723,6 +1770,19 @@ const dashboardAbnormalStepData = computed(() => {
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 8)
+})
+const reportExportPreview = computed(() => {
+  if (reportExportForm.value.mode === 'MONTH') {
+    return {
+      title: `${reportExportForm.value.month || formatMonthParam(new Date())} 月度周报包`,
+      desc: '导出该月份涉及的所有自然周，每个自然周生成一个独立 Word 文件，并统一打包下载。'
+    }
+  }
+  const range = getWeekRange(reportExportForm.value.weekDate || new Date())
+  return {
+    title: `${formatDateParam(range.begin)} 至 ${formatDateParam(range.end)} 周报`,
+    desc: '导出所选自然周的一个 Word 周报，包含本周所有巡检内容和签字确认区。'
+  }
 })
 const detailTargetStats = computed(() => {
   const rows = detail.value?.targetResults || []
@@ -2176,7 +2236,6 @@ function getRecordList() {
   return listAutoInspectionRecord(recordQuery.value).then((res) => {
     recordList.value = res.rows || []
     recordTotal.value = res.total || 0
-    recordSelection.value = []
   }).finally(() => { recordLoading.value = false })
 }
 
@@ -3639,29 +3698,33 @@ function handleRecordDetail(row) {
   })
 }
 
-function handleRecordSelectionChange(selection) {
-  recordSelection.value = selection || []
+function openReportExportDialog() {
+  if (!reportExportForm.value.weekDate) reportExportForm.value.weekDate = new Date()
+  if (!reportExportForm.value.month) reportExportForm.value.month = formatMonthParam(new Date())
+  reportExportOpen.value = true
 }
 
-function handleExportSelectedRecord() {
-  if (!recordSelection.value.length) {
-    proxy.$modal.msgWarning('请先选择需要导出的巡检记录')
-    return
+function submitReportExport() {
+  const params = {
+    reportType: 'WEEKLY_REPORT',
+    reportMode: reportExportForm.value.mode
   }
-  const ids = recordSelection.value.map((item) => item.recordId).filter(Boolean)
-  handleExportRecord('SELECTED', { recordIds: ids.join(',') })
-}
-
-function handleExportRecord(rangeType, extraParams = {}) {
-  const labelMap = {
-    SELECTED: '选中记录',
-    THIS_WEEK: '本周',
-    THIS_MONTH: '本月'
+  let fileName = ''
+  if (reportExportForm.value.mode === 'MONTH') {
+    const month = reportExportForm.value.month || formatMonthParam(new Date())
+    params.month = month
+    fileName = `自动化巡检周报_${month.replace('-', '')}.zip`
+  } else {
+    const range = getWeekRange(reportExportForm.value.weekDate || new Date())
+    params.weekDate = formatDateParam(range.begin)
+    fileName = `自动化巡检周报_${formatFileDate(range.begin)}-${formatFileDate(range.end)}.doc`
   }
-  const params = rangeType === 'SELECTED'
-    ? { ...extraParams, rangeType }
-    : { ...recordQuery.value, pageNum: undefined, pageSize: undefined, rangeType, ...extraParams }
-  proxy.download('/support/autoInspection/record/export', params, `自动化巡检结果_${labelMap[rangeType] || '筛选结果'}_${formatFileDate(new Date())}.xlsx`)
+  reportExportLoading.value = true
+  proxy.download('/support/autoInspection/record/export', params, fileName)
+    .finally(() => {
+      reportExportLoading.value = false
+      reportExportOpen.value = false
+    })
 }
 
 function exportWord(row) {
@@ -3788,6 +3851,10 @@ function defaultDashboardData() {
   return { summary: {}, weekSummary: {}, trend: [], calendar: {}, toolStats: [], latestAbnormalTargets: [], recentRecords: [], generatedTime: '' }
 }
 
+function defaultReportExportForm() {
+  return { mode: 'WEEK', weekDate: new Date(), month: formatMonthParam(new Date()) }
+}
+
 function buildCurrentWeekTrendRows(source = []) {
   const today = new Date()
   const dayOfWeek = today.getDay() || 7
@@ -3823,6 +3890,12 @@ function normalizeTrendDateKey(value) {
 function formatDateKey(date) {
   const pad = (value) => String(value).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+function formatMonthParam(value) {
+  const date = value instanceof Date ? value : new Date(value || Date.now())
+  const pad = (num) => String(num).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}`
 }
 
 function parseCronConfig(value) {
@@ -4019,6 +4092,22 @@ function getStepDetailItems(step) {
 function formatFileDate(date) {
   const pad = (value) => String(value).padStart(2, '0')
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}`
+}
+
+function formatDateParam(date) {
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
+function getWeekRange(value) {
+  const date = value instanceof Date ? new Date(value) : new Date(value || Date.now())
+  const day = date.getDay() || 7
+  const begin = new Date(date)
+  begin.setHours(0, 0, 0, 0)
+  begin.setDate(date.getDate() - day + 1)
+  const end = new Date(begin)
+  end.setDate(begin.getDate() + 6)
+  return { begin, end }
 }
 
 function formatTrendDate(value) {
@@ -5771,6 +5860,42 @@ function resultTagType(value) {
   strong {
     color: #1d3554;
     font-size: 20px;
+  }
+}
+
+.report-export {
+  display: grid;
+  gap: 12px;
+}
+
+.report-export__tip {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid #dce8f6;
+  border-radius: 8px;
+  background: #f7fbff;
+  color: #60758d;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.report-export__preview {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #e1ebf7;
+  border-radius: 8px;
+  background: #fff;
+
+  strong {
+    color: #1d3554;
+    font-size: 14px;
+  }
+
+  span {
+    color: #7890aa;
+    font-size: 12px;
+    line-height: 1.5;
   }
 }
 

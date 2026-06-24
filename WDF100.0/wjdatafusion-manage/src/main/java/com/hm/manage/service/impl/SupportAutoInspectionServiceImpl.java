@@ -28,6 +28,7 @@ import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -38,6 +39,8 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLParameters;
@@ -108,6 +111,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final String REPORT_STANDARD = "STANDARD";
     private static final int DEFAULT_TIMEOUT_SECONDS = 10;
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter DATE_COMPACT_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
+    private static final DateTimeFormatter DATE_CN_FORMATTER = DateTimeFormatter.ofPattern("yyyy年MM月dd日");
 
     private static final String TOOL_KAFKA_LAG = "KAFKA_LAG";
     private static final String TOOL_HTTP_COUNT = "HTTP_COUNT";
@@ -903,6 +908,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     @Override
     public void exportRecord(HttpServletResponse response, Map<String, Object> record)
     {
+        if ("WEEKLY_REPORT".equalsIgnoreCase(str(record, "reportType")))
+        {
+            exportWeeklyReport(response, record);
+            return;
+        }
         Map<String, Object> exportParams = normalizeRecordExportParams(record);
         List<Map<String, Object>> records = selectRecordList(exportParams);
         if (records.isEmpty())
@@ -916,6 +926,360 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         List<Map<String, Object>> steps = recordIds.isEmpty() ? new ArrayList<>() : autoInspectionMapper.selectStepResultsByRecordIds(recordIds);
         List<Map<String, Object>> targets = recordIds.isEmpty() ? new ArrayList<>() : autoInspectionMapper.selectTargetResultsByRecordIds(recordIds);
         exportRecordWorkbook(response, exportParams, records, steps, targets);
+    }
+
+    private void exportWeeklyReport(HttpServletResponse response, Map<String, Object> params)
+    {
+        List<WeeklyReportRange> ranges = resolveWeeklyReportRanges(params);
+        if (ranges.isEmpty())
+        {
+            throw new ServiceException("请选择需要导出的周或月份");
+        }
+        if (ranges.size() == 1)
+        {
+            WeeklyReportRange range = ranges.get(0);
+            try (OutputStream outputStream = response.getOutputStream())
+            {
+                response.setCharacterEncoding("utf-8");
+                response.setContentType("application/msword;charset=utf-8");
+                FileUtils.setAttachmentResponseHeader(response, range.fileName);
+                outputStream.write(buildWeeklyReportWordBytes(range));
+            }
+            catch (Exception e)
+            {
+                log.error("导出自动化巡检周报失败", e);
+                throw new ServiceException("导出自动化巡检周报失败：" + e.getMessage());
+            }
+            return;
+        }
+
+        String month = StringUtils.defaultIfBlank(str(params, "month"), DateTimeFormatter.ofPattern("yyyyMM").format(LocalDate.now()));
+        String fileName = "自动化巡检周报_" + month.replace("-", "") + ".zip";
+        response.setCharacterEncoding("utf-8");
+        response.setContentType("application/zip");
+        try (ZipOutputStream zip = new ZipOutputStream(response.getOutputStream(), StandardCharsets.UTF_8))
+        {
+            FileUtils.setAttachmentResponseHeader(response, fileName);
+            Set<String> usedNames = new HashSet<>();
+            for (WeeklyReportRange range : ranges)
+            {
+                String entryName = uniqueReportEntryName(range.fileName, usedNames);
+                zip.putNextEntry(new ZipEntry(entryName));
+                zip.write(buildWeeklyReportWordBytes(range));
+                zip.closeEntry();
+            }
+        }
+        catch (Exception e)
+        {
+            log.error("导出自动化巡检月度周报包失败", e);
+            throw new ServiceException("导出自动化巡检月度周报包失败：" + e.getMessage());
+        }
+    }
+
+    private byte[] buildWeeklyReportWordBytes(WeeklyReportRange range)
+    {
+        ReportRows rows = loadReportRows(range);
+        String html = buildWeeklyReportHtml(range, rows);
+        return html.getBytes(StandardCharsets.UTF_8);
+    }
+
+    private ReportRows loadReportRows(WeeklyReportRange range)
+    {
+        Map<String, Object> query = new HashMap<>();
+        query.put("beginTime", toDate(range.begin.atStartOfDay()));
+        query.put("endTime", toDate(range.end.atStartOfDay()));
+        List<Map<String, Object>> records = selectRecordList(query);
+        records.sort(Comparator.<Map<String, Object>, LocalDate>comparing(item -> {
+            LocalDate date = toLocalDate(item.get("inspectionTime"));
+            return date == null ? LocalDate.MIN : date;
+        }).thenComparingLong(item -> toLongValue(item.get("recordId"))));
+        List<Long> recordIds = records.stream()
+                .map(item -> toLong(item.get("recordId")))
+                .filter(id -> id != null)
+                .collect(Collectors.toList());
+        List<Map<String, Object>> steps = recordIds.isEmpty() ? new ArrayList<>() : autoInspectionMapper.selectStepResultsByRecordIds(recordIds);
+        List<Map<String, Object>> targets = recordIds.isEmpty() ? new ArrayList<>() : autoInspectionMapper.selectTargetResultsByRecordIds(recordIds);
+        return new ReportRows(records, steps, targets);
+    }
+
+    private List<WeeklyReportRange> resolveWeeklyReportRanges(Map<String, Object> params)
+    {
+        String mode = StringUtils.defaultIfBlank(str(params, "reportMode"), "WEEK").toUpperCase();
+        if ("MONTH".equals(mode))
+        {
+            YearMonth month = parseYearMonth(str(params, "month"));
+            LocalDate monthStart = month.atDay(1);
+            LocalDate monthEnd = month.plusMonths(1).atDay(1);
+            LocalDate cursor = monthStart.with(DayOfWeek.MONDAY);
+            List<WeeklyReportRange> ranges = new ArrayList<>();
+            while (cursor.isBefore(monthEnd))
+            {
+                LocalDate weekEnd = cursor.plusDays(7);
+                if (weekEnd.isAfter(monthStart) && cursor.isBefore(monthEnd))
+                {
+                    ranges.add(new WeeklyReportRange(cursor, weekEnd));
+                }
+                cursor = cursor.plusDays(7);
+            }
+            return ranges;
+        }
+        LocalDate selected = parseLocalDate(StringUtils.defaultIfBlank(str(params, "weekDate"), str(params, "beginDate")), LocalDate.now());
+        LocalDate begin = selected.with(DayOfWeek.MONDAY);
+        return Collections.singletonList(new WeeklyReportRange(begin, begin.plusDays(7)));
+    }
+
+    private YearMonth parseYearMonth(String value)
+    {
+        if (StringUtils.isBlank(value))
+        {
+            return YearMonth.now();
+        }
+        try
+        {
+            return YearMonth.parse(value.substring(0, 7));
+        }
+        catch (Exception e)
+        {
+            throw new ServiceException("月份格式不正确，请选择有效月份");
+        }
+    }
+
+    private LocalDate parseLocalDate(String value, LocalDate fallback)
+    {
+        if (StringUtils.isBlank(value))
+        {
+            return fallback;
+        }
+        try
+        {
+            return LocalDate.parse(value.substring(0, 10));
+        }
+        catch (Exception e)
+        {
+            throw new ServiceException("周报日期格式不正确，请选择有效日期");
+        }
+    }
+
+    private String buildWeeklyReportHtml(WeeklyReportRange range, ReportRows rows)
+    {
+        List<Map<String, Object>> records = rows.records;
+        List<Map<String, Object>> steps = rows.steps;
+        List<Map<String, Object>> targets = rows.targets;
+        Map<Long, List<Map<String, Object>>> stepMap = groupByLong(steps, "recordId");
+        Map<Long, List<Map<String, Object>>> targetMap = groupByLong(targets, "stepResultId");
+        long total = records.size();
+        long normalCount = records.stream().filter(row -> RESULT_NORMAL.equals(str(row, "resultStatus"))).count();
+        long abnormalCount = records.stream().filter(row -> RESULT_ABNORMAL.equals(str(row, "resultStatus"))).count();
+        long skippedCount = records.stream().filter(row -> RESULT_SKIP.equals(str(row, "resultStatus"))).count();
+        long targetCount = targets.size();
+        long abnormalTargetCount = targets.stream().filter(row -> RESULT_ABNORMAL.equals(str(row, "resultStatus"))).count();
+        long normalTargetCount = Math.max(targetCount - abnormalTargetCount, 0);
+        String recordHealth = formatPercent(normalCount, total);
+        String targetHealth = formatPercent(normalTargetCount, targetCount);
+
+        StringBuilder html = new StringBuilder();
+        html.append("<html xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:w=\"urn:schemas-microsoft-com:office:word\"><head>")
+                .append("<meta charset=\"utf-8\"><title>自动化巡检周报</title>")
+                .append("<style>")
+                .append("@page Section1{size:595.3pt 841.9pt;margin:54pt 48pt 54pt 48pt;}div.Section1{page:Section1;}")
+                .append("body{font-family:'Microsoft YaHei',Arial,sans-serif;color:#1f3554;font-size:12pt;line-height:1.55;}")
+                .append("h1{font-size:22pt;text-align:center;margin:0 0 10pt 0;}h2{font-size:15pt;margin:18pt 0 8pt;color:#173b63;}h3{font-size:13pt;margin:12pt 0 6pt;color:#245982;}")
+                .append("p{margin:4pt 0;}table{border-collapse:collapse;width:100%;margin:8pt 0 12pt;}th,td{border:1px solid #b9c9dc;padding:6pt 7pt;vertical-align:top;word-break:break-word;}th{background:#eaf2fb;color:#173b63;font-weight:bold;text-align:left;}")
+                .append(".meta td{height:28pt}.signature td{height:54pt}.summary td{height:30pt}.ok{color:#23824a;font-weight:bold}.bad{color:#c0392b;font-weight:bold}.muted{color:#66788f}.analysis{background:#f7fbff;border:1px solid #d9e7f5;padding:8pt 10pt;margin:8pt 0 10pt;}.section-note{color:#66788f;}")
+                .append("</style></head><body><div class=\"Section1\">");
+
+        html.append("<h1>自动化巡检周报</h1>")
+                .append("<p style=\"text-align:center\" class=\"muted\">巡检周期：").append(escapeHtml(range.label)).append("</p>");
+        html.append("<table class=\"signature\"><tr><th style=\"width:25%\">巡检人员签字</th><td style=\"width:25%\"></td><th style=\"width:25%\">用户签字</th><td style=\"width:25%\"></td></tr>")
+                .append("<tr><th>确认日期</th><td></td><th>备注</th><td></td></tr></table>");
+
+        html.append("<h2>一、整体健康度分析</h2>")
+                .append("<table class=\"summary\"><tr><th>统计项</th><th>数值</th><th>说明</th></tr>")
+                .append("<tr><td>巡检次数</td><td>").append(total).append("</td><td>本周自动与手动巡检执行总次数</td></tr>")
+                .append("<tr><td>正常 / 异常 / 未检测</td><td>").append(normalCount).append(" / ").append(abnormalCount).append(" / ").append(skippedCount).append("</td><td>按巡检主结果统计</td></tr>")
+                .append("<tr><td>记录健康度</td><td>").append(escapeHtml(recordHealth)).append("</td><td>正常巡检记录数 / 巡检记录总数</td></tr>")
+                .append("<tr><td>目标子项健康度</td><td>").append(escapeHtml(targetHealth)).append("</td><td>正常目标子项数 / 目标子项总数</td></tr>")
+                .append("<tr><td>目标子项 / 异常子项</td><td>").append(targetCount).append(" / ").append(abnormalTargetCount).append("</td><td>用于定位具体巡检对象</td></tr>")
+                .append("</table>");
+        html.append("<div class=\"analysis\"><strong>健康度结论：</strong>")
+                .append(escapeHtml(buildWeeklyHealthAnalysis(total, abnormalCount, abnormalTargetCount, recordHealth, targetHealth)))
+                .append("</div>");
+
+        html.append("<h2>二、异常展示</h2>");
+        appendAbnormalSection(html, records, targets);
+
+        html.append("<h2>三、本周巡检内容汇总</h2>");
+        if (records.isEmpty())
+        {
+            html.append("<p class=\"section-note\">本周期暂无巡检记录。</p>");
+        }
+        else
+        {
+            html.append("<table><tr><th>序号</th><th>巡检时间</th><th>模板</th><th>计划</th><th>来源</th><th>结果</th><th>执行人</th><th>步骤/目标/异常</th><th>摘要</th></tr>");
+            int index = 1;
+            for (Map<String, Object> record : records)
+            {
+                String resultClass = RESULT_ABNORMAL.equals(str(record, "resultStatus")) ? "bad" : "ok";
+                html.append("<tr><td>").append(index++).append("</td><td>").append(escapeHtml(formatDate(record.get("inspectionTime")))).append("</td>")
+                        .append("<td>").append(escapeHtml(str(record, "templateName"))).append("</td>")
+                        .append("<td>").append(escapeHtml(StringUtils.defaultIfBlank(str(record, "planName"), "-"))).append("</td>")
+                        .append("<td>").append(escapeHtml(labelSource(str(record, "sourceType")))).append("</td>")
+                        .append("<td class=\"").append(resultClass).append("\">").append(escapeHtml(labelResult(str(record, "resultStatus")))).append("</td>")
+                        .append("<td>").append(escapeHtml(str(record, "executorName"))).append("</td>")
+                        .append("<td>").append(record.get("enabledStepCount")).append(" / ").append(record.get("targetCount")).append(" / ").append(record.get("abnormalCount")).append("</td>")
+                        .append("<td>").append(escapeHtml(str(record, "summary"))).append("</td></tr>");
+            }
+            html.append("</table>");
+        }
+
+        html.append("<h2>四、巡检明细</h2>");
+        appendWeeklyDetailSection(html, records, stepMap, targetMap);
+        html.append("<p class=\"muted\">生成时间：").append(escapeHtml(formatDate(new Date()))).append("</p>");
+        html.append("</div></body></html>");
+        return html.toString();
+    }
+
+    private String buildWeeklyHealthAnalysis(long total, long abnormalCount, long abnormalTargetCount, String recordHealth, String targetHealth)
+    {
+        if (total <= 0)
+        {
+            return "本周期暂无巡检记录，建议确认巡检计划是否启用、定时任务是否正常调度，或按需补充手动巡检。";
+        }
+        if (abnormalCount > 0 || abnormalTargetCount > 0)
+        {
+            return "本周期记录健康度为 " + recordHealth + "，目标子项健康度为 " + targetHealth
+                    + "，存在异常巡检结果，建议优先处理异常展示中的目标子项，并在处理后重新执行巡检确认恢复情况。";
+        }
+        return "本周期记录健康度为 " + recordHealth + "，目标子项健康度为 " + targetHealth
+                + "，未发现异常巡检结果，整体运行状态稳定。";
+    }
+
+    private void appendAbnormalSection(StringBuilder html, List<Map<String, Object>> records, List<Map<String, Object>> targets)
+    {
+        List<Map<String, Object>> abnormalTargets = targets.stream()
+                .filter(row -> RESULT_ABNORMAL.equals(str(row, "resultStatus")))
+                .collect(Collectors.toList());
+        List<Map<String, Object>> abnormalRecords = records.stream()
+                .filter(row -> RESULT_ABNORMAL.equals(str(row, "resultStatus")))
+                .collect(Collectors.toList());
+        if (abnormalTargets.isEmpty() && abnormalRecords.isEmpty())
+        {
+            html.append("<p class=\"ok\">本周期未发现异常巡检结果。</p>");
+            return;
+        }
+        html.append("<table><tr><th>序号</th><th>巡检时间</th><th>步骤</th><th>异常子项</th><th>实际值</th><th>调用信息</th><th>异常原因</th></tr>");
+        int index = 1;
+        Map<Long, Map<String, Object>> recordMap = records.stream()
+                .collect(Collectors.toMap(row -> toLong(row.get("recordId")), row -> row, (a, b) -> a, LinkedHashMap::new));
+        for (Map<String, Object> target : abnormalTargets)
+        {
+            Map<String, Object> record = recordMap.get(toLong(target.get("recordId")));
+            html.append("<tr><td>").append(index++).append("</td><td>").append(escapeHtml(record == null ? "" : formatDate(record.get("inspectionTime")))).append("</td>")
+                    .append("<td>").append(escapeHtml(str(target, "stepName"))).append("</td>")
+                    .append("<td>").append(escapeHtml(str(target, "targetName"))).append("</td>")
+                    .append("<td>").append(escapeHtml(formatActualValue(target))).append("</td>")
+                    .append("<td>").append(escapeHtml(str(target, "resultDetail"))).append("</td>")
+                    .append("<td>").append(escapeHtml(str(target, "errorMessage"))).append("</td></tr>");
+        }
+        for (Map<String, Object> record : abnormalRecords)
+        {
+            boolean hasTarget = abnormalTargets.stream().anyMatch(target -> toLongValue(target.get("recordId")) == toLongValue(record.get("recordId")));
+            if (hasTarget)
+            {
+                continue;
+            }
+            html.append("<tr><td>").append(index++).append("</td><td>").append(escapeHtml(formatDate(record.get("inspectionTime")))).append("</td>")
+                    .append("<td colspan=\"4\">").append(escapeHtml(str(record, "summary"))).append("</td>")
+                    .append("<td>").append(escapeHtml(str(record, "abnormalSummary"))).append("</td></tr>");
+        }
+        html.append("</table>");
+    }
+
+    private void appendWeeklyDetailSection(StringBuilder html, List<Map<String, Object>> records,
+                                           Map<Long, List<Map<String, Object>>> stepMap,
+                                           Map<Long, List<Map<String, Object>>> targetMap)
+    {
+        if (records.isEmpty())
+        {
+            html.append("<p class=\"section-note\">无巡检明细。</p>");
+            return;
+        }
+        for (Map<String, Object> record : records)
+        {
+            Long recordId = toLong(record.get("recordId"));
+            html.append("<h3>").append(escapeHtml(formatDate(record.get("inspectionTime")))).append(" - ")
+                    .append(escapeHtml(str(record, "templateName"))).append("</h3>")
+                    .append("<p>结果：<strong>").append(escapeHtml(labelResult(str(record, "resultStatus")))).append("</strong>；")
+                    .append("计划：").append(escapeHtml(StringUtils.defaultIfBlank(str(record, "planName"), "-"))).append("；")
+                    .append("执行人：").append(escapeHtml(str(record, "executorName"))).append("</p>");
+            List<Map<String, Object>> recordSteps = stepMap.getOrDefault(recordId, new ArrayList<>());
+            if (recordSteps.isEmpty())
+            {
+                html.append("<p class=\"section-note\">该记录没有步骤明细。</p>");
+                continue;
+            }
+            html.append("<table><tr><th>步骤</th><th>工具</th><th>结果</th><th>实际值</th><th>判定规则</th><th>摘要</th></tr>");
+            for (Map<String, Object> step : recordSteps)
+            {
+                html.append("<tr><td>").append(escapeHtml(str(step, "stepName"))).append("</td>")
+                        .append("<td>").append(escapeHtml(str(step, "toolName"))).append("</td>")
+                        .append("<td>").append(escapeHtml(labelResult(str(step, "resultStatus")))).append("</td>")
+                        .append("<td>").append(escapeHtml(formatActualValue(step))).append("</td>")
+                        .append("<td>").append(escapeHtml(formatThreshold(step))).append("</td>")
+                        .append("<td>").append(escapeHtml(str(step, "resultSummary"))).append("</td></tr>");
+            }
+            html.append("</table>");
+            html.append("<table><tr><th>步骤</th><th>子项名称</th><th>类型</th><th>结果</th><th>实际值</th><th>调用信息</th><th>异常原因</th></tr>");
+            boolean hasTarget = false;
+            for (Map<String, Object> step : recordSteps)
+            {
+                for (Map<String, Object> target : targetMap.getOrDefault(toLong(step.get("stepResultId")), new ArrayList<>()))
+                {
+                    hasTarget = true;
+                    html.append("<tr><td>").append(escapeHtml(str(step, "stepName"))).append("</td>")
+                            .append("<td>").append(escapeHtml(str(target, "targetName"))).append("</td>")
+                            .append("<td>").append(escapeHtml(labelTargetType(str(target, "targetType")))).append("</td>")
+                            .append("<td>").append(escapeHtml(labelResult(str(target, "resultStatus")))).append("</td>")
+                            .append("<td>").append(escapeHtml(formatActualValue(target))).append("</td>")
+                            .append("<td>").append(escapeHtml(str(target, "resultDetail"))).append("</td>")
+                            .append("<td>").append(escapeHtml(str(target, "errorMessage"))).append("</td></tr>");
+                }
+            }
+            if (!hasTarget)
+            {
+                html.append("<tr><td colspan=\"7\">该记录没有目标子项明细。</td></tr>");
+            }
+            html.append("</table>");
+        }
+    }
+
+    private String uniqueReportEntryName(String fileName, Set<String> usedNames)
+    {
+        String safeName = fileName.replaceAll("[\\\\/:*?\"<>|]", "_");
+        if (usedNames.add(safeName))
+        {
+            return safeName;
+        }
+        int dotIndex = safeName.lastIndexOf('.');
+        String base = dotIndex > 0 ? safeName.substring(0, dotIndex) : safeName;
+        String suffix = dotIndex > 0 ? safeName.substring(dotIndex) : "";
+        int index = 2;
+        while (!usedNames.add(base + "_" + index + suffix))
+        {
+            index++;
+        }
+        return base + "_" + index + suffix;
+    }
+
+    private String escapeHtml(Object value)
+    {
+        String text = value == null ? "" : value.toString();
+        return text.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;")
+                .replace("\n", "<br/>");
     }
 
     private Map<String, Object> normalizeRecordExportParams(Map<String, Object> record)
@@ -4257,6 +4621,38 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 return stderr.trim();
             }
             return (stdout + "\n" + stderr).trim();
+        }
+    }
+
+    private static class WeeklyReportRange
+    {
+        private final LocalDate begin;
+        private final LocalDate end;
+        private final String label;
+        private final String fileName;
+
+        private WeeklyReportRange(LocalDate begin, LocalDate end)
+        {
+            this.begin = begin;
+            this.end = end;
+            LocalDate endInclusive = end.minusDays(1);
+            this.label = DATE_CN_FORMATTER.format(begin) + " 至 " + DATE_CN_FORMATTER.format(endInclusive);
+            this.fileName = "自动化巡检周报_" + DATE_COMPACT_FORMATTER.format(begin)
+                    + "-" + DATE_COMPACT_FORMATTER.format(endInclusive) + ".doc";
+        }
+    }
+
+    private static class ReportRows
+    {
+        private final List<Map<String, Object>> records;
+        private final List<Map<String, Object>> steps;
+        private final List<Map<String, Object>> targets;
+
+        private ReportRows(List<Map<String, Object>> records, List<Map<String, Object>> steps, List<Map<String, Object>> targets)
+        {
+            this.records = records;
+            this.steps = steps;
+            this.targets = targets;
         }
     }
 
