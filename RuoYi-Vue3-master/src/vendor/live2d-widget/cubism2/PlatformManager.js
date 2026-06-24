@@ -1,7 +1,14 @@
 import logger from '../logger.js';
+const LIVE2D_CONTEXT_OPTIONS = { premultipliedAlpha: true, preserveDrawingBuffer: false };
 function getLive2dContext(canvas) {
-    const options = { premultipliedAlpha: true, preserveDrawingBuffer: true };
-    return canvas.getContext('webgl2', options) || canvas.getContext('webgl', options) || canvas.getContext('experimental-webgl', options);
+    if (canvas.__live2dGl && !canvas.__live2dGl.isContextLost?.()) {
+        return canvas.__live2dGl;
+    }
+    const gl = canvas.getContext('webgl2', LIVE2D_CONTEXT_OPTIONS) || canvas.getContext('webgl', LIVE2D_CONTEXT_OPTIONS) || canvas.getContext('experimental-webgl', LIVE2D_CONTEXT_OPTIONS);
+    if (gl) {
+        canvas.__live2dGl = gl;
+    }
+    return gl;
 }
 class PlatformManager {
     constructor() {
@@ -51,6 +58,8 @@ class PlatformManager {
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
             gl.generateMipmap(gl.TEXTURE_2D);
+            model.__live2dTextureHandles = model.__live2dTextureHandles || [];
+            model.__live2dTextureHandles[no] = texture;
             model.setTexture(no, texture);
             texture = null;
             if (typeof callback == 'function')

@@ -1,4 +1,4 @@
-import { L2DBaseModel, Live2DFramework, L2DEyeBlink } from './Live2DFramework.js';
+import { L2DBaseModel, L2DEyeBlink } from './Live2DFramework.js';
 import ModelSettingJson from './utils/ModelSettingJson.js';
 import LAppDefine from './LAppDefine.js';
 import MatrixStack from './utils/MatrixStack.js';
@@ -106,8 +106,15 @@ class LAppModel extends L2DBaseModel {
         });
     }
     release(gl) {
-        const pm = Live2DFramework.getPlatformManager();
-        gl.deleteTexture(pm.texture);
+        const textures = this.live2DModel?.__live2dTextureHandles || [];
+        textures.forEach(texture => {
+            if (texture) {
+                gl.deleteTexture(texture);
+            }
+        });
+        if (this.live2DModel) {
+            this.live2DModel.__live2dTextureHandles = [];
+        }
     }
     preloadMotionGroup(name) {
         for (let i = 0; i < this.modelSetting.getMotionNum(name); i++) {

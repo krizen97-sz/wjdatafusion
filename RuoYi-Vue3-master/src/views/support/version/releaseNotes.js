@@ -1,5 +1,26 @@
 export const releaseNotes = [
   {
+    version: 'v3.6.28',
+    submitTime: '2026-06-24 10:31:56',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '看板娘稳定性与性能优化',
+    summary: '对左侧 Live2D 看板娘进行代码审查和性能修复，优化全局事件频率、模型销毁释放和可访问交互。',
+    changes: [
+      '修复 Live2D 模型尚未初始化完成时，鼠标移动触发 hitTest 可能访问空模型导致运行时报错的问题。',
+      '修复看板娘销毁时调用了不存在的 release 方法，导致旧模型与纹理资源无法完整释放的生命周期问题。',
+      '将 Live2D 全局鼠标跟随改为 requestAnimationFrame 合帧处理，并复用 WebGL 上下文，减少高频 mousemove 带来的布局读取和命中测试压力。',
+      '关闭不必要的 preserveDrawingBuffer，并为模型纹理记录可释放句柄，降低 GPU 内存占用风险。',
+      '对页面元素 hover 触发的看板娘提示增加节流和同元素去重，避免表格、按钮和菜单移动时频繁刷新气泡。',
+      '补充看板娘画布和放大按钮的 aria-label、键盘 Enter/Space 触发能力和 focus-visible 样式，提升可访问性。',
+      '收敛看板娘 CSS 中宽高、定位等布局属性过渡，保留 transform/opacity/filter 类轻量动效，减少无意义重排。'
+    ],
+    scope: ['页面显示优化', '看板娘', '前端交互', '性能优化', '稳定性修复', '版本记录'],
+    database: '无数据库结构变化，无需执行 SQL。',
+    scripts: []
+  },
+  {
     version: 'v3.6.27',
     submitTime: '2026-06-23 23:13:58',
     level: 'patch',

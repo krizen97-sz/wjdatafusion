@@ -3,9 +3,16 @@ import LAppDefine from './LAppDefine.js';
 import MatrixStack from './utils/MatrixStack.js';
 import LAppLive2DManager from './LAppLive2DManager.js';
 import logger from '../logger.js';
+const LIVE2D_CONTEXT_OPTIONS = { premultipliedAlpha: true, preserveDrawingBuffer: false };
 function getLive2dContext(canvas) {
-    const options = { premultipliedAlpha: true, preserveDrawingBuffer: true };
-    return canvas.getContext('webgl2', options) || canvas.getContext('webgl', options) || canvas.getContext('experimental-webgl', options);
+    if (canvas.__live2dGl && !canvas.__live2dGl.isContextLost?.()) {
+        return canvas.__live2dGl;
+    }
+    const gl = canvas.getContext('webgl2', LIVE2D_CONTEXT_OPTIONS) || canvas.getContext('webgl', LIVE2D_CONTEXT_OPTIONS) || canvas.getContext('experimental-webgl', LIVE2D_CONTEXT_OPTIONS);
+    if (gl) {
+        canvas.__live2dGl = gl;
+    }
+    return gl;
 }
 function normalizePoint(x, y, x0, y0, w, h) {
     const dx = x - x0;
@@ -39,6 +46,8 @@ class Cubism2Model {
         this.projMatrix = null;
         this.deviceToScreen = null;
         this.oldLen = 0;
+        this._followFrameId = null;
+        this._pendingPointerEvent = null;
         this._boundMouseEvent = this.mouseEvent.bind(this);
         this._boundTouchEvent = this.touchEvent.bind(this);
     }
@@ -100,11 +109,14 @@ class Cubism2Model {
             window.cancelAnimationFrame(this._drawFrameId);
             this._drawFrameId = null;
         }
-        this.isDrawStart = false;
-        if (this.live2DMgr && typeof this.live2DMgr.release === 'function') {
-            this.live2DMgr.release();
+        if (this._followFrameId) {
+            window.cancelAnimationFrame(this._followFrameId);
+            this._followFrameId = null;
         }
-        if (this.gl) {
+        this._pendingPointerEvent = null;
+        this.isDrawStart = false;
+        if (this.live2DMgr && typeof this.live2DMgr.releaseModel === 'function' && this.gl) {
+            this.live2DMgr.releaseModel(this.gl);
         }
         this.canvas = null;
         this.gl = null;
@@ -117,13 +129,19 @@ class Cubism2Model {
         if (!this.isDrawStart) {
             this.isDrawStart = true;
             const tick = () => {
+                if (!this.isDrawStart || !this.canvas || !this.gl || !this.dragMgr) {
+                    return;
+                }
                 this.draw();
-                this._drawFrameId = window.requestAnimationFrame(tick, this.canvas);
+                this._drawFrameId = window.requestAnimationFrame(tick);
             };
             tick();
         }
     }
     draw() {
+        if (!this.dragMgr || !this.live2DMgr || !this.gl || !this.projMatrix || !this.viewMatrix) {
+            return;
+        }
         MatrixStack.reset();
         MatrixStack.loadIdentity();
         this.dragMgr.update();
@@ -163,7 +181,9 @@ class Cubism2Model {
         }
     }
     modelTurnHead(event) {
-        var _b;
+        if (!this.canvas || !this.dragMgr) {
+            return;
+        }
         const rect = this.canvas.getBoundingClientRect();
         const { vx, vy } = normalizePoint(event.clientX, event.clientY, rect.left + rect.width / 2, rect.top + rect.height / 2, window.innerWidth, window.innerHeight);
         logger.trace('onMouseDown device( x:' +
@@ -177,12 +197,15 @@ class Cubism2Model {
             ')');
         this.dragMgr.setPoint(vx, vy);
         this.live2DMgr.tapEvent(vx, vy);
-        if ((_b = this.live2DMgr) === null || _b === void 0 ? void 0 : _b.model.hitTest(LAppDefine.HIT_AREA_BODY, vx, vy)) {
+        const model = this.live2DMgr?.model;
+        if (model?.hitTest(LAppDefine.HIT_AREA_BODY, vx, vy)) {
             window.dispatchEvent(new Event('live2d:tapbody'));
         }
     }
     followPointer(event) {
-        var _b;
+        if (!this.canvas || !this.dragMgr) {
+            return;
+        }
         const rect = this.canvas.getBoundingClientRect();
         const { vx, vy } = normalizePoint(event.clientX, event.clientY, rect.left + rect.width / 2, rect.top + rect.height / 2, window.innerWidth, window.innerHeight);
         logger.trace('onMouseMove device( x:' +
@@ -195,26 +218,48 @@ class Cubism2Model {
             vy +
             ')');
         this.dragMgr.setPoint(vx, vy);
-        if ((_b = this.live2DMgr) === null || _b === void 0 ? void 0 : _b.model.hitTest(LAppDefine.HIT_AREA_BODY, vx, vy)) {
+        const model = this.live2DMgr?.model;
+        if (model?.hitTest(LAppDefine.HIT_AREA_BODY, vx, vy)) {
             window.dispatchEvent(new Event('live2d:hoverbody'));
         }
     }
     lookFront() {
+        if (!this.dragMgr) {
+            return;
+        }
         this.dragMgr.setPoint(0, 0);
     }
+    scheduleFollowPointer(event) {
+        this._pendingPointerEvent = {
+            clientX: event.clientX,
+            clientY: event.clientY
+        };
+        if (this._followFrameId) {
+            return;
+        }
+        this._followFrameId = window.requestAnimationFrame(() => {
+            this._followFrameId = null;
+            const pointerEvent = this._pendingPointerEvent;
+            this._pendingPointerEvent = null;
+            if (pointerEvent) {
+                this.followPointer(pointerEvent);
+            }
+        });
+    }
     mouseEvent(e) {
-        e.preventDefault();
         if (e.type == 'mousewheel') {
+            e.preventDefault();
             if (e.wheelDelta > 0)
                 this.modelScaling(1.1);
             else
                 this.modelScaling(0.9);
         }
         else if (e.type == 'click' || e.type == 'contextmenu') {
+            e.preventDefault();
             this.modelTurnHead(e);
         }
         else if (e.type == 'mousemove') {
-            this.followPointer(e);
+            this.scheduleFollowPointer(e);
         }
         else if (e.type == 'mouseout') {
             this.lookFront();
@@ -228,7 +273,9 @@ class Cubism2Model {
                 this.modelTurnHead(touch);
         }
         else if (e.type == 'touchmove') {
-            this.followPointer(touch);
+            if (touch) {
+                this.scheduleFollowPointer(touch);
+            }
             if (e.touches.length == 2) {
                 const touch1 = e.touches[0];
                 const touch2 = e.touches[1];

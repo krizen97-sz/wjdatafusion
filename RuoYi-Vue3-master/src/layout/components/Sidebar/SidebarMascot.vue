@@ -33,7 +33,12 @@
         width="800"
         height="800"
         :title="canvasTitle"
+        :aria-label="canvasTitle"
+        role="button"
+        tabindex="0"
         @click.stop="handleCanvasClick"
+        @keydown.enter.prevent="handleCanvasKeyboard"
+        @keydown.space.prevent="handleCanvasKeyboard"
       />
       <div v-if="!modelReady" class="mascot-loading">
         {{ loadError ? '模型加载失败' : '模型加载中' }}
@@ -44,6 +49,7 @@
           v-if="playEnabled"
           type="button"
           :title="playMode ? '缩小看板娘' : '放大看板娘'"
+          :aria-label="playMode ? '缩小看板娘' : '放大看板娘'"
           :aria-pressed="playMode"
           @click="togglePlayMode"
         >
@@ -83,6 +89,7 @@ const WIDTH = 992
 const LIVE2D_CORE_ID = 'ry-local-live2d-core'
 const MODEL_PATH = 'live2d/models/pio/index.json'
 const CORE_PATH = 'live2d/vendor/live2d-widget/live2d.min.js'
+const INTERACTION_HOVER_INTERVAL = 900
 
 const route = useRoute()
 const userStore = useUserStore()
@@ -110,6 +117,9 @@ let lastInteractionMessage = ''
 let lastInteractionAt = 0
 let lastPlayRegion = ''
 let lastPlayRegionAt = 0
+let lastHoverElement = null
+let lastHoverAt = 0
+let componentAlive = true
 
 const isMobile = computed(() => width.value < WIDTH)
 const isVisible = computed(() => !props.collapsed && !isMobile.value)
@@ -173,6 +183,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  componentAlive = false
   document.removeEventListener('mouseover', handleDocumentHover, true)
   document.removeEventListener('click', handleDocumentClick, true)
   window.removeEventListener('live2d:tapbody', handleBodyTap)
@@ -241,21 +252,22 @@ async function initLive2d() {
         throw new Error('Live2D Cubism2 runtime is unavailable')
       }
 
-      if (!isVisible.value || !canvasRef.value) {
+      if (!componentAlive || !isVisible.value || !canvasRef.value) {
         return
       }
 
-      live2dModel = new Cubism2Model()
-      await live2dModel.init('live2d', getPublicPath(MODEL_PATH), modelSetting)
+      const model = new Cubism2Model()
+      await model.init('live2d', getPublicPath(MODEL_PATH), modelSetting)
 
-      if (!live2dModel.gl) {
+      if (!model.gl) {
         throw new Error('WebGL context is unavailable')
       }
-      if (!isVisible.value) {
-        destroyLive2d()
+      if (!componentAlive || !isVisible.value) {
+        model.destroy()
         return
       }
 
+      live2dModel = model
       modelReady.value = true
       showPagePrompt(true, mascotMessages.modelReady)
     } catch (error) {
@@ -343,6 +355,14 @@ function handleCanvasClick(event) {
   }
 
   showPlayMessage(region)
+}
+
+function handleCanvasKeyboard() {
+  if (playMode.value) {
+    showPlayMessage('body')
+    return
+  }
+  showPagePrompt()
 }
 
 function resolveCanvasRegion(event) {
@@ -485,23 +505,34 @@ function findInteractiveMessage(target) {
 }
 
 function handleDocumentHover(event) {
-  if (playMode.value) {
+  if (playMode.value || !isVisible.value || !dialogEnabled.value) {
     return
   }
 
   const result = findInteractiveMessage(event.target)
   if (result && (result.item.event === 'both' || result.item.event === 'hover')) {
+    const now = Date.now()
+    if (result.element === lastHoverElement && now - lastHoverAt < INTERACTION_HOVER_INTERVAL * 2) {
+      return
+    }
+    if (now - lastHoverAt < INTERACTION_HOVER_INTERVAL) {
+      return
+    }
+    lastHoverElement = result.element
+    lastHoverAt = now
     showPagePrompt()
   }
 }
 
 function handleDocumentClick(event) {
-  if (playMode.value) {
+  if (playMode.value || !isVisible.value || !dialogEnabled.value) {
     return
   }
 
   const result = findInteractiveMessage(event.target)
   if (result && (result.item.event === 'both' || result.item.event === 'click')) {
+    lastHoverElement = null
+    lastHoverAt = 0
     showPagePrompt(true)
   }
 }
@@ -557,7 +588,7 @@ function pulseMascot() {
   width: 184px;
   height: 238px;
   font-size: 12px;
-  transition: width 0.24s ease, height 0.24s ease, bottom 0.24s ease, left 0.24s ease;
+  transition: opacity 0.24s ease, transform 0.24s ease;
   pointer-events: none;
 }
 
@@ -581,6 +612,7 @@ function pulseMascot() {
   transition: transform 0.24s ease, opacity 0.24s ease;
   animation: mascot-bubble-in 0.24s ease both;
   cursor: pointer;
+  will-change: transform, opacity;
   pointer-events: auto;
 
   &::after {
@@ -661,7 +693,6 @@ function pulseMascot() {
   bottom: -10px;
   left: 0;
   height: 190px;
-  transition: height 0.24s ease, bottom 0.24s ease;
   pointer-events: none;
 }
 
@@ -673,8 +704,14 @@ function pulseMascot() {
   height: 292px;
   cursor: pointer;
   filter: drop-shadow(0 12px 18px rgba(45, 126, 247, 0.18));
-  transition: right 0.24s ease, bottom 0.24s ease, width 0.24s ease, height 0.24s ease, filter 0.24s ease;
+  transition: transform 0.24s ease, filter 0.24s ease;
+  will-change: transform;
   pointer-events: auto;
+
+  &:focus-visible {
+    outline: 2px solid rgba(45, 126, 247, 0.72);
+    outline-offset: -18px;
+  }
 }
 
 .mascot-loading {
@@ -722,6 +759,11 @@ function pulseMascot() {
 
     &:hover {
       background: rgba(45, 126, 247, 0.1);
+    }
+
+    &:focus-visible {
+      outline: 2px solid rgba(45, 126, 247, 0.72);
+      outline-offset: 2px;
     }
 
     &[aria-pressed="true"] {
