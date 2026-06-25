@@ -41,6 +41,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -2778,7 +2780,14 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 pass = !actualValue.contains(expectedValue);
                 break;
             case "REGEX":
-                pass = actualValue.matches(expectedValue);
+                try
+                {
+                    pass = Pattern.compile(expectedValue, Pattern.DOTALL).matcher(actualValue).find();
+                }
+                catch (PatternSyntaxException e)
+                {
+                    return label + "正则表达式无效：" + expectedValue;
+                }
                 break;
             case "EMPTY":
                 pass = StringUtils.isBlank(actualValue);
