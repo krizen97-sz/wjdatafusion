@@ -700,16 +700,12 @@
             <el-col v-if="!isHttpHealthStep" :span="24"><el-form-item label="请求体模板"><el-input v-model="stepDraft.target.extraParams" type="textarea" :rows="4" placeholder='例如：{"startTime":"${todayStart}","endTime":"${todayEnd}"}' /></el-form-item></el-col>
           </el-row>
           <div v-if="isHttpApiTestStep" class="api-test-config">
-            <div class="api-test-compact-head">
-              <strong>接口调用测试配置</strong>
-              <span>按“请求信息、参数与鉴权、返回条件”分开维护，只填写本接口实际需要的内容。</span>
-            </div>
             <el-tabs v-model="apiConfigActiveTab" class="api-config-tabs">
               <el-tab-pane label="请求信息" name="request">
                 <section class="api-test-section">
                   <header>
                     <strong>请求信息</strong>
-                    <span>配置接口名称、GET/POST、URL 和 HTTPS 证书校验方式。</span>
+                    <span>填接口名称、方法和 URL。</span>
                   </header>
                   <el-row :gutter="16">
                     <el-col :span="10"><el-form-item label="接口名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：今日任务接口测试" /></el-form-item></el-col>
@@ -720,16 +716,15 @@
                           <el-radio-button label="false">严格校验</el-radio-button>
                           <el-radio-button label="true">兼容自建证书</el-radio-button>
                         </el-radio-group>
-                        <small class="field-hint">只有 HTTPS 接口使用单位自建证书、测试时报证书校验失败时，才选择“兼容自建证书”；普通 HTTP 或正式证书保持严格校验。</small>
+                        <small class="field-hint">正式证书选严格；自建证书报错再选兼容。</small>
                       </el-form-item>
                     </el-col>
-                    <el-col :span="24"><el-form-item label="接口URL" required><el-input v-model="stepDraft.target.url" placeholder="https://host/api/list?begin=${todayStart}&end=${todayEnd}" /></el-form-item></el-col>
+                    <el-col :span="24"><el-form-item label="接口URL" required><el-input v-model="stepDraft.target.url" placeholder="例如：https://host/api/list?begin=${todayStart}&end=${todayEnd}" /></el-form-item></el-col>
                   </el-row>
                   <div class="api-variable-bar api-variable-bar--compact">
-                    <span>日期变量</span>
+                    <span>插入日期</span>
                     <button v-for="item in httpDatePlaceholders" :key="item.value" type="button" @click="appendApiTestUrlPlaceholder(item.value)">
                       <strong>{{ item.value }}</strong>
-                      <em>{{ item.example }}</em>
                     </button>
                   </div>
                 </section>
@@ -739,7 +734,7 @@
                 <section class="api-test-section">
                   <header>
                     <strong>鉴权信息</strong>
-                    <span>敏感值保存时会加密，巡检结果和详情只展示脱敏信息。</span>
+                    <span>没有鉴权就保持“无鉴权”。</span>
                   </header>
                   <el-row :gutter="16">
                     <el-col :span="8">
@@ -797,7 +792,7 @@
                       <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
                       <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('queryParams', index)" />
                     </div>
-                    <el-empty v-if="!stepDraft.target.apiConfig.queryParams.length" description="暂无 Query 参数" :image-size="42" />
+                    <span v-if="!stepDraft.target.apiConfig.queryParams.length" class="api-inline-empty">无 Query 参数可留空</span>
                   </div>
 
                   <div class="api-config-list">
@@ -811,7 +806,7 @@
                       <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
                       <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('headers', index)" />
                     </div>
-                    <el-empty v-if="!stepDraft.target.apiConfig.headers.length" description="暂无自定义 Header" :image-size="42" />
+                    <span v-if="!stepDraft.target.apiConfig.headers.length" class="api-inline-empty">无 Header 可留空</span>
                   </div>
 
                   <div class="api-config-list">
@@ -825,13 +820,13 @@
                       <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
                       <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('cookies', index)" />
                     </div>
-                    <el-empty v-if="!stepDraft.target.apiConfig.cookies.length" description="暂无 Cookie" :image-size="42" />
+                    <span v-if="!stepDraft.target.apiConfig.cookies.length" class="api-inline-empty">无 Cookie 可留空</span>
                   </div>
 
                   <div class="api-config-list">
                     <div class="api-config-list__head">
                       <strong>请求体</strong>
-                      <span>POST 可选，GET 通常保持无 Body</span>
+                      <span>GET 通常无 Body</span>
                     </div>
                     <el-row :gutter="12">
                       <el-col :span="8">
@@ -846,7 +841,7 @@
                       </el-col>
                       <el-col :span="16">
                         <div class="api-variable-bar api-variable-bar--inline">
-                          <span>插入到Body</span>
+                          <span>插入日期</span>
                           <button v-for="item in httpDatePlaceholders" :key="item.value" type="button" @click="appendApiTestBodyPlaceholder(item.value)">{{ item.value }}</button>
                         </div>
                       </el-col>
@@ -876,7 +871,7 @@
                 <section class="api-test-section">
                   <header>
                     <strong>返回结果判断条件</strong>
-                    <span>所有条件都满足才算正常；可以先添加常用条件，再按接口实际返回微调。</span>
+                    <span>全部满足才正常。</span>
                   </header>
                   <div class="assertion-toolbar">
                     <span>常用条件</span>
@@ -6693,47 +6688,30 @@ function resultTagType(value) {
 
 .api-test-config {
   display: grid;
-  gap: 10px;
-}
-
-.api-test-compact-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid #dfeaf6;
-  border-radius: 8px;
-  background: #f7fbff;
-
-  strong {
-    color: #1d3554;
-    font-size: 15px;
-  }
-
-  span {
-    color: #6f849c;
-    font-size: 12px;
-    line-height: 1.45;
-  }
+  gap: 6px;
 }
 
 .api-config-tabs {
   :deep(.el-tabs__header) {
-    margin-bottom: 10px;
+    margin-bottom: 6px;
   }
 
   :deep(.el-tabs__content) {
-    max-height: min(48vh, 520px);
+    max-height: min(52vh, 560px);
     overflow-y: auto;
     padding-right: 4px;
+  }
+
+  :deep(.el-tabs__item) {
+    height: 34px;
+    line-height: 34px;
   }
 }
 
 .api-test-section {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 8px;
+  padding: 10px;
   border: 1px solid #dfeaf6;
   border-radius: 8px;
   background: #fbfdff;
@@ -6741,16 +6719,18 @@ function resultTagType(value) {
   > header {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    min-height: 20px;
 
     strong {
       color: #1d3554;
-      font-size: 15px;
+      font-size: 14px;
     }
 
     span {
       color: #6f849c;
       font-size: 12px;
+      line-height: 1.25;
     }
   }
 
@@ -6762,15 +6742,15 @@ function resultTagType(value) {
 .api-param-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .api-variable-bar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 9px 10px;
+  gap: 6px;
+  padding: 6px 8px;
   border: 1px dashed #cfe0f3;
   border-radius: 8px;
   background: #fff;
@@ -6782,10 +6762,10 @@ function resultTagType(value) {
   }
 
   button {
-    display: inline-grid;
-    gap: 2px;
-    min-width: 104px;
-    padding: 5px 8px;
+    display: inline-flex;
+    align-items: center;
+    min-width: auto;
+    padding: 3px 7px;
     border: 1px solid #dce8f6;
     border-radius: 6px;
     background: #fff;
@@ -6800,12 +6780,6 @@ function resultTagType(value) {
 
     strong {
       font-size: 12px;
-    }
-
-    em {
-      color: #7a8fa6;
-      font-size: 11px;
-      font-style: normal;
     }
   }
 
@@ -6823,16 +6797,16 @@ function resultTagType(value) {
 
   &--compact {
     button {
-      min-width: 96px;
+      min-width: auto;
     }
   }
 }
 
 .api-config-list {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
-  padding: 10px;
+  padding: 8px;
   border: 1px solid #e5eef8;
   border-radius: 8px;
   background: #fff;
@@ -6848,11 +6822,12 @@ function resultTagType(value) {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 
 	  strong {
 	    margin-right: auto;
 	    color: #1d3554;
+    font-size: 13px;
 	  }
 
   > span {
@@ -6865,23 +6840,23 @@ function resultTagType(value) {
 .api-config-row {
   display: grid;
   grid-template-columns: minmax(130px, 0.8fr) minmax(180px, 1.4fr) 70px 34px;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   min-width: 0;
 }
 
 .api-assertion-list {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .api-assertion-row {
   display: grid;
   grid-template-columns: 28px 148px minmax(150px, 1fr) 136px minmax(150px, 1fr) 34px;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   min-width: 0;
-  padding: 8px;
+  padding: 6px;
   border: 1px solid #e5eef8;
   border-radius: 8px;
   background: #fff;
@@ -6914,9 +6889,19 @@ function resultTagType(value) {
 
 .field-hint {
   display: block;
-  margin-top: 6px;
+  margin-top: 4px;
   color: #7b8fa8;
-  line-height: 1.45;
+  line-height: 1.3;
+  font-size: 12px;
+}
+
+.api-inline-empty {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  color: #8a9bb0;
+  font-size: 12px;
+  line-height: 1.3;
 }
 
 .bigdata-server-config {
@@ -7730,7 +7715,6 @@ function resultTagType(value) {
   }
 
 	  .step-rule-grid,
-  .api-test-compact-head,
   .api-param-grid,
 	  .api-config-row,
 	  .api-assertion-row,
@@ -7738,11 +7722,6 @@ function resultTagType(value) {
 	  .step-detail-lines {
 	    grid-template-columns: 1fr;
 	  }
-
-  .api-test-compact-head {
-    align-items: flex-start;
-    flex-direction: column;
-  }
 
   .config-guide {
     grid-template-columns: 1fr;
