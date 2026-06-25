@@ -620,7 +620,7 @@
         <section class="target-section">
           <header>
             <strong>判定规则</strong>
-            <span>{{ isServiceStatusStep ? '服务状态检测按 systemctl 返回的运行状态判定，不需要用户理解数值阈值。' : '定义本步骤什么情况下算异常，阈值、窗口和超时时间集中在这里维护。' }}</span>
+            <span>{{ isServiceStatusStep ? '服务状态检测按 systemctl 返回的运行状态判定，不需要用户理解数值阈值。' : (isHttpApiTestStep ? '接口调用测试使用多条断言判定结果，任一断言失败即告警。' : '定义本步骤什么情况下算异常，阈值、窗口和超时时间集中在这里维护。') }}</span>
           </header>
           <div v-if="isServiceStatusStep" class="service-rule-card">
             <span>
@@ -634,20 +634,32 @@
               <em>服务不是 active 时判定异常；开启自动拉起后会 restart 并复查。</em>
             </span>
           </div>
+          <div v-else-if="isHttpApiTestStep" class="service-rule-card api-rule-card">
+            <span>
+              <label>正常条件</label>
+              <strong>所有断言均通过</strong>
+              <em>状态码、耗时、JSON字段、响应文本和响应Header等条件全部满足。</em>
+            </span>
+            <span>
+              <label>异常条件</label>
+              <strong>任一断言失败或请求异常</strong>
+              <em>接口超时、证书异常、非预期返回、字段缺失都会在结果明细中展示。</em>
+            </span>
+          </div>
           <div class="step-rule-grid">
-            <el-form-item v-if="!isServiceStatusStep" label="比较规则">
+            <el-form-item v-if="useGenericNumericRule" label="比较规则">
               <el-select v-model="stepDraft.compareRule" style="width: 100%">
                 <el-option label="实际值不得低于阈值" value="MIN" />
                 <el-option label="实际值不得高于阈值" value="MAX" />
               </el-select>
             </el-form-item>
-            <el-form-item v-if="!isServiceStatusStep" label="告警阈值">
+            <el-form-item v-if="useGenericNumericRule" label="告警阈值">
               <el-input-number v-model="stepDraft.thresholdValue" :min="0" controls-position="right" style="width: 100%" />
             </el-form-item>
-            <el-form-item v-if="!isServiceStatusStep" label="阈值单位">
+            <el-form-item v-if="useGenericNumericRule" label="阈值单位">
               <el-input v-model="stepDraft.thresholdUnit" placeholder="条 / 个 / %" />
             </el-form-item>
-            <el-form-item v-if="!isServiceStatusStep" label="统计窗口">
+            <el-form-item v-if="useGenericNumericRule" label="统计窗口">
               <el-input-number v-model="stepDraft.timeWindowMinutes" :min="0" controls-position="right" style="width: 100%" />
               <small>分钟，0 表示按当前目标实时取值。</small>
             </el-form-item>
@@ -668,7 +680,7 @@
             <el-col :span="12"><el-form-item label="Topic" required><el-input v-model="stepDraft.target.topic" placeholder="例如：tim-pass-record" /></el-form-item></el-col>
             <el-col :span="12"><el-form-item label="消费组" required><el-input v-model="stepDraft.target.consumerGroup" placeholder="例如：tim-analysis-group" /></el-form-item></el-col>
           </el-row>
-          <el-row v-if="stepTargetType === 'HTTP'" :gutter="16">
+          <el-row v-if="stepTargetType === 'HTTP' && !isHttpApiTestStep" :gutter="16">
             <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" :placeholder="isHttpHealthStep ? '例如：海康平台登录页健康检测' : '例如：海康过车数量接口'" /></el-form-item></el-col>
             <el-col :span="12"><el-form-item label="请求方法"><el-select v-model="stepDraft.target.httpMethod" style="width: 100%"><el-option label="POST" value="POST" /><el-option label="GET" value="GET" /></el-select></el-form-item></el-col>
             <el-col :span="24"><el-form-item label="接口URL" required><el-input v-model="stepDraft.target.url" :placeholder="isHttpHealthStep ? 'https://host/health 或 https://host/api/status' : 'https://host/api/count?date=${today}'" /></el-form-item></el-col>
@@ -687,6 +699,196 @@
             </el-col>
             <el-col v-if="!isHttpHealthStep" :span="24"><el-form-item label="请求体模板"><el-input v-model="stepDraft.target.extraParams" type="textarea" :rows="4" placeholder='例如：{"startTime":"${todayStart}","endTime":"${todayEnd}"}' /></el-form-item></el-col>
           </el-row>
+          <div v-if="isHttpApiTestStep" class="api-test-config">
+            <section class="api-test-section">
+              <header>
+                <strong>基础请求</strong>
+                <span>配置接口地址、请求方法和内网证书策略，URL 支持日期变量。</span>
+              </header>
+              <el-row :gutter="16">
+                <el-col :span="10"><el-form-item label="接口名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：今日任务接口测试" /></el-form-item></el-col>
+                <el-col :span="6"><el-form-item label="请求方法"><el-select v-model="stepDraft.target.httpMethod" style="width: 100%"><el-option label="GET" value="GET" /><el-option label="POST" value="POST" /></el-select></el-form-item></el-col>
+                <el-col :span="8"><el-form-item label="内网证书"><el-switch v-model="stepDraft.target.apiConfig.trustInternalCertificate" active-value="true" inactive-value="false" active-text="信任自签证书" inactive-text="严格校验" /></el-form-item></el-col>
+                <el-col :span="24"><el-form-item label="接口URL" required><el-input v-model="stepDraft.target.url" placeholder="https://host/api/list?begin=${todayStart}&end=${todayEnd}" /></el-form-item></el-col>
+              </el-row>
+              <div class="api-variable-bar">
+                <span>日期变量</span>
+                <button v-for="item in httpDatePlaceholders" :key="item.value" type="button" @click="appendApiTestUrlPlaceholder(item.value)">
+                  <strong>{{ item.value }}</strong>
+                  <em>{{ item.example }}</em>
+                </button>
+              </div>
+            </section>
+
+            <section class="api-test-section">
+              <header>
+                <strong>Header / Cookie / 鉴权</strong>
+                <span>敏感值保存时会加密，结果和详情只展示脱敏信息。</span>
+              </header>
+              <el-row :gutter="16">
+                <el-col :span="8">
+                  <el-form-item label="鉴权方式">
+                    <el-select v-model="stepDraft.target.apiConfig.auth.type" style="width: 100%">
+                      <el-option label="无鉴权" value="NONE" />
+                      <el-option label="Bearer Token" value="BEARER" />
+                      <el-option label="Basic Auth" value="BASIC" />
+                      <el-option label="API Key" value="API_KEY" />
+                      <el-option label="Cookie" value="COOKIE" />
+                      <el-option label="自定义Header" value="CUSTOM_HEADER" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+                <el-col v-if="stepDraft.target.apiConfig.auth.type === 'API_KEY'" :span="8">
+                  <el-form-item label="传递位置">
+                    <el-select v-model="stepDraft.target.apiConfig.auth.location" style="width: 100%">
+                      <el-option label="Header" value="HEADER" />
+                      <el-option label="Query" value="QUERY" />
+                      <el-option label="Cookie" value="COOKIE" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+                <el-col v-if="['API_KEY', 'COOKIE', 'CUSTOM_HEADER'].includes(stepDraft.target.apiConfig.auth.type)" :span="8">
+                  <el-form-item label="参数名">
+                    <el-input v-model="stepDraft.target.apiConfig.auth.name" placeholder="Authorization / token / sid" />
+                  </el-form-item>
+                </el-col>
+                <el-col v-if="stepDraft.target.apiConfig.auth.type === 'BASIC'" :span="8">
+                  <el-form-item label="Basic账号"><el-input v-model="stepDraft.target.apiConfig.auth.username" /></el-form-item>
+                </el-col>
+                <el-col v-if="stepDraft.target.apiConfig.auth.type !== 'NONE' && stepDraft.target.apiConfig.auth.type !== 'BASIC'" :span="8">
+                  <el-form-item label="鉴权值"><el-input v-model="stepDraft.target.apiConfig.auth.value" show-password placeholder="Token / API Key / Cookie值" /></el-form-item>
+                </el-col>
+                <el-col v-if="stepDraft.target.apiConfig.auth.type === 'BASIC'" :span="8">
+                  <el-form-item label="Basic密码"><el-input v-model="stepDraft.target.apiConfig.auth.password" show-password /></el-form-item>
+                </el-col>
+                <el-col v-if="stepDraft.target.targetId" :span="8">
+                  <el-form-item label="敏感值">
+                    <el-button plain icon="View" :loading="apiSecretRevealLoading" @click="handleRevealApiTestSecret(stepDraft.target)">显示已保存敏感值</el-button>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+
+              <div class="api-config-list">
+                <div class="api-config-list__head">
+                  <strong>请求 Header</strong>
+                  <el-button link type="primary" icon="Plus" @click="addApiConfigItem('headers')">添加Header</el-button>
+                </div>
+                <div v-for="(item, index) in stepDraft.target.apiConfig.headers" :key="`header-${index}`" class="api-config-row">
+                  <el-input v-model="item.key" placeholder="Header名称" />
+                  <el-input v-model="item.value" :show-password="item.sensitive" placeholder="Header值" />
+                  <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
+                  <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('headers', index)" />
+                </div>
+                <el-empty v-if="!stepDraft.target.apiConfig.headers.length" description="暂无自定义 Header" :image-size="54" />
+              </div>
+
+              <div class="api-config-list">
+                <div class="api-config-list__head">
+                  <strong>请求 Cookie</strong>
+                  <el-button link type="primary" icon="Plus" @click="addApiConfigItem('cookies')">添加Cookie</el-button>
+                </div>
+                <div v-for="(item, index) in stepDraft.target.apiConfig.cookies" :key="`cookie-${index}`" class="api-config-row">
+                  <el-input v-model="item.key" placeholder="Cookie名称" />
+                  <el-input v-model="item.value" :show-password="item.sensitive" placeholder="Cookie值" />
+                  <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
+                  <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('cookies', index)" />
+                </div>
+                <el-empty v-if="!stepDraft.target.apiConfig.cookies.length" description="暂无 Cookie" :image-size="54" />
+              </div>
+            </section>
+
+            <section class="api-test-section">
+              <header>
+                <strong>Query / 请求体</strong>
+                <span>Query 和 Body 都支持日期变量，POST 支持 JSON、raw text 和表单。</span>
+              </header>
+              <div class="api-config-list">
+                <div class="api-config-list__head">
+                  <strong>Query 参数</strong>
+                  <el-button link type="primary" icon="Plus" @click="addApiConfigItem('queryParams')">添加参数</el-button>
+                </div>
+                <div v-for="(item, index) in stepDraft.target.apiConfig.queryParams" :key="`query-${index}`" class="api-config-row">
+                  <el-input v-model="item.key" placeholder="参数名" />
+                  <el-input v-model="item.value" :show-password="item.sensitive" placeholder="参数值，支持 ${today}" />
+                  <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
+                  <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('queryParams', index)" />
+                </div>
+                <el-empty v-if="!stepDraft.target.apiConfig.queryParams.length" description="暂无 Query 参数" :image-size="54" />
+              </div>
+              <el-row :gutter="16">
+                <el-col :span="8">
+                  <el-form-item label="Body类型">
+                    <el-select v-model="stepDraft.target.apiConfig.bodyType" style="width: 100%">
+                      <el-option label="无 Body" value="NONE" />
+                      <el-option label="JSON" value="JSON" />
+                      <el-option label="raw text" value="RAW" />
+                      <el-option label="form-urlencoded" value="FORM" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="16">
+                  <div class="api-variable-bar api-variable-bar--inline">
+                    <span>插入到Body</span>
+                    <button v-for="item in httpDatePlaceholders" :key="item.value" type="button" @click="appendApiTestBodyPlaceholder(item.value)">{{ item.value }}</button>
+                  </div>
+                </el-col>
+                <el-col v-if="['JSON', 'RAW'].includes(stepDraft.target.apiConfig.bodyType)" :span="24">
+                  <el-form-item label="请求体">
+                    <el-input v-model="stepDraft.target.apiConfig.body" type="textarea" :rows="5" placeholder='例如：{"beginTime":"${todayStart}","endTime":"${todayEnd}"}' />
+                  </el-form-item>
+                </el-col>
+              </el-row>
+              <div v-if="stepDraft.target.apiConfig.bodyType === 'FORM'" class="api-config-list">
+                <div class="api-config-list__head">
+                  <strong>表单参数</strong>
+                  <el-button link type="primary" icon="Plus" @click="addApiConfigItem('formParams')">添加表单项</el-button>
+                </div>
+                <div v-for="(item, index) in stepDraft.target.apiConfig.formParams" :key="`form-${index}`" class="api-config-row">
+                  <el-input v-model="item.key" placeholder="字段名" />
+                  <el-input v-model="item.value" :show-password="item.sensitive" placeholder="字段值" />
+                  <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
+                  <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('formParams', index)" />
+                </div>
+              </div>
+            </section>
+
+            <section class="api-test-section">
+              <header>
+                <strong>结果断言</strong>
+                <span>所有断言全部通过才算正常；常见模板可以一键添加后微调。</span>
+              </header>
+              <div class="assertion-toolbar">
+                <el-button plain size="small" @click="addApiAssertionTemplate('status2xx')">状态码 2xx</el-button>
+                <el-button plain size="small" @click="addApiAssertionTemplate('totalGte1')">data.total >= 1</el-button>
+                <el-button plain size="small" @click="addApiAssertionTemplate('messageSuccess')">data.message == success</el-button>
+                <el-button plain size="small" @click="addApiAssertionTemplate('containsOk')">响应包含 ok</el-button>
+                <el-button plain size="small" @click="addApiAssertionTemplate('latency3000')">耗时 <= 3000ms</el-button>
+                <el-button type="primary" plain size="small" icon="Plus" @click="addApiAssertion()">添加断言</el-button>
+              </div>
+              <div class="api-assertion-list">
+                <div v-for="(item, index) in stepDraft.target.apiConfig.assertions" :key="`assertion-${index}`" class="api-assertion-row">
+                  <el-select v-model="item.type" placeholder="断言类型" @change="onApiAssertionTypeChange(item)">
+                    <el-option label="HTTP状态码" value="STATUS" />
+                    <el-option label="响应耗时" value="LATENCY" />
+                    <el-option label="JSON数字字段" value="JSON_NUMBER" />
+                    <el-option label="JSON字符串字段" value="JSON_STRING" />
+                    <el-option label="JSON布尔字段" value="JSON_BOOLEAN" />
+                    <el-option label="JSON字段存在/空值" value="JSON_EXISTS" />
+                    <el-option label="数组长度" value="ARRAY_LENGTH" />
+                    <el-option label="响应文本" value="BODY_TEXT" />
+                    <el-option label="响应Header" value="HEADER" />
+                  </el-select>
+                  <el-input v-if="apiAssertionNeedsPath(item.type)" v-model="item.path" placeholder="data.total / data.items[0].status / X-Request-Id" />
+                  <el-select v-model="item.operator" placeholder="判断方式">
+                    <el-option v-for="option in getApiAssertionOperators(item.type)" :key="option.value" :label="option.label" :value="option.value" />
+                  </el-select>
+                  <el-input v-if="apiAssertionNeedsExpected(item.operator)" v-model="item.expected" placeholder="期望值，如 200-399 / success / 3000" />
+                  <el-input v-else disabled placeholder="无需期望值" />
+                  <el-button link type="danger" icon="Delete" :disabled="stepDraft.target.apiConfig.assertions.length <= 1" @click="removeApiAssertion(index)" />
+                </div>
+              </div>
+            </section>
+          </div>
           <div v-if="stepTargetType === 'FTP'" class="bigdata-server-config ftp-target-config">
             <div class="bigdata-server-toolbar">
               <span>已配置 {{ ftpStepTargets.length }} 个 FTP 目录目标</span>
@@ -1289,6 +1491,7 @@ const BIG_DATA_DEFAULT_USERNAME = 'root'
 const SERVER_FILE_DEFAULT_SSH_PORT = 55555
 const SERVER_FILE_DEFAULT_USERNAME = SITE_SERVER_LOGIN_HIK
 const TOOL_HTTP_HEALTH = 'HTTP_HEALTH'
+const TOOL_HTTP_API_TEST = 'HTTP_API_TEST'
 const TOOL_TCP_PORT_CHECK = 'TCP_PORT_CHECK'
 const TOOL_SERVER_SERVICE_STATUS = 'SERVER_SERVICE_STATUS'
 const configTabNames = ['template', 'plan']
@@ -1315,6 +1518,7 @@ const targetList = ref([])
 const targetTotal = ref(0)
 const targetTestId = ref(null)
 const targetTesting = ref(false)
+const apiSecretRevealLoading = ref(false)
 const targetQuery = ref({ pageNum: 1, pageSize: 10, targetName: '', targetType: '', status: '' })
 
 const planLoading = ref(false)
@@ -1421,7 +1625,7 @@ const operationGuideSteps = [
     desc: '点击添加步骤后先进入巡检工具箱，按树状分类选择工具，再进入具体配置页面。',
     manual: [
       '工具箱按消息队列、接口平台、文件目录、服务器和网络端口分类，右侧会展示工具说明、默认规则、配置重点和使用案例。',
-      '当前内置 Kafka 消费积压、海康接口数量、HTTP 健康、FTP 目录、服务器目录、磁盘、大数据爆盘、TCP 端口和服务器服务状态检测。'
+      '当前内置 Kafka 消费积压、海康接口数量、接口调用测试、HTTP 健康、FTP 目录、服务器目录、磁盘、大数据爆盘、TCP 端口和服务器服务状态检测。'
     ],
     actions: ['点击“添加步骤”打开工具箱。', '先阅读工具用途和案例，再点击“进入配置”。', '相同工具可以在一个模板中配置多次。'],
     images: [
@@ -1434,7 +1638,7 @@ const operationGuideSteps = [
     place: '步骤配置弹窗',
     desc: '目标决定去哪里取数，阈值决定什么情况算异常；保存前建议先测试目标。',
     manual: [
-      'HTTP 和海康接口类步骤需要配置 URL、请求方式、结果路径、AppKey、Secret 和请求体模板，支持 ${todayStart}、${todayEnd} 等日期变量。',
+      'HTTP 和海康接口类步骤需要配置 URL、请求方式、结果路径、AppKey、Secret 和请求体模板；接口调用测试还支持 Header、Cookie、静态鉴权、请求体和多断言，支持 ${todayStart}、${todayEnd} 等日期变量。',
       'FTP 和服务器目录工具支持一个步骤配置多个子项；服务器服务状态检测会清晰展示 active、inactive、failed 等状态规则。'
     ],
     actions: ['填写目标、比较规则、告警阈值和超时时间。', '使用日期变量生成当天接口参数。', '点击“测试目标”确认能取到真实返回值。'],
@@ -1559,6 +1763,13 @@ const toolGuideMap = {
     configs: ['填写健康检查 URL。', '默认 GET 请求，必要时可改 POST。', '可在期望状态码里填写 {"expectedStatus":"200"}。', '阈值通常设置为最大允许响应耗时，单位 ms。'],
     example: '例如“海康平台健康检测”：URL 填 https://host/artemis/api/status，期望状态码 200，耗时高于 3000ms 告警。'
   },
+  HTTP_API_TEST: {
+    brief: '完整模拟 GET / POST 接口调用，并用多条断言判断结果。',
+    description: '支持 Query、Header、Cookie、Bearer、Basic、API Key、JSON Body、表单 Body 和响应断言，适合把业务接口可用性、返回结构和核心字段都纳入巡检。',
+    scenario: '适合检测平台查询接口、统计接口、网关接口、第三方回传接口是否可访问、是否返回期望字段和数量。',
+    configs: ['填写接口 URL 和请求方法。', '按需配置 Header、Cookie、鉴权和请求体。', '使用 ${todayStart}、${todayEnd} 等日期变量生成动态参数。', '添加状态码、JSON字段、数组长度、响应文本、响应Header、耗时等断言。'],
+    example: '例如“今日任务接口”：POST JSON Body 使用 {"beginTime":"${todayStart}","endTime":"${todayEnd}"}，断言状态码 200-399、data.total >= 1、data.message == success。'
+  },
   FTP_FILE_COUNT: {
     brief: '统计一个或多个 FTP 目录下的文件数量。',
     description: '连接 FTP 服务器，进入指定目录，统计目录内文件数量，可在一个步骤里维护多个 FTP 目录目标。',
@@ -1613,8 +1824,8 @@ const toolTreeCategoryList = [
   {
     key: 'api',
     label: '接口与平台探测',
-    brief: 'HTTP 计数接口、健康检查和平台可用性检查。',
-    matcher: (toolCode) => ['HTTP_COUNT', TOOL_HTTP_HEALTH].includes(toolCode)
+    brief: 'HTTP 计数接口、健康检查、通用接口调用测试和平台可用性检查。',
+    matcher: (toolCode) => ['HTTP_COUNT', TOOL_HTTP_HEALTH, TOOL_HTTP_API_TEST].includes(toolCode)
   },
   {
     key: 'file',
@@ -1743,11 +1954,14 @@ const serverAssetPickerHint = computed(() => {
 })
 const stepTargetType = computed(() => getTargetTypeByTool(stepDraft.value.toolCode))
 const isHttpHealthStep = computed(() => stepDraft.value.toolCode === TOOL_HTTP_HEALTH)
+const isHttpApiTestStep = computed(() => stepDraft.value.toolCode === TOOL_HTTP_API_TEST)
 const isTcpPortStep = computed(() => stepDraft.value.toolCode === TOOL_TCP_PORT_CHECK)
 const isServiceStatusStep = computed(() => stepDraft.value.toolCode === TOOL_SERVER_SERVICE_STATUS)
+const useGenericNumericRule = computed(() => !isServiceStatusStep.value && !isHttpApiTestStep.value)
 const stepTargetSectionTitle = computed(() => {
   if (stepTargetType.value === 'KAFKA') return 'Kafka 目标'
   if (isHttpHealthStep.value) return 'HTTP 健康目标'
+  if (isHttpApiTestStep.value) return '接口调用测试目标'
   if (stepTargetType.value === 'HTTP') return 'HTTP 接口目标'
   if (stepTargetType.value === 'FTP') return 'FTP 目录目标'
   if (stepTargetType.value === 'BIG_DATA_SERVER') return '大数据服务器'
@@ -1758,6 +1972,7 @@ const stepTargetSectionTitle = computed(() => {
 const stepTargetSectionHint = computed(() => {
   if (stepTargetType.value === 'KAFKA') return '消费积压检测只需要 bootstrap、topic 和消费组。'
   if (isHttpHealthStep.value) return '健康检测关注接口是否可访问、状态码是否符合预期，以及接口响应耗时。'
+  if (isHttpApiTestStep.value) return '把请求参数、鉴权、请求体和断言放在一个步骤里，所有断言通过才算正常。'
   if (stepTargetType.value === 'HTTP') return '接口数量检测关注请求地址、参数模板、认证信息和结果取值路径。'
   if (stepTargetType.value === 'FTP') return 'FTP 文件数量检测只需要连接信息和目录路径。'
   if (stepTargetType.value === 'BIG_DATA_SERVER') return '逐台配置服务器 IP、SSH 端口和登录信息，执行时读取每台服务器的所有磁盘分区。'
@@ -2632,7 +2847,12 @@ function validateTargetBusiness(target) {
     if (!String(target.topic || '').trim()) return '请填写 Kafka Topic'
     if (!String(target.consumerGroup || '').trim()) return '请填写 Kafka 消费组'
   }
-  if (target.targetType === 'HTTP' && !String(target.url || '').trim()) return '请填写接口 URL'
+  if (target.targetType === 'HTTP') {
+    if (!String(target.url || '').trim()) return '请填写接口 URL'
+    if (target.toolCode === TOOL_HTTP_API_TEST) {
+      return validateApiTestConfig(target)
+    }
+  }
   if (target.targetType === 'FTP') {
     if (!String(target.host || '').trim()) return '请填写 FTP 主机地址'
     if (!String(target.path || '').trim()) return '请填写 FTP 目录路径'
@@ -2689,6 +2909,15 @@ function cleanTargetPayload(target) {
     payload.username = ''
     payload.password = ''
     payload.serverId = undefined
+    if (payload.toolCode === TOOL_HTTP_API_TEST) {
+      payload.httpMethod = ['GET', 'POST'].includes(payload.httpMethod) ? payload.httpMethod : 'GET'
+      payload.appKey = ''
+      payload.resultPath = ''
+      const config = ensureApiTestConfig(payload)
+      const packed = buildApiTestPayloadConfig(config)
+      payload.extraParams = JSON.stringify(packed.extraParams)
+      payload.secret = Object.keys(packed.secret).length ? JSON.stringify(packed.secret) : ''
+    }
   }
   if (payload.targetType === 'FTP') {
     payload.url = ''
@@ -3423,6 +3652,19 @@ function resetCopiedStepCredentials(step) {
     step.target.secret = ''
     step.target.passwordCipher = ''
     step.target.secretCipher = ''
+    if (step.target.apiConfig) {
+      fillApiConfigSecretValues(step.target.apiConfig, {
+        'auth.value': '',
+        'auth.password': ''
+      })
+      ;['queryParams', 'headers', 'cookies', 'formParams'].forEach((key) => {
+        ;(step.target.apiConfig[key] || []).forEach((item) => {
+          if (item.sensitive) item.value = ''
+        })
+      })
+      if (['BEARER', 'API_KEY', 'COOKIE', 'CUSTOM_HEADER'].includes(step.target.apiConfig.auth?.type)) step.target.apiConfig.auth.value = ''
+      if (step.target.apiConfig.auth?.type === 'BASIC') step.target.apiConfig.auth.password = ''
+    }
   }
   ;(step.stepParams?.serverTargets || []).forEach((server) => {
     server.password = ''
@@ -3483,8 +3725,11 @@ function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
   if (!next.targetName) next.targetName = fallbackName || getToolLabel(toolCode)
   if (targetType === 'FTP' && !next.port) next.port = 21
   if (targetType === 'HTTP') {
-    next.httpMethod = next.httpMethod || (toolCode === TOOL_HTTP_HEALTH ? 'GET' : 'POST')
-    next.resultPath = toolCode === TOOL_HTTP_HEALTH ? '' : (next.resultPath || 'data.total')
+    next.httpMethod = next.httpMethod || (toolCode === TOOL_HTTP_HEALTH || toolCode === TOOL_HTTP_API_TEST ? 'GET' : 'POST')
+    next.resultPath = toolCode === TOOL_HTTP_HEALTH || toolCode === TOOL_HTTP_API_TEST ? '' : (next.resultPath || 'data.total')
+    if (toolCode === TOOL_HTTP_API_TEST) {
+      next.apiConfig = normalizeApiTestConfig(next)
+    }
   }
   if (targetType === 'BIG_DATA_SERVER') {
     next.port = next.port || BIG_DATA_DEFAULT_SSH_PORT
@@ -3573,7 +3818,7 @@ function validateStepDraft(step) {
 
 function getTargetTypeByTool(toolCode) {
   if (toolCode === 'KAFKA_LAG') return 'KAFKA'
-  if (toolCode === 'HTTP_COUNT' || toolCode === TOOL_HTTP_HEALTH) return 'HTTP'
+  if (toolCode === 'HTTP_COUNT' || toolCode === TOOL_HTTP_HEALTH || toolCode === TOOL_HTTP_API_TEST) return 'HTTP'
   if (toolCode === 'FTP_FILE_COUNT') return 'FTP'
   if (toolCode === 'BIG_DATA_SERVER_DISK') return 'BIG_DATA_SERVER'
   if ([TOOL_TCP_PORT_CHECK, TOOL_SERVER_SERVICE_STATUS].includes(toolCode)) return 'SERVER'
@@ -3610,6 +3855,308 @@ function formatStepTarget(step) {
 function insertStepHttpPlaceholder(value) {
   const current = stepDraft.value.target?.extraParams || ''
   stepDraft.value.target.extraParams = current ? `${current}${value}` : value
+}
+
+function appendApiTestUrlPlaceholder(value) {
+  stepDraft.value.target.url = `${stepDraft.value.target.url || ''}${value}`
+}
+
+function appendApiTestBodyPlaceholder(value) {
+  ensureApiTestConfig(stepDraft.value.target)
+  stepDraft.value.target.apiConfig.body = `${stepDraft.value.target.apiConfig.body || ''}${value}`
+}
+
+function defaultApiTestConfig() {
+  return {
+    queryParams: [],
+    headers: [],
+    cookies: [],
+    auth: { type: 'NONE', location: 'HEADER', name: '', username: '', value: '', password: '' },
+    bodyType: 'NONE',
+    body: '',
+    formParams: [],
+    trustInternalCertificate: 'false',
+    assertions: [
+      { type: 'STATUS', operator: 'RANGE', expected: '200-399', path: '' }
+    ]
+  }
+}
+
+function ensureApiTestConfig(target) {
+  if (!target) return defaultApiTestConfig()
+  target.apiConfig = normalizeApiTestConfig(target)
+  return target.apiConfig
+}
+
+function normalizeApiTestConfig(target = {}) {
+  const raw = parseCronConfig(target.extraParams) || {}
+  const base = defaultApiTestConfig()
+  const config = {
+    ...base,
+    ...raw,
+    auth: {
+      ...base.auth,
+      ...(raw.auth || target.apiConfig?.auth || {})
+    }
+  }
+  if (target.apiConfig) {
+    Object.assign(config, target.apiConfig)
+    config.auth = { ...base.auth, ...(raw.auth || {}), ...(target.apiConfig.auth || {}) }
+  }
+  config.queryParams = normalizeApiNameValueList(config.queryParams)
+  config.headers = normalizeApiNameValueList(config.headers)
+  config.cookies = normalizeApiNameValueList(config.cookies)
+  config.formParams = normalizeApiNameValueList(config.formParams)
+  config.assertions = normalizeApiAssertions(config.assertions)
+  config.bodyType = normalizeApiBodyType(config.bodyType)
+  config.trustInternalCertificate = String(config.trustInternalCertificate === true || config.trustInternalCertificate === 'true')
+  if (target.secret && target.secret !== '{}') {
+    maskApiConfigSecrets(config)
+  }
+  return config
+}
+
+function normalizeApiNameValueList(list) {
+  if (!Array.isArray(list)) return []
+  return list.map((item = {}) => ({
+    key: item.key || item.name || '',
+    value: item.value ?? '',
+    sensitive: Boolean(item.sensitive)
+  }))
+}
+
+function normalizeApiAssertions(list) {
+  const source = Array.isArray(list) && list.length ? list : defaultApiTestConfig().assertions
+  return source.map((item = {}) => ({
+    type: item.type || 'STATUS',
+    path: item.path || item.field || '',
+    operator: item.operator || defaultApiAssertionOperator(item.type || 'STATUS'),
+    expected: item.expected ?? ''
+  }))
+}
+
+function normalizeApiBodyType(value) {
+  const type = String(value || 'NONE').toUpperCase()
+  return ['NONE', 'JSON', 'RAW', 'FORM'].includes(type) ? type : 'NONE'
+}
+
+function maskApiConfigSecrets(config) {
+  const applyList = (list = []) => list.forEach((item) => {
+    if (item.sensitive && !item.value) item.value = '******'
+  })
+  applyList(config.queryParams)
+  applyList(config.headers)
+  applyList(config.cookies)
+  applyList(config.formParams)
+  if (['BEARER', 'API_KEY', 'COOKIE', 'CUSTOM_HEADER'].includes(config.auth.type) && !config.auth.value) config.auth.value = '******'
+  if (config.auth.type === 'BASIC' && !config.auth.password) config.auth.password = '******'
+}
+
+function buildApiTestPayloadConfig(configInput = {}) {
+  const config = normalizeApiTestConfig({ apiConfig: configInput })
+  const secret = {}
+  const compactList = (list = [], prefix) => list
+    .map((item) => {
+      const key = String(item.key || '').trim()
+      if (!key) return null
+      const next = { key, sensitive: Boolean(item.sensitive) }
+      if (next.sensitive) {
+        next.value = item.value ? '******' : ''
+        next.secretKey = `${prefix}.${key}`
+        if (item.value) secret[next.secretKey] = item.value
+      } else {
+        next.value = item.value ?? ''
+      }
+      return next
+    })
+    .filter(Boolean)
+  const auth = {
+    type: config.auth.type || 'NONE',
+    location: config.auth.location || 'HEADER',
+    name: config.auth.name || '',
+    username: config.auth.username || ''
+  }
+  if (['BEARER', 'API_KEY', 'COOKIE', 'CUSTOM_HEADER'].includes(auth.type)) {
+    auth.value = config.auth.value ? '******' : ''
+    auth.secretKey = 'auth.value'
+    if (config.auth.value) secret['auth.value'] = config.auth.value
+  }
+  if (auth.type === 'BASIC') {
+    auth.password = config.auth.password ? '******' : ''
+    auth.secretKey = 'auth.password'
+    if (config.auth.password) secret['auth.password'] = config.auth.password
+  }
+  return {
+    extraParams: {
+      queryParams: compactList(config.queryParams, 'query'),
+      headers: compactList(config.headers, 'header'),
+      cookies: compactList(config.cookies, 'cookie'),
+      auth,
+      bodyType: config.bodyType,
+      body: config.body || '',
+      formParams: compactList(config.formParams, 'form'),
+      trustInternalCertificate: config.trustInternalCertificate === 'true' || config.trustInternalCertificate === true,
+      assertions: normalizeApiAssertions(config.assertions)
+    },
+    secret
+  }
+}
+
+function addApiConfigItem(type) {
+  ensureApiTestConfig(stepDraft.value.target)
+  const map = {
+    queryParams: { key: '', value: '', sensitive: false },
+    headers: { key: '', value: '', sensitive: false },
+    cookies: { key: '', value: '', sensitive: true },
+    formParams: { key: '', value: '', sensitive: false }
+  }
+  stepDraft.value.target.apiConfig[type].push({ ...(map[type] || map.queryParams) })
+}
+
+function removeApiConfigItem(type, index) {
+  ensureApiTestConfig(stepDraft.value.target)
+  stepDraft.value.target.apiConfig[type].splice(index, 1)
+}
+
+function addApiAssertion(assertion = {}) {
+  ensureApiTestConfig(stepDraft.value.target)
+  const type = assertion.type || 'STATUS'
+  stepDraft.value.target.apiConfig.assertions.push({
+    type,
+    path: assertion.path || '',
+    operator: assertion.operator || defaultApiAssertionOperator(type),
+    expected: assertion.expected ?? ''
+  })
+}
+
+function addApiAssertionTemplate(template) {
+  const map = {
+    status2xx: { type: 'STATUS', operator: 'RANGE', expected: '200-399' },
+    totalGte1: { type: 'JSON_NUMBER', path: 'data.total', operator: 'GTE', expected: '1' },
+    messageSuccess: { type: 'JSON_STRING', path: 'data.message', operator: 'EQ', expected: 'success' },
+    containsOk: { type: 'BODY_TEXT', operator: 'CONTAINS', expected: 'ok' },
+    latency3000: { type: 'LATENCY', operator: 'LTE', expected: '3000' }
+  }
+  addApiAssertion(map[template] || map.status2xx)
+}
+
+function removeApiAssertion(index) {
+  ensureApiTestConfig(stepDraft.value.target)
+  stepDraft.value.target.apiConfig.assertions.splice(index, 1)
+}
+
+function onApiAssertionTypeChange(item) {
+  item.operator = defaultApiAssertionOperator(item.type)
+  item.path = apiAssertionNeedsPath(item.type) ? item.path : ''
+  item.expected = apiAssertionNeedsExpected(item.operator) ? item.expected : ''
+}
+
+function defaultApiAssertionOperator(type) {
+  if (type === 'STATUS') return 'RANGE'
+  if (type === 'LATENCY') return 'LTE'
+  if (type === 'JSON_EXISTS') return 'EXISTS'
+  if (['BODY_TEXT', 'HEADER'].includes(type)) return 'CONTAINS'
+  return 'EQ'
+}
+
+function getApiAssertionOperators(type) {
+  if (['STATUS', 'LATENCY', 'JSON_NUMBER', 'ARRAY_LENGTH'].includes(type)) {
+    return [
+      { label: '等于', value: 'EQ' },
+      { label: '大于等于', value: 'GTE' },
+      { label: '小于等于', value: 'LTE' },
+      { label: '大于', value: 'GT' },
+      { label: '小于', value: 'LT' },
+      { label: '范围', value: 'RANGE' },
+      { label: '包含于列表', value: 'IN' }
+    ]
+  }
+  if (type === 'JSON_EXISTS') {
+    return [
+      { label: '存在', value: 'EXISTS' },
+      { label: '不存在', value: 'NOT_EXISTS' },
+      { label: '为空', value: 'EMPTY' },
+      { label: '非空', value: 'NOT_EMPTY' }
+    ]
+  }
+  if (['BODY_TEXT', 'HEADER'].includes(type)) {
+    return [
+      { label: '包含', value: 'CONTAINS' },
+      { label: '不包含', value: 'NOT_CONTAINS' },
+      { label: '等于', value: 'EQ' },
+      { label: '正则匹配', value: 'REGEX' },
+      { label: '存在', value: 'EXISTS' },
+      { label: '不存在', value: 'NOT_EXISTS' }
+    ]
+  }
+  return [
+    { label: '等于', value: 'EQ' },
+    { label: '不等于', value: 'NE' },
+    { label: '包含', value: 'CONTAINS' },
+    { label: '不包含', value: 'NOT_CONTAINS' },
+    { label: '正则匹配', value: 'REGEX' },
+    { label: '为空', value: 'EMPTY' },
+    { label: '非空', value: 'NOT_EMPTY' }
+  ]
+}
+
+function apiAssertionNeedsPath(type) {
+  return ['JSON_NUMBER', 'JSON_STRING', 'JSON_BOOLEAN', 'JSON_EXISTS', 'JSON_PATH', 'ARRAY_LENGTH', 'HEADER'].includes(type)
+}
+
+function apiAssertionNeedsExpected(operator) {
+  return !['EXISTS', 'NOT_EXISTS', 'EMPTY', 'NOT_EMPTY'].includes(operator)
+}
+
+async function handleRevealApiTestSecret(target) {
+  if (!target?.targetId) return
+  apiSecretRevealLoading.value = true
+  try {
+    const res = await viewAutoInspectionTargetPlain(target.targetId)
+    const secretText = res.secret || res.data?.secret || ''
+    const secretMap = parseCronConfig(secretText) || {}
+    fillApiConfigSecretValues(target.apiConfig, secretMap)
+    proxy.$modal.msgSuccess('已显示当前目标保存的敏感值')
+  } catch (error) {
+    proxy.$modal.msgWarning(error?.msg || error?.message || '读取敏感值失败，请确认权限后重试')
+  } finally {
+    apiSecretRevealLoading.value = false
+  }
+}
+
+function fillApiConfigSecretValues(config, secretMap = {}) {
+  const applyList = (list = [], prefix) => list.forEach((item) => {
+    const value = secretMap[`${prefix}.${item.key}`]
+    if (value) item.value = value
+  })
+  applyList(config.queryParams, 'query')
+  applyList(config.headers, 'header')
+  applyList(config.cookies, 'cookie')
+  applyList(config.formParams, 'form')
+  if (secretMap['auth.value']) config.auth.value = secretMap['auth.value']
+  if (secretMap['auth.password']) config.auth.password = secretMap['auth.password']
+}
+
+function validateApiTestConfig(target) {
+  const config = ensureApiTestConfig(target)
+  if (!['GET', 'POST'].includes(target.httpMethod)) return '接口调用测试仅支持 GET 或 POST'
+  if (config.auth.type === 'BEARER' && !String(config.auth.value || '').trim()) return '请填写 Bearer Token'
+  if (config.auth.type === 'BASIC') {
+    if (!String(config.auth.username || '').trim()) return '请填写 Basic 账号'
+    if (!String(config.auth.password || '').trim()) return '请填写 Basic 密码'
+  }
+  if (['API_KEY', 'COOKIE', 'CUSTOM_HEADER'].includes(config.auth.type)) {
+    if (!String(config.auth.name || '').trim()) return '请填写鉴权参数名'
+    if (!String(config.auth.value || '').trim()) return '请填写鉴权值'
+  }
+  const assertions = normalizeApiAssertions(config.assertions)
+  if (!assertions.length) return '请至少配置一条结果断言'
+  for (let index = 0; index < assertions.length; index++) {
+    const assertion = assertions[index]
+    if (apiAssertionNeedsPath(assertion.type) && !String(assertion.path || '').trim()) return `断言 ${index + 1}：请填写字段路径或 Header 名称`
+    if (apiAssertionNeedsExpected(assertion.operator) && !String(assertion.expected || '').trim()) return `断言 ${index + 1}：请填写期望值`
+  }
+  return ''
 }
 
 function submitTemplate() {
@@ -3788,7 +4335,7 @@ function compatibleTargets(step) {
   const tool = toolList.value.find((item) => item.toolCode === step.toolCode)
   if (!tool) return targetOptions.value
   if (tool.toolType === 'KAFKA_LAG') return targetOptions.value.filter((item) => item.targetType === 'KAFKA')
-  if (['HTTP_COUNT', TOOL_HTTP_HEALTH].includes(tool.toolType)) return targetOptions.value.filter((item) => item.targetType === 'HTTP')
+  if (['HTTP_COUNT', TOOL_HTTP_HEALTH, TOOL_HTTP_API_TEST].includes(tool.toolType)) return targetOptions.value.filter((item) => item.targetType === 'HTTP')
   if (tool.toolType === 'FTP_FILE_COUNT') return targetOptions.value.filter((item) => item.targetType === 'FTP')
   if (['SERVER_FILE_COUNT', 'SERVER_DISK', TOOL_TCP_PORT_CHECK, TOOL_SERVER_SERVICE_STATUS].includes(tool.toolType)) return targetOptions.value.filter((item) => item.targetType === 'SERVER')
   if (tool.toolType === 'BIG_DATA_SERVER_DISK') return targetOptions.value.filter((item) => item.targetType === 'BIG_DATA_SERVER')
@@ -3867,7 +4414,7 @@ function normalizeStepFromServer(step) {
 }
 
 function defaultTargetForm() {
-  return { targetName: '', targetType: 'KAFKA', serverId: undefined, host: '', port: undefined, path: '', url: '', httpMethod: 'POST', topic: '', consumerGroup: '', username: '', password: '', appKey: '', secret: '', resultPath: 'data.total', extraParams: '', status: '0', remark: '' }
+  return { targetName: '', targetType: 'KAFKA', serverId: undefined, host: '', port: undefined, path: '', url: '', httpMethod: 'POST', topic: '', consumerGroup: '', username: '', password: '', appKey: '', secret: '', resultPath: 'data.total', extraParams: '', apiConfig: defaultApiTestConfig(), status: '0', remark: '' }
 }
 
 function defaultTemplateForm() {
@@ -3949,6 +4496,18 @@ function getTargetTypeLabel(value) {
   return targetTypeOptions.find((item) => item.value === value)?.label || value || '-'
 }
 
+function labelApiAuthType(value) {
+  const map = {
+    NONE: '无鉴权',
+    BEARER: 'Bearer Token',
+    BASIC: 'Basic Auth',
+    API_KEY: 'API Key',
+    COOKIE: 'Cookie',
+    CUSTOM_HEADER: '自定义Header'
+  }
+  return map[value] || value || '无鉴权'
+}
+
 function labelPrivilegeMode(value) {
   if (value === 'NONE') return '不提权'
   if (value === 'SU') return 'su 切换'
@@ -3971,7 +4530,7 @@ function getToolGuide(toolCode) {
 
 function getToolCategory(toolCode) {
   if (toolCode === 'KAFKA_LAG') return '消息队列'
-  if (['HTTP_COUNT', TOOL_HTTP_HEALTH].includes(toolCode)) return 'HTTP接口'
+  if (['HTTP_COUNT', TOOL_HTTP_HEALTH, TOOL_HTTP_API_TEST].includes(toolCode)) return 'HTTP接口'
   if (toolCode === 'FTP_FILE_COUNT') return '文件目录'
   if (['SERVER_FILE_COUNT', 'SERVER_DISK', 'BIG_DATA_SERVER_DISK', TOOL_SERVER_SERVICE_STATUS].includes(toolCode)) return '服务器'
   if (toolCode === TOOL_TCP_PORT_CHECK) return '网络端口'
@@ -3984,7 +4543,7 @@ function getToolTreeCategory(toolCode) {
 
 function getToolTagType(toolCode) {
   if (toolCode === 'KAFKA_LAG') return 'warning'
-  if (['HTTP_COUNT', TOOL_HTTP_HEALTH].includes(toolCode)) return 'success'
+  if (['HTTP_COUNT', TOOL_HTTP_HEALTH, TOOL_HTTP_API_TEST].includes(toolCode)) return 'success'
   if (toolCode === 'FTP_FILE_COUNT') return 'info'
   if (['SERVER_FILE_COUNT', 'SERVER_DISK', 'BIG_DATA_SERVER_DISK', TOOL_SERVER_SERVICE_STATUS].includes(toolCode)) return 'primary'
   if (toolCode === TOOL_TCP_PORT_CHECK) return 'danger'
@@ -4095,6 +4654,13 @@ function getStepDetailItems(step) {
     items.push({ label: '请求方法', value: target.httpMethod || (step.toolCode === TOOL_HTTP_HEALTH ? 'GET' : 'POST') })
     if (step.toolCode === TOOL_HTTP_HEALTH) {
       items.push({ label: '接口URL', value: target.url || '-' }, { label: '期望状态', value: target.extraParams || '200-399' })
+    } else if (step.toolCode === TOOL_HTTP_API_TEST) {
+      const config = normalizeApiTestConfig(target)
+      items.push(
+        { label: '接口URL', value: target.url || '-' },
+        { label: '鉴权方式', value: labelApiAuthType(config.auth?.type) },
+        { label: '断言数量', value: `${config.assertions.length} 条` }
+      )
     } else {
       items.push({ label: '结果路径', value: target.resultPath || '-' })
     }
@@ -4168,6 +4734,7 @@ function isServiceStatusResult(row) {
 
 function formatStepThreshold(row) {
   if (isServiceStatusResult(row)) return '期望 active (running)，非 active 告警'
+  if (row?.toolCode === TOOL_HTTP_API_TEST || row?.toolType === TOOL_HTTP_API_TEST) return '多断言全部通过，任一失败告警'
   if (!row) return '-'
   if (row.thresholdValue === undefined || row.thresholdValue === null || row.thresholdValue === '') return '-'
   return `${row.compareRule === 'MIN' ? '不低于' : '不高于'} ${row.thresholdValue}${row.thresholdUnit || ''}`
@@ -6095,6 +6662,145 @@ function resultTagType(value) {
   }
 }
 
+.api-test-config {
+  display: grid;
+  gap: 14px;
+}
+
+.api-test-section {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dfeaf6;
+  border-radius: 8px;
+  background: #fbfdff;
+
+  > header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    strong {
+      color: #1d3554;
+      font-size: 15px;
+    }
+
+    span {
+      color: #6f849c;
+      font-size: 12px;
+    }
+  }
+
+  :deep(.el-form-item) {
+    margin-bottom: 0;
+  }
+}
+
+.api-variable-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px dashed #cfe0f3;
+  border-radius: 8px;
+  background: #fff;
+
+  span {
+    color: #5b7390;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  button {
+    display: inline-grid;
+    gap: 2px;
+    min-width: 104px;
+    padding: 5px 8px;
+    border: 1px solid #dce8f6;
+    border-radius: 6px;
+    background: #fff;
+    color: #2167b2;
+    cursor: pointer;
+    text-align: left;
+
+    &:hover {
+      border-color: #409eff;
+      background: #f2f8ff;
+    }
+
+    strong {
+      font-size: 12px;
+    }
+
+    em {
+      color: #7a8fa6;
+      font-size: 11px;
+      font-style: normal;
+    }
+  }
+
+  &--inline {
+    min-height: 32px;
+    padding: 3px 0;
+    border: 0;
+    background: transparent;
+
+    button {
+      min-width: auto;
+      padding: 4px 7px;
+    }
+  }
+}
+
+.api-config-list {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e5eef8;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.api-config-list__head,
+.assertion-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  strong {
+    margin-right: auto;
+    color: #1d3554;
+  }
+}
+
+.api-config-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.8fr) minmax(180px, 1.4fr) 70px 34px;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.api-assertion-list {
+  display: grid;
+  gap: 8px;
+}
+
+.api-assertion-row {
+  display: grid;
+  grid-template-columns: 150px minmax(150px, 1fr) 136px minmax(150px, 1fr) 34px;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 8px;
+  border: 1px solid #e5eef8;
+  border-radius: 8px;
+  background: #fff;
+}
+
 .field-hint {
   display: block;
   margin-top: 6px;
@@ -6913,6 +7619,8 @@ function resultTagType(value) {
   }
 
   .step-rule-grid,
+  .api-config-row,
+  .api-assertion-row,
   .server-file-options,
   .step-detail-lines {
     grid-template-columns: 1fr;

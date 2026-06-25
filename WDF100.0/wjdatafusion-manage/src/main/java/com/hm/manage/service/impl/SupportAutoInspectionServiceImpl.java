@@ -13,6 +13,7 @@ import java.net.Proxy;
 import java.net.Socket;
 import java.net.URI;
 import java.net.UnknownHostException;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -27,6 +28,7 @@ import java.time.ZoneId;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
@@ -35,6 +37,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
@@ -70,6 +73,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import com.hm.common.exception.ServiceException;
 import com.hm.common.utils.DateUtils;
@@ -117,6 +121,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final String TOOL_KAFKA_LAG = "KAFKA_LAG";
     private static final String TOOL_HTTP_COUNT = "HTTP_COUNT";
     private static final String TOOL_HTTP_HEALTH = "HTTP_HEALTH";
+    private static final String TOOL_HTTP_API_TEST = "HTTP_API_TEST";
     private static final String TOOL_FTP_FILE_COUNT = "FTP_FILE_COUNT";
     private static final String TOOL_SERVER_FILE_COUNT = "SERVER_FILE_COUNT";
     private static final String TOOL_SERVER_DISK = "SERVER_DISK";
@@ -328,6 +333,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     {
         normalizeTarget(target, true);
         Map<String, Object> original = requireTarget(toLong(target.get("targetId")));
+        mergeStructuredSecretBeforeUpdate(target, original);
         encryptTargetSecret(target);
         if (StringUtils.isBlank(str(target, "passwordCipher")))
         {
@@ -1697,6 +1703,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 case TOOL_HTTP_HEALTH:
                     result = checkHttpHealth(step, target);
                     break;
+                case TOOL_HTTP_API_TEST:
+                    result = checkHttpApiTest(step, target);
+                    break;
                 case TOOL_TCP_PORT_CHECK:
                     result = checkTcpPort(step, target);
                     break;
@@ -1706,7 +1715,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 default:
                     throw new ServiceException("不支持的巡检工具类型：" + str(tool, "toolType"));
             }
-            if (thresholdEnabled)
+            if (thresholdEnabled && !TOOL_HTTP_API_TEST.equals(str(step, "toolCode")))
             {
                 applyThreshold(step, tool, result);
             }
@@ -1944,6 +1953,72 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             TargetCheckResult result = TargetCheckResult.abnormal(target, latency, "ms", detail);
             result.errorMessage = "HTTP状态码异常：" + statusCode + "，期望：" + expected;
+            return result;
+        }
+        return TargetCheckResult.normal(target, latency, "ms", detail);
+    }
+
+    private TargetCheckResult checkHttpApiTest(Map<String, Object> step, Map<String, Object> target) throws Exception
+    {
+        requireText(str(target, "url"), "HTTP目标URL不能为空");
+        int timeout = resolveTimeout(step);
+        LocalDateTime end = LocalDateTime.now();
+        LocalDateTime begin = end.minusMinutes(toInt(step.get("timeWindowMinutes"), 0));
+        Map<String, Object> options = parseExtraParamsMap(target);
+        Map<String, Object> secretBucket = parseSecretBucket(str(target, "secret"));
+        String method = StringUtils.defaultIfBlank(str(target, "httpMethod"), "GET").toUpperCase(Locale.ROOT);
+        if (!"GET".equals(method) && !"POST".equals(method))
+        {
+            throw new ServiceException("接口调用测试仅支持GET和POST请求");
+        }
+
+        Map<String, String> queryParams = buildApiTestQueryParams(options, secretBucket, begin, end);
+        Map<String, String> headers = buildApiTestHeaders(options, secretBucket, begin, end);
+        String url = appendQueryParams(replaceTimePlaceholders(str(target, "url"), begin, end), queryParams);
+        String body = buildApiTestBody(options, secretBucket, headers, begin, end);
+
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url))
+                .timeout(Duration.ofSeconds(timeout));
+        headers.forEach(builder::header);
+        if ("POST".equals(method))
+        {
+            builder.POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
+        }
+        else
+        {
+            builder.GET();
+        }
+
+        long start = System.nanoTime();
+        boolean trustInternalCertificate = toBoolean(options.get("trustInternalCertificate"), false);
+        HttpResponse<String> response;
+        try
+        {
+            response = buildHttpClient(timeout, trustInternalCertificate).send(builder.build(),
+                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        }
+        catch (Exception e)
+        {
+            if (isSslCertificateException(e) && !trustInternalCertificate)
+            {
+                throw new ServiceException("HTTPS证书校验失败，如为内网自签名证书请开启“信任内网证书”");
+            }
+            throw e;
+        }
+        BigDecimal latency = new BigDecimal(Duration.ofNanos(System.nanoTime() - start).toMillis());
+        String responseBody = StringUtils.defaultString(response.body());
+        ApiAssertionSummary assertionSummary = evaluateApiAssertions(options, response, responseBody, latency);
+        String maskedUrl = maskSensitiveText(url, secretBucket);
+        String detail = "调用方式：接口调用测试 " + method
+                + "；接口地址：" + maskedUrl
+                + "；状态码：" + response.statusCode()
+                + "；响应耗时：" + formatDecimal(latency) + "ms"
+                + "；断言：" + assertionSummary.passedCount + "/" + assertionSummary.totalCount + "通过"
+                + "；响应预览：" + maskSensitiveText(abbreviate(responseBody), secretBucket);
+        if (!assertionSummary.failures.isEmpty())
+        {
+            TargetCheckResult result = TargetCheckResult.abnormal(target, latency, "ms", detail);
+            result.errorMessage = "断言失败：" + StringUtils.join(assertionSummary.failures, "；");
             return result;
         }
         return TargetCheckResult.normal(target, latency, "ms", detail);
@@ -2329,6 +2404,663 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return params;
     }
 
+    private Map<String, String> buildApiTestQueryParams(Map<String, Object> options, Map<String, Object> secrets,
+                                                        LocalDateTime begin, LocalDateTime end)
+    {
+        Map<String, String> params = new LinkedHashMap<>();
+        for (Map<String, Object> item : readNameValueItems(options.get("queryParams")))
+        {
+            String key = str(item, "key");
+            if (StringUtils.isBlank(key))
+            {
+                continue;
+            }
+            params.put(key, replaceTimePlaceholders(resolveConfiguredValue(item, secrets, "query." + key), begin, end));
+        }
+        Map<String, Object> auth = castMap(options.get("auth"));
+        if ("API_KEY".equals(normalizeApiAuthType(str(auth, "type"))) && "QUERY".equals(normalizeApiKeyLocation(str(auth, "location"))))
+        {
+            String name = StringUtils.defaultIfBlank(str(auth, "name"), str(auth, "key"));
+            requireText(name, "API Key参数名不能为空");
+            params.put(name, replaceTimePlaceholders(resolveConfiguredValue(auth, secrets, "auth.value"), begin, end));
+        }
+        return params;
+    }
+
+    private Map<String, String> buildApiTestHeaders(Map<String, Object> options, Map<String, Object> secrets,
+                                                    LocalDateTime begin, LocalDateTime end)
+    {
+        Map<String, String> headers = new LinkedHashMap<>();
+        headers.put("Accept", "*/*");
+        for (Map<String, Object> item : readNameValueItems(options.get("headers")))
+        {
+            String key = str(item, "key");
+            if (StringUtils.isBlank(key))
+            {
+                continue;
+            }
+            headers.put(key, replaceTimePlaceholders(resolveConfiguredValue(item, secrets, "header." + key), begin, end));
+        }
+
+        Map<String, Object> auth = castMap(options.get("auth"));
+        String authType = normalizeApiAuthType(str(auth, "type"));
+        if ("BEARER".equals(authType))
+        {
+            String token = resolveConfiguredValue(auth, secrets, "auth.value");
+            requireText(token, "Bearer Token不能为空");
+            headers.put("Authorization", "Bearer " + replaceTimePlaceholders(token, begin, end));
+        }
+        else if ("BASIC".equals(authType))
+        {
+            String username = str(auth, "username");
+            String password = resolveConfiguredValue(auth, secrets, "auth.password");
+            requireText(username, "Basic账号不能为空");
+            requireText(password, "Basic密码不能为空");
+            String basic = Base64.getEncoder().encodeToString((username + ":" + password).getBytes(StandardCharsets.UTF_8));
+            headers.put("Authorization", "Basic " + basic);
+        }
+        else if ("API_KEY".equals(authType) && "HEADER".equals(normalizeApiKeyLocation(str(auth, "location"))))
+        {
+            String name = StringUtils.defaultIfBlank(str(auth, "name"), str(auth, "key"));
+            requireText(name, "API Key Header名称不能为空");
+            headers.put(name, replaceTimePlaceholders(resolveConfiguredValue(auth, secrets, "auth.value"), begin, end));
+        }
+
+        List<String> cookiePairs = new ArrayList<>();
+        for (Map<String, Object> item : readNameValueItems(options.get("cookies")))
+        {
+            String key = str(item, "key");
+            if (StringUtils.isBlank(key))
+            {
+                continue;
+            }
+            cookiePairs.add(key + "=" + replaceTimePlaceholders(resolveConfiguredValue(item, secrets, "cookie." + key), begin, end));
+        }
+        if ("COOKIE".equals(authType))
+        {
+            String name = StringUtils.defaultIfBlank(str(auth, "name"), str(auth, "key"));
+            requireText(name, "Cookie名称不能为空");
+            cookiePairs.add(name + "=" + replaceTimePlaceholders(resolveConfiguredValue(auth, secrets, "auth.value"), begin, end));
+        }
+        else if ("API_KEY".equals(authType) && "COOKIE".equals(normalizeApiKeyLocation(str(auth, "location"))))
+        {
+            String name = StringUtils.defaultIfBlank(str(auth, "name"), str(auth, "key"));
+            requireText(name, "API Key Cookie名称不能为空");
+            cookiePairs.add(name + "=" + replaceTimePlaceholders(resolveConfiguredValue(auth, secrets, "auth.value"), begin, end));
+        }
+        if (!cookiePairs.isEmpty())
+        {
+            headers.put("Cookie", StringUtils.join(cookiePairs, "; "));
+        }
+        return headers;
+    }
+
+    private String buildApiTestBody(Map<String, Object> options, Map<String, Object> secrets, Map<String, String> headers,
+                                    LocalDateTime begin, LocalDateTime end)
+    {
+        String bodyType = StringUtils.defaultIfBlank(str(options, "bodyType"), "NONE").toUpperCase(Locale.ROOT);
+        if ("NONE".equals(bodyType))
+        {
+            return StringUtils.EMPTY;
+        }
+        if ("FORM".equals(bodyType) || "FORM_URLENCODED".equals(bodyType))
+        {
+            headers.putIfAbsent("Content-Type", "application/x-www-form-urlencoded");
+            List<String> pairs = new ArrayList<>();
+            for (Map<String, Object> item : readNameValueItems(options.get("formParams")))
+            {
+                String key = str(item, "key");
+                if (StringUtils.isBlank(key))
+                {
+                    continue;
+                }
+                String value = replaceTimePlaceholders(resolveConfiguredValue(item, secrets, "form." + key), begin, end);
+                pairs.add(urlEncode(key) + "=" + urlEncode(value));
+            }
+            if (!pairs.isEmpty())
+            {
+                return StringUtils.join(pairs, "&");
+            }
+        }
+        if ("JSON".equals(bodyType))
+        {
+            headers.putIfAbsent("Content-Type", "application/json");
+        }
+        else if ("RAW".equals(bodyType) || "TEXT".equals(bodyType))
+        {
+            headers.putIfAbsent("Content-Type", "text/plain; charset=utf-8");
+        }
+        return replaceTimePlaceholders(StringUtils.defaultString(str(options, "body")), begin, end);
+    }
+
+    private List<Map<String, Object>> readNameValueItems(Object value)
+    {
+        if (value instanceof Map)
+        {
+            List<Map<String, Object>> items = new ArrayList<>();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> map = (Map<String, Object>) value;
+            map.forEach((key, itemValue) ->
+            {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("key", key);
+                item.put("value", itemValue);
+                items.add(item);
+            });
+            return items;
+        }
+        return castList(value);
+    }
+
+    private String resolveConfiguredValue(Map<String, Object> item, Map<String, Object> secrets, String defaultSecretKey)
+    {
+        String value = str(item, "value");
+        if (StringUtils.isNotBlank(value) && !"******".equals(value))
+        {
+            return value;
+        }
+        String secretKey = StringUtils.defaultIfBlank(str(item, "secretKey"), defaultSecretKey);
+        String secretValue = secretValue(secrets, secretKey);
+        if (StringUtils.isNotBlank(secretValue))
+        {
+            return secretValue;
+        }
+        return StringUtils.EMPTY;
+    }
+
+    private String normalizeApiAuthType(String value)
+    {
+        String type = StringUtils.defaultIfBlank(value, "NONE").trim().toUpperCase(Locale.ROOT);
+        if ("TOKEN".equals(type))
+        {
+            return "BEARER";
+        }
+        if ("CUSTOM_HEADER".equals(type))
+        {
+            return "API_KEY";
+        }
+        if ("NO_AUTH".equals(type) || "NONE".equals(type) || "BEARER".equals(type) || "BASIC".equals(type)
+                || "API_KEY".equals(type) || "COOKIE".equals(type))
+        {
+            return type;
+        }
+        return "NONE";
+    }
+
+    private String normalizeApiKeyLocation(String value)
+    {
+        String location = StringUtils.defaultIfBlank(value, "HEADER").trim().toUpperCase(Locale.ROOT);
+        if ("QUERY".equals(location) || "COOKIE".equals(location))
+        {
+            return location;
+        }
+        return "HEADER";
+    }
+
+    private String appendQueryParams(String url, Map<String, String> params)
+    {
+        if (params == null || params.isEmpty())
+        {
+            return url;
+        }
+        StringBuilder builder = new StringBuilder(url);
+        builder.append(url.contains("?") ? (url.endsWith("?") || url.endsWith("&") ? "" : "&") : "?");
+        List<String> pairs = new ArrayList<>();
+        params.forEach((key, value) -> pairs.add(urlEncode(key) + "=" + urlEncode(value)));
+        builder.append(StringUtils.join(pairs, "&"));
+        return builder.toString();
+    }
+
+    private String urlEncode(String value)
+    {
+        return URLEncoder.encode(StringUtils.defaultString(value), StandardCharsets.UTF_8);
+    }
+
+    private ApiAssertionSummary evaluateApiAssertions(Map<String, Object> options, HttpResponse<String> response,
+                                                      String responseBody, BigDecimal latency)
+    {
+        List<Map<String, Object>> assertions = castList(options.get("assertions"));
+        if (assertions.isEmpty())
+        {
+            Map<String, Object> statusAssertion = new LinkedHashMap<>();
+            statusAssertion.put("type", "STATUS");
+            statusAssertion.put("operator", "RANGE");
+            statusAssertion.put("expected", "200-399");
+            assertions = Collections.singletonList(statusAssertion);
+        }
+        Object jsonRoot = parseJsonRoot(responseBody);
+        ApiAssertionSummary summary = new ApiAssertionSummary(assertions.size());
+        for (Map<String, Object> assertion : assertions)
+        {
+            String failure = evaluateApiAssertion(assertion, response, responseBody, jsonRoot, latency);
+            if (StringUtils.isBlank(failure))
+            {
+                summary.passedCount++;
+            }
+            else
+            {
+                summary.failures.add(failure);
+            }
+        }
+        return summary;
+    }
+
+    private String evaluateApiAssertion(Map<String, Object> assertion, HttpResponse<String> response, String responseBody,
+                                        Object jsonRoot, BigDecimal latency)
+    {
+        String type = normalizeAssertionType(str(assertion, "type"));
+        String operator = normalizeAssertionOperator(str(assertion, "operator"));
+        String expected = str(assertion, "expected");
+        String path = StringUtils.defaultIfBlank(str(assertion, "path"), str(assertion, "field"));
+        switch (type)
+        {
+            case "STATUS":
+                return assertNumber(new BigDecimal(response.statusCode()), operator, expected, "HTTP状态码");
+            case "LATENCY":
+                return assertNumber(latency, operator, expected, "响应耗时ms");
+            case "JSON_NUMBER":
+                return assertJsonNumber(jsonRoot, path, operator, expected);
+            case "JSON_STRING":
+                return assertString(stringValue(findJsonPathValue(jsonRoot, path)), operator, expected, "JSON字段 " + path);
+            case "JSON_BOOLEAN":
+                return assertString(String.valueOf(findJsonPathValue(jsonRoot, path)), operator, expected, "JSON布尔字段 " + path);
+            case "JSON_EXISTS":
+                return assertPresence(findJsonPathValue(jsonRoot, path), operator, "JSON字段 " + path);
+            case "ARRAY_LENGTH":
+                Object value = findJsonPathValue(jsonRoot, path);
+                int length = value instanceof JSONArray ? ((JSONArray) value).size()
+                        : value instanceof List ? ((List<?>) value).size() : -1;
+                if (length < 0)
+                {
+                    return "JSON数组 " + path + " 不存在或不是数组";
+                }
+                return assertNumber(new BigDecimal(length), operator, expected, "JSON数组长度 " + path);
+            case "BODY_TEXT":
+                return assertString(responseBody, operator, expected, "响应文本");
+            case "BODY_REGEX":
+                return assertString(responseBody, "REGEX", expected, "响应文本");
+            case "HEADER":
+                String header = response.headers().firstValue(path).orElse(null);
+                if ("EXISTS".equals(operator) || "NOT_EXISTS".equals(operator))
+                {
+                    return assertPresence(header, operator, "响应Header " + path);
+                }
+                return assertString(header, operator, expected, "响应Header " + path);
+            default:
+                return "不支持的断言类型：" + str(assertion, "type");
+        }
+    }
+
+    private String assertJsonNumber(Object jsonRoot, String path, String operator, String expected)
+    {
+        Object value = findJsonPathValue(jsonRoot, path);
+        if (value == null)
+        {
+            return "JSON字段 " + path + " 不存在";
+        }
+        try
+        {
+            return assertNumber(new BigDecimal(value.toString()), operator, expected, "JSON字段 " + path);
+        }
+        catch (NumberFormatException e)
+        {
+            return "JSON字段 " + path + " 不是数字：" + value;
+        }
+    }
+
+    private String assertNumber(BigDecimal actual, String operator, String expected, String label)
+    {
+        if ("RANGE".equals(operator))
+        {
+            String[] parts = StringUtils.defaultString(expected).split("[-~至,，]");
+            if (parts.length < 2)
+            {
+                return label + "范围配置无效：" + expected;
+            }
+            BigDecimal min = new BigDecimal(parts[0].trim());
+            BigDecimal max = new BigDecimal(parts[1].trim());
+            return actual.compareTo(min) >= 0 && actual.compareTo(max) <= 0 ? ""
+                    : label + "为" + formatDecimal(actual) + "，不在范围" + expected + "内";
+        }
+        if ("IN".equals(operator))
+        {
+            for (String item : StringUtils.defaultString(expected).split("[,，\\s]+"))
+            {
+                if (StringUtils.isNotBlank(item) && actual.compareTo(new BigDecimal(item.trim())) == 0)
+                {
+                    return "";
+                }
+            }
+            return label + "为" + formatDecimal(actual) + "，不在期望列表" + expected + "中";
+        }
+        BigDecimal threshold = new BigDecimal(StringUtils.defaultIfBlank(expected, "0"));
+        int compared = actual.compareTo(threshold);
+        boolean pass;
+        switch (operator)
+        {
+            case "GT":
+                pass = compared > 0;
+                break;
+            case "GTE":
+                pass = compared >= 0;
+                break;
+            case "LT":
+                pass = compared < 0;
+                break;
+            case "LTE":
+                pass = compared <= 0;
+                break;
+            case "NE":
+                pass = compared != 0;
+                break;
+            case "EQ":
+            default:
+                pass = compared == 0;
+                break;
+        }
+        return pass ? "" : label + "为" + formatDecimal(actual) + "，不满足" + labelOperator(operator) + expected;
+    }
+
+    private String assertString(String actual, String operator, String expected, String label)
+    {
+        String actualValue = StringUtils.defaultString(actual);
+        String expectedValue = StringUtils.defaultString(expected);
+        boolean pass;
+        switch (operator)
+        {
+            case "NE":
+                pass = !actualValue.equals(expectedValue);
+                break;
+            case "CONTAINS":
+                pass = actualValue.contains(expectedValue);
+                break;
+            case "NOT_CONTAINS":
+                pass = !actualValue.contains(expectedValue);
+                break;
+            case "REGEX":
+                pass = actualValue.matches(expectedValue);
+                break;
+            case "EMPTY":
+                pass = StringUtils.isBlank(actualValue);
+                break;
+            case "NOT_EMPTY":
+                pass = StringUtils.isNotBlank(actualValue);
+                break;
+            case "EQ":
+            default:
+                pass = actualValue.equals(expectedValue);
+                break;
+        }
+        return pass ? "" : label + "为“" + StringUtils.abbreviate(actualValue, 200) + "”，不满足" + labelOperator(operator) + "“" + expectedValue + "”";
+    }
+
+    private String assertPresence(Object actual, String operator, String label)
+    {
+        boolean exists = actual != null;
+        if ("NOT_EXISTS".equals(operator))
+        {
+            return !exists ? "" : label + "不应存在";
+        }
+        if ("EMPTY".equals(operator))
+        {
+            return actual == null || StringUtils.isBlank(actual.toString()) ? "" : label + "应为空";
+        }
+        if ("NOT_EMPTY".equals(operator))
+        {
+            return actual != null && StringUtils.isNotBlank(actual.toString()) ? "" : label + "不能为空";
+        }
+        return exists ? "" : label + "不存在";
+    }
+
+    private String normalizeAssertionType(String value)
+    {
+        String type = StringUtils.defaultIfBlank(value, "STATUS").trim().toUpperCase(Locale.ROOT);
+        if ("JSON".equals(type))
+        {
+            return "JSON_STRING";
+        }
+        if ("TEXT".equals(type))
+        {
+            return "BODY_TEXT";
+        }
+        return type;
+    }
+
+    private String normalizeAssertionOperator(String value)
+    {
+        String operator = StringUtils.defaultIfBlank(value, "EQ").trim().toUpperCase(Locale.ROOT);
+        switch (operator)
+        {
+            case "==":
+            case "=":
+                return "EQ";
+            case "!=":
+            case "<>":
+                return "NE";
+            case ">":
+                return "GT";
+            case ">=":
+                return "GTE";
+            case "<":
+                return "LT";
+            case "<=":
+                return "LTE";
+            case "BETWEEN":
+                return "RANGE";
+            case "MATCHES":
+                return "REGEX";
+            default:
+                return operator;
+        }
+    }
+
+    private String labelOperator(String operator)
+    {
+        switch (operator)
+        {
+            case "GT":
+                return "大于";
+            case "GTE":
+                return "大于等于";
+            case "LT":
+                return "小于";
+            case "LTE":
+                return "小于等于";
+            case "NE":
+                return "不等于";
+            case "CONTAINS":
+                return "包含";
+            case "NOT_CONTAINS":
+                return "不包含";
+            case "REGEX":
+                return "正则匹配";
+            case "IN":
+                return "属于";
+            case "EQ":
+            default:
+                return "等于";
+        }
+    }
+
+    private Object parseJsonRoot(String responseBody)
+    {
+        if (StringUtils.isBlank(responseBody))
+        {
+            return null;
+        }
+        String text = responseBody.trim();
+        if (!text.startsWith("{") && !text.startsWith("["))
+        {
+            return null;
+        }
+        try
+        {
+            return JSON.parse(text);
+        }
+        catch (Exception ignored)
+        {
+            return null;
+        }
+    }
+
+    private Object findJsonPathValue(Object root, String path)
+    {
+        if (root == null || StringUtils.isBlank(path))
+        {
+            return null;
+        }
+        Object current = root;
+        for (String rawSegment : path.split("\\."))
+        {
+            if (StringUtils.isBlank(rawSegment))
+            {
+                continue;
+            }
+            current = resolveJsonSegment(current, rawSegment);
+            if (current == null)
+            {
+                return null;
+            }
+        }
+        return current;
+    }
+
+    private Object resolveJsonSegment(Object current, String rawSegment)
+    {
+        String segment = rawSegment;
+        while (StringUtils.isNotBlank(segment))
+        {
+            int bracketIndex = segment.indexOf('[');
+            String key = bracketIndex >= 0 ? segment.substring(0, bracketIndex) : segment;
+            if (StringUtils.isNotBlank(key))
+            {
+                if (!(current instanceof JSONObject))
+                {
+                    return null;
+                }
+                current = ((JSONObject) current).get(key);
+            }
+            if (bracketIndex < 0)
+            {
+                return current;
+            }
+            int end = segment.indexOf(']', bracketIndex);
+            if (end < 0 || !(current instanceof JSONArray))
+            {
+                return null;
+            }
+            int index = toInt(segment.substring(bracketIndex + 1, end), -1);
+            JSONArray array = (JSONArray) current;
+            if (index < 0 || index >= array.size())
+            {
+                return null;
+            }
+            current = array.get(index);
+            segment = segment.substring(end + 1);
+        }
+        return current;
+    }
+
+    private String stringValue(Object value)
+    {
+        return value == null ? null : String.valueOf(value);
+    }
+
+    private Map<String, Object> parseSecretBucket(String secret)
+    {
+        if (StringUtils.isBlank(secret) || "******".equals(secret))
+        {
+            return new HashMap<>();
+        }
+        try
+        {
+            Map<String, Object> parsed = JSON.parseObject(secret, Map.class);
+            return parsed == null ? new HashMap<>() : parsed;
+        }
+        catch (Exception ignored)
+        {
+            Map<String, Object> fallback = new HashMap<>();
+            fallback.put("auth.value", secret);
+            return fallback;
+        }
+    }
+
+    private String secretValue(Map<String, Object> secrets, String key)
+    {
+        if (secrets == null || StringUtils.isBlank(key))
+        {
+            return StringUtils.EMPTY;
+        }
+        Object value = secrets.get(key);
+        if (value != null)
+        {
+            return value.toString();
+        }
+        int dotIndex = key.indexOf('.');
+        if (dotIndex > 0)
+        {
+            Object group = secrets.get(key.substring(0, dotIndex));
+            if (group instanceof Map)
+            {
+                Object nested = ((Map<?, ?>) group).get(key.substring(dotIndex + 1));
+                return nested == null ? StringUtils.EMPTY : nested.toString();
+            }
+        }
+        return StringUtils.EMPTY;
+    }
+
+    private String maskSensitiveText(String text, Map<String, Object> secrets)
+    {
+        if (StringUtils.isBlank(text) || secrets == null || secrets.isEmpty())
+        {
+            return text;
+        }
+        String masked = text;
+        for (Object value : secrets.values())
+        {
+            if (value instanceof Map)
+            {
+                for (Object nested : ((Map<?, ?>) value).values())
+                {
+                    masked = maskOneSecret(masked, nested);
+                }
+            }
+            else
+            {
+                masked = maskOneSecret(masked, value);
+            }
+        }
+        return masked;
+    }
+
+    private String maskOneSecret(String text, Object value)
+    {
+        if (value == null)
+        {
+            return text;
+        }
+        String secret = value.toString();
+        if (StringUtils.isBlank(secret) || secret.length() < 3)
+        {
+            return text;
+        }
+        return text.replace(secret, "******");
+    }
+
+    private boolean toBoolean(Object value, boolean defaultValue)
+    {
+        if (value == null)
+        {
+            return defaultValue;
+        }
+        String text = value.toString().trim();
+        if (StringUtils.isBlank(text))
+        {
+            return defaultValue;
+        }
+        return "true".equalsIgnoreCase(text) || "Y".equalsIgnoreCase(text) || "1".equals(text) || "是".equals(text);
+    }
+
     private static class HttpEndpoint
     {
         private final String originalUrl;
@@ -2625,9 +3357,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private TargetCheckResult testHttpTarget(Map<String, Object> target)
     {
-        String toolCode = TOOL_HTTP_HEALTH.equals(str(target, "toolCode")) ? TOOL_HTTP_HEALTH : TOOL_HTTP_COUNT;
+        String requestedToolCode = str(target, "toolCode");
+        String toolCode = TOOL_HTTP_HEALTH.equals(requestedToolCode) || TOOL_HTTP_API_TEST.equals(requestedToolCode)
+                ? requestedToolCode : TOOL_HTTP_COUNT;
         Map<String, Object> tool = requireTool(toolCode);
-        Map<String, Object> step = defaultStep(toolCode, StringUtils.defaultIfBlank(str(tool, "valueUnit"), TOOL_HTTP_HEALTH.equals(toolCode) ? "ms" : "个"));
+        Map<String, Object> step = defaultStep(toolCode, StringUtils.defaultIfBlank(str(tool, "valueUnit"),
+                TOOL_HTTP_HEALTH.equals(toolCode) || TOOL_HTTP_API_TEST.equals(toolCode) ? "ms" : "个"));
         return runSingleTarget(step, tool, target, false);
     }
 
@@ -2813,8 +3548,14 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 break;
             case "HTTP":
                 requireText(str(target, "url"), "HTTP接口地址不能为空");
-                target.put("httpMethod", StringUtils.defaultIfBlank(str(target, "httpMethod"), TOOL_HTTP_HEALTH.equals(toolCode) ? "GET" : "POST").toUpperCase());
-                if (TOOL_HTTP_HEALTH.equals(toolCode))
+                String httpMethod = StringUtils.defaultIfBlank(str(target, "httpMethod"),
+                        TOOL_HTTP_HEALTH.equals(toolCode) || TOOL_HTTP_API_TEST.equals(toolCode) ? "GET" : "POST").toUpperCase();
+                if (TOOL_HTTP_API_TEST.equals(toolCode) && !"GET".equals(httpMethod) && !"POST".equals(httpMethod))
+                {
+                    throw new ServiceException("接口调用测试仅支持GET和POST请求");
+                }
+                target.put("httpMethod", httpMethod);
+                if (TOOL_HTTP_HEALTH.equals(toolCode) || TOOL_HTTP_API_TEST.equals(toolCode))
                 {
                     target.put("resultPath", "");
                 }
@@ -3316,7 +4057,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             return "KAFKA";
         }
-        if (TOOL_HTTP_COUNT.equals(toolCode) || TOOL_HTTP_HEALTH.equals(toolCode))
+        if (TOOL_HTTP_COUNT.equals(toolCode) || TOOL_HTTP_HEALTH.equals(toolCode) || TOOL_HTTP_API_TEST.equals(toolCode))
         {
             return "HTTP";
         }
@@ -3543,6 +4284,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 "{\"fields\":[\"resultPath\",\"extraParams\",\"timeWindowMinutes\"]}");
         insertBuiltinTool(TOOL_HTTP_HEALTH, "HTTP接口健康检测", TOOL_HTTP_HEALTH, "ms", RULE_MAX, new BigDecimal("3000"), 10, 0,
                 "{\"fields\":[\"url\",\"httpMethod\",\"expectedStatus\",\"timeoutSeconds\"]}");
+        insertBuiltinTool(TOOL_HTTP_API_TEST, "接口调用测试", TOOL_HTTP_API_TEST, "ms", RULE_MAX, new BigDecimal("3000"), 10, 0,
+                "{\"fields\":[\"url\",\"httpMethod\",\"headers\",\"queryParams\",\"auth\",\"body\",\"assertions\"]}");
         insertBuiltinTool(TOOL_FTP_FILE_COUNT, "FTP目录文件数量检测", TOOL_FTP_FILE_COUNT, "个", RULE_MAX, new BigDecimal("50"), 10, 0,
                 "{\"fields\":[\"path\"]}");
         insertBuiltinTool(TOOL_SERVER_FILE_COUNT, "服务器目录文件数量检测", TOOL_SERVER_FILE_COUNT, "个", RULE_MAX, new BigDecimal("20"), 10, 0,
@@ -3866,6 +4609,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             merged.putAll(form);
         }
+        mergeStructuredSecretBeforeUpdate(merged, persisted);
         if ((StringUtils.isBlank(str(merged, "password")) || "******".equals(str(merged, "password"))) && StringUtils.isNotBlank(str(persisted, "passwordCipher")))
         {
             merged.put("password", decryptQuietly(str(persisted, "passwordCipher")));
@@ -3900,6 +4644,46 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             target.put("secretCipher", cryptoService.encrypt(str(target, "secret")));
         }
+    }
+
+    private void mergeStructuredSecretBeforeUpdate(Map<String, Object> target, Map<String, Object> original)
+    {
+        if (!TOOL_HTTP_API_TEST.equals(str(target, "toolCode")))
+        {
+            return;
+        }
+        String incomingSecret = str(target, "secret");
+        if (StringUtils.isBlank(incomingSecret) || "******".equals(incomingSecret))
+        {
+            return;
+        }
+        Map<String, Object> oldBucket = parseSecretBucket(decryptQuietly(str(original, "secretCipher")));
+        Map<String, Object> incomingBucket = parseSecretBucket(incomingSecret);
+        if (incomingBucket.isEmpty())
+        {
+            return;
+        }
+        Map<String, Object> merged = new LinkedHashMap<>(oldBucket);
+        incomingBucket.forEach((key, value) ->
+        {
+            if (value instanceof Map && oldBucket.get(key) instanceof Map)
+            {
+                Map<String, Object> nested = new LinkedHashMap<>((Map<String, Object>) oldBucket.get(key));
+                ((Map<?, ?>) value).forEach((nestedKey, nestedValue) ->
+                {
+                    if (nestedValue != null && StringUtils.isNotBlank(nestedValue.toString()) && !"******".equals(nestedValue.toString()))
+                    {
+                        nested.put(String.valueOf(nestedKey), nestedValue);
+                    }
+                });
+                merged.put(key, nested);
+            }
+            else if (value != null && StringUtils.isNotBlank(value.toString()) && !"******".equals(value.toString()))
+            {
+                merged.put(key, value);
+            }
+        });
+        target.put("secret", JSON.toJSONString(merged));
     }
 
     private void maskTargetSecret(Map<String, Object> target)
@@ -4653,6 +5437,18 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             this.records = records;
             this.steps = steps;
             this.targets = targets;
+        }
+    }
+
+    private static class ApiAssertionSummary
+    {
+        private final int totalCount;
+        private int passedCount;
+        private final List<String> failures = new ArrayList<>();
+
+        private ApiAssertionSummary(int totalCount)
+        {
+            this.totalCount = totalCount;
         }
     }
 

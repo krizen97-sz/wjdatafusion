@@ -875,6 +875,9 @@ INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit
 SELECT 'HTTP_HEALTH', 'HTTP接口健康检测', 'HTTP_HEALTH', 'ms', 'MAX', 3000, 10, 0, '{"fields":["url","httpMethod","expectedStatus","timeoutSeconds"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
 WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'HTTP_HEALTH');
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
+SELECT 'HTTP_API_TEST', '接口调用测试', 'HTTP_API_TEST', 'ms', 'MAX', 3000, 10, 0, '{"fields":["url","httpMethod","queryParams","headers","cookies","auth","bodyType","body","formParams","assertions","trustInternalCertificate"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
+WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'HTTP_API_TEST');
+INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
 SELECT 'FTP_FILE_COUNT', 'FTP目录文件数量检测', 'FTP_FILE_COUNT', '个', 'MAX', 50, 10, 0, '{"fields":["path"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
 WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'FTP_FILE_COUNT');
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
