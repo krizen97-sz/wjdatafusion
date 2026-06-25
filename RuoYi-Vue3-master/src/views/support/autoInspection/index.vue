@@ -620,7 +620,7 @@
         <section class="target-section">
           <header>
             <strong>判定规则</strong>
-            <span>{{ isServiceStatusStep ? '服务状态检测按 systemctl 返回的运行状态判定，不需要用户理解数值阈值。' : (isHttpApiTestStep ? '接口调用测试使用多条断言判定结果，任一断言失败即告警。' : '定义本步骤什么情况下算异常，阈值、窗口和超时时间集中在这里维护。') }}</span>
+            <span>{{ isServiceStatusStep ? '服务状态检测按 systemctl 返回的运行状态判定，不需要用户理解数值阈值。' : (isHttpApiTestStep ? '接口调用测试使用多条条件判断结果，任一条件不满足即告警。' : '定义本步骤什么情况下算异常，阈值、窗口和超时时间集中在这里维护。') }}</span>
           </header>
           <div v-if="isServiceStatusStep" class="service-rule-card">
             <span>
@@ -637,12 +637,12 @@
           <div v-else-if="isHttpApiTestStep" class="service-rule-card api-rule-card">
             <span>
               <label>正常条件</label>
-              <strong>所有断言均通过</strong>
+              <strong>所有条件均满足</strong>
               <em>状态码、耗时、JSON字段、响应文本和响应Header等条件全部满足。</em>
             </span>
             <span>
               <label>异常条件</label>
-              <strong>任一断言失败或请求异常</strong>
+              <strong>任一条件不满足或请求异常</strong>
               <em>接口超时、证书异常、非预期返回、字段缺失都会在结果明细中展示。</em>
             </span>
           </div>
@@ -700,194 +700,219 @@
             <el-col v-if="!isHttpHealthStep" :span="24"><el-form-item label="请求体模板"><el-input v-model="stepDraft.target.extraParams" type="textarea" :rows="4" placeholder='例如：{"startTime":"${todayStart}","endTime":"${todayEnd}"}' /></el-form-item></el-col>
           </el-row>
           <div v-if="isHttpApiTestStep" class="api-test-config">
-            <section class="api-test-section">
-              <header>
-                <strong>基础请求</strong>
-                <span>配置接口地址、请求方法和内网证书策略，URL 支持日期变量。</span>
-              </header>
-              <el-row :gutter="16">
-                <el-col :span="10"><el-form-item label="接口名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：今日任务接口测试" /></el-form-item></el-col>
-                <el-col :span="6"><el-form-item label="请求方法"><el-select v-model="stepDraft.target.httpMethod" style="width: 100%"><el-option label="GET" value="GET" /><el-option label="POST" value="POST" /></el-select></el-form-item></el-col>
-                <el-col :span="8"><el-form-item label="内网证书"><el-switch v-model="stepDraft.target.apiConfig.trustInternalCertificate" active-value="true" inactive-value="false" active-text="信任自签证书" inactive-text="严格校验" /></el-form-item></el-col>
-                <el-col :span="24"><el-form-item label="接口URL" required><el-input v-model="stepDraft.target.url" placeholder="https://host/api/list?begin=${todayStart}&end=${todayEnd}" /></el-form-item></el-col>
-              </el-row>
-              <div class="api-variable-bar">
-                <span>日期变量</span>
-                <button v-for="item in httpDatePlaceholders" :key="item.value" type="button" @click="appendApiTestUrlPlaceholder(item.value)">
-                  <strong>{{ item.value }}</strong>
-                  <em>{{ item.example }}</em>
-                </button>
-              </div>
-            </section>
-
-            <section class="api-test-section">
-              <header>
-                <strong>Header / Cookie / 鉴权</strong>
-                <span>敏感值保存时会加密，结果和详情只展示脱敏信息。</span>
-              </header>
-              <el-row :gutter="16">
-                <el-col :span="8">
-                  <el-form-item label="鉴权方式">
-                    <el-select v-model="stepDraft.target.apiConfig.auth.type" style="width: 100%">
-                      <el-option label="无鉴权" value="NONE" />
-                      <el-option label="Bearer Token" value="BEARER" />
-                      <el-option label="Basic Auth" value="BASIC" />
-                      <el-option label="API Key" value="API_KEY" />
-                      <el-option label="Cookie" value="COOKIE" />
-                      <el-option label="自定义Header" value="CUSTOM_HEADER" />
-                    </el-select>
-                  </el-form-item>
-                </el-col>
-                <el-col v-if="stepDraft.target.apiConfig.auth.type === 'API_KEY'" :span="8">
-                  <el-form-item label="传递位置">
-                    <el-select v-model="stepDraft.target.apiConfig.auth.location" style="width: 100%">
-                      <el-option label="Header" value="HEADER" />
-                      <el-option label="Query" value="QUERY" />
-                      <el-option label="Cookie" value="COOKIE" />
-                    </el-select>
-                  </el-form-item>
-                </el-col>
-                <el-col v-if="['API_KEY', 'COOKIE', 'CUSTOM_HEADER'].includes(stepDraft.target.apiConfig.auth.type)" :span="8">
-                  <el-form-item label="参数名">
-                    <el-input v-model="stepDraft.target.apiConfig.auth.name" placeholder="Authorization / token / sid" />
-                  </el-form-item>
-                </el-col>
-                <el-col v-if="stepDraft.target.apiConfig.auth.type === 'BASIC'" :span="8">
-                  <el-form-item label="Basic账号"><el-input v-model="stepDraft.target.apiConfig.auth.username" /></el-form-item>
-                </el-col>
-                <el-col v-if="stepDraft.target.apiConfig.auth.type !== 'NONE' && stepDraft.target.apiConfig.auth.type !== 'BASIC'" :span="8">
-                  <el-form-item label="鉴权值"><el-input v-model="stepDraft.target.apiConfig.auth.value" show-password placeholder="Token / API Key / Cookie值" /></el-form-item>
-                </el-col>
-                <el-col v-if="stepDraft.target.apiConfig.auth.type === 'BASIC'" :span="8">
-                  <el-form-item label="Basic密码"><el-input v-model="stepDraft.target.apiConfig.auth.password" show-password /></el-form-item>
-                </el-col>
-                <el-col v-if="stepDraft.target.targetId" :span="8">
-                  <el-form-item label="敏感值">
-                    <el-button plain icon="View" :loading="apiSecretRevealLoading" @click="handleRevealApiTestSecret(stepDraft.target)">显示已保存敏感值</el-button>
-                  </el-form-item>
-                </el-col>
-              </el-row>
-
-              <div class="api-config-list">
-                <div class="api-config-list__head">
-                  <strong>请求 Header</strong>
-                  <el-button link type="primary" icon="Plus" @click="addApiConfigItem('headers')">添加Header</el-button>
-                </div>
-                <div v-for="(item, index) in stepDraft.target.apiConfig.headers" :key="`header-${index}`" class="api-config-row">
-                  <el-input v-model="item.key" placeholder="Header名称" />
-                  <el-input v-model="item.value" :show-password="item.sensitive" placeholder="Header值" />
-                  <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
-                  <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('headers', index)" />
-                </div>
-                <el-empty v-if="!stepDraft.target.apiConfig.headers.length" description="暂无自定义 Header" :image-size="54" />
-              </div>
-
-              <div class="api-config-list">
-                <div class="api-config-list__head">
-                  <strong>请求 Cookie</strong>
-                  <el-button link type="primary" icon="Plus" @click="addApiConfigItem('cookies')">添加Cookie</el-button>
-                </div>
-                <div v-for="(item, index) in stepDraft.target.apiConfig.cookies" :key="`cookie-${index}`" class="api-config-row">
-                  <el-input v-model="item.key" placeholder="Cookie名称" />
-                  <el-input v-model="item.value" :show-password="item.sensitive" placeholder="Cookie值" />
-                  <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
-                  <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('cookies', index)" />
-                </div>
-                <el-empty v-if="!stepDraft.target.apiConfig.cookies.length" description="暂无 Cookie" :image-size="54" />
-              </div>
-            </section>
-
-            <section class="api-test-section">
-              <header>
-                <strong>Query / 请求体</strong>
-                <span>Query 和 Body 都支持日期变量，POST 支持 JSON、raw text 和表单。</span>
-              </header>
-              <div class="api-config-list">
-                <div class="api-config-list__head">
-                  <strong>Query 参数</strong>
-                  <el-button link type="primary" icon="Plus" @click="addApiConfigItem('queryParams')">添加参数</el-button>
-                </div>
-                <div v-for="(item, index) in stepDraft.target.apiConfig.queryParams" :key="`query-${index}`" class="api-config-row">
-                  <el-input v-model="item.key" placeholder="参数名" />
-                  <el-input v-model="item.value" :show-password="item.sensitive" placeholder="参数值，支持 ${today}" />
-                  <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
-                  <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('queryParams', index)" />
-                </div>
-                <el-empty v-if="!stepDraft.target.apiConfig.queryParams.length" description="暂无 Query 参数" :image-size="54" />
-              </div>
-              <el-row :gutter="16">
-                <el-col :span="8">
-                  <el-form-item label="Body类型">
-                    <el-select v-model="stepDraft.target.apiConfig.bodyType" style="width: 100%">
-                      <el-option label="无 Body" value="NONE" />
-                      <el-option label="JSON" value="JSON" />
-                      <el-option label="raw text" value="RAW" />
-                      <el-option label="form-urlencoded" value="FORM" />
-                    </el-select>
-                  </el-form-item>
-                </el-col>
-                <el-col :span="16">
-                  <div class="api-variable-bar api-variable-bar--inline">
-                    <span>插入到Body</span>
-                    <button v-for="item in httpDatePlaceholders" :key="item.value" type="button" @click="appendApiTestBodyPlaceholder(item.value)">{{ item.value }}</button>
+            <div class="api-test-compact-head">
+              <strong>接口调用测试配置</strong>
+              <span>按“请求信息、参数与鉴权、返回条件”分开维护，只填写本接口实际需要的内容。</span>
+            </div>
+            <el-tabs v-model="apiConfigActiveTab" class="api-config-tabs">
+              <el-tab-pane label="请求信息" name="request">
+                <section class="api-test-section">
+                  <header>
+                    <strong>请求信息</strong>
+                    <span>配置接口名称、GET/POST、URL 和 HTTPS 证书校验方式。</span>
+                  </header>
+                  <el-row :gutter="16">
+                    <el-col :span="10"><el-form-item label="接口名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：今日任务接口测试" /></el-form-item></el-col>
+                    <el-col :span="6"><el-form-item label="请求方法"><el-select v-model="stepDraft.target.httpMethod" style="width: 100%"><el-option label="GET" value="GET" /><el-option label="POST" value="POST" /></el-select></el-form-item></el-col>
+                    <el-col :span="8">
+                      <el-form-item label="HTTPS证书校验">
+                        <el-radio-group v-model="stepDraft.target.apiConfig.trustInternalCertificate" class="api-cert-choice">
+                          <el-radio-button label="false">严格校验</el-radio-button>
+                          <el-radio-button label="true">兼容自建证书</el-radio-button>
+                        </el-radio-group>
+                        <small class="field-hint">只有 HTTPS 接口使用单位自建证书、测试时报证书校验失败时，才选择“兼容自建证书”；普通 HTTP 或正式证书保持严格校验。</small>
+                      </el-form-item>
+                    </el-col>
+                    <el-col :span="24"><el-form-item label="接口URL" required><el-input v-model="stepDraft.target.url" placeholder="https://host/api/list?begin=${todayStart}&end=${todayEnd}" /></el-form-item></el-col>
+                  </el-row>
+                  <div class="api-variable-bar api-variable-bar--compact">
+                    <span>日期变量</span>
+                    <button v-for="item in httpDatePlaceholders" :key="item.value" type="button" @click="appendApiTestUrlPlaceholder(item.value)">
+                      <strong>{{ item.value }}</strong>
+                      <em>{{ item.example }}</em>
+                    </button>
                   </div>
-                </el-col>
-                <el-col v-if="['JSON', 'RAW'].includes(stepDraft.target.apiConfig.bodyType)" :span="24">
-                  <el-form-item label="请求体">
-                    <el-input v-model="stepDraft.target.apiConfig.body" type="textarea" :rows="5" placeholder='例如：{"beginTime":"${todayStart}","endTime":"${todayEnd}"}' />
-                  </el-form-item>
-                </el-col>
-              </el-row>
-              <div v-if="stepDraft.target.apiConfig.bodyType === 'FORM'" class="api-config-list">
-                <div class="api-config-list__head">
-                  <strong>表单参数</strong>
-                  <el-button link type="primary" icon="Plus" @click="addApiConfigItem('formParams')">添加表单项</el-button>
-                </div>
-                <div v-for="(item, index) in stepDraft.target.apiConfig.formParams" :key="`form-${index}`" class="api-config-row">
-                  <el-input v-model="item.key" placeholder="字段名" />
-                  <el-input v-model="item.value" :show-password="item.sensitive" placeholder="字段值" />
-                  <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
-                  <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('formParams', index)" />
-                </div>
-              </div>
-            </section>
+                </section>
+              </el-tab-pane>
 
-            <section class="api-test-section">
-              <header>
-                <strong>结果断言</strong>
-                <span>所有断言全部通过才算正常；常见模板可以一键添加后微调。</span>
-              </header>
-              <div class="assertion-toolbar">
-                <el-button plain size="small" @click="addApiAssertionTemplate('status2xx')">状态码 2xx</el-button>
-                <el-button plain size="small" @click="addApiAssertionTemplate('totalGte1')">data.total >= 1</el-button>
-                <el-button plain size="small" @click="addApiAssertionTemplate('messageSuccess')">data.message == success</el-button>
-                <el-button plain size="small" @click="addApiAssertionTemplate('containsOk')">响应包含 ok</el-button>
-                <el-button plain size="small" @click="addApiAssertionTemplate('latency3000')">耗时 <= 3000ms</el-button>
-                <el-button type="primary" plain size="small" icon="Plus" @click="addApiAssertion()">添加断言</el-button>
-              </div>
-              <div class="api-assertion-list">
-                <div v-for="(item, index) in stepDraft.target.apiConfig.assertions" :key="`assertion-${index}`" class="api-assertion-row">
-                  <el-select v-model="item.type" placeholder="断言类型" @change="onApiAssertionTypeChange(item)">
-                    <el-option label="HTTP状态码" value="STATUS" />
-                    <el-option label="响应耗时" value="LATENCY" />
-                    <el-option label="JSON数字字段" value="JSON_NUMBER" />
-                    <el-option label="JSON字符串字段" value="JSON_STRING" />
-                    <el-option label="JSON布尔字段" value="JSON_BOOLEAN" />
-                    <el-option label="JSON字段存在/空值" value="JSON_EXISTS" />
-                    <el-option label="数组长度" value="ARRAY_LENGTH" />
-                    <el-option label="响应文本" value="BODY_TEXT" />
-                    <el-option label="响应Header" value="HEADER" />
-                  </el-select>
-                  <el-input v-if="apiAssertionNeedsPath(item.type)" v-model="item.path" placeholder="data.total / data.items[0].status / X-Request-Id" />
-                  <el-select v-model="item.operator" placeholder="判断方式">
-                    <el-option v-for="option in getApiAssertionOperators(item.type)" :key="option.value" :label="option.label" :value="option.value" />
-                  </el-select>
-                  <el-input v-if="apiAssertionNeedsExpected(item.operator)" v-model="item.expected" placeholder="期望值，如 200-399 / success / 3000" />
-                  <el-input v-else disabled placeholder="无需期望值" />
-                  <el-button link type="danger" icon="Delete" :disabled="stepDraft.target.apiConfig.assertions.length <= 1" @click="removeApiAssertion(index)" />
+              <el-tab-pane label="参数与鉴权" name="params">
+                <section class="api-test-section">
+                  <header>
+                    <strong>鉴权信息</strong>
+                    <span>敏感值保存时会加密，巡检结果和详情只展示脱敏信息。</span>
+                  </header>
+                  <el-row :gutter="16">
+                    <el-col :span="8">
+                      <el-form-item label="鉴权方式">
+                        <el-select v-model="stepDraft.target.apiConfig.auth.type" style="width: 100%">
+                          <el-option label="无鉴权" value="NONE" />
+                          <el-option label="Bearer Token" value="BEARER" />
+                          <el-option label="Basic Auth" value="BASIC" />
+                          <el-option label="API Key" value="API_KEY" />
+                          <el-option label="Cookie" value="COOKIE" />
+                          <el-option label="自定义Header" value="CUSTOM_HEADER" />
+                        </el-select>
+                      </el-form-item>
+                    </el-col>
+                    <el-col v-if="stepDraft.target.apiConfig.auth.type === 'API_KEY'" :span="8">
+                      <el-form-item label="传递位置">
+                        <el-select v-model="stepDraft.target.apiConfig.auth.location" style="width: 100%">
+                          <el-option label="Header" value="HEADER" />
+                          <el-option label="Query" value="QUERY" />
+                          <el-option label="Cookie" value="COOKIE" />
+                        </el-select>
+                      </el-form-item>
+                    </el-col>
+                    <el-col v-if="['API_KEY', 'COOKIE', 'CUSTOM_HEADER'].includes(stepDraft.target.apiConfig.auth.type)" :span="8">
+                      <el-form-item label="参数名">
+                        <el-input v-model="stepDraft.target.apiConfig.auth.name" placeholder="Authorization / token / sid" />
+                      </el-form-item>
+                    </el-col>
+                    <el-col v-if="stepDraft.target.apiConfig.auth.type === 'BASIC'" :span="8">
+                      <el-form-item label="Basic账号"><el-input v-model="stepDraft.target.apiConfig.auth.username" /></el-form-item>
+                    </el-col>
+                    <el-col v-if="stepDraft.target.apiConfig.auth.type !== 'NONE' && stepDraft.target.apiConfig.auth.type !== 'BASIC'" :span="8">
+                      <el-form-item label="鉴权值"><el-input v-model="stepDraft.target.apiConfig.auth.value" show-password placeholder="Token / API Key / Cookie值" /></el-form-item>
+                    </el-col>
+                    <el-col v-if="stepDraft.target.apiConfig.auth.type === 'BASIC'" :span="8">
+                      <el-form-item label="Basic密码"><el-input v-model="stepDraft.target.apiConfig.auth.password" show-password /></el-form-item>
+                    </el-col>
+                    <el-col v-if="stepDraft.target.targetId" :span="8">
+                      <el-form-item label="敏感值">
+                        <el-button plain icon="View" :loading="apiSecretRevealLoading" @click="handleRevealApiTestSecret(stepDraft.target)">显示已保存敏感值</el-button>
+                      </el-form-item>
+                    </el-col>
+                  </el-row>
+                </section>
+
+                <div class="api-param-grid">
+                  <div class="api-config-list">
+                    <div class="api-config-list__head">
+                      <strong>Query 参数</strong>
+                      <el-button link type="primary" icon="Plus" @click="addApiConfigItem('queryParams')">添加参数</el-button>
+                    </div>
+                    <div v-for="(item, index) in stepDraft.target.apiConfig.queryParams" :key="`query-${index}`" class="api-config-row">
+                      <el-input v-model="item.key" placeholder="参数名" />
+                      <el-input v-model="item.value" :show-password="item.sensitive" placeholder="参数值，支持 ${today}" />
+                      <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
+                      <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('queryParams', index)" />
+                    </div>
+                    <el-empty v-if="!stepDraft.target.apiConfig.queryParams.length" description="暂无 Query 参数" :image-size="42" />
+                  </div>
+
+                  <div class="api-config-list">
+                    <div class="api-config-list__head">
+                      <strong>请求 Header</strong>
+                      <el-button link type="primary" icon="Plus" @click="addApiConfigItem('headers')">添加Header</el-button>
+                    </div>
+                    <div v-for="(item, index) in stepDraft.target.apiConfig.headers" :key="`header-${index}`" class="api-config-row">
+                      <el-input v-model="item.key" placeholder="Header名称" />
+                      <el-input v-model="item.value" :show-password="item.sensitive" placeholder="Header值" />
+                      <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
+                      <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('headers', index)" />
+                    </div>
+                    <el-empty v-if="!stepDraft.target.apiConfig.headers.length" description="暂无自定义 Header" :image-size="42" />
+                  </div>
+
+                  <div class="api-config-list">
+                    <div class="api-config-list__head">
+                      <strong>请求 Cookie</strong>
+                      <el-button link type="primary" icon="Plus" @click="addApiConfigItem('cookies')">添加Cookie</el-button>
+                    </div>
+                    <div v-for="(item, index) in stepDraft.target.apiConfig.cookies" :key="`cookie-${index}`" class="api-config-row">
+                      <el-input v-model="item.key" placeholder="Cookie名称" />
+                      <el-input v-model="item.value" :show-password="item.sensitive" placeholder="Cookie值" />
+                      <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
+                      <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('cookies', index)" />
+                    </div>
+                    <el-empty v-if="!stepDraft.target.apiConfig.cookies.length" description="暂无 Cookie" :image-size="42" />
+                  </div>
+
+                  <div class="api-config-list">
+                    <div class="api-config-list__head">
+                      <strong>请求体</strong>
+                      <span>POST 可选，GET 通常保持无 Body</span>
+                    </div>
+                    <el-row :gutter="12">
+                      <el-col :span="8">
+                        <el-form-item label="Body类型">
+                          <el-select v-model="stepDraft.target.apiConfig.bodyType" style="width: 100%">
+                            <el-option label="无 Body" value="NONE" />
+                            <el-option label="JSON" value="JSON" />
+                            <el-option label="raw text" value="RAW" />
+                            <el-option label="form-urlencoded" value="FORM" />
+                          </el-select>
+                        </el-form-item>
+                      </el-col>
+                      <el-col :span="16">
+                        <div class="api-variable-bar api-variable-bar--inline">
+                          <span>插入到Body</span>
+                          <button v-for="item in httpDatePlaceholders" :key="item.value" type="button" @click="appendApiTestBodyPlaceholder(item.value)">{{ item.value }}</button>
+                        </div>
+                      </el-col>
+                      <el-col v-if="['JSON', 'RAW'].includes(stepDraft.target.apiConfig.bodyType)" :span="24">
+                        <el-form-item label="请求体内容">
+                          <el-input v-model="stepDraft.target.apiConfig.body" type="textarea" :rows="4" placeholder='例如：{"beginTime":"${todayStart}","endTime":"${todayEnd}"}' />
+                        </el-form-item>
+                      </el-col>
+                    </el-row>
+                    <div v-if="stepDraft.target.apiConfig.bodyType === 'FORM'" class="api-config-list api-config-list--inner">
+                      <div class="api-config-list__head">
+                        <strong>表单参数</strong>
+                        <el-button link type="primary" icon="Plus" @click="addApiConfigItem('formParams')">添加表单项</el-button>
+                      </div>
+                      <div v-for="(item, index) in stepDraft.target.apiConfig.formParams" :key="`form-${index}`" class="api-config-row">
+                        <el-input v-model="item.key" placeholder="字段名" />
+                        <el-input v-model="item.value" :show-password="item.sensitive" placeholder="字段值" />
+                        <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
+                        <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('formParams', index)" />
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </section>
+              </el-tab-pane>
+
+              <el-tab-pane :label="`返回条件(${stepDraft.target.apiConfig.assertions.length})`" name="conditions">
+                <section class="api-test-section">
+                  <header>
+                    <strong>返回结果判断条件</strong>
+                    <span>所有条件都满足才算正常；可以先添加常用条件，再按接口实际返回微调。</span>
+                  </header>
+                  <div class="assertion-toolbar">
+                    <span>常用条件</span>
+                    <el-button plain size="small" @click="addApiAssertionTemplate('status2xx')">状态码 2xx</el-button>
+                    <el-button plain size="small" @click="addApiAssertionTemplate('totalGte1')">data.total >= 1</el-button>
+                    <el-button plain size="small" @click="addApiAssertionTemplate('messageSuccess')">data.message == success</el-button>
+                    <el-button plain size="small" @click="addApiAssertionTemplate('containsOk')">返回包含 ok</el-button>
+                    <el-button plain size="small" @click="addApiAssertionTemplate('latency3000')">耗时 <= 3000ms</el-button>
+                    <el-button type="primary" plain size="small" icon="Plus" @click="addApiAssertion()">添加条件</el-button>
+                  </div>
+                  <div class="api-assertion-list">
+                    <div v-for="(item, index) in stepDraft.target.apiConfig.assertions" :key="`assertion-${index}`" class="api-assertion-row">
+                      <span class="api-row-index">{{ index + 1 }}</span>
+                      <el-select v-model="item.type" placeholder="条件类型" @change="onApiAssertionTypeChange(item)">
+                        <el-option label="返回状态码" value="STATUS" />
+                        <el-option label="接口耗时" value="LATENCY" />
+                        <el-option label="返回数字字段" value="JSON_NUMBER" />
+                        <el-option label="返回文本字段" value="JSON_STRING" />
+                        <el-option label="返回真假字段" value="JSON_BOOLEAN" />
+                        <el-option label="字段存在/为空" value="JSON_EXISTS" />
+                        <el-option label="列表数量" value="ARRAY_LENGTH" />
+                        <el-option label="返回内容" value="BODY_TEXT" />
+                        <el-option label="返回Header" value="HEADER" />
+                      </el-select>
+                      <el-input v-if="apiAssertionNeedsPath(item.type)" v-model="item.path" placeholder="data.total / data.items[0].status / X-Request-Id" />
+                      <el-select v-model="item.operator" placeholder="判断方式">
+                        <el-option v-for="option in getApiAssertionOperators(item.type)" :key="option.value" :label="option.label" :value="option.value" />
+                      </el-select>
+                      <el-input v-if="apiAssertionNeedsExpected(item.operator)" v-model="item.expected" placeholder="期望值，如 200-399 / success / 3000" />
+                      <el-input v-else disabled placeholder="无需期望值" />
+                      <el-button link type="danger" icon="Delete" :disabled="stepDraft.target.apiConfig.assertions.length <= 1" @click="removeApiAssertion(index)" />
+                    </div>
+                  </div>
+                </section>
+              </el-tab-pane>
+            </el-tabs>
           </div>
           <div v-if="stepTargetType === 'FTP'" class="bigdata-server-config ftp-target-config">
             <div class="bigdata-server-toolbar">
@@ -1554,6 +1579,7 @@ const activeStepIndex = ref(0)
 const stepDialogOpen = ref(false)
 const stepEditingIndex = ref(null)
 const stepDraft = ref(defaultStepForm())
+const apiConfigActiveTab = ref('request')
 const toolPickerOpen = ref(false)
 const toolPickerKeyword = ref('')
 const toolPickerPreviewCode = ref('')
@@ -1638,7 +1664,7 @@ const operationGuideSteps = [
     place: '步骤配置弹窗',
     desc: '目标决定去哪里取数，阈值决定什么情况算异常；保存前建议先测试目标。',
     manual: [
-      'HTTP 和海康接口类步骤需要配置 URL、请求方式、结果路径、AppKey、Secret 和请求体模板；接口调用测试还支持 Header、Cookie、静态鉴权、请求体和多断言，支持 ${todayStart}、${todayEnd} 等日期变量。',
+      'HTTP 和海康接口类步骤需要配置 URL、请求方式、结果路径、AppKey、Secret 和请求体模板；接口调用测试还支持 Header、Cookie、静态鉴权、请求体和多条件判断，支持 ${todayStart}、${todayEnd} 等日期变量。',
       'FTP 和服务器目录工具支持一个步骤配置多个子项；服务器服务状态检测会清晰展示 active、inactive、failed 等状态规则。'
     ],
     actions: ['填写目标、比较规则、告警阈值和超时时间。', '使用日期变量生成当天接口参数。', '点击“测试目标”确认能取到真实返回值。'],
@@ -1764,11 +1790,11 @@ const toolGuideMap = {
     example: '例如“海康平台健康检测”：URL 填 https://host/artemis/api/status，期望状态码 200，耗时高于 3000ms 告警。'
   },
   HTTP_API_TEST: {
-    brief: '完整模拟 GET / POST 接口调用，并用多条断言判断结果。',
-    description: '支持 Query、Header、Cookie、Bearer、Basic、API Key、JSON Body、表单 Body 和响应断言，适合把业务接口可用性、返回结构和核心字段都纳入巡检。',
+    brief: '完整模拟 GET / POST 接口调用，并用多条条件判断结果。',
+    description: '支持 Query、Header、Cookie、Bearer、Basic、API Key、JSON Body、表单 Body 和返回条件，适合把业务接口可用性、返回结构和核心字段都纳入巡检。',
     scenario: '适合检测平台查询接口、统计接口、网关接口、第三方回传接口是否可访问、是否返回期望字段和数量。',
-    configs: ['填写接口 URL 和请求方法。', '按需配置 Header、Cookie、鉴权和请求体。', '使用 ${todayStart}、${todayEnd} 等日期变量生成动态参数。', '添加状态码、JSON字段、数组长度、响应文本、响应Header、耗时等断言。'],
-    example: '例如“今日任务接口”：POST JSON Body 使用 {"beginTime":"${todayStart}","endTime":"${todayEnd}"}，断言状态码 200-399、data.total >= 1、data.message == success。'
+    configs: ['填写接口 URL 和请求方法。', '按需配置 Header、Cookie、鉴权和请求体。', '使用 ${todayStart}、${todayEnd} 等日期变量生成动态参数。', '添加状态码、JSON字段、列表数量、返回内容、返回Header、耗时等条件。'],
+    example: '例如“今日任务接口”：POST JSON Body 使用 {"beginTime":"${todayStart}","endTime":"${todayEnd}"}，条件设置为状态码 200-399、data.total >= 1、data.message == success。'
   },
   FTP_FILE_COUNT: {
     brief: '统计一个或多个 FTP 目录下的文件数量。',
@@ -1972,7 +1998,7 @@ const stepTargetSectionTitle = computed(() => {
 const stepTargetSectionHint = computed(() => {
   if (stepTargetType.value === 'KAFKA') return '消费积压检测只需要 bootstrap、topic 和消费组。'
   if (isHttpHealthStep.value) return '健康检测关注接口是否可访问、状态码是否符合预期，以及接口响应耗时。'
-  if (isHttpApiTestStep.value) return '把请求参数、鉴权、请求体和断言放在一个步骤里，所有断言通过才算正常。'
+  if (isHttpApiTestStep.value) return '把请求参数、鉴权、请求体和返回条件放在一个步骤里，所有条件满足才算正常。'
   if (stepTargetType.value === 'HTTP') return '接口数量检测关注请求地址、参数模板、认证信息和结果取值路径。'
   if (stepTargetType.value === 'FTP') return 'FTP 文件数量检测只需要连接信息和目录路径。'
   if (stepTargetType.value === 'BIG_DATA_SERVER') return '逐台配置服务器 IP、SSH 端口和登录信息，执行时读取每台服务器的所有磁盘分区。'
@@ -3452,6 +3478,7 @@ function handleUpdateTemplate(row) {
 function openStepDialog(index = null) {
   stepEditingIndex.value = index
   stepDraft.value = index === null ? defaultStepForm(templateForm.value.steps.length + 1) : cloneStep(templateForm.value.steps[index])
+  apiConfigActiveTab.value = 'request'
   if (!stepDraft.value.toolCode && toolList.value.length) handleStepToolChange(toolList.value[0].toolCode)
   if (getTargetTypeByTool(stepDraft.value.toolCode) === 'FTP') {
     ensureFtpStepParams(stepDraft.value)
@@ -3518,12 +3545,14 @@ function confirmToolPicker(toolCode) {
   if (toolPickerMode.value === 'new') {
     stepEditingIndex.value = null
     stepDraft.value = defaultStepForm(templateForm.value.steps.length + 1, nextToolCode)
+    apiConfigActiveTab.value = 'request'
     toolPickerOpen.value = false
     stepDialogOpen.value = true
     return
   }
   if (nextToolCode !== stepDraft.value.toolCode) {
     handleStepToolChange(nextToolCode)
+    apiConfigActiveTab.value = 'request'
   }
   toolPickerOpen.value = false
 }
@@ -4150,11 +4179,11 @@ function validateApiTestConfig(target) {
     if (!String(config.auth.value || '').trim()) return '请填写鉴权值'
   }
   const assertions = normalizeApiAssertions(config.assertions)
-  if (!assertions.length) return '请至少配置一条结果断言'
+  if (!assertions.length) return '请至少配置一条返回结果判断条件'
   for (let index = 0; index < assertions.length; index++) {
     const assertion = assertions[index]
-    if (apiAssertionNeedsPath(assertion.type) && !String(assertion.path || '').trim()) return `断言 ${index + 1}：请填写字段路径或 Header 名称`
-    if (apiAssertionNeedsExpected(assertion.operator) && !String(assertion.expected || '').trim()) return `断言 ${index + 1}：请填写期望值`
+    if (apiAssertionNeedsPath(assertion.type) && !String(assertion.path || '').trim()) return `条件 ${index + 1}：请填写字段路径或 Header 名称`
+    if (apiAssertionNeedsExpected(assertion.operator) && !String(assertion.expected || '').trim()) return `条件 ${index + 1}：请填写期望值`
   }
   return ''
 }
@@ -4659,7 +4688,7 @@ function getStepDetailItems(step) {
       items.push(
         { label: '接口URL', value: target.url || '-' },
         { label: '鉴权方式', value: labelApiAuthType(config.auth?.type) },
-        { label: '断言数量', value: `${config.assertions.length} 条` }
+        { label: '条件数量', value: `${config.assertions.length} 条` }
       )
     } else {
       items.push({ label: '结果路径', value: target.resultPath || '-' })
@@ -4734,7 +4763,7 @@ function isServiceStatusResult(row) {
 
 function formatStepThreshold(row) {
   if (isServiceStatusResult(row)) return '期望 active (running)，非 active 告警'
-  if (row?.toolCode === TOOL_HTTP_API_TEST || row?.toolType === TOOL_HTTP_API_TEST) return '多断言全部通过，任一失败告警'
+  if (row?.toolCode === TOOL_HTTP_API_TEST || row?.toolType === TOOL_HTTP_API_TEST) return '所有条件满足，任一不满足告警'
   if (!row) return '-'
   if (row.thresholdValue === undefined || row.thresholdValue === null || row.thresholdValue === '') return '-'
   return `${row.compareRule === 'MIN' ? '不低于' : '不高于'} ${row.thresholdValue}${row.thresholdUnit || ''}`
@@ -6664,7 +6693,41 @@ function resultTagType(value) {
 
 .api-test-config {
   display: grid;
-  gap: 14px;
+  gap: 10px;
+}
+
+.api-test-compact-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #dfeaf6;
+  border-radius: 8px;
+  background: #f7fbff;
+
+  strong {
+    color: #1d3554;
+    font-size: 15px;
+  }
+
+  span {
+    color: #6f849c;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.api-config-tabs {
+  :deep(.el-tabs__header) {
+    margin-bottom: 10px;
+  }
+
+  :deep(.el-tabs__content) {
+    max-height: min(48vh, 520px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
 }
 
 .api-test-section {
@@ -6691,9 +6754,15 @@ function resultTagType(value) {
     }
   }
 
-  :deep(.el-form-item) {
-    margin-bottom: 0;
-  }
+	  :deep(.el-form-item) {
+	    margin-bottom: 0;
+	  }
+}
+
+.api-param-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .api-variable-bar {
@@ -6740,15 +6809,21 @@ function resultTagType(value) {
     }
   }
 
-  &--inline {
-    min-height: 32px;
-    padding: 3px 0;
-    border: 0;
-    background: transparent;
+	  &--inline {
+	    min-height: 32px;
+	    padding: 3px 0;
+	    border: 0;
+	    background: transparent;
 
     button {
       min-width: auto;
-      padding: 4px 7px;
+	      padding: 4px 7px;
+	    }
+	  }
+
+  &--compact {
+    button {
+      min-width: 96px;
     }
   }
 }
@@ -6761,6 +6836,11 @@ function resultTagType(value) {
   border: 1px solid #e5eef8;
   border-radius: 8px;
   background: #fff;
+
+  &--inner {
+    padding: 8px;
+    background: #fbfdff;
+  }
 }
 
 .api-config-list__head,
@@ -6770,9 +6850,15 @@ function resultTagType(value) {
   flex-wrap: wrap;
   gap: 8px;
 
-  strong {
-    margin-right: auto;
-    color: #1d3554;
+	  strong {
+	    margin-right: auto;
+	    color: #1d3554;
+	  }
+
+  > span {
+    color: #6f849c;
+    font-size: 12px;
+    font-weight: 600;
   }
 }
 
@@ -6791,7 +6877,7 @@ function resultTagType(value) {
 
 .api-assertion-row {
   display: grid;
-  grid-template-columns: 150px minmax(150px, 1fr) 136px minmax(150px, 1fr) 34px;
+  grid-template-columns: 28px 148px minmax(150px, 1fr) 136px minmax(150px, 1fr) 34px;
   gap: 8px;
   align-items: center;
   min-width: 0;
@@ -6799,6 +6885,31 @@ function resultTagType(value) {
   border: 1px solid #e5eef8;
   border-radius: 8px;
   background: #fff;
+}
+
+.api-row-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  background: #edf5ff;
+  color: #2b7adf;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.api-cert-choice {
+  width: 100%;
+
+  :deep(.el-radio-button) {
+    flex: 1;
+  }
+
+  :deep(.el-radio-button__inner) {
+    width: 100%;
+  }
 }
 
 .field-hint {
@@ -7618,12 +7729,19 @@ function resultTagType(value) {
     display: none;
   }
 
-  .step-rule-grid,
-  .api-config-row,
-  .api-assertion-row,
-  .server-file-options,
-  .step-detail-lines {
-    grid-template-columns: 1fr;
+	  .step-rule-grid,
+  .api-test-compact-head,
+  .api-param-grid,
+	  .api-config-row,
+	  .api-assertion-row,
+	  .server-file-options,
+	  .step-detail-lines {
+	    grid-template-columns: 1fr;
+	  }
+
+  .api-test-compact-head {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .config-guide {

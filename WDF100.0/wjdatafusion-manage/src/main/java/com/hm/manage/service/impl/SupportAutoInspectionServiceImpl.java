@@ -1885,7 +1885,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             log.error("HTTP巡检计数解析失败, url={}, resultPath={}, responseBody={}", url, resultPath, responsePreview, e);
             throw e;
         }
-        String certNote = trustedInternalCertificate ? "（已兼容内网自签名证书）" : "";
+        String certNote = trustedInternalCertificate ? "（已兼容自建证书）" : "";
         return TargetCheckResult.normal(target, value, str(step, "thresholdUnit"),
                 "调用方式：HTTP " + StringUtils.defaultIfBlank(str(target, "httpMethod"), "POST").toUpperCase()
                         + "；接口地址：" + url
@@ -1942,7 +1942,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         Map<String, Object> options = parseExtraParamsMap(target);
         int statusCode = response.statusCode();
         String expected = formatExpectedHttpStatus(options);
-        String certNote = trustedInternalCertificate ? "；证书：已兼容内网自签名证书" : "";
+        String certNote = trustedInternalCertificate ? "；证书：已兼容自建证书" : "";
         String detail = "调用方式：HTTP健康检测 " + method
                 + "；接口地址：" + url
                 + "；状态码：" + statusCode
@@ -2001,7 +2001,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             if (isSslCertificateException(e) && !trustInternalCertificate)
             {
-                throw new ServiceException("HTTPS证书校验失败，如为内网自签名证书请开启“信任内网证书”");
+                throw new ServiceException("HTTPS证书校验失败，如接口使用单位自建证书，请在配置页选择“兼容自建证书”");
             }
             throw e;
         }
@@ -2013,12 +2013,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 + "；接口地址：" + maskedUrl
                 + "；状态码：" + response.statusCode()
                 + "；响应耗时：" + formatDecimal(latency) + "ms"
-                + "；断言：" + assertionSummary.passedCount + "/" + assertionSummary.totalCount + "通过"
+                + "；条件：" + assertionSummary.passedCount + "/" + assertionSummary.totalCount + "通过"
                 + "；响应预览：" + maskSensitiveText(abbreviate(responseBody), secretBucket);
         if (!assertionSummary.failures.isEmpty())
         {
             TargetCheckResult result = TargetCheckResult.abnormal(target, latency, "ms", detail);
-            result.errorMessage = "断言失败：" + StringUtils.join(assertionSummary.failures, "；");
+            result.errorMessage = "条件不满足：" + StringUtils.join(assertionSummary.failures, "；");
             return result;
         }
         return TargetCheckResult.normal(target, latency, "ms", detail);
@@ -2687,7 +2687,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 }
                 return assertString(header, operator, expected, "响应Header " + path);
             default:
-                return "不支持的断言类型：" + str(assertion, "type");
+                return "不支持的条件类型：" + str(assertion, "type");
         }
     }
 

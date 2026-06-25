@@ -1,21 +1,40 @@
 export const releaseNotes = [
   {
+    version: 'v3.7.1',
+    submitTime: '2026-06-25 19:13:29',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '接口调用测试配置页优化',
+    summary: '优化自动化巡检“接口调用测试”的步骤配置体验，将冗长表单收敛为分区页签，并把研发术语改为更容易理解的业务表达。',
+    changes: [
+      '接口调用测试配置区由原来的长表单调整为“请求信息、参数与鉴权、返回条件”三个页签，减少弹窗纵向滚动，让用户按配置阶段逐步填写。',
+      '将页面中的“断言”统一改为“条件”，校验提示、工具说明、步骤详情和判定规则均使用“返回结果判断条件”的业务口径。',
+      '将“内网证书”改为“HTTPS证书校验”，选项调整为“严格校验 / 兼容自建证书”，并补充只有 HTTPS 自建证书校验失败时才需要开启的说明。',
+      '参数与鉴权区改为双列紧凑排布，Query、Header、Cookie、请求体和表单参数各自成组，减少不同配置项堆叠造成的阅读压力。',
+      '返回条件列表增加序号和常用条件入口，支持状态码、耗时、返回数字字段、返回文本字段、列表数量、返回内容和返回 Header 等判断方式。'
+    ],
+    scope: ['自动化巡检', '接口调用测试', '前端交互', '术语优化', '操作手册', '版本记录'],
+    database: '无数据库结构变化，无需执行 SQL。',
+    scripts: []
+  },
+  {
     version: 'v3.7.0',
     submitTime: '2026-06-25 18:55:28',
     level: 'minor',
     levelLabel: '小版本',
     tagType: 'primary',
     title: '自动化巡检接口调用测试工具',
-    summary: '自动化巡检新增“接口调用测试”工具，支持 GET/POST、Header、Cookie、静态鉴权、请求体、日期变量和多断言判定，覆盖更通用的 HTTP 接口巡检场景。',
+    summary: '自动化巡检新增“接口调用测试”工具，支持 GET/POST、Header、Cookie、静态鉴权、请求体、日期变量和多条件判定，覆盖更通用的 HTTP 接口巡检场景。',
     changes: [
       '工具箱在“接口与平台探测”分类下新增“接口调用测试”，选择工具后进入专用配置页，不再复用海康接口数量检测的单一结果路径配置。',
-      '步骤配置拆分为基础请求、Header/Cookie/鉴权、Query/请求体和结果断言四个区块，支持 GET、POST、JSON Body、raw text、form-urlencoded、日期变量和内网自签名证书开关。',
+      '步骤配置拆分为基础请求、Header/Cookie/鉴权、Query/请求体和返回条件四个区块，支持 GET、POST、JSON Body、raw text、form-urlencoded、日期变量和自建证书兼容开关。',
       '鉴权支持无鉴权、Bearer Token、Basic Auth、API Key、Cookie 和自定义 Header；敏感 Header、Cookie、Query、Form、Token 和密码统一写入密文字段，结果明细只展示脱敏信息。',
-      '结果判定改为多断言全部通过，支持状态码、响应耗时、JSON数字/字符串/布尔/存在性、数组长度、响应文本和响应 Header 等常见判断方式。',
-      '巡检执行、测试目标和详情展示新增接口调用测试分支，正式执行时跳过通用数值阈值二次判定，避免和多断言逻辑冲突。',
+      '结果判定改为多条件全部满足，支持状态码、响应耗时、JSON数字/字符串/布尔/存在性、数组长度、响应文本和响应 Header 等常见判断方式。',
+      '巡检执行、测试目标和详情展示新增接口调用测试分支，正式执行时跳过通用数值阈值二次判定，避免和多条件逻辑冲突。',
       '自动化巡检操作手册、README、全量 SQL 和独立升级 SQL 同步补充 v3.7.0 说明。'
     ],
-    scope: ['自动化巡检', '巡检工具', 'HTTP接口', '多断言', '敏感配置', 'SQL脚本', '操作手册', '版本记录'],
+    scope: ['自动化巡检', '巡检工具', 'HTTP接口', '多条件', '敏感配置', 'SQL脚本', '操作手册', '版本记录'],
     database: '不新增业务表；新增 HTTP_API_TEST 内置工具数据；确保 sup_auto_inspection_target_result.result_detail、error_message 为 MEDIUMTEXT。',
     scripts: ['WDF100.0/sql/support_upgrade_20260625_auto_inspection_http_api_test_v3_7_0.sql']
   },
