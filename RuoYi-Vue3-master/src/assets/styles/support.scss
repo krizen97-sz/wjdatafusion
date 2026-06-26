@@ -650,10 +650,10 @@ html.dark .version-center-page :is(
   .version-list-panel,
   .quick-filter-panel__head button,
   .version-filter-row button,
-  .major-jump-row button,
-  .major-range-row button,
-  .version-group__head,
-  .version-list-item,
+  .major-filter-card,
+  .major-below-row button,
+  .version-tree-group__head,
+  .version-tree-item,
   .version-detail,
   .version-focus-card,
   .version-detail-section,
@@ -677,24 +677,48 @@ html.dark .version-center-page .version-hero {
     linear-gradient(135deg, var(--support-panel), var(--support-panel-muted)) !important;
 }
 
-html.dark .version-center-page :is(.version-filter-row button.is-active, .major-jump-row button.is-active, .major-range-row button.is-active, .version-group.is-active .version-group__head, .version-list-item:hover, .version-list-item.is-active) {
+html.dark .version-center-page :is(.version-filter-row button.is-active, .major-filter-card:hover, .major-filter-card.is-active, .major-below-row button:hover, .major-below-row button.is-active, .version-tree-group.is-active .version-tree-group__head, .version-tree-group__head:hover, .version-tree-item:hover, .version-tree-item.is-active) {
   border-color: rgba(106, 168, 255, 0.5) !important;
   background: var(--support-accent-soft) !important;
 }
 
-html.dark .version-center-page :is(.version-hero h2, .version-list-panel h3, .version-detail h3, .section-title strong, .version-group__head strong, .version-list-item__title) {
+html.dark .version-center-page :is(.version-hero h2, .version-list-panel h3, .version-detail h3, .section-title strong, .major-filter-card strong, .version-tree-group__head strong, .version-tree-item__title) {
   color: var(--support-strong) !important;
 }
 
-html.dark .version-center-page :is(.version-eyebrow, .section-title span, .version-hero__meta strong, .version-list-item__top strong, .version-focus span) {
+html.dark .version-center-page :is(.version-eyebrow, .section-title span, .version-hero__meta strong, .version-tree-item__top strong, .version-focus span) {
   color: var(--support-accent) !important;
 }
 
-html.dark .version-center-page :is(.version-hero p, .version-hero__meta em, .quick-filter-panel__head em, .version-filter-row button small, .major-range-row button, .version-group__head small, .version-group__head em, .version-list-item__focus, .version-list-item__foot em, .version-list-item__foot small, .version-focus p, .version-database, .version-change-item p, .version-script-empty) {
+html.dark .version-center-page :is(.version-hero p, .version-hero__meta em, .quick-filter-panel__head em, .version-filter-row button small, .major-filter-card small, .major-below-row, .major-below-row span, .major-below-row button, .version-tree-group__head small, .version-tree-item__foot em, .version-tree-item__foot small, .version-focus p, .version-database, .version-change-item p, .version-script-empty) {
   color: var(--support-muted) !important;
 }
 
-html.dark .version-list::-webkit-scrollbar-thumb,
+html.dark .version-center-page :is(.version-filter-row button small, .major-filter-card small) {
+  background: var(--support-panel-muted) !important;
+}
+
+html.dark .version-center-page :is(.version-filter-row button.is-active small, .major-filter-card.is-active small) {
+  background: var(--support-accent-soft) !important;
+  color: var(--support-accent) !important;
+}
+
+html.dark .version-center-page .version-tree-group__items::before,
+html.dark .version-center-page .version-tree-item::before {
+  background: var(--support-line) !important;
+}
+
+html.dark .version-center-page .version-tree-item::after {
+  border-color: rgba(106, 168, 255, 0.38) !important;
+  background: var(--support-panel) !important;
+}
+
+html.dark .version-center-page .version-tree-item.is-active::after {
+  border-color: var(--support-accent) !important;
+  background: var(--support-accent) !important;
+}
+
+html.dark .version-tree::-webkit-scrollbar-thumb,
 html.dark .version-detail::-webkit-scrollbar-thumb,
 html.dark .dashboard-drawer__list::-webkit-scrollbar-thumb,
 html.dark .tool-picker-list__body::-webkit-scrollbar-thumb,

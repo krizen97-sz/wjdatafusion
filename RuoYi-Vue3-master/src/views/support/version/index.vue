@@ -2,7 +2,7 @@
   <div class="app-container version-center-page">
     <section class="version-hero">
       <div class="version-hero__copy">
-        <span class="version-eyebrow">Platform Release Center</span>
+        <span class="version-eyebrow">版本发布中心</span>
         <h2>{{ pageTitle }}</h2>
         <p>{{ pageDescription }}</p>
       </div>
@@ -17,7 +17,7 @@
         </span>
         <span>
           <strong>{{ sqlReleaseCount }}</strong>
-          <em>涉及 SQL</em>
+          <em>涉及脚本</em>
         </span>
         <span>
           <strong>{{ majorReleaseCount }}</strong>
@@ -30,8 +30,8 @@
       <aside class="version-list-panel">
         <div class="version-list-panel__head">
           <div>
-            <span class="version-eyebrow">Releases</span>
-            <h3>修改记录</h3>
+            <span class="version-eyebrow">版本索引</span>
+            <h3>树状记录</h3>
           </div>
           <el-input v-model="keyword" clearable :placeholder="searchPlaceholder" prefix-icon="Search" />
         </div>
@@ -57,28 +57,33 @@
 
         <div class="quick-filter-panel">
           <div class="quick-filter-panel__head">
-            <span>大版本穿梭</span>
+            <span>大版本定位</span>
             <em>{{ activeMajorFilterLabel }}</em>
           </div>
-          <div class="major-jump-row">
+          <div class="major-filter-grid">
             <button
               type="button"
+              class="major-filter-card"
               :class="{ 'is-active': majorVersionMode === 'all' }"
               @click="setMajorVersionFilter('all')"
             >
-              全部
+              <strong>全部版本</strong>
+              <small>{{ scopedReleaseNotes.length }} 条</small>
             </button>
             <button
               v-for="item in majorVersionOptions"
               :key="item.value"
               type="button"
+              class="major-filter-card"
               :class="{ 'is-active': majorVersionMode === 'exact' && selectedMajorVersion === item.value }"
               @click="setMajorVersionFilter('exact', item.value)"
             >
-              {{ item.value }}
+              <strong>{{ item.value }} 系列</strong>
+              <small>{{ item.count }} 条</small>
             </button>
           </div>
-          <div class="major-range-row">
+          <div class="major-below-row">
+            <span>快速回溯</span>
             <button
               v-for="item in majorVersionOptions"
               :key="`lte-${item.value}`"
@@ -91,38 +96,41 @@
           </div>
         </div>
 
-        <div class="version-list">
+        <div class="version-tree" role="tree" aria-label="版本记录树">
           <section
             v-for="group in groupedFilteredReleaseNotes"
             :key="group.key"
-            class="version-group"
+            class="version-tree-group"
             :class="{ 'is-active': activeGroupKey === group.key }"
+            role="treeitem"
+            :aria-expanded="isGroupExpanded(group.key)"
           >
-            <div class="version-group__head">
+            <button type="button" class="version-tree-group__head" @click="toggleVersionGroup(group.key)">
+              <i :class="{ 'is-open': isGroupExpanded(group.key) }"></i>
               <span>
                 <strong>{{ group.label }}</strong>
-                <small>{{ group.count }} 条记录</small>
+                <small>{{ group.count }} 条记录 · {{ getGroupScriptLabel(group) }}</small>
               </span>
-              <em>{{ group.sqlCount }} 个 SQL</em>
-            </div>
-            <div class="version-group__items">
+            </button>
+            <div v-show="isGroupExpanded(group.key)" class="version-tree-group__items" role="group">
               <button
                 v-for="entry in group.items"
                 :key="entry.version"
                 type="button"
-                class="version-list-item"
+                class="version-tree-item"
                 :class="{ 'is-active': activeVersion === entry.version }"
-                @click="activeVersion = entry.version"
+                @click="selectRelease(entry.version)"
               >
-                <span class="version-list-item__top">
+                <span class="version-tree-item__top">
                   <strong>{{ getReleaseDisplayVersion(entry) }}</strong>
-                  <el-tag :type="entry.tagType" size="small" effect="light">{{ entry.levelLabel }}</el-tag>
+                  <el-tag :type="getReleaseLevelType(entry)" size="small" effect="light">
+                    {{ getReleaseLevelLabel(entry) }}
+                  </el-tag>
                 </span>
-                <span class="version-list-item__title">{{ entry.title }}</span>
-                <span class="version-list-item__focus">{{ entry.focus }}</span>
-                <span class="version-list-item__foot">
-                  <em>{{ entry.moduleCategories[0] || entry.primaryModule }}</em>
-                  <small>{{ getReleaseRelationText(entry) || entry.submitTime }}</small>
+                <span class="version-tree-item__title">{{ formatDisplayText(entry.title) }}</span>
+                <span class="version-tree-item__foot">
+                  <em>{{ getEntryModuleSummary(entry) }}</em>
+                  <small>{{ getReleaseDate(entry) }}</small>
                 </span>
               </button>
             </div>
@@ -143,25 +151,30 @@
               <el-tag v-if="activeRelease.activeModuleVersion" type="info" effect="plain">
                 关联总版本 {{ activeRelease.version }}
               </el-tag>
-              <el-tag :type="activeRelease.tagType" effect="light">{{ activeRelease.levelLabel }}</el-tag>
+              <el-tag :type="getReleaseLevelType(activeRelease)" effect="light">
+                {{ getReleaseLevelLabel(activeRelease) }}
+              </el-tag>
+              <el-tag :type="activeRelease.scripts && activeRelease.scripts.length ? 'warning' : 'info'" effect="plain">
+                {{ getReleaseScriptLabel(activeRelease) }}
+              </el-tag>
             </span>
           </div>
-          <h3>{{ getReleaseDisplayVersion(activeRelease) }} {{ activeRelease.title }}</h3>
+          <h3>{{ getReleaseDisplayVersion(activeRelease) }} {{ formatDisplayText(activeRelease.title) }}</h3>
           <div class="version-focus">
             <span>本次重点</span>
-            <p>{{ activeRelease.focus }}</p>
+            <p>{{ formatDisplayText(activeRelease.focus) }}</p>
           </div>
         </section>
 
         <section class="version-detail-section">
           <div class="section-title">
-            <span>Detail</span>
+            <span>改动内容</span>
             <strong>详细说明</strong>
           </div>
           <div class="version-change-list">
             <article v-for="(item, index) in activeRelease.details" :key="item" class="version-change-item">
               <span>{{ index + 1 }}</span>
-              <p>{{ item }}</p>
+              <p>{{ formatDisplayText(item) }}</p>
             </article>
           </div>
         </section>
@@ -169,20 +182,20 @@
         <section class="version-detail-grid">
           <article class="version-info-block">
             <div class="section-title">
-              <span>Scope</span>
+              <span>作用范围</span>
               <strong>影响范围</strong>
             </div>
             <div class="version-scope-list">
-              <span v-for="item in activeRelease.scope" :key="item">{{ item }}</span>
+              <span v-for="item in activeRelease.scope" :key="item">{{ formatDisplayText(item) }}</span>
             </div>
           </article>
 
           <article class="version-info-block">
             <div class="section-title">
-              <span>Deploy</span>
+              <span>上线说明</span>
               <strong>数据库与部署</strong>
             </div>
-            <p class="version-database">{{ activeRelease.database }}</p>
+            <p class="version-database">{{ formatDisplayText(activeRelease.database) }}</p>
             <div v-if="activeRelease.scripts && activeRelease.scripts.length" class="version-script-list">
               <span v-for="script in activeRelease.scripts" :key="script">{{ script }}</span>
             </div>
@@ -197,7 +210,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { latestSupportRelease, releaseNotes } from './releaseNotes'
+import { releaseNotes } from './releaseNotes'
 
 const route = useRoute()
 const activeVersion = ref('')
@@ -205,6 +218,7 @@ const keyword = ref('')
 const categoryFilter = ref('ALL')
 const majorVersionMode = ref('all')
 const selectedMajorVersion = ref('')
+const expandedMajorKeys = ref([])
 
 const modulePresets = {
   site: {
@@ -212,14 +226,14 @@ const modulePresets = {
     title: '现场融合管理版本记录',
     description: '单独沉淀现场管理、现场画布、服务器资产、人员组织、导入导出和部署脚本等现场融合相关版本变化。',
     label: '现场融合',
-    versionPrefix: 'SITE'
+    versionPrefix: '现场版本'
   },
   autoInspection: {
     category: '自动化巡检模块',
     title: '自动化巡检版本记录',
     description: '从总版本记录中摘出自动化巡检相关变更，独立展示巡检模块版本号，并保留对应的平台总版本号。',
     label: '自动化巡检',
-    versionPrefix: 'AUTO'
+    versionPrefix: '巡检版本'
   }
 }
 
@@ -238,7 +252,8 @@ const latestRelease = computed(() => filteredReleaseNotes.value[0] || scopedRele
 const latestReleaseDisplay = computed(() => getReleaseDisplayVersion(latestRelease.value))
 const majorReleaseCount = computed(() => groupReleaseNotes(scopedReleaseNotes.value).length)
 const sqlReleaseCount = computed(() => scopedReleaseNotes.value.filter((item) => item.scripts && item.scripts.length).length)
-const activeGroupKey = computed(() => activeRelease.value.majorVersion)
+const activeGroupKey = computed(() => activeRelease.value?.majorVersion || '')
+const expandedMajorKeySet = computed(() => new Set(expandedMajorKeys.value))
 
 const categoryFilters = computed(() => {
   const categoryMap = new Map()
@@ -248,7 +263,7 @@ const categoryFilters = computed(() => {
     })
   })
   const categories = [...categoryMap.entries()]
-    .map(([label, count]) => ({ label, value: label, count }))
+    .map(([label, count]) => ({ label: formatDisplayText(label), value: label, count }))
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'zh-Hans-CN'))
 
   return [
@@ -311,8 +326,21 @@ watch(filteredReleaseNotes, (list) => {
   }
 }, { immediate: true })
 
+watch(groupedFilteredReleaseNotes, (groups) => {
+  const groupKeys = groups.map((group) => group.key)
+  const nextKeys = expandedMajorKeys.value.filter((key) => groupKeys.includes(key))
+  const activeKey = activeRelease.value?.majorVersion
+  if (activeKey && groupKeys.includes(activeKey) && !nextKeys.includes(activeKey)) {
+    nextKeys.push(activeKey)
+  }
+  if (!nextKeys.length && groupKeys.length) {
+    nextKeys.push(groupKeys[0])
+  }
+  expandedMajorKeys.value = nextKeys
+}, { immediate: true })
+
 watch(() => route.query.module, () => {
-  categoryFilter.value = 'ALL'
+  resetFilters()
   activeVersion.value = ''
 })
 
@@ -340,7 +368,7 @@ function buildModuleVersionIndex(list) {
       counters.set(preset.category, nextVersion)
       entry.moduleVersions[preset.category] = {
         label: preset.label,
-        version: `${preset.versionPrefix}-${nextVersion}`,
+        version: `${preset.versionPrefix} ${nextVersion}`,
         totalVersion: entry.version
       }
     })
@@ -353,7 +381,7 @@ function buildModuleVersionIndex(list) {
 }
 
 function bumpModuleVersion(current = '0.0.0', level = 'patch') {
-  const parts = current.split('.').map((item) => Number(item) || 0)
+  const parts = String(current).replace(/^v/i, '').split('.').map((item) => Number(item) || 0)
   if (level === 'major') {
     parts[0] += 1
     parts[1] = 0
@@ -372,7 +400,7 @@ function getActiveModuleVersion(entry) {
   if (modulePreset.value) {
     return entry.moduleVersions[modulePreset.value.category] || null
   }
-  return entry.moduleVersions['自动化巡检模块'] || entry.moduleVersions['现场融合管理模块'] || null
+  return null
 }
 
 function getReleaseDisplayVersion(entry) {
@@ -380,11 +408,94 @@ function getReleaseDisplayVersion(entry) {
   return entry.activeModuleVersion?.version || entry.version
 }
 
-function getReleaseRelationText(entry) {
-  if (!entry?.activeModuleVersion) {
-    return ''
+function selectRelease(version) {
+  activeVersion.value = version
+}
+
+function isGroupExpanded(key) {
+  return expandedMajorKeySet.value.has(key)
+}
+
+function toggleVersionGroup(key) {
+  const keySet = new Set(expandedMajorKeys.value)
+  if (keySet.has(key)) {
+    keySet.delete(key)
+  } else {
+    keySet.add(key)
   }
-  return `关联总版本 ${entry.version}`
+  expandedMajorKeys.value = [...keySet]
+}
+
+function getReleaseLevelLabel(entry) {
+  const levelMap = {
+    major: '主版本',
+    minor: '功能版本',
+    patch: '修订版本'
+  }
+  return entry?.levelLabel || levelMap[entry?.level] || '版本记录'
+}
+
+function getReleaseLevelType(entry) {
+  const typeMap = {
+    major: 'danger',
+    minor: 'primary',
+    patch: 'success'
+  }
+  return entry?.tagType || typeMap[entry?.level] || 'info'
+}
+
+function getReleaseScriptLabel(entry) {
+  const count = entry?.scripts?.length || 0
+  return count ? `含 ${count} 个部署脚本` : '无需部署脚本'
+}
+
+function getGroupScriptLabel(group) {
+  return group.sqlCount ? `${group.sqlCount} 个脚本` : '无需脚本'
+}
+
+function getEntryModuleSummary(entry) {
+  if (modulePreset.value) {
+    return modulePreset.value.category
+  }
+  if (entry.scope?.includes('页面显示优化')) {
+    return '页面显示优化模块'
+  }
+  if (entry.scope?.some((item) => item.includes('现场融合') || item.includes('现场管理'))) {
+    return '现场融合管理模块'
+  }
+  if (entry.scope?.some((item) => item.includes('白名单'))) {
+    return '白名单管理模块'
+  }
+  if (entry.scope?.some((item) => item.includes('自动化巡检') || item.includes('巡检'))) {
+    return '自动化巡检模块'
+  }
+  return formatDisplayText(entry.moduleCategories?.[0] || entry.primaryModule || '平台功能')
+}
+
+function getReleaseDate(entry) {
+  return entry.submitTime ? entry.submitTime.slice(0, 10) : '未记录日期'
+}
+
+function formatDisplayText(value) {
+  return String(value || '')
+    .replace(/Datafusion/gi, '平台')
+    .replace(/SQL脚本/g, '数据库脚本')
+    .replace(/无需执行\s+SQL/g, '无需执行数据库脚本')
+    .replace(/执行\s+SQL/g, '执行数据库脚本')
+    .replace(/动态\s+SQL/g, '动态数据库语句')
+    .replace(/\bSQL\b/g, '数据库语句')
+    .replace(/\bquery\b/g, '查询参数')
+    .replace(/\bMapper\b/g, '数据映射层')
+    .replace(/\bbeginTime\b/g, '开始时间')
+    .replace(/\bendTime\b/g, '结束时间')
+    .replace(/\bDate\b/g, '日期类型')
+    .replace(/\bExcel\b/g, '表格文件')
+    .replace(/\bsheet\b/g, '工作表')
+    .replace(/Word\s*文档/g, '文档')
+    .replace(/\bWord\b/g, '文档')
+    .replace(/\bHTML\b/g, '网页文档')
+    .replace(/\bMarkdown\b/g, '说明文档')
+    .replace(/\bpublic\b/g, '本地资源目录')
 }
 
 function groupReleaseNotes(list) {
@@ -548,6 +659,7 @@ function getDynamicScopeCategories(entry) {
     'SQL脚本',
     '数据库脚本',
     '菜单权限',
+    '模块版本号',
     '前后端接口',
     '后端修复',
     '前端修复',
@@ -683,7 +795,7 @@ function getPrimaryModule(entry) {
 
 .version-workspace {
   display: grid;
-  grid-template-columns: 380px minmax(0, 1fr);
+  grid-template-columns: 400px minmax(0, 1fr);
   min-height: 0;
   border: 1px solid #dbe7f4;
   border-radius: 8px;
@@ -809,105 +921,203 @@ function getPrimaryModule(entry) {
   color: #1f6fc2;
 }
 
-.major-jump-row,
-.major-range-row {
+.major-filter-grid {
   display: flex;
-  gap: 7px;
+  gap: 8px;
   overflow-x: auto;
   padding-bottom: 2px;
   scrollbar-width: none;
 }
 
-.major-jump-row::-webkit-scrollbar,
-.major-range-row::-webkit-scrollbar {
+.major-filter-grid::-webkit-scrollbar {
   display: none;
 }
 
-.major-jump-row button,
-.major-range-row button {
+.major-filter-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   flex: 0 0 auto;
-  height: 28px;
+  min-width: 92px;
+  height: 32px;
   padding: 0 10px;
   border: 1px solid #d5e4f4;
   border-radius: 8px;
   background: #fff;
-  color: #5c748d;
+  color: #17314d;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.major-filter-card strong,
+.major-filter-card small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.major-filter-card strong {
+  color: #17314d;
+  font-weight: 800;
+}
+
+.major-filter-card small {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #eef4fb;
+  color: #7d91a5;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.major-filter-card:hover,
+.major-filter-card.is-active {
+  border-color: #2f7fdb;
+  background: #eaf4ff;
+  color: #1f6fc2;
+  box-shadow: 0 8px 18px rgba(30, 96, 160, 0.08);
+}
+
+.major-filter-card.is-active strong {
+  color: #1f6fc2;
+}
+
+.major-filter-card.is-active small {
+  background: #d8ebff;
+  color: #1f6fc2;
+}
+
+.major-below-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  color: #7d91a5;
+  font-size: 12px;
+  scrollbar-width: none;
+}
+
+.major-below-row::-webkit-scrollbar {
+  display: none;
+}
+
+.major-below-row span {
+  flex: 0 0 auto;
+  color: #5f7892;
+  font-weight: 700;
+}
+
+.major-below-row button {
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #d5e4f4;
+  border-radius: 999px;
+  background: #fff;
+  color: #6d8195;
   cursor: pointer;
   font-size: 12px;
 }
 
-.major-range-row button {
-  height: 26px;
-  color: #6d8195;
-}
-
-.major-jump-row button.is-active,
-.major-range-row button.is-active {
+.major-below-row button:hover,
+.major-below-row button.is-active {
   border-color: #2f7fdb;
   background: #eaf4ff;
   color: #1f6fc2;
   font-weight: 800;
 }
 
-.version-list {
+.version-tree {
   display: grid;
   align-content: start;
-  gap: 14px;
+  gap: 10px;
   min-height: 0;
   overflow-y: auto;
   padding-right: 6px;
   overscroll-behavior: contain;
 }
 
-.version-list::-webkit-scrollbar,
+.version-tree::-webkit-scrollbar,
 .version-detail::-webkit-scrollbar {
   width: 8px;
 }
 
-.version-list::-webkit-scrollbar-thumb,
+.version-tree::-webkit-scrollbar-thumb,
 .version-detail::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: #c7d9eb;
 }
 
-.version-list::-webkit-scrollbar-track,
+.version-tree::-webkit-scrollbar-track,
 .version-detail::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.version-group {
+.version-tree-group {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
-.version-group__head {
+.version-tree-group__head {
   position: sticky;
   top: 0;
   z-index: 1;
-  display: flex;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  min-height: 38px;
+  gap: 8px;
+  width: 100%;
+  min-height: 42px;
   padding: 8px 10px;
   border: 1px solid #dce9f7;
   border-radius: 8px;
   background: rgba(248, 251, 255, 0.96);
   backdrop-filter: blur(8px);
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
 }
 
-.version-group.is-active .version-group__head {
+.version-tree-group__head i {
+  position: relative;
+  width: 18px;
+  height: 18px;
+}
+
+.version-tree-group__head i::before {
+  position: absolute;
+  inset: 4px 6px;
+  border-right: 2px solid #6c8bad;
+  border-bottom: 2px solid #6c8bad;
+  content: '';
+  transform: rotate(-45deg);
+  transition: transform 0.18s ease;
+}
+
+.version-tree-group__head i.is-open::before {
+  transform: rotate(45deg);
+}
+
+.version-tree-group.is-active .version-tree-group__head,
+.version-tree-group__head:hover {
   border-color: #a8cdef;
   background: #eef7ff;
 }
 
-.version-group__head span {
+.version-tree-group__head span {
   display: grid;
   gap: 2px;
   min-width: 0;
 }
 
-.version-group__head strong {
+.version-tree-group__head strong {
   overflow: hidden;
   color: #17314d;
   font-size: 13px;
@@ -916,23 +1126,36 @@ function getPrimaryModule(entry) {
   white-space: nowrap;
 }
 
-.version-group__head small,
-.version-group__head em {
+.version-tree-group__head small {
   color: #7d91a5;
   font-size: 12px;
   font-style: normal;
 }
 
-.version-group__items {
-  display: grid;
-  gap: 8px;
-}
-
-.version-list-item {
+.version-tree-group__items {
+  position: relative;
   display: grid;
   gap: 7px;
+  margin-left: 17px;
+  padding-left: 15px;
+}
+
+.version-tree-group__items::before {
+  position: absolute;
+  top: -4px;
+  bottom: 10px;
+  left: 3px;
+  width: 1px;
+  background: #cfe0f2;
+  content: '';
+}
+
+.version-tree-item {
+  position: relative;
+  display: grid;
+  gap: 6px;
   width: 100%;
-  padding: 13px;
+  padding: 11px 12px;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
@@ -943,15 +1166,43 @@ function getPrimaryModule(entry) {
   transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.version-list-item:hover,
-.version-list-item.is-active {
+.version-tree-item::before {
+  position: absolute;
+  top: 18px;
+  left: -12px;
+  width: 12px;
+  height: 1px;
+  background: #cfe0f2;
+  content: '';
+}
+
+.version-tree-item::after {
+  position: absolute;
+  top: 14px;
+  left: -15px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid #9ec4ea;
+  border-radius: 50%;
+  background: #fff;
+  content: '';
+}
+
+.version-tree-item:hover,
+.version-tree-item.is-active {
   border-color: #b9d7f3;
   background: #fff;
   box-shadow: 0 8px 20px rgba(30, 96, 160, 0.08);
 }
 
-.version-list-item__top,
-.version-list-item__foot {
+.version-tree-item.is-active::after {
+  border-color: #2f7fdb;
+  background: #2f7fdb;
+  box-shadow: 0 0 0 4px rgba(47, 127, 219, 0.12);
+}
+
+.version-tree-item__top,
+.version-tree-item__foot {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -959,29 +1210,25 @@ function getPrimaryModule(entry) {
   min-width: 0;
 }
 
-.version-list-item__top strong {
+.version-tree-item__top strong {
+  overflow: hidden;
   color: #1f6fc2;
   font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.version-list-item__title {
+.version-tree-item__title {
+  overflow: hidden;
   color: #17314d;
   font-size: 14px;
   font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.version-list-item__focus {
-  display: -webkit-box;
-  overflow: hidden;
-  color: #6a8198;
-  font-size: 12px;
-  line-height: 1.5;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
-
-.version-list-item__foot em,
-.version-list-item__foot small {
+.version-tree-item__foot em,
+.version-tree-item__foot small {
   overflow: hidden;
   color: #8194a8;
   font-size: 12px;
@@ -1150,6 +1397,60 @@ function getPrimaryModule(entry) {
   font-family: inherit;
 }
 
+:global(html.dark) .version-center-page .major-filter-card,
+:global(html.dark) .version-center-page .major-below-row button,
+:global(html.dark) .version-center-page .version-tree-group__head,
+:global(html.dark) .version-center-page .version-tree-item {
+  border-color: var(--support-line) !important;
+  background: var(--support-panel) !important;
+  color: var(--support-strong);
+  box-shadow: none !important;
+}
+
+:global(html.dark) .version-center-page .major-filter-card:hover,
+:global(html.dark) .version-center-page .major-filter-card.is-active,
+:global(html.dark) .version-center-page .major-below-row button:hover,
+:global(html.dark) .version-center-page .major-below-row button.is-active,
+:global(html.dark) .version-center-page .version-tree-group.is-active .version-tree-group__head,
+:global(html.dark) .version-center-page .version-tree-group__head:hover,
+:global(html.dark) .version-center-page .version-tree-item:hover,
+:global(html.dark) .version-center-page .version-tree-item.is-active {
+  border-color: rgba(106, 168, 255, 0.5) !important;
+  background: var(--support-accent-soft) !important;
+}
+
+:global(html.dark) .version-center-page .major-filter-card strong,
+:global(html.dark) .version-center-page .version-tree-group__head strong,
+:global(html.dark) .version-center-page .version-tree-item__title {
+  color: var(--support-strong) !important;
+}
+
+:global(html.dark) .version-center-page .major-filter-card small,
+:global(html.dark) .version-center-page .version-tree-group__head small,
+:global(html.dark) .version-center-page .version-tree-item__foot em,
+:global(html.dark) .version-center-page .version-tree-item__foot small {
+  color: var(--support-muted) !important;
+}
+
+:global(html.dark) .version-center-page .version-tree-item__top strong {
+  color: var(--support-accent) !important;
+}
+
+:global(html.dark) .version-center-page .version-tree-group__items::before,
+:global(html.dark) .version-center-page .version-tree-item::before {
+  background: var(--support-line) !important;
+}
+
+:global(html.dark) .version-center-page .version-tree-item::after {
+  border-color: rgba(106, 168, 255, 0.38) !important;
+  background: var(--support-panel) !important;
+}
+
+:global(html.dark) .version-center-page .version-tree-item.is-active::after {
+  border-color: var(--support-accent) !important;
+  background: var(--support-accent) !important;
+}
+
 @media (max-width: 1180px) {
   .version-hero,
   .version-workspace,
@@ -1180,7 +1481,7 @@ function getPrimaryModule(entry) {
     border-bottom: 1px solid #e3edf7;
   }
 
-  .version-list {
+  .version-tree {
     max-height: none;
   }
 }
