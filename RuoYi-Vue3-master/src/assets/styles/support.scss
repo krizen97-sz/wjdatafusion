@@ -690,7 +690,7 @@ html.dark .version-center-page :is(.version-eyebrow, .section-title span, .versi
   color: var(--support-accent) !important;
 }
 
-html.dark .version-center-page :is(.version-hero p, .version-hero__meta em, .quick-filter-panel__head em, .version-filter-row button small, .major-filter-card small, .major-below-row, .major-below-row span, .major-below-row button, .version-tree-group__head small, .version-tree-item__foot em, .version-tree-item__foot small, .version-focus p, .version-database, .version-change-item p, .version-script-empty) {
+html.dark .version-center-page :is(.version-hero__meta em, .quick-filter-panel__head em, .version-filter-row button small, .major-filter-card small, .major-below-row, .major-below-row span, .major-below-row button, .version-tree-group__head small, .version-tree-item__foot em, .version-tree-item__foot small, .version-focus p, .version-database, .version-change-item p, .version-script-empty) {
   color: var(--support-muted) !important;
 }
 

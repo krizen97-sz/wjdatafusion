@@ -4,7 +4,6 @@
       <div class="version-hero__copy">
         <span class="version-eyebrow">版本发布中心</span>
         <h2>{{ pageTitle }}</h2>
-        <p>{{ pageDescription }}</p>
       </div>
       <div class="version-hero__meta">
         <span>
@@ -224,14 +223,12 @@ const modulePresets = {
   site: {
     category: '现场融合管理模块',
     title: '现场融合管理版本记录',
-    description: '单独沉淀现场管理、现场画布、服务器资产、人员组织、导入导出和部署脚本等现场融合相关版本变化。',
     label: '现场融合',
     versionPrefix: '现场版本'
   },
   autoInspection: {
     category: '自动化巡检模块',
     title: '自动化巡检版本记录',
-    description: '从总版本记录中摘出自动化巡检相关变更，独立展示巡检模块版本号，并保留对应的平台总版本号。',
     label: '自动化巡检',
     versionPrefix: '巡检版本'
   }
@@ -239,7 +236,6 @@ const modulePresets = {
 
 const modulePreset = computed(() => modulePresets[route.query.module] || null)
 const pageTitle = computed(() => modulePreset.value?.title || '版本记录中心')
-const pageDescription = computed(() => modulePreset.value?.description || '统一沉淀现场融合管理、自动化巡检、首页工作台等业务模块的版本变化，先看本次重点，再查看详细说明和部署脚本。')
 const searchPlaceholder = computed(() => modulePreset.value ? '搜索模块版本 / 总版本 / 修改重点' : '搜索版本 / 模块 / 重点')
 const normalizedReleaseNotes = computed(() => buildModuleVersionIndex(releaseNotes.map(enhanceRelease)))
 const scopedReleaseNotes = computed(() => {
@@ -710,7 +706,7 @@ function getPrimaryModule(entry) {
 .version-center-page {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 18px;
+  gap: 12px;
   height: calc(100vh - 84px);
   min-height: 660px;
   overflow: hidden;
@@ -719,10 +715,11 @@ function getPrimaryModule(entry) {
 
 .version-hero {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  padding: 24px 26px;
+  gap: 16px;
+  min-height: 74px;
+  padding: 12px 16px;
   border: 1px solid #dbe7f4;
   border-radius: 8px;
   background: linear-gradient(135deg, #f7fbff 0%, #eef7ff 58%, #f5faf7 100%);
@@ -731,7 +728,7 @@ function getPrimaryModule(entry) {
 .version-hero__copy {
   display: grid;
   align-content: center;
-  gap: 8px;
+  gap: 4px;
   min-width: 0;
 }
 
@@ -753,28 +750,25 @@ function getPrimaryModule(entry) {
 }
 
 .version-hero h2 {
-  font-size: 30px;
-}
-
-.version-hero p {
-  max-width: 760px;
-  margin: 0;
-  color: #60788f;
-  font-size: 14px;
-  line-height: 1.7;
+  font-size: 22px;
 }
 
 .version-hero__meta {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(86px, 1fr));
-  gap: 10px;
-  min-width: 440px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
 }
 
 .version-hero__meta span {
-  display: grid;
-  place-items: center;
-  min-height: 84px;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  min-width: 88px;
+  min-height: 38px;
+  padding: 0 11px;
   border: 1px solid rgba(143, 179, 216, 0.56);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.86);
@@ -782,12 +776,11 @@ function getPrimaryModule(entry) {
 
 .version-hero__meta strong {
   color: #2367ad;
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1;
 }
 
 .version-hero__meta em {
-  margin-top: 8px;
   color: #71879c;
   font-size: 12px;
   font-style: normal;
@@ -1473,7 +1466,7 @@ function getPrimaryModule(entry) {
   }
 
   .version-hero__meta {
-    min-width: 0;
+    justify-content: flex-start;
   }
 
   .version-list-panel {
