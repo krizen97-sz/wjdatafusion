@@ -3,16 +3,16 @@
     <section class="version-hero">
       <div class="version-hero__copy">
         <span class="version-eyebrow">Platform Release Center</span>
-        <h2>版本记录中心</h2>
-        <p>统一沉淀现场融合管理、自动化巡检、首页工作台等业务模块的版本变化，先看本次重点，再查看详细说明和部署脚本。</p>
+        <h2>{{ pageTitle }}</h2>
+        <p>{{ pageDescription }}</p>
       </div>
       <div class="version-hero__meta">
         <span>
-          <strong>{{ latestRelease.version }}</strong>
-          <em>当前版本</em>
+          <strong>{{ latestReleaseDisplay }}</strong>
+          <em>{{ modulePreset ? '当前模块版本' : '当前版本' }}</em>
         </span>
         <span>
-          <strong>{{ releaseNotes.length }}</strong>
+          <strong>{{ scopedReleaseNotes.length }}</strong>
           <em>版本记录</em>
         </span>
         <span>
@@ -33,15 +33,10 @@
             <span class="version-eyebrow">Releases</span>
             <h3>修改记录</h3>
           </div>
-          <el-input
-            v-model="keyword"
-            clearable
-            placeholder="搜索版本 / 模块 / 重点"
-            prefix-icon="Search"
-          />
+          <el-input v-model="keyword" clearable :placeholder="searchPlaceholder" prefix-icon="Search" />
         </div>
 
-        <div class="quick-filter-panel">
+        <div v-if="!modulePreset" class="quick-filter-panel">
           <div class="quick-filter-panel__head">
             <span>模块快捷标签</span>
             <button type="button" @click="resetFilters">重置</button>
@@ -120,14 +115,14 @@
                 @click="activeVersion = entry.version"
               >
                 <span class="version-list-item__top">
-                  <strong>{{ entry.version }}</strong>
+                  <strong>{{ getReleaseDisplayVersion(entry) }}</strong>
                   <el-tag :type="entry.tagType" size="small" effect="light">{{ entry.levelLabel }}</el-tag>
                 </span>
                 <span class="version-list-item__title">{{ entry.title }}</span>
                 <span class="version-list-item__focus">{{ entry.focus }}</span>
                 <span class="version-list-item__foot">
                   <em>{{ entry.moduleCategories[0] || entry.primaryModule }}</em>
-                  <small>{{ entry.submitTime }}</small>
+                  <small>{{ getReleaseRelationText(entry) || entry.submitTime }}</small>
                 </span>
               </button>
             </div>
@@ -142,10 +137,16 @@
             <span>{{ activeRelease.submitTime }}</span>
             <span class="version-focus-card__tags">
               <el-tag effect="plain">{{ activeRelease.majorVersion }} 系列</el-tag>
+              <el-tag v-if="activeRelease.activeModuleVersion" type="warning" effect="light">
+                {{ activeRelease.activeModuleVersion.label }} {{ activeRelease.activeModuleVersion.version }}
+              </el-tag>
+              <el-tag v-if="activeRelease.activeModuleVersion" type="info" effect="plain">
+                关联总版本 {{ activeRelease.version }}
+              </el-tag>
               <el-tag :type="activeRelease.tagType" effect="light">{{ activeRelease.levelLabel }}</el-tag>
             </span>
           </div>
-          <h3>{{ activeRelease.version }} {{ activeRelease.title }}</h3>
+          <h3>{{ getReleaseDisplayVersion(activeRelease) }} {{ activeRelease.title }}</h3>
           <div class="version-focus">
             <span>本次重点</span>
             <p>{{ activeRelease.focus }}</p>
@@ -195,23 +196,53 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { latestSupportRelease, releaseNotes } from './releaseNotes'
 
-const activeVersion = ref(latestSupportRelease.version)
+const route = useRoute()
+const activeVersion = ref('')
 const keyword = ref('')
 const categoryFilter = ref('ALL')
 const majorVersionMode = ref('all')
 const selectedMajorVersion = ref('')
 
-const latestRelease = computed(() => enhanceRelease(latestSupportRelease))
-const normalizedReleaseNotes = computed(() => releaseNotes.map(enhanceRelease))
-const majorReleaseCount = computed(() => groupReleaseNotes(normalizedReleaseNotes.value).length)
-const sqlReleaseCount = computed(() => releaseNotes.filter((item) => item.scripts && item.scripts.length).length)
+const modulePresets = {
+  site: {
+    category: '现场融合管理模块',
+    title: '现场融合管理版本记录',
+    description: '单独沉淀现场管理、现场画布、服务器资产、人员组织、导入导出和部署脚本等现场融合相关版本变化。',
+    label: '现场融合',
+    versionPrefix: 'SITE'
+  },
+  autoInspection: {
+    category: '自动化巡检模块',
+    title: '自动化巡检版本记录',
+    description: '从总版本记录中摘出自动化巡检相关变更，独立展示巡检模块版本号，并保留对应的平台总版本号。',
+    label: '自动化巡检',
+    versionPrefix: 'AUTO'
+  }
+}
+
+const modulePreset = computed(() => modulePresets[route.query.module] || null)
+const pageTitle = computed(() => modulePreset.value?.title || '版本记录中心')
+const pageDescription = computed(() => modulePreset.value?.description || '统一沉淀现场融合管理、自动化巡检、首页工作台等业务模块的版本变化，先看本次重点，再查看详细说明和部署脚本。')
+const searchPlaceholder = computed(() => modulePreset.value ? '搜索模块版本 / 总版本 / 修改重点' : '搜索版本 / 模块 / 重点')
+const normalizedReleaseNotes = computed(() => buildModuleVersionIndex(releaseNotes.map(enhanceRelease)))
+const scopedReleaseNotes = computed(() => {
+  if (!modulePreset.value) {
+    return normalizedReleaseNotes.value
+  }
+  return normalizedReleaseNotes.value.filter((entry) => entry.moduleCategories.includes(modulePreset.value.category))
+})
+const latestRelease = computed(() => filteredReleaseNotes.value[0] || scopedReleaseNotes.value[0] || normalizedReleaseNotes.value[0])
+const latestReleaseDisplay = computed(() => getReleaseDisplayVersion(latestRelease.value))
+const majorReleaseCount = computed(() => groupReleaseNotes(scopedReleaseNotes.value).length)
+const sqlReleaseCount = computed(() => scopedReleaseNotes.value.filter((item) => item.scripts && item.scripts.length).length)
 const activeGroupKey = computed(() => activeRelease.value.majorVersion)
 
 const categoryFilters = computed(() => {
   const categoryMap = new Map()
-  normalizedReleaseNotes.value.forEach((entry) => {
+  scopedReleaseNotes.value.forEach((entry) => {
     entry.moduleCategories.forEach((category) => {
       categoryMap.set(category, (categoryMap.get(category) || 0) + 1)
     })
@@ -221,13 +252,13 @@ const categoryFilters = computed(() => {
     .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, 'zh-Hans-CN'))
 
   return [
-    { label: '全部', value: 'ALL', count: normalizedReleaseNotes.value.length },
+    { label: '全部', value: 'ALL', count: scopedReleaseNotes.value.length },
     ...categories
   ]
 })
 
 const majorVersionOptions = computed(() => {
-  return groupReleaseNotes(normalizedReleaseNotes.value).map((group) => ({
+  return groupReleaseNotes(scopedReleaseNotes.value).map((group) => ({
     label: group.label,
     value: group.key,
     count: group.count
@@ -246,8 +277,8 @@ const activeMajorFilterLabel = computed(() => {
 
 const filteredReleaseNotes = computed(() => {
   const text = keyword.value.trim().toLowerCase()
-  return normalizedReleaseNotes.value.filter((entry) => {
-    const matchCategory = categoryFilter.value === 'ALL' || entry.moduleCategories.includes(categoryFilter.value)
+  return scopedReleaseNotes.value.filter((entry) => {
+    const matchCategory = modulePreset.value || categoryFilter.value === 'ALL' || entry.moduleCategories.includes(categoryFilter.value)
     const matchMajorVersion = matchMajorVersionFilter(entry)
     const searchable = [
       entry.version,
@@ -257,6 +288,8 @@ const filteredReleaseNotes = computed(() => {
       entry.levelLabel,
       entry.primaryModule,
       entry.majorVersion,
+      entry.activeModuleVersion?.version,
+      entry.activeModuleVersion?.label,
       ...entry.moduleCategories,
       ...(entry.scope || []),
       ...(entry.details || [])
@@ -268,7 +301,7 @@ const filteredReleaseNotes = computed(() => {
 const groupedFilteredReleaseNotes = computed(() => groupReleaseNotes(filteredReleaseNotes.value))
 
 const activeRelease = computed(() => {
-  return normalizedReleaseNotes.value.find((item) => item.version === activeVersion.value) || normalizedReleaseNotes.value[0]
+  return filteredReleaseNotes.value.find((item) => item.version === activeVersion.value) || filteredReleaseNotes.value[0] || scopedReleaseNotes.value[0] || normalizedReleaseNotes.value[0]
 })
 
 watch(filteredReleaseNotes, (list) => {
@@ -276,6 +309,11 @@ watch(filteredReleaseNotes, (list) => {
   if (!list.some((item) => item.version === activeVersion.value)) {
     activeVersion.value = list[0].version
   }
+}, { immediate: true })
+
+watch(() => route.query.module, () => {
+  categoryFilter.value = 'ALL'
+  activeVersion.value = ''
 })
 
 function enhanceRelease(entry) {
@@ -287,6 +325,66 @@ function enhanceRelease(entry) {
     majorVersion: getMajorVersion(entry.version),
     moduleCategories: getModuleCategories(entry)
   }
+}
+
+function buildModuleVersionIndex(list) {
+  const ordered = [...list].reverse()
+  const counters = new Map()
+  ordered.forEach((entry) => {
+    entry.moduleVersions = {}
+    Object.values(modulePresets).forEach((preset) => {
+      if (!entry.moduleCategories.includes(preset.category)) {
+        return
+      }
+      const nextVersion = bumpModuleVersion(counters.get(preset.category), entry.level)
+      counters.set(preset.category, nextVersion)
+      entry.moduleVersions[preset.category] = {
+        label: preset.label,
+        version: `${preset.versionPrefix}-${nextVersion}`,
+        totalVersion: entry.version
+      }
+    })
+  })
+
+  return ordered.reverse().map((entry) => ({
+    ...entry,
+    activeModuleVersion: getActiveModuleVersion(entry)
+  }))
+}
+
+function bumpModuleVersion(current = '0.0.0', level = 'patch') {
+  const parts = current.split('.').map((item) => Number(item) || 0)
+  if (level === 'major') {
+    parts[0] += 1
+    parts[1] = 0
+    parts[2] = 0
+  } else if (level === 'minor') {
+    parts[1] += 1
+    parts[2] = 0
+  } else {
+    parts[2] += 1
+  }
+  return `v${parts.join('.')}`
+}
+
+function getActiveModuleVersion(entry) {
+  if (!entry?.moduleVersions) return null
+  if (modulePreset.value) {
+    return entry.moduleVersions[modulePreset.value.category] || null
+  }
+  return entry.moduleVersions['自动化巡检模块'] || entry.moduleVersions['现场融合管理模块'] || null
+}
+
+function getReleaseDisplayVersion(entry) {
+  if (!entry) return ''
+  return entry.activeModuleVersion?.version || entry.version
+}
+
+function getReleaseRelationText(entry) {
+  if (!entry?.activeModuleVersion) {
+    return ''
+  }
+  return `关联总版本 ${entry.version}`
 }
 
 function groupReleaseNotes(list) {
