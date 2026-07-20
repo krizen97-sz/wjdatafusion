@@ -44,7 +44,7 @@
         {{ loadError ? '模型加载失败' : '模型加载中' }}
       </div>
 
-      <div v-if="dialogEnabled" class="mascot-actions" aria-label="看板娘操作">
+      <div class="mascot-actions" aria-label="看板娘操作">
         <button
           v-if="playEnabled"
           type="button"
@@ -59,6 +59,14 @@
           <svg v-else viewBox="0 0 24 24" aria-hidden="true">
             <path d="M9 3a1 1 0 0 1 1 1v3.5A1.5 1.5 0 0 1 8.5 9H5a1 1 0 0 1 0-2h1.6L3.3 3.7a1 1 0 1 1 1.4-1.4L8 5.6V4a1 1 0 0 1 1-1Zm6 0a1 1 0 0 1 1 1v1.6l3.3-3.3a1 1 0 1 1 1.4 1.4L17.4 7H19a1 1 0 1 1 0 2h-3.5A1.5 1.5 0 0 1 14 7.5V4a1 1 0 0 1 1-1ZM5 15h3.5a1.5 1.5 0 0 1 1.5 1.5V20a1 1 0 1 1-2 0v-1.6l-3.3 3.3a1 1 0 0 1-1.4-1.4L6.6 17H5a1 1 0 1 1 0-2Zm10.5 0H19a1 1 0 1 1 0 2h-1.6l3.3 3.3a1 1 0 0 1-1.4 1.4L16 18.4V20a1 1 0 1 1-2 0v-3.5a1.5 1.5 0 0 1 1.5-1.5Z" />
           </svg>
+        </button>
+        <button
+          type="button"
+          title="隐藏看板娘"
+          aria-label="隐藏看板娘"
+          @click.stop="hideMascot"
+        >
+          <Hide aria-hidden="true" />
         </button>
       </div>
     </div>
@@ -83,7 +91,7 @@ const props = defineProps({
     default: false
   }
 })
-const emit = defineEmits(['play-change'])
+const emit = defineEmits(['play-change', 'hide'])
 
 const WIDTH = 992
 const LIVE2D_CORE_ID = 'ry-local-live2d-core'
@@ -336,6 +344,12 @@ function togglePlayMode() {
 
   startTicker()
   showPagePrompt(true, playConfig.value.exit || mascotMessages.hoverSelf)
+}
+
+function hideMascot() {
+  playMode.value = false
+  tapRegion.value = 'idle'
+  emit('hide')
 }
 
 function handleBubbleClick() {

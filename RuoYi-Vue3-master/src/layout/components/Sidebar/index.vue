@@ -2,7 +2,8 @@
   <div
     :class="{
       'has-logo': showLogo,
-      'has-sidebar-mascot': !isCollapse,
+      'has-sidebar-mascot': !isCollapse && mascotVisible,
+      'has-mascot-restore': !isCollapse && !mascotVisible,
       'is-mascot-playing': mascotPlayMode
     }"
     class="sidebar-container"
@@ -28,7 +29,22 @@
         />
       </el-menu>
     </el-scrollbar>
-    <sidebar-mascot :collapsed="isCollapse" @play-change="mascotPlayMode = $event" />
+    <sidebar-mascot
+      v-if="mascotVisible"
+      :collapsed="isCollapse"
+      @play-change="mascotPlayMode = $event"
+      @hide="hideMascot"
+    />
+    <el-tooltip v-else-if="!isCollapse" content="显示看板娘" placement="right">
+      <button
+        type="button"
+        class="mascot-restore"
+        aria-label="显示看板娘"
+        @click="showMascot"
+      >
+        <View aria-hidden="true" />
+      </button>
+    </el-tooltip>
   </div>
 </template>
 
@@ -45,7 +61,36 @@ const route = useRoute()
 const appStore = useAppStore()
 const settingsStore = useSettingsStore()
 const permissionStore = usePermissionStore()
+const MASCOT_VISIBLE_STORAGE_KEY = 'sidebar-mascot-visible'
 const mascotPlayMode = ref(false)
+const mascotVisible = ref(readMascotVisible())
+
+function readMascotVisible() {
+  try {
+    return localStorage.getItem(MASCOT_VISIBLE_STORAGE_KEY) !== 'false'
+  } catch (error) {
+    return true
+  }
+}
+
+function saveMascotVisible(value) {
+  try {
+    localStorage.setItem(MASCOT_VISIBLE_STORAGE_KEY, String(value))
+  } catch (error) {
+    // Storage can be unavailable in restricted browser environments.
+  }
+}
+
+function hideMascot() {
+  mascotPlayMode.value = false
+  mascotVisible.value = false
+  saveMascotVisible(false)
+}
+
+function showMascot() {
+  mascotVisible.value = true
+  saveMascotVisible(true)
+}
 
 const sidebarRouters = computed(() => permissionStore.sidebarRouters)
 const showLogo = computed(() => settingsStore.sidebarLogo)
@@ -93,8 +138,52 @@ const activeMenu = computed(() => {
     }
   }
 
+  &.has-mascot-restore {
+    :deep(.scrollbar-wrapper) {
+      padding-bottom: 44px;
+      box-sizing: border-box;
+    }
+  }
+
   &.is-mascot-playing {
     overflow: visible !important;
+  }
+
+  .mascot-restore {
+    position: fixed;
+    bottom: 10px;
+    left: 12px;
+    z-index: 1002;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    color: v-bind(getMenuTextColor);
+    cursor: pointer;
+    background: color-mix(in srgb, v-bind(getMenuBackground) 88%, #ffffff 12%);
+    border: 1px solid color-mix(in srgb, v-bind(getMenuTextColor) 24%, transparent);
+    border-radius: 7px;
+    opacity: 0.78;
+    transition: opacity 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+
+    &:hover {
+      color: var(--menu-active-text, #409eff);
+      background: var(--menu-hover, rgba(0, 0, 0, 0.06));
+      opacity: 1;
+      transform: translateY(-1px);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--menu-active-text, #409eff);
+      outline-offset: 2px;
+      opacity: 1;
+    }
+
+    svg {
+      width: 16px;
+      height: 16px;
+    }
   }
 
   .el-menu {
@@ -120,6 +209,12 @@ const activeMenu = computed(() => {
     .el-sub-menu__title {
       color: v-bind(getMenuTextColor);
     }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot-restore {
+    transition: none !important;
   }
 }
 </style>
