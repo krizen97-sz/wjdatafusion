@@ -83,8 +83,28 @@ import com.hm.common.utils.SecurityUtils;
 import com.hm.common.utils.StringUtils;
 import com.hm.common.utils.file.FileUtils;
 import com.hm.common.utils.poi.ExcelUtil;
+import com.hm.manage.domain.SupportAutoInspectionPlan;
+import com.hm.manage.domain.SupportAutoInspectionRecord;
+import com.hm.manage.domain.SupportAutoInspectionTarget;
+import com.hm.manage.domain.SupportAutoInspectionTemplate;
+import com.hm.manage.domain.SupportAutoInspectionTool;
 import com.hm.manage.domain.SupportServer;
 import com.hm.manage.domain.SupportServerCredential;
+import com.hm.manage.domain.bo.AutoInspectionDashboardQuery;
+import com.hm.manage.domain.bo.AutoInspectionPlanQuery;
+import com.hm.manage.domain.bo.AutoInspectionPlanSaveBo;
+import com.hm.manage.domain.bo.AutoInspectionRecordQuery;
+import com.hm.manage.domain.bo.AutoInspectionReportExportBo;
+import com.hm.manage.domain.bo.AutoInspectionServerCredentialBatchBo;
+import com.hm.manage.domain.bo.AutoInspectionTargetQuery;
+import com.hm.manage.domain.bo.AutoInspectionTargetSaveBo;
+import com.hm.manage.domain.bo.AutoInspectionTemplateQuery;
+import com.hm.manage.domain.bo.AutoInspectionTemplateSaveBo;
+import com.hm.manage.domain.vo.AutoInspectionCredentialVo;
+import com.hm.manage.domain.vo.AutoInspectionDashboardVo;
+import com.hm.manage.domain.vo.AutoInspectionRecordDetailVo;
+import com.hm.manage.domain.vo.AutoInspectionRunResultVo;
+import com.hm.manage.domain.vo.AutoInspectionServerAssetNodeVo;
 import com.hm.manage.domain.vo.SupportAutoInspectionExportVo;
 import com.hm.manage.mapper.SupportAutoInspectionMapper;
 import com.hm.manage.mapper.SupportServerCredentialMapper;
@@ -140,6 +160,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final int SERVER_DEFAULT_SSH_PORT = 55555;
     private static final int TARGET_RESULT_TEXT_MAX_LENGTH = 30000;
 
+    private final Map<String, InspectionToolHandler> inspectionHandlers = buildInspectionHandlers();
+
     @Autowired
     private SupportAutoInspectionMapper autoInspectionMapper;
 
@@ -153,14 +175,24 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private CredentialCryptoService cryptoService;
 
     @Override
-    public List<Map<String, Object>> selectToolList(Map<String, Object> params)
+    public List<SupportAutoInspectionTool> selectToolList(SupportAutoInspectionTool query)
+    {
+        return toBeanList(selectToolMapList(toMap(query)), SupportAutoInspectionTool.class);
+    }
+
+    private List<Map<String, Object>> selectToolMapList(Map<String, Object> params)
     {
         ensureBuiltinTools();
         return autoInspectionMapper.selectToolList(params == null ? new HashMap<>() : params);
     }
 
     @Override
-    public List<Map<String, Object>> selectTargetList(Map<String, Object> target)
+    public List<SupportAutoInspectionTarget> selectTargetList(AutoInspectionTargetQuery query)
+    {
+        return toBeanList(selectTargetMapList(toMap(query)), SupportAutoInspectionTarget.class);
+    }
+
+    private List<Map<String, Object>> selectTargetMapList(Map<String, Object> target)
     {
         List<Map<String, Object>> list = autoInspectionMapper.selectTargetList(target == null ? new HashMap<>() : target);
         for (Map<String, Object> item : list)
@@ -171,7 +203,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     @Override
-    public Map<String, Object> selectTargetById(Long targetId)
+    public SupportAutoInspectionTarget selectTargetById(Long targetId)
+    {
+        return toBean(selectTargetMapById(targetId), SupportAutoInspectionTarget.class);
+    }
+
+    private Map<String, Object> selectTargetMapById(Long targetId)
     {
         Map<String, Object> target = requireTarget(targetId);
         maskTargetSecret(target);
@@ -179,7 +216,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     @Override
-    public List<Map<String, Object>> selectServerAssetTree()
+    public List<AutoInspectionServerAssetNodeVo> selectServerAssetTree()
+    {
+        return toBeanList(selectServerAssetTreeMap(), AutoInspectionServerAssetNodeVo.class);
+    }
+
+    private List<Map<String, Object>> selectServerAssetTreeMap()
     {
         List<Map<String, Object>> rows = autoInspectionMapper.selectServerAssetTreeRows();
         Map<String, Map<String, Object>> siteMap = new LinkedHashMap<>();
@@ -240,7 +282,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     @Override
-    public Map<String, Object> selectServerCredentialPlain(Long serverId, String username)
+    public AutoInspectionCredentialVo selectServerCredentialPlain(Long serverId, String username)
+    {
+        return toBean(selectServerCredentialPlainMap(serverId, username), AutoInspectionCredentialVo.class);
+    }
+
+    private Map<String, Object> selectServerCredentialPlainMap(Long serverId, String username)
     {
         if (serverId == null)
         {
@@ -278,7 +325,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     @Override
-    public List<Map<String, Object>> selectServerCredentialPlainBatch(Map<String, Object> params)
+    public List<AutoInspectionCredentialVo> selectServerCredentialPlainBatch(AutoInspectionServerCredentialBatchBo query)
+    {
+        return toBeanList(selectServerCredentialPlainBatchMap(toMap(query)), AutoInspectionCredentialVo.class);
+    }
+
+    private List<Map<String, Object>> selectServerCredentialPlainBatchMap(Map<String, Object> params)
     {
         Map<String, Object> safeParams = params == null ? new HashMap<>() : params;
         String normalizedUsername = StringUtils.defaultString(str(safeParams, "username")).trim().toLowerCase();
@@ -314,14 +366,19 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 {
                     continue;
                 }
-                result.add(selectServerCredentialPlain(serverId, normalizedUsername));
+                result.add(selectServerCredentialPlainMap(serverId, normalizedUsername));
             }
         }
         return result;
     }
 
     @Override
-    public int insertTarget(Map<String, Object> target)
+    public int insertTarget(AutoInspectionTargetSaveBo target)
+    {
+        return insertTargetMap(toMap(target));
+    }
+
+    private int insertTargetMap(Map<String, Object> target)
     {
         normalizeTarget(target, false);
         encryptTargetSecret(target);
@@ -331,7 +388,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     @Override
-    public int updateTarget(Map<String, Object> target)
+    public int updateTarget(AutoInspectionTargetSaveBo target)
+    {
+        return updateTargetMap(toMap(target));
+    }
+
+    private int updateTargetMap(Map<String, Object> target)
     {
         normalizeTarget(target, true);
         Map<String, Object> original = requireTarget(toLong(target.get("targetId")));
@@ -357,7 +419,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     @Override
-    public String testTarget(Map<String, Object> target)
+    public String testTarget(AutoInspectionTargetSaveBo target)
+    {
+        return testTargetMap(toMap(target));
+    }
+
+    private String testTargetMap(Map<String, Object> target)
     {
         Map<String, Object> effective = buildEffectiveTargetForTest(target);
         normalizeTarget(effective, toLong(effective.get("targetId")) != null);
@@ -406,14 +473,24 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     @Override
-    public List<Map<String, Object>> selectTemplateList(Map<String, Object> template)
+    public List<SupportAutoInspectionTemplate> selectTemplateList(AutoInspectionTemplateQuery query)
+    {
+        return toBeanList(selectTemplateMapList(toMap(query)), SupportAutoInspectionTemplate.class);
+    }
+
+    private List<Map<String, Object>> selectTemplateMapList(Map<String, Object> template)
     {
         ensureBuiltinTools();
         return autoInspectionMapper.selectTemplateList(template == null ? new HashMap<>() : template);
     }
 
     @Override
-    public Map<String, Object> selectTemplateById(Long templateId)
+    public SupportAutoInspectionTemplate selectTemplateById(Long templateId)
+    {
+        return toBean(selectTemplateMapById(templateId), SupportAutoInspectionTemplate.class);
+    }
+
+    private Map<String, Object> selectTemplateMapById(Long templateId)
     {
         Map<String, Object> template = requireTemplate(templateId);
         fillTemplateSteps(template);
@@ -422,7 +499,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Long saveTemplate(Map<String, Object> template)
+    public Long saveTemplate(AutoInspectionTemplateSaveBo template)
+    {
+        return saveTemplateMap(toMap(template));
+    }
+
+    private Long saveTemplateMap(Map<String, Object> template)
     {
         ensureBuiltinTools();
         normalizeTemplate(template);
@@ -454,7 +536,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     @Transactional(rollbackFor = Exception.class)
     public Long copyTemplate(Long templateId)
     {
-        Map<String, Object> source = selectTemplateById(templateId);
+        Map<String, Object> source = selectTemplateMapById(templateId);
         Map<String, Object> copied = JSON.parseObject(JSON.toJSONString(source), Map.class);
         copied.remove("templateId");
         copied.put("templateName", StringUtils.defaultIfBlank(str(source, "templateName"), "巡检模板") + "（复制）");
@@ -463,7 +545,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             prepareCopiedTemplateStep(step);
         }
-        return saveTemplate(copied);
+        return saveTemplateMap(copied);
     }
 
     @Override
@@ -480,13 +562,23 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     @Override
-    public List<Map<String, Object>> selectPlanList(Map<String, Object> plan)
+    public List<SupportAutoInspectionPlan> selectPlanList(AutoInspectionPlanQuery query)
+    {
+        return toBeanList(selectPlanMapList(toMap(query)), SupportAutoInspectionPlan.class);
+    }
+
+    private List<Map<String, Object>> selectPlanMapList(Map<String, Object> plan)
     {
         return autoInspectionMapper.selectPlanList(plan == null ? new HashMap<>() : plan);
     }
 
     @Override
-    public Map<String, Object> selectPlanById(Long planId)
+    public SupportAutoInspectionPlan selectPlanById(Long planId)
+    {
+        return toBean(selectPlanMapById(planId), SupportAutoInspectionPlan.class);
+    }
+
+    private Map<String, Object> selectPlanMapById(Long planId)
     {
         Map<String, Object> plan = autoInspectionMapper.selectPlanById(planId);
         if (plan == null)
@@ -497,7 +589,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     @Override
-    public Long savePlan(Map<String, Object> plan)
+    public Long savePlan(AutoInspectionPlanSaveBo plan)
+    {
+        return savePlanMap(toMap(plan));
+    }
+
+    private Long savePlanMap(Map<String, Object> plan)
     {
         normalizePlan(plan);
         Date now = DateUtils.getNowDate();
@@ -538,13 +635,23 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     @Override
-    public List<Map<String, Object>> selectRecordList(Map<String, Object> record)
+    public List<SupportAutoInspectionRecord> selectRecordList(AutoInspectionRecordQuery query)
+    {
+        return toBeanList(selectRecordMapList(toMap(query)), SupportAutoInspectionRecord.class);
+    }
+
+    private List<Map<String, Object>> selectRecordMapList(Map<String, Object> record)
     {
         return autoInspectionMapper.selectRecordList(record == null ? new HashMap<>() : record);
     }
 
     @Override
-    public Map<String, Object> selectRecordDetail(Long recordId)
+    public AutoInspectionRecordDetailVo selectRecordDetail(Long recordId)
+    {
+        return toBean(selectRecordDetailMap(recordId), AutoInspectionRecordDetailVo.class);
+    }
+
+    private Map<String, Object> selectRecordDetailMap(Long recordId)
     {
         Map<String, Object> record = autoInspectionMapper.selectRecordById(recordId);
         if (record == null)
@@ -557,7 +664,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     @Override
-    public Map<String, Object> selectDashboard(Map<String, Object> params)
+    public AutoInspectionDashboardVo selectDashboard(AutoInspectionDashboardQuery query)
+    {
+        return toBean(selectDashboardMap(toMap(query)), AutoInspectionDashboardVo.class);
+    }
+
+    private Map<String, Object> selectDashboardMap(Map<String, Object> params)
     {
         LocalDate today = LocalDate.now();
         LocalDate monthBegin = today.withDayOfMonth(1);
@@ -892,14 +1004,24 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> runManualTemplate(Long templateId)
+    public AutoInspectionRunResultVo runManualTemplate(Long templateId)
+    {
+        return toBean(runManualTemplateMap(templateId), AutoInspectionRunResultVo.class);
+    }
+
+    private Map<String, Object> runManualTemplateMap(Long templateId)
     {
         return runInspection(templateId, null, SOURCE_MANUAL, getCurrentOperatorName());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> runManualPlan(Long planId)
+    public AutoInspectionRunResultVo runManualPlan(Long planId)
+    {
+        return toBean(runManualPlanMap(planId), AutoInspectionRunResultVo.class);
+    }
+
+    private Map<String, Object> runManualPlanMap(Long planId)
     {
         Map<String, Object> plan = requirePlan(planId);
         return runInspection(toLong(plan.get("templateId")), plan, SOURCE_MANUAL, getCurrentOperatorName());
@@ -907,14 +1029,24 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> runScheduledPlan(Long planId, String executorName)
+    public AutoInspectionRunResultVo runScheduledPlan(Long planId, String executorName)
+    {
+        return toBean(runScheduledPlanMap(planId, executorName), AutoInspectionRunResultVo.class);
+    }
+
+    private Map<String, Object> runScheduledPlanMap(Long planId, String executorName)
     {
         Map<String, Object> plan = requirePlan(planId);
         return runInspection(toLong(plan.get("templateId")), plan, SOURCE_AUTO, StringUtils.defaultIfBlank(executorName, "计划巡检"));
     }
 
     @Override
-    public void exportRecord(HttpServletResponse response, Map<String, Object> record)
+    public void exportRecord(HttpServletResponse response, AutoInspectionReportExportBo record)
+    {
+        exportRecordMap(response, toMap(record));
+    }
+
+    private void exportRecordMap(HttpServletResponse response, Map<String, Object> record)
     {
         if ("WEEKLY_REPORT".equalsIgnoreCase(str(record, "reportType")))
         {
@@ -922,7 +1054,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             return;
         }
         Map<String, Object> exportParams = normalizeRecordExportParams(record);
-        List<Map<String, Object>> records = selectRecordList(exportParams);
+        List<Map<String, Object>> records = selectRecordMapList(exportParams);
         if (records.isEmpty())
         {
             throw new ServiceException("暂无可导出的巡检记录");
@@ -996,7 +1128,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         Map<String, Object> query = new HashMap<>();
         query.put("beginTime", toDate(range.begin.atStartOfDay()));
         query.put("endTime", toDate(range.end.atStartOfDay()));
-        List<Map<String, Object>> records = selectRecordList(query);
+        List<Map<String, Object>> records = selectRecordMapList(query);
         records.sort(Comparator.<Map<String, Object>, LocalDate>comparing(item -> {
             LocalDate date = toLocalDate(item.get("inspectionTime"));
             return date == null ? LocalDate.MIN : date;
@@ -1570,7 +1702,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private Map<String, Object> runInspection(Long templateId, Map<String, Object> plan, String sourceType, String executorName)
     {
-        Map<String, Object> template = selectTemplateById(templateId);
+        Map<String, Object> template = selectTemplateMapById(templateId);
         if (!STATUS_NORMAL.equals(str(template, "status")))
         {
             throw new ServiceException("巡检模板已停用");
@@ -1674,50 +1806,21 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         record.put("updateBy", getCurrentUsername());
         record.put("updateTime", DateUtils.getNowDate());
         autoInspectionMapper.updateRecord(record);
-        return selectRecordDetail(toLong(record.get("recordId")));
+        return selectRecordDetailMap(toLong(record.get("recordId")));
     }
 
     private TargetCheckResult runSingleTarget(Map<String, Object> step, Map<String, Object> tool, Map<String, Object> target, boolean thresholdEnabled)
     {
         try
         {
-            TargetCheckResult result;
-            switch (str(tool, "toolType"))
+            InspectionExecutionContext context = new InspectionExecutionContext(step, tool, target, thresholdEnabled);
+            InspectionToolHandler handler = inspectionHandlers.get(str(tool, "toolType"));
+            if (handler == null)
             {
-                case TOOL_KAFKA_LAG:
-                    result = checkKafkaLag(step, target);
-                    break;
-                case TOOL_FTP_FILE_COUNT:
-                    result = checkFtpFileCount(step, target);
-                    break;
-                case TOOL_SERVER_FILE_COUNT:
-                    result = checkServerFileCount(step, target);
-                    break;
-                case TOOL_SERVER_DISK:
-                    result = checkServerDisk(step, target);
-                    break;
-                case TOOL_BIG_DATA_SERVER_DISK:
-                    result = checkBigDataServerDisk(step, target);
-                    break;
-                case TOOL_HTTP_COUNT:
-                    result = checkHttpCount(step, target);
-                    break;
-                case TOOL_HTTP_HEALTH:
-                    result = checkHttpHealth(step, target);
-                    break;
-                case TOOL_HTTP_API_TEST:
-                    result = checkHttpApiTest(step, target);
-                    break;
-                case TOOL_TCP_PORT_CHECK:
-                    result = checkTcpPort(step, target);
-                    break;
-                case TOOL_SERVER_SERVICE_STATUS:
-                    result = checkServerServiceStatus(step, target);
-                    break;
-                default:
-                    throw new ServiceException("不支持的巡检工具类型：" + str(tool, "toolType"));
+                throw new ServiceException("不支持的巡检工具类型：" + str(tool, "toolType"));
             }
-            if (thresholdEnabled && !TOOL_HTTP_API_TEST.equals(str(step, "toolCode")))
+            TargetCheckResult result = handler.handle(context);
+            if (context.thresholdEnabled && !TOOL_HTTP_API_TEST.equals(str(step, "toolCode")))
             {
                 applyThreshold(step, tool, result);
             }
@@ -1731,6 +1834,22 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             result.errorMessage = e.getMessage();
             return result;
         }
+    }
+
+    private Map<String, InspectionToolHandler> buildInspectionHandlers()
+    {
+        Map<String, InspectionToolHandler> handlers = new LinkedHashMap<>();
+        handlers.put(TOOL_KAFKA_LAG, context -> checkKafkaLag(context.step, context.target));
+        handlers.put(TOOL_FTP_FILE_COUNT, context -> checkFtpFileCount(context.step, context.target));
+        handlers.put(TOOL_SERVER_FILE_COUNT, context -> checkServerFileCount(context.step, context.target));
+        handlers.put(TOOL_SERVER_DISK, context -> checkServerDisk(context.step, context.target));
+        handlers.put(TOOL_BIG_DATA_SERVER_DISK, context -> checkBigDataServerDisk(context.step, context.target));
+        handlers.put(TOOL_HTTP_COUNT, context -> checkHttpCount(context.step, context.target));
+        handlers.put(TOOL_HTTP_HEALTH, context -> checkHttpHealth(context.step, context.target));
+        handlers.put(TOOL_HTTP_API_TEST, context -> checkHttpApiTest(context.step, context.target));
+        handlers.put(TOOL_TCP_PORT_CHECK, context -> checkTcpPort(context.step, context.target));
+        handlers.put(TOOL_SERVER_SERVICE_STATUS, context -> checkServerServiceStatus(context.step, context.target));
+        return Collections.unmodifiableMap(handlers);
     }
 
     private TargetCheckResult checkHttpCount(Map<String, Object> step, Map<String, Object> target) throws Exception
@@ -3725,7 +3844,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             autoInspectionMapper.insertTarget(target);
             return toLong(target.get("targetId"));
         }
-        updateTarget(target);
+        updateTargetMap(target);
         return targetId;
     }
 
@@ -3770,7 +3889,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             }
             else
             {
-                updateTarget(target);
+                updateTargetMap(target);
             }
             targetIds.add(targetId);
             Map<String, Object> sanitized = new LinkedHashMap<>();
@@ -3836,7 +3955,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             }
             else
             {
-                updateTarget(target);
+                updateTargetMap(target);
             }
             targetIds.add(targetId);
             Map<String, Object> sanitized = new LinkedHashMap<>();
@@ -3912,7 +4031,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             }
             else
             {
-                updateTarget(target);
+                updateTargetMap(target);
             }
             targetIds.add(targetId);
             Map<String, Object> sanitized = new LinkedHashMap<>();
@@ -3974,7 +4093,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             }
             else
             {
-                updateTarget(target);
+                updateTargetMap(target);
             }
             targetIds.add(targetId);
             Map<String, Object> sanitized = new LinkedHashMap<>();
@@ -5390,6 +5509,43 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         }
     }
 
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> toMap(Object value)
+    {
+        if (value == null)
+        {
+            return new HashMap<>();
+        }
+        if (value instanceof Map<?, ?> map)
+        {
+            return new HashMap<>((Map<String, Object>) map);
+        }
+        return JSON.parseObject(JSON.toJSONString(value), Map.class);
+    }
+
+    private <T> T toBean(Map<String, Object> value, Class<T> type)
+    {
+        if (value == null)
+        {
+            return null;
+        }
+        return JSON.parseObject(JSON.toJSONString(value), type);
+    }
+
+    private <T> List<T> toBeanList(List<Map<String, Object>> values, Class<T> type)
+    {
+        if (values == null || values.isEmpty())
+        {
+            return new ArrayList<>();
+        }
+        List<T> result = new ArrayList<>(values.size());
+        for (Map<String, Object> value : values)
+        {
+            result.add(toBean(value, type));
+        }
+        return result;
+    }
+
     private static class SshCommandResult
     {
         private final String stdout;
@@ -5458,6 +5614,28 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         private ApiAssertionSummary(int totalCount)
         {
             this.totalCount = totalCount;
+        }
+    }
+
+    private interface InspectionToolHandler
+    {
+        TargetCheckResult handle(InspectionExecutionContext context) throws Exception;
+    }
+
+    private static class InspectionExecutionContext
+    {
+        private final Map<String, Object> step;
+        private final Map<String, Object> tool;
+        private final Map<String, Object> target;
+        private final boolean thresholdEnabled;
+
+        private InspectionExecutionContext(Map<String, Object> step, Map<String, Object> tool,
+                                           Map<String, Object> target, boolean thresholdEnabled)
+        {
+            this.step = step;
+            this.tool = tool;
+            this.target = target;
+            this.thresholdEnabled = thresholdEnabled;
         }
     }
 

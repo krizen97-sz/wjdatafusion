@@ -1,50 +1,69 @@
 package com.hm.manage.service;
 
 import java.util.List;
-import java.util.Map;
 import jakarta.servlet.http.HttpServletResponse;
+import com.hm.manage.domain.SupportAutoInspectionPlan;
+import com.hm.manage.domain.SupportAutoInspectionRecord;
+import com.hm.manage.domain.SupportAutoInspectionTarget;
+import com.hm.manage.domain.SupportAutoInspectionTemplate;
+import com.hm.manage.domain.SupportAutoInspectionTool;
+import com.hm.manage.domain.bo.AutoInspectionDashboardQuery;
+import com.hm.manage.domain.bo.AutoInspectionPlanQuery;
+import com.hm.manage.domain.bo.AutoInspectionPlanSaveBo;
+import com.hm.manage.domain.bo.AutoInspectionRecordQuery;
+import com.hm.manage.domain.bo.AutoInspectionReportExportBo;
+import com.hm.manage.domain.bo.AutoInspectionServerCredentialBatchBo;
+import com.hm.manage.domain.bo.AutoInspectionTargetQuery;
+import com.hm.manage.domain.bo.AutoInspectionTargetSaveBo;
+import com.hm.manage.domain.bo.AutoInspectionTemplateQuery;
+import com.hm.manage.domain.bo.AutoInspectionTemplateSaveBo;
+import com.hm.manage.domain.vo.AutoInspectionCredentialVo;
+import com.hm.manage.domain.vo.AutoInspectionDashboardVo;
+import com.hm.manage.domain.vo.AutoInspectionRecordDetailVo;
+import com.hm.manage.domain.vo.AutoInspectionRunResultVo;
+import com.hm.manage.domain.vo.AutoInspectionServerAssetNodeVo;
 
 public interface ISupportAutoInspectionService
 {
-    List<Map<String, Object>> selectToolList(Map<String, Object> params);
+    List<SupportAutoInspectionTool> selectToolList(SupportAutoInspectionTool query);
 
-    List<Map<String, Object>> selectTargetList(Map<String, Object> target);
+    List<SupportAutoInspectionTarget> selectTargetList(AutoInspectionTargetQuery query);
 
-    Map<String, Object> selectTargetById(Long targetId);
+    SupportAutoInspectionTarget selectTargetById(Long targetId);
 
-    List<Map<String, Object>> selectServerAssetTree();
+    List<AutoInspectionServerAssetNodeVo> selectServerAssetTree();
 
-    Map<String, Object> selectServerCredentialPlain(Long serverId, String username);
+    AutoInspectionCredentialVo selectServerCredentialPlain(Long serverId, String username);
 
-    List<Map<String, Object>> selectServerCredentialPlainBatch(Map<String, Object> params);
+    List<AutoInspectionCredentialVo> selectServerCredentialPlainBatch(AutoInspectionServerCredentialBatchBo query);
 
-    int insertTarget(Map<String, Object> target);
+    int insertTarget(AutoInspectionTargetSaveBo target);
 
-    int updateTarget(Map<String, Object> target);
+    int updateTarget(AutoInspectionTargetSaveBo target);
 
     int deleteTargetById(Long targetId);
 
-    String testTarget(Map<String, Object> target);
+    String testTarget(AutoInspectionTargetSaveBo target);
 
     String getTargetPasswordPlain(Long targetId);
 
     String getTargetSecretPlain(Long targetId);
 
-    List<Map<String, Object>> selectTemplateList(Map<String, Object> template);
+    List<SupportAutoInspectionTemplate> selectTemplateList(AutoInspectionTemplateQuery query);
 
-    Map<String, Object> selectTemplateById(Long templateId);
+    SupportAutoInspectionTemplate selectTemplateById(Long templateId);
 
-    Long saveTemplate(Map<String, Object> template);
+    Long saveTemplate(AutoInspectionTemplateSaveBo template);
 
     Long copyTemplate(Long templateId);
 
     int deleteTemplateById(Long templateId);
 
-    List<Map<String, Object>> selectPlanList(Map<String, Object> plan);
+    List<SupportAutoInspectionPlan> selectPlanList(AutoInspectionPlanQuery query);
 
-    Map<String, Object> selectPlanById(Long planId);
+    SupportAutoInspectionPlan selectPlanById(Long planId);
 
-    Long savePlan(Map<String, Object> plan);
+    Long savePlan(AutoInspectionPlanSaveBo plan);
 
     int updatePlanJobId(Long planId, Long jobId);
 
@@ -52,17 +71,17 @@ public interface ISupportAutoInspectionService
 
     int deletePlanById(Long planId);
 
-    List<Map<String, Object>> selectRecordList(Map<String, Object> record);
+    List<SupportAutoInspectionRecord> selectRecordList(AutoInspectionRecordQuery query);
 
-    Map<String, Object> selectRecordDetail(Long recordId);
+    AutoInspectionRecordDetailVo selectRecordDetail(Long recordId);
 
-    Map<String, Object> selectDashboard(Map<String, Object> params);
+    AutoInspectionDashboardVo selectDashboard(AutoInspectionDashboardQuery query);
 
-    Map<String, Object> runManualTemplate(Long templateId);
+    AutoInspectionRunResultVo runManualTemplate(Long templateId);
 
-    Map<String, Object> runManualPlan(Long planId);
+    AutoInspectionRunResultVo runManualPlan(Long planId);
 
-    Map<String, Object> runScheduledPlan(Long planId, String executorName);
+    AutoInspectionRunResultVo runScheduledPlan(Long planId, String executorName);
 
-    void exportRecord(HttpServletResponse response, Map<String, Object> record);
+    void exportRecord(HttpServletResponse response, AutoInspectionReportExportBo query);
 }

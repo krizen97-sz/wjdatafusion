@@ -256,8 +256,8 @@
         <el-form :model="reportExportForm" label-width="92px">
           <el-form-item label="导出方式">
             <el-radio-group v-model="reportExportForm.mode">
-              <el-radio-button label="WEEK">按周导出</el-radio-button>
-              <el-radio-button label="MONTH">按月导出</el-radio-button>
+              <el-radio-button value="WEEK">按周导出</el-radio-button>
+              <el-radio-button value="MONTH">按月导出</el-radio-button>
             </el-radio-group>
           </el-form-item>
           <el-form-item v-if="reportExportForm.mode === 'WEEK'" label="选择周">
@@ -525,7 +525,7 @@
 
           <section class="target-section target-section--subtle">
             <el-row :gutter="16">
-              <el-col :span="12"><el-form-item label="状态"><el-radio-group v-model="targetForm.status"><el-radio label="0">正常</el-radio><el-radio label="1">停用</el-radio></el-radio-group></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="状态"><el-radio-group v-model="targetForm.status"><el-radio value="0">正常</el-radio><el-radio value="1">停用</el-radio></el-radio-group></el-form-item></el-col>
               <el-col :span="12"><el-form-item label="备注"><el-input v-model="targetForm.remark" placeholder="可记录网络、用途或维护人" /></el-form-item></el-col>
             </el-row>
           </section>
@@ -543,7 +543,7 @@
       <el-form ref="templateRef" :model="templateForm" :rules="templateRules" label-width="100px">
         <el-row :gutter="16">
           <el-col :span="12"><el-form-item label="模板名称" prop="templateName"><el-input v-model="templateForm.templateName" placeholder="例如：TIM每日巡检" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="状态"><el-radio-group v-model="templateForm.status"><el-radio label="0">正常</el-radio><el-radio label="1">停用</el-radio></el-radio-group></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="状态"><el-radio-group v-model="templateForm.status"><el-radio value="0">正常</el-radio><el-radio value="1">停用</el-radio></el-radio-group></el-form-item></el-col>
           <el-col :span="24"><el-form-item label="模板说明"><el-input v-model="templateForm.templateDesc" type="textarea" :rows="2" /></el-form-item></el-col>
         </el-row>
       </el-form>
@@ -713,16 +713,16 @@
                     <div class="api-field api-field--method">
                       <label>请求方法</label>
                       <el-radio-group v-model="stepDraft.target.httpMethod" class="api-method-choice">
-                        <el-radio-button label="GET">GET</el-radio-button>
-                        <el-radio-button label="POST">POST</el-radio-button>
+                        <el-radio-button value="GET">GET</el-radio-button>
+                        <el-radio-button value="POST">POST</el-radio-button>
                       </el-radio-group>
                     </div>
                     <div class="api-field api-field--cert">
                       <label>证书校验</label>
                       <div class="api-cert-inline">
                         <el-radio-group v-model="stepDraft.target.apiConfig.trustInternalCertificate" class="api-cert-choice">
-                          <el-radio-button label="false">严格校验</el-radio-button>
-                          <el-radio-button label="true">兼容自建证书</el-radio-button>
+                          <el-radio-button value="false">严格校验</el-radio-button>
+                          <el-radio-button value="true">兼容自建证书</el-radio-button>
                         </el-radio-group>
                         <small>自建证书报错时再选兼容。</small>
                       </div>
@@ -1364,15 +1364,15 @@
         <el-row :gutter="16">
           <el-col :span="12"><el-form-item label="计划名称" prop="planName"><el-input v-model="planForm.planName" /></el-form-item></el-col>
           <el-col :span="12"><el-form-item label="巡检模板" prop="templateId"><el-select v-model="planForm.templateId" filterable style="width: 100%"><el-option v-for="item in templateOptions" :key="item.templateId" :label="item.templateName" :value="item.templateId" /></el-select></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="状态"><el-radio-group v-model="planForm.status"><el-radio label="0">启用</el-radio><el-radio label="1">暂停</el-radio></el-radio-group></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="状态"><el-radio-group v-model="planForm.status"><el-radio value="0">启用</el-radio><el-radio value="1">暂停</el-radio></el-radio-group></el-form-item></el-col>
           <el-col :span="24">
             <el-form-item label="执行周期">
               <div class="schedule-box">
                 <el-radio-group v-model="planForm.cronConfig.type" @change="refreshPlanCron">
-                  <el-radio-button label="daily">每日</el-radio-button>
-                  <el-radio-button label="weekly">每周</el-radio-button>
-                  <el-radio-button label="monthly">每月</el-radio-button>
-                  <el-radio-button label="interval">间隔</el-radio-button>
+                  <el-radio-button value="daily">每日</el-radio-button>
+                  <el-radio-button value="weekly">每周</el-radio-button>
+                  <el-radio-button value="monthly">每月</el-radio-button>
+                  <el-radio-button value="interval">间隔</el-radio-button>
                 </el-radio-group>
                 <div class="schedule-form">
                   <el-time-picker v-if="planForm.cronConfig.type !== 'interval'" v-model="planForm.cronConfig.time" value-format="HH:mm:ss" placeholder="执行时间" @change="refreshPlanCron" />
@@ -4396,7 +4396,7 @@ function submitReportExport() {
     fileName = `自动化巡检周报_${formatFileDate(range.begin)}-${formatFileDate(range.end)}.doc`
   }
   reportExportLoading.value = true
-  proxy.download('/support/autoInspection/record/export', params, fileName)
+  proxy.download('/support/autoInspection/reports/export', params, fileName)
     .finally(() => {
       reportExportLoading.value = false
       reportExportOpen.value = false

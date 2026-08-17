@@ -1,7 +1,6 @@
 package com.hm.manage.controller;
 
 import java.util.List;
-import java.util.Map;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -19,6 +18,18 @@ import com.hm.common.core.controller.BaseController;
 import com.hm.common.core.domain.AjaxResult;
 import com.hm.common.core.page.TableDataInfo;
 import com.hm.common.enums.BusinessType;
+import com.hm.manage.domain.SupportAutoInspectionRecord;
+import com.hm.manage.domain.SupportAutoInspectionTarget;
+import com.hm.manage.domain.SupportAutoInspectionTemplate;
+import com.hm.manage.domain.SupportAutoInspectionTool;
+import com.hm.manage.domain.bo.AutoInspectionDashboardQuery;
+import com.hm.manage.domain.bo.AutoInspectionRecordQuery;
+import com.hm.manage.domain.bo.AutoInspectionReportExportBo;
+import com.hm.manage.domain.bo.AutoInspectionServerCredentialBatchBo;
+import com.hm.manage.domain.bo.AutoInspectionTargetQuery;
+import com.hm.manage.domain.bo.AutoInspectionTargetSaveBo;
+import com.hm.manage.domain.bo.AutoInspectionTemplateQuery;
+import com.hm.manage.domain.bo.AutoInspectionTemplateSaveBo;
 import com.hm.manage.service.ISupportAutoInspectionService;
 
 @RestController
@@ -29,85 +40,85 @@ public class SupportAutoInspectionController extends BaseController
     private ISupportAutoInspectionService autoInspectionService;
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:query')")
-    @GetMapping("/tool/list")
-    public AjaxResult toolList()
+    @GetMapping("/tools")
+    public AjaxResult tools(SupportAutoInspectionTool query)
     {
-        return success(autoInspectionService.selectToolList(null));
+        return success(autoInspectionService.selectToolList(query));
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:target')")
-    @GetMapping("/target/list")
-    public TableDataInfo targetList(@RequestParam Map<String, Object> target)
+    @GetMapping("/targets")
+    public TableDataInfo targets(AutoInspectionTargetQuery query)
     {
         startPage();
-        List<Map<String, Object>> list = autoInspectionService.selectTargetList(target);
+        List<SupportAutoInspectionTarget> list = autoInspectionService.selectTargetList(query);
         return getDataTable(list);
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:target')")
-    @GetMapping("/target/{targetId}")
-    public AjaxResult getTarget(@PathVariable Long targetId)
+    @GetMapping("/targets/{targetId}")
+    public AjaxResult target(@PathVariable Long targetId)
     {
         return success(autoInspectionService.selectTargetById(targetId));
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:target')")
-    @GetMapping("/target/serverAssetTree")
-    public AjaxResult serverAssetTree()
+    @GetMapping("/targets/server-assets")
+    public AjaxResult serverAssets()
     {
         return success(autoInspectionService.selectServerAssetTree());
     }
 
     @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
     @Log(title = "查看现场服务器巡检凭据", businessType = BusinessType.GRANT)
-    @GetMapping("/target/serverCredentialPlain/{serverId}")
-    public AjaxResult serverCredentialPlain(@PathVariable Long serverId, @RequestParam String username)
+    @GetMapping("/targets/server-credentials/{serverId}")
+    public AjaxResult serverCredential(@PathVariable Long serverId, @RequestParam String username)
     {
         return success(autoInspectionService.selectServerCredentialPlain(serverId, username));
     }
 
     @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
     @Log(title = "批量查看现场服务器巡检凭据", businessType = BusinessType.GRANT)
-    @PostMapping("/target/serverCredentialPlain/batch")
-    public AjaxResult serverCredentialPlainBatch(@RequestBody Map<String, Object> params)
+    @PostMapping("/targets/server-credentials/batch")
+    public AjaxResult serverCredentialBatch(@RequestBody AutoInspectionServerCredentialBatchBo query)
     {
-        return success(autoInspectionService.selectServerCredentialPlainBatch(params));
+        return success(autoInspectionService.selectServerCredentialPlainBatch(query));
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:target')")
     @Log(title = "自动化巡检目标", businessType = BusinessType.INSERT)
-    @PostMapping("/target")
-    public AjaxResult addTarget(@RequestBody Map<String, Object> target)
+    @PostMapping("/targets")
+    public AjaxResult addTarget(@RequestBody AutoInspectionTargetSaveBo target)
     {
         return toAjax(autoInspectionService.insertTarget(target));
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:target')")
     @Log(title = "自动化巡检目标", businessType = BusinessType.UPDATE)
-    @PutMapping("/target")
-    public AjaxResult updateTarget(@RequestBody Map<String, Object> target)
+    @PutMapping("/targets")
+    public AjaxResult updateTarget(@RequestBody AutoInspectionTargetSaveBo target)
     {
         return toAjax(autoInspectionService.updateTarget(target));
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:target')")
     @Log(title = "自动化巡检目标", businessType = BusinessType.DELETE)
-    @DeleteMapping("/target/{targetId}")
+    @DeleteMapping("/targets/{targetId}")
     public AjaxResult deleteTarget(@PathVariable Long targetId)
     {
         return toAjax(autoInspectionService.deleteTargetById(targetId));
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:target')")
-    @PostMapping("/target/test")
-    public AjaxResult testTarget(@RequestBody Map<String, Object> target)
+    @PostMapping("/targets/test")
+    public AjaxResult testTarget(@RequestBody AutoInspectionTargetSaveBo target)
     {
         return success().put("message", autoInspectionService.testTarget(target));
     }
 
     @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
     @Log(title = "查看自动化巡检敏感信息", businessType = BusinessType.GRANT)
-    @GetMapping("/target/plain/{targetId}")
+    @GetMapping("/targets/plain/{targetId}")
     public AjaxResult targetPlain(@PathVariable Long targetId)
     {
         return success()
@@ -116,40 +127,40 @@ public class SupportAutoInspectionController extends BaseController
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:template')")
-    @GetMapping("/template/list")
-    public TableDataInfo templateList(@RequestParam Map<String, Object> template)
+    @GetMapping("/templates")
+    public TableDataInfo templates(AutoInspectionTemplateQuery query)
     {
         startPage();
-        List<Map<String, Object>> list = autoInspectionService.selectTemplateList(template);
+        List<SupportAutoInspectionTemplate> list = autoInspectionService.selectTemplateList(query);
         return getDataTable(list);
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:template')")
-    @GetMapping("/template/{templateId}")
-    public AjaxResult getTemplate(@PathVariable Long templateId)
+    @GetMapping("/templates/{templateId}")
+    public AjaxResult template(@PathVariable Long templateId)
     {
         return success(autoInspectionService.selectTemplateById(templateId));
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:template')")
     @Log(title = "自动化巡检模板", businessType = BusinessType.INSERT)
-    @PostMapping("/template")
-    public AjaxResult addTemplate(@RequestBody Map<String, Object> template)
+    @PostMapping("/templates")
+    public AjaxResult addTemplate(@RequestBody AutoInspectionTemplateSaveBo template)
     {
         return success(autoInspectionService.saveTemplate(template));
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:template')")
     @Log(title = "自动化巡检模板", businessType = BusinessType.UPDATE)
-    @PutMapping("/template")
-    public AjaxResult updateTemplate(@RequestBody Map<String, Object> template)
+    @PutMapping("/templates")
+    public AjaxResult updateTemplate(@RequestBody AutoInspectionTemplateSaveBo template)
     {
         return success(autoInspectionService.saveTemplate(template));
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:template')")
     @Log(title = "自动化巡检模板", businessType = BusinessType.INSERT)
-    @PostMapping("/template/copy/{templateId}")
+    @PostMapping("/templates/{templateId}/copy")
     public AjaxResult copyTemplate(@PathVariable Long templateId)
     {
         return success(autoInspectionService.copyTemplate(templateId));
@@ -157,7 +168,7 @@ public class SupportAutoInspectionController extends BaseController
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:template')")
     @Log(title = "自动化巡检模板", businessType = BusinessType.DELETE)
-    @DeleteMapping("/template/{templateId}")
+    @DeleteMapping("/templates/{templateId}")
     public AjaxResult deleteTemplate(@PathVariable Long templateId)
     {
         return toAjax(autoInspectionService.deleteTemplateById(templateId));
@@ -165,7 +176,7 @@ public class SupportAutoInspectionController extends BaseController
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:run')")
     @Log(title = "自动化巡检模板", businessType = BusinessType.OTHER)
-    @PostMapping("/template/run/{templateId}")
+    @PostMapping("/templates/{templateId}/run")
     public AjaxResult runTemplate(@PathVariable Long templateId)
     {
         return success(autoInspectionService.runManualTemplate(templateId));
@@ -173,32 +184,32 @@ public class SupportAutoInspectionController extends BaseController
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:query')")
     @GetMapping("/dashboard")
-    public AjaxResult dashboard(@RequestParam Map<String, Object> params)
+    public AjaxResult dashboard(AutoInspectionDashboardQuery query)
     {
-        return success(autoInspectionService.selectDashboard(params));
+        return success(autoInspectionService.selectDashboard(query));
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:query')")
-    @GetMapping("/record/list")
-    public TableDataInfo recordList(@RequestParam Map<String, Object> record)
+    @GetMapping("/records")
+    public TableDataInfo records(AutoInspectionRecordQuery query)
     {
         startPage();
-        List<Map<String, Object>> list = autoInspectionService.selectRecordList(record);
+        List<SupportAutoInspectionRecord> list = autoInspectionService.selectRecordList(query);
         return getDataTable(list);
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:query')")
-    @GetMapping("/record/{recordId}")
-    public AjaxResult recordDetail(@PathVariable Long recordId)
+    @GetMapping("/records/{recordId}")
+    public AjaxResult record(@PathVariable Long recordId)
     {
         return success(autoInspectionService.selectRecordDetail(recordId));
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:export')")
     @Log(title = "自动化巡检记录", businessType = BusinessType.EXPORT)
-    @PostMapping("/record/export")
-    public void export(HttpServletResponse response, @RequestParam Map<String, Object> record)
+    @PostMapping("/reports/export")
+    public void export(HttpServletResponse response, AutoInspectionReportExportBo query)
     {
-        autoInspectionService.exportRecord(response, record);
+        autoInspectionService.exportRecord(response, query);
     }
 }

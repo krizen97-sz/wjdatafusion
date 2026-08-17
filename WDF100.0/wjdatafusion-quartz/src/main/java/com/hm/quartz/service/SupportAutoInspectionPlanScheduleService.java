@@ -1,6 +1,5 @@
 package com.hm.quartz.service;
 
-import java.util.Map;
 import org.quartz.SchedulerException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -9,6 +8,9 @@ import com.hm.common.constant.ScheduleConstants;
 import com.hm.common.exception.ServiceException;
 import com.hm.common.exception.job.TaskException;
 import com.hm.common.utils.StringUtils;
+import com.hm.manage.domain.SupportAutoInspectionPlan;
+import com.hm.manage.domain.bo.AutoInspectionPlanSaveBo;
+import com.hm.manage.domain.vo.AutoInspectionRunResultVo;
 import com.hm.manage.service.ISupportAutoInspectionService;
 import com.hm.quartz.domain.SysJob;
 import com.hm.quartz.util.CronUtils;
@@ -27,11 +29,11 @@ public class SupportAutoInspectionPlanScheduleService
     private ISysJobService jobService;
 
     @Transactional(rollbackFor = Exception.class)
-    public Map<String, Object> savePlan(Map<String, Object> plan, String username) throws SchedulerException, TaskException
+    public SupportAutoInspectionPlan savePlan(AutoInspectionPlanSaveBo plan, String username) throws SchedulerException, TaskException
     {
         validateCron(plan);
         Long planId = autoInspectionService.savePlan(plan);
-        Map<String, Object> saved = autoInspectionService.selectPlanById(planId);
+        SupportAutoInspectionPlan saved = autoInspectionService.selectPlanById(planId);
         syncQuartzJob(saved, username);
         return autoInspectionService.selectPlanById(planId);
     }
@@ -39,11 +41,11 @@ public class SupportAutoInspectionPlanScheduleService
     @Transactional(rollbackFor = Exception.class)
     public int changeStatus(Long planId, String status, String username) throws SchedulerException, TaskException
     {
-        Map<String, Object> plan = autoInspectionService.selectPlanById(planId);
+        SupportAutoInspectionPlan plan = autoInspectionService.selectPlanById(planId);
         String normalizedStatus = STATUS_NORMAL.equals(status) ? STATUS_NORMAL : STATUS_PAUSE;
         autoInspectionService.updatePlanStatus(planId, normalizedStatus);
-        plan.put("status", normalizedStatus);
-        Long jobId = toLong(plan.get("jobId"));
+        plan.setStatus(normalizedStatus);
+        Long jobId = plan.getJobId();
         if (jobId == null || jobService.selectJobById(jobId) == null)
         {
             syncQuartzJob(plan, username);
@@ -58,8 +60,8 @@ public class SupportAutoInspectionPlanScheduleService
     @Transactional(rollbackFor = Exception.class)
     public int deletePlan(Long planId) throws SchedulerException
     {
-        Map<String, Object> plan = autoInspectionService.selectPlanById(planId);
-        Long jobId = toLong(plan.get("jobId"));
+        SupportAutoInspectionPlan plan = autoInspectionService.selectPlanById(planId);
+        Long jobId = plan.getJobId();
         if (jobId != null)
         {
             SysJob job = jobService.selectJobById(jobId);
@@ -71,22 +73,22 @@ public class SupportAutoInspectionPlanScheduleService
         return autoInspectionService.deletePlanById(planId);
     }
 
-    public Map<String, Object> runPlanOnce(Long planId)
+    public AutoInspectionRunResultVo runPlanOnce(Long planId)
     {
         return autoInspectionService.runManualPlan(planId);
     }
 
-    private void syncQuartzJob(Map<String, Object> plan, String username) throws SchedulerException, TaskException
+    private void syncQuartzJob(SupportAutoInspectionPlan plan, String username) throws SchedulerException, TaskException
     {
         SysJob job = buildJob(plan);
-        Long planId = toLong(plan.get("planId"));
-        Long jobId = toLong(plan.get("jobId"));
+        Long planId = plan.getPlanId();
+        Long jobId = plan.getJobId();
         if (jobId == null || jobService.selectJobById(jobId) == null)
         {
             job.setCreateBy(username);
             jobService.insertJob(job);
             autoInspectionService.updatePlanJobId(planId, job.getJobId());
-            if (STATUS_NORMAL.equals(String.valueOf(plan.get("status"))))
+            if (STATUS_NORMAL.equals(plan.getStatus()))
             {
                 SysJob savedJob = jobService.selectJobById(job.getJobId());
                 savedJob.setStatus(STATUS_NORMAL);
@@ -101,17 +103,17 @@ public class SupportAutoInspectionPlanScheduleService
         jobService.updateJob(job);
     }
 
-    private SysJob buildJob(Map<String, Object> plan)
+    private SysJob buildJob(SupportAutoInspectionPlan plan)
     {
         SysJob job = new SysJob();
-        Long planId = toLong(plan.get("planId"));
+        Long planId = plan.getPlanId();
         job.setJobName(buildJobCode(planId));
         job.setJobGroup(JOB_GROUP);
         job.setInvokeTarget("supportAutoInspectionTask.runPlan(" + planId + "L)");
-        job.setCronExpression(String.valueOf(plan.get("cronExpression")));
+        job.setCronExpression(plan.getCronExpression());
         job.setMisfirePolicy(ScheduleConstants.MISFIRE_DO_NOTHING);
         job.setConcurrent("1");
-        job.setStatus(STATUS_NORMAL.equals(String.valueOf(plan.get("status"))) ? STATUS_NORMAL : STATUS_PAUSE);
+        job.setStatus(STATUS_NORMAL.equals(plan.getStatus()) ? STATUS_NORMAL : STATUS_PAUSE);
         job.setRemark("由自动化巡检计划自动生成，请在自动化巡检页面维护。");
         return job;
     }
@@ -121,9 +123,9 @@ public class SupportAutoInspectionPlanScheduleService
         return "AUTO_INSPECTION_PLAN_" + planId;
     }
 
-    private void validateCron(Map<String, Object> plan)
+    private void validateCron(SupportAutoInspectionPlan plan)
     {
-        String cron = plan == null ? null : String.valueOf(plan.get("cronExpression"));
+        String cron = plan == null ? null : plan.getCronExpression();
         if (StringUtils.isBlank(cron) || "null".equals(cron))
         {
             throw new ServiceException("执行周期不能为空");
@@ -134,12 +136,4 @@ public class SupportAutoInspectionPlanScheduleService
         }
     }
 
-    private Long toLong(Object value)
-    {
-        if (value == null || StringUtils.isBlank(value.toString()))
-        {
-            return null;
-        }
-        return value instanceof Number ? ((Number) value).longValue() : Long.valueOf(value.toString());
-    }
 }
