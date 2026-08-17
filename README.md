@@ -151,6 +151,7 @@ npm run build:prod
 ## 文档
 
 - 前端设计规范：`DESIGN.md`
+- Codex 多窗口与 Git Worktree 开发规范：`docs/CODEX_WORKTREES.md`
 - 现场管理操作手册：`WDF100.0/doc/现场管理功能操作手册.md`
 - Word 版操作手册：`WDF100.0/doc/现场管理功能操作手册.docx`
 - 手册截图资产：`WDF100.0/doc/site-management-manual-assets/`
@@ -160,7 +161,7 @@ npm run build:prod
 
 ## 当前版本
 
-当前功能版本为 `v3.7.5`，该版本为自动化巡检新增独立“巡检版本记录”菜单，巡检记录从总版本中心中单独摘出展示，并用巡检模块版本号关联平台总版本号。
+当前功能版本为 `v3.9.28`，该版本增加 Codex 多窗口 Worktree 隔离规范和基线检查工具，防止多个模块在同一共享目录中发生分支切换、文件覆盖和混合提交。
 
 ## 版本提交规范
 

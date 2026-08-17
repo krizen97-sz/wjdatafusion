@@ -1,5 +1,24 @@
 export const releaseNotes = [
   {
+    version: 'v3.9.28',
+    submitTime: '2026-08-17 21:43:31',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: 'Codex 多窗口开发隔离规范',
+    summary: '为多模块并行开发建立一任务一Worktree一分支的仓库规则和检查工具，避免多个Codex窗口共享目录造成分支切换、文件覆盖、旧基线开发和混合提交。',
+    changes: [
+      '新增仓库级 AGENTS.md，要求所有 Codex 任务在修改前核对目录、分支、HEAD、origin/main、工作区状态和 Worktree 列表。',
+      '新增 Worktree 管理脚本，支持查看环境、验证模块边界，并从最新 origin/main 创建自动化巡检、现场融合、文档管理和IPAM独立工作目录。',
+      '新增多窗口开发规范，明确主目录只做集成、一个可写任务对应一个Worktree、共享文件单独复核、部署包只能从干净提交构建。',
+      '基线检查会阻止在main直接开发、阻止落后于origin/main的分支继续修改，并识别跨模块文件和生成物。',
+      '本次检查确认本地HEAD、main、origin/main及自动化巡检分支均指向v3.9.27提交1786638，未发现merge/rebase锁或遗失提交。'
+    ],
+    scope: ['开发规范', 'Codex多窗口', 'Git Worktree', '分支治理', '基线检查', '模块隔离', '版本记录'],
+    database: '无数据库结构或业务数据变更。',
+    scripts: []
+  },
+  {
     version: 'v3.9.27',
     submitTime: '2026-08-17 19:48:08',
     level: 'patch',
