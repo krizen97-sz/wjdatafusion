@@ -1,5 +1,24 @@
 export const releaseNotes = [
   {
+    version: 'v3.9.30',
+    submitTime: '2026-08-18 18:43:18',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '自动化巡检服务器树节点解析修复',
+    summary: '修复打开自动化巡检时，Fastjson 将现场和平台节点的字符串标识解析为 Long 导致服务器资产树加载失败的问题。',
+    changes: [
+      '现场、主平台和子平台节点只承担树状分组，不再把 site-2 等字符串节点ID写入可选择的value字段，统一返回null。',
+      '服务器叶子节点继续使用数字serverId作为value，保持现有树选择、服务器去重和目标配置逻辑不变。',
+      '服务器资产树VO将value明确为Long，固定接口类型，避免Object掩盖分组节点与业务叶子节点的语义差异。',
+      '补充源码契约检查，并使用Fastjson 2.0.61验证现场、平台和服务器嵌套树能够正常反序列化。',
+      '修复基于本地最新v3.9.29完整程序开发，不覆盖文档管理或其他模块更新。'
+    ],
+    scope: ['自动化巡检', '服务器资产树', 'Fastjson', '现场融合服务器选择', '后端修复', '回归测试'],
+    database: '无数据库结构或业务数据变更。',
+    scripts: []
+  },
+  {
     version: 'v3.9.29',
     submitTime: '2026-08-18 18:18:36',
     level: 'patch',

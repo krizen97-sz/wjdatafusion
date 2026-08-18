@@ -12,7 +12,7 @@ public class AutoInspectionServerAssetNodeVo implements Serializable
     private String nodeId;
     private String label;
     private String type;
-    private Object value;
+    private Long value;
     private Boolean disabled;
     private Long siteId;
     private String siteCode;
@@ -34,8 +34,8 @@ public class AutoInspectionServerAssetNodeVo implements Serializable
     public void setLabel(String label) { this.label = label; }
     public String getType() { return type; }
     public void setType(String type) { this.type = type; }
-    public Object getValue() { return value; }
-    public void setValue(Object value) { this.value = value; }
+    public Long getValue() { return value; }
+    public void setValue(Long value) { this.value = value; }
     public Boolean getDisabled() { return disabled; }
     public void setDisabled(Boolean disabled) { this.disabled = disabled; }
     public Long getSiteId() { return siteId; }

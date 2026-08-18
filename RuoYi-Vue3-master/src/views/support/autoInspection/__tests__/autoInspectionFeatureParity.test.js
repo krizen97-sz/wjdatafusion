@@ -9,6 +9,7 @@ const templateStepSource = readFileSync(new URL(`${backendRoot}SupportAutoInspec
 const targetSaveSource = readFileSync(new URL(`${backendRoot}bo/AutoInspectionTargetSaveBo.java`, import.meta.url), 'utf8')
 const reportExportSource = readFileSync(new URL(`${backendRoot}bo/AutoInspectionReportExportBo.java`, import.meta.url), 'utf8')
 const serverNodeSource = readFileSync(new URL(`${backendRoot}vo/AutoInspectionServerAssetNodeVo.java`, import.meta.url), 'utf8')
+const inspectionServiceSource = readFileSync(new URL(`${backendRoot}../service/impl/SupportAutoInspectionServiceImpl.java`, import.meta.url), 'utf8')
 
 test('automatic inspection keeps the mature business workspace', () => {
   const requiredMarkers = [
@@ -64,5 +65,7 @@ test('typed backend preserves mature inspection payload fields', () => {
   assert.ok(reportExportSource.includes('private String reportMode;'))
   assert.ok(reportExportSource.includes('private List<Long> recordIds'))
   assert.ok(serverNodeSource.includes('private String nodeId;'))
-  assert.ok(serverNodeSource.includes('private Object value;'))
+  assert.ok(serverNodeSource.includes('private Long value;'))
+  assert.ok(inspectionServiceSource.includes('node.put("value", value);'))
+  assert.ok(!inspectionServiceSource.includes('node.put("value", value == null ? id : value);'))
 })

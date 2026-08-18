@@ -4341,7 +4341,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         Map<String, Object> node = new LinkedHashMap<>();
         node.put("id", id);
         node.put("nodeId", id);
-        node.put("value", value == null ? id : value);
+        // Grouping nodes are disabled and have no selectable business value.
+        // Keeping their string node id in value breaks typed Long conversion.
+        node.put("value", value);
         node.put("label", label);
         node.put("type", type);
         node.put("disabled", disabled);
