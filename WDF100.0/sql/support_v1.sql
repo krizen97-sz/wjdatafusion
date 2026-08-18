@@ -49,6 +49,10 @@ CREATE TABLE IF NOT EXISTS sup_server (
   server_address      VARCHAR(255) NOT NULL COMMENT '服务器地址',
   ssh_port            INT          DEFAULT 22 COMMENT 'SSH端口',
   os_type             VARCHAR(64)  DEFAULT NULL COMMENT '操作系统类型',
+  equipment_room      VARCHAR(100) DEFAULT NULL COMMENT '所属机房',
+  cabinet_no          VARCHAR(80)  DEFAULT NULL COMMENT '机柜编号',
+  rack_u_start        INT          DEFAULT NULL COMMENT '起始U位',
+  rack_u_end          INT          DEFAULT NULL COMMENT '结束U位',
   os_username         VARCHAR(128) DEFAULT NULL COMMENT '系统登录账号',
   os_password_cipher  VARCHAR(1024) DEFAULT NULL COMMENT '系统登录密码密文',
   status              CHAR(1)      DEFAULT '0' COMMENT '状态（0正常 1停用）',
@@ -153,6 +157,10 @@ CREATE TABLE IF NOT EXISTS sup_hardware_asset (
   asset_model         VARCHAR(120) DEFAULT NULL COMMENT '型号',
   serial_no           VARCHAR(120) DEFAULT NULL COMMENT '序列号',
   install_location    VARCHAR(200) DEFAULT NULL COMMENT '安装位置',
+  equipment_room      VARCHAR(100) DEFAULT NULL COMMENT '所属机房',
+  cabinet_no          VARCHAR(80)  DEFAULT NULL COMMENT '机柜编号',
+  rack_u_start        INT          DEFAULT NULL COMMENT '起始U位',
+  rack_u_end          INT          DEFAULT NULL COMMENT '结束U位',
   owner_org           VARCHAR(160) DEFAULT NULL COMMENT '归属组织',
   owner_contact       VARCHAR(80)  DEFAULT NULL COMMENT '责任人',
   login_username      VARCHAR(128) DEFAULT NULL COMMENT '设备登录账号',
@@ -193,6 +201,39 @@ CREATE TABLE IF NOT EXISTS sup_platform_asset_rel (
   UNIQUE KEY uk_sup_platform_asset (platform_id, asset_id),
   KEY idx_sup_platform_asset_asset (asset_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='平台-硬件资产关系';
+
+CREATE TABLE IF NOT EXISTS sup_equipment_room (
+  room_id            BIGINT       NOT NULL AUTO_INCREMENT COMMENT '机房ID',
+  site_id            BIGINT       NOT NULL COMMENT '现场ID',
+  room_name          VARCHAR(120) NOT NULL COMMENT '机房名称',
+  room_code          VARCHAR(80)  DEFAULT NULL COMMENT '机房编码',
+  status             CHAR(1)      DEFAULT '0' COMMENT '状态（0正常 1停用）',
+  create_by          VARCHAR(64)  DEFAULT '' COMMENT '创建者',
+  create_time        DATETIME     DEFAULT NULL COMMENT '创建时间',
+  update_by          VARCHAR(64)  DEFAULT '' COMMENT '更新者',
+  update_time        DATETIME     DEFAULT NULL COMMENT '更新时间',
+  remark             VARCHAR(500) DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (room_id),
+  KEY idx_sup_equipment_room_site (site_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='现场设备机房';
+
+CREATE TABLE IF NOT EXISTS sup_equipment_cabinet (
+  cabinet_id         BIGINT       NOT NULL AUTO_INCREMENT COMMENT '机柜ID',
+  room_id            BIGINT       NOT NULL COMMENT '机房ID',
+  site_id            BIGINT       NOT NULL COMMENT '现场ID',
+  cabinet_no         VARCHAR(80)  NOT NULL COMMENT '机柜编号',
+  u_capacity         INT          DEFAULT 45 COMMENT '机柜U数',
+  status             CHAR(1)      DEFAULT '0' COMMENT '状态（0正常 1停用）',
+  create_by          VARCHAR(64)  DEFAULT '' COMMENT '创建者',
+  create_time        DATETIME     DEFAULT NULL COMMENT '创建时间',
+  update_by          VARCHAR(64)  DEFAULT '' COMMENT '更新者',
+  update_time        DATETIME     DEFAULT NULL COMMENT '更新时间',
+  remark             VARCHAR(500) DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (cabinet_id),
+  UNIQUE KEY uk_sup_equipment_cabinet_room_no (room_id, cabinet_no),
+  KEY idx_sup_equipment_cabinet_site (site_id),
+  KEY idx_sup_equipment_cabinet_room (room_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='现场设备机柜';
 
 CREATE TABLE IF NOT EXISTS sup_platform_contact_rel (
   rel_id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '关系ID',
@@ -319,7 +360,8 @@ VALUES
 (2201, '现场管理', 2200, 1, 'site', 'support/site/index', '', 'SupportSite', 1, 0, 'C', '0', '0', 'support:site:list', 'tree-table', 'admin', NOW(), '', NULL, ''),
 (2202, '平台管理', 2200, 2, 'platform', 'support/platform/index', '', 'SupportPlatform', 1, 0, 'C', '0', '0', 'support:platform:list', 'build', 'admin', NOW(), '', NULL, ''),
 (2203, '服务器管理', 2200, 3, 'server', 'support/server/index', '', 'SupportServer', 1, 0, 'C', '0', '0', 'support:server:list', 'server', 'admin', NOW(), '', NULL, ''),
-(2204, '组织与联系人', 2200, 4, 'org', 'support/org/index', '', 'SupportOrg', 1, 0, 'C', '0', '0', 'support:org:list', 'peoples', 'admin', NOW(), '', NULL, '')
+(2204, '组织与联系人', 2200, 4, 'org', 'support/org/index', '', 'SupportOrg', 1, 0, 'C', '0', '0', 'support:org:list', 'peoples', 'admin', NOW(), '', NULL, ''),
+(2207, '版本记录', 2200, 5, 'version', 'support/version/index', '{"module":"site"}', 'SupportSiteVersion', 1, 0, 'C', '0', '0', 'support:version:list', 'documentation', 'admin', NOW(), '', NULL, '现场融合管理模块版本记录')
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name), perms=VALUES(perms), component=VALUES(component);
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
@@ -336,6 +378,17 @@ WHERE r.role_key = 'datafusion'
     FROM sys_role_menu rm
     WHERE rm.role_id = r.role_id
       AND rm.menu_id = 2205
+  );
+
+INSERT INTO sys_role_menu(role_id, menu_id)
+SELECT r.role_id, 2207
+FROM sys_role r
+WHERE r.role_key = 'datafusion'
+  AND NOT EXISTS (
+    SELECT 1
+    FROM sys_role_menu rm
+    WHERE rm.role_id = r.role_id
+      AND rm.menu_id = 2207
   );
 
 -- 凭据查看权限按钮
@@ -898,6 +951,13 @@ WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'SERV
 
 UPDATE sys_menu SET visible = '1', update_time = NOW(), remark = '已由自动化巡检模块替代，保留旧数据入口隐藏'
 WHERE menu_id = 2206;
+
+UPDATE sys_job
+SET status = '1',
+    update_by = 'admin',
+    update_time = NOW(),
+    remark = CONCAT(IFNULL(remark, ''), IF(IFNULL(remark, '') = '', '', '；'), '旧巡检任务已冻结，请使用自动化巡检计划')
+WHERE invoke_target LIKE 'supportTimInspectionTask%';
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES

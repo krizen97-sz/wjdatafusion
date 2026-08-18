@@ -42,6 +42,18 @@ public class SupportHardwareAsset extends BaseEntity
     @Excel(name = "安装位置")
     private String installLocation;
 
+    @Excel(name = "所属机房")
+    private String equipmentRoom;
+
+    @Excel(name = "机柜编号")
+    private String cabinetNo;
+
+    @Excel(name = "起始U位")
+    private Integer rackUStart;
+
+    @Excel(name = "结束U位")
+    private Integer rackUEnd;
+
     @Excel(name = "归属组织")
     private String ownerOrg;
 
@@ -226,6 +238,46 @@ public class SupportHardwareAsset extends BaseEntity
     public void setInstallLocation(String installLocation)
     {
         this.installLocation = installLocation;
+    }
+
+    public String getEquipmentRoom()
+    {
+        return equipmentRoom;
+    }
+
+    public void setEquipmentRoom(String equipmentRoom)
+    {
+        this.equipmentRoom = equipmentRoom;
+    }
+
+    public String getCabinetNo()
+    {
+        return cabinetNo;
+    }
+
+    public void setCabinetNo(String cabinetNo)
+    {
+        this.cabinetNo = cabinetNo;
+    }
+
+    public Integer getRackUStart()
+    {
+        return rackUStart;
+    }
+
+    public void setRackUStart(Integer rackUStart)
+    {
+        this.rackUStart = rackUStart;
+    }
+
+    public Integer getRackUEnd()
+    {
+        return rackUEnd;
+    }
+
+    public void setRackUEnd(Integer rackUEnd)
+    {
+        this.rackUEnd = rackUEnd;
     }
 
     public String getOwnerOrg()

@@ -701,10 +701,33 @@ public class SupportServerServiceImpl implements ISupportServerService
         {
             throw new ServiceException("SSH端口范围必须在1-65535之间");
         }
+        server.setEquipmentRoom(StringUtils.trimToNull(server.getEquipmentRoom()));
+        server.setCabinetNo(StringUtils.trimToNull(server.getCabinetNo()));
+        validateRackRange(server.getRackUStart(), server.getRackUEnd());
         SupportServer sameAddressServer = serverMapper.selectSupportServerBySiteAndAddress(server.getSiteId(), server.getServerAddress());
         if (sameAddressServer != null && (!update || !sameAddressServer.getServerId().equals(server.getServerId())))
         {
             throw new ServiceException("当前现场已存在相同地址的服务器");
+        }
+    }
+
+    private void validateRackRange(Integer rackUStart, Integer rackUEnd)
+    {
+        if (rackUStart == null && rackUEnd == null)
+        {
+            return;
+        }
+        if (rackUStart == null || rackUEnd == null)
+        {
+            throw new ServiceException("起始U位和结束U位需要同时填写");
+        }
+        if (rackUStart < 1 || rackUStart > 45 || rackUEnd < 1 || rackUEnd > 45)
+        {
+            throw new ServiceException("U位范围必须在1到45之间");
+        }
+        if (rackUStart > rackUEnd)
+        {
+            throw new ServiceException("起始U位不能大于结束U位");
         }
     }
 
