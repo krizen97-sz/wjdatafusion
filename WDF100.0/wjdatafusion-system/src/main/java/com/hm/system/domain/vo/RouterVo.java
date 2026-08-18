@@ -19,6 +19,7 @@ public class RouterVo
     /**
      * 路由地址
      */
+    @JsonInclude(JsonInclude.Include.ALWAYS)
     private String path;
 
     /**

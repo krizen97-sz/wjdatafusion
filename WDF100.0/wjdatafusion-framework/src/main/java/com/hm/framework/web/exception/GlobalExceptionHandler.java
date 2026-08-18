@@ -11,6 +11,7 @@ import org.springframework.web.bind.MissingPathVariableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import com.hm.common.constant.HttpStatus;
 import com.hm.common.core.domain.AjaxResult;
 import com.hm.common.core.text.Convert;
@@ -88,6 +89,22 @@ public class GlobalExceptionHandler
         }
         log.error("请求参数类型不匹配'{}',发生系统异常.", requestURI, e);
         return AjaxResult.error(String.format("请求参数类型不匹配，参数[%s]要求类型为：'%s'，但输入值为：'%s'", e.getName(), e.getRequiredType().getName(), value));
+    }
+
+    /**
+     * 上传文件超过平台入口限制
+     */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public AjaxResult handleMaxUploadSizeExceededException(MaxUploadSizeExceededException e,
+            HttpServletRequest request)
+    {
+        String requestURI = request.getRequestURI();
+        long maxUploadSize = e.getMaxUploadSize();
+        long maxUploadMb = maxUploadSize > 0
+            ? (maxUploadSize + 1024L * 1024L - 1L) / (1024L * 1024L)
+            : 100L;
+        log.warn("请求地址'{}',上传文件超过{} MB限制.", requestURI, maxUploadMb);
+        return AjaxResult.error(String.format("上传文件过大，单个文件不能超过 %d MB", maxUploadMb));
     }
 
     /**

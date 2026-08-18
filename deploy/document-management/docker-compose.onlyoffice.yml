@@ -1,0 +1,84 @@
+name: rynew-document-management
+
+services:
+  onlyoffice-documentserver:
+    # 9.4.0 官方多架构清单固定到 digest，避免同名标签漂移。
+    image: ${ONLYOFFICE_IMAGE:-onlyoffice/documentserver:9.4.0@sha256:e3da62a847b9a5d51a11f73cfea1d9c13c3be3809614490d4edddcf01dcf919b}
+    container_name: rynew-onlyoffice-documentserver
+    hostname: onlyoffice-documentserver
+    restart: unless-stopped
+    shm_size: ${ONLYOFFICE_SHM_SIZE:-1gb}
+    stop_grace_period: 90s
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT_SECRET:?请配置ONLYOFFICE JWT密钥}
+      JWT_HEADER: AuthorizationJwt
+      JWT_IN_BODY: "true"
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+      ALLOW_META_IP_ADDRESS: "false"
+    expose:
+      - "80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - onlyoffice_data:/var/www/onlyoffice/Data
+      - onlyoffice_logs:/var/log/onlyoffice
+      - onlyoffice_lib:/var/lib/onlyoffice
+      - onlyoffice_db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/healthcheck"]
+      interval: 20s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - onlyoffice_runtime
+
+  onlyoffice-gateway:
+    # 独立网关避免修改现场 1Panel/OpenResty；公网复用业务前端的 /onlyoffice/ 代理。
+    image: ${ONLYOFFICE_GATEWAY_IMAGE:-nginx:latest@sha256:553f64aecdc31b5bf944521731cd70e35da4faed96b2b7548a3d8e2598c52a42}
+    container_name: rynew-onlyoffice-gateway
+    restart: unless-stopped
+    depends_on:
+      onlyoffice-documentserver:
+        condition: service_healthy
+    ports:
+      - "${ONLYOFFICE_PUBLIC_BIND_IP:-0.0.0.0}:${ONLYOFFICE_PUBLIC_PORT:-8082}:8082"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./nginx-onlyoffice-container.conf:/etc/nginx/conf.d/default.conf:ro
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - onlyoffice_runtime
+      - onlyoffice_ingress
+
+networks:
+  onlyoffice_runtime:
+    # DocumentServer 只加入此网络，不能直接访问互联网或宿主机。
+    internal: true
+  onlyoffice_ingress:
+    # 网关和 datafusion-vue 加入此网络；网关同时用于发布 8082 并转发到宿主机 8080。
+    driver: bridge
+
+volumes:
+  onlyoffice_data:
+  onlyoffice_logs:
+  onlyoffice_lib:
+  onlyoffice_db:

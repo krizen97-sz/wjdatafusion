@@ -48,6 +48,20 @@ export const constantRoutes = [
     hidden: true
   },
   {
+    path: '/document/editor/:documentId(\\d+)',
+    component: () => import('@/views/document/editor/index.vue'),
+    name: 'DocumentEditor',
+    hidden: true,
+    meta: { title: '在线编辑文档', noCache: true }
+  },
+  {
+    path: '/document/preview/:documentId(\\d+)',
+    component: () => import('@/views/document/preview/index.vue'),
+    name: 'DocumentPreview',
+    hidden: true,
+    meta: { title: 'PDF 在线预览', noCache: true }
+  },
+  {
     path: "/:pathMatch(.*)*",
     component: () => import('@/views/error/404'),
     hidden: true

@@ -1,0 +1,540 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.DocumentWorkspaceMapper">
+
+    <resultMap id="DocFolderResult" type="com.hm.manage.domain.DocFolder">
+        <id property="folderId" column="folder_id"/>
+        <result property="parentId" column="parent_id"/>
+        <result property="ownerId" column="owner_id"/>
+        <result property="folderName" column="folder_name"/>
+        <result property="folderColor" column="folder_color"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="documentCount" column="document_count"/>
+        <result property="totalSize" column="total_size"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <resultMap id="DocDocumentResult" type="com.hm.manage.domain.DocDocument">
+        <id property="documentId" column="document_id"/>
+        <result property="folderId" column="folder_id"/>
+        <result property="ownerId" column="owner_id"/>
+        <result property="title" column="title"/>
+        <result property="fileType" column="file_type"/>
+        <result property="documentType" column="document_type"/>
+        <result property="storageKey" column="storage_key"/>
+        <result property="fileSize" column="file_size"/>
+        <result property="contentVersion" column="content_version"/>
+        <result property="editorKey" column="editor_key"/>
+        <result property="checksum" column="checksum"/>
+        <result property="lifecycleStatus" column="lifecycle_status"/>
+        <result property="ownerName" column="owner_name"/>
+        <result property="ownerAvatar" column="owner_avatar"/>
+        <result property="folderName" column="folder_name"/>
+        <result property="accessPermission" column="access_permission"/>
+        <result property="collaboratorNames" column="collaborator_names"/>
+        <result property="collaboratorCount" column="collaborator_count"/>
+        <result property="lastOpenedTime" column="last_opened_time"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <resultMap id="DocAclResult" type="com.hm.manage.domain.DocAcl">
+        <id property="aclId" column="acl_id"/>
+        <result property="documentId" column="document_id"/>
+        <result property="userId" column="user_id"/>
+        <result property="permission" column="permission"/>
+        <result property="grantedBy" column="granted_by"/>
+        <result property="expiresAt" column="expires_at"/>
+        <result property="userName" column="user_name"/>
+        <result property="nickName" column="nick_name"/>
+        <result property="avatar" column="avatar"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <resultMap id="DocVersionResult" type="com.hm.manage.domain.DocVersion">
+        <id property="versionId" column="version_id"/>
+        <result property="documentId" column="document_id"/>
+        <result property="versionNo" column="version_no"/>
+        <result property="sourceType" column="source_type"/>
+        <result property="creatorId" column="creator_id"/>
+        <result property="creatorName" column="creator_name"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <resultMap id="DocOperationLogResult" type="com.hm.manage.domain.DocOperationLog">
+        <id property="logId" column="log_id"/>
+        <result property="documentId" column="document_id"/>
+        <result property="actionType" column="action_type"/>
+        <result property="operatorId" column="operator_id"/>
+        <result property="operatorName" column="operator_name"/>
+        <result property="targetUserId" column="target_user_id"/>
+        <result property="targetUserName" column="target_user_name"/>
+        <result property="previousValue" column="previous_value"/>
+        <result property="currentValue" column="current_value"/>
+        <result property="detailContent" column="detail_content"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <resultMap id="DocUserQuotaResult" type="com.hm.manage.domain.DocUserQuota">
+        <id property="userId" column="user_id"/>
+        <result property="quotaBytes" column="quota_bytes"/>
+        <result property="maxUploadBytes" column="max_upload_bytes"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <resultMap id="DocUserStorageResult" type="com.hm.manage.domain.vo.DocUserStorageVo">
+        <id property="userId" column="user_id"/>
+        <result property="userName" column="user_name"/>
+        <result property="nickName" column="nick_name"/>
+        <result property="deptName" column="dept_name"/>
+        <result property="fileCount" column="file_count"/>
+        <result property="usedSize" column="used_size"/>
+        <result property="quotaSize" column="quota_size"/>
+        <result property="maxUploadSize" column="max_upload_size"/>
+        <result property="adminUser" column="admin_user"/>
+    </resultMap>
+
+    <resultMap id="DocUserResult" type="com.hm.manage.domain.vo.DocUserVo">
+        <id property="userId" column="user_id"/>
+        <result property="userName" column="user_name"/>
+        <result property="nickName" column="nick_name"/>
+        <result property="avatar" column="avatar"/>
+        <result property="deptName" column="dept_name"/>
+    </resultMap>
+
+    <sql id="documentProjection">
+        d.document_id, d.folder_id, d.owner_id, d.title, d.file_type, d.document_type,
+        d.storage_key, d.file_size, d.content_version, d.editor_key, d.checksum,
+        d.lifecycle_status, d.create_by, d.create_time, d.update_by, d.update_time,
+        coalesce(nullif(u.nick_name, ''), u.user_name) as owner_name,
+        u.avatar as owner_avatar,
+        f.folder_name,
+        case when d.owner_id = #{userId} then 'OWNER'
+             else (select a.permission from doc_acl a
+                    where a.document_id = d.document_id and a.user_id = #{userId}
+                      and (a.expires_at is null or a.expires_at > now()) limit 1)
+        end as access_permission,
+        (select group_concat(coalesce(nullif(cu.nick_name, ''), cu.user_name) order by cu.nick_name separator '、')
+           from doc_acl ca join sys_user cu on cu.user_id = ca.user_id
+          where ca.document_id = d.document_id and cu.status = '0' and cu.del_flag = '0'
+            and (ca.expires_at is null or ca.expires_at > now())) as collaborator_names,
+        (select count(1) from doc_acl ca where ca.document_id = d.document_id
+          and (ca.expires_at is null or ca.expires_at > now())) as collaborator_count,
+        (select max(ol.create_time) from doc_operation_log ol
+          where ol.document_id = d.document_id and ol.operator_id = #{userId}
+            and ol.action_type in ('CREATE', 'OPEN')) as last_opened_time
+    </sql>
+
+    <select id="selectFoldersByOwner" resultMap="DocFolderResult">
+        select f.folder_id, f.parent_id, f.owner_id, f.folder_name, f.folder_color, f.sort_order,
+               f.create_by, f.create_time, f.update_by, f.update_time,
+               coalesce(s.document_count, 0) as document_count,
+               coalesce(s.total_size, 0) as total_size
+        from doc_folder f
+        left join (
+            select folder_id, count(1) as document_count, coalesce(sum(file_size), 0) as total_size
+            from doc_document
+            where lifecycle_status != 'TRASH'
+            group by folder_id
+        ) s on s.folder_id = f.folder_id
+        where f.owner_id = #{ownerId} and f.deleted = '0'
+        order by f.parent_id, f.sort_order, f.folder_name
+    </select>
+
+    <select id="selectWorkspaceSummary" resultType="com.hm.manage.domain.vo.DocWorkspaceSummaryVo">
+        select count(1) as fileCount,
+               coalesce(sum(file_size), 0) as totalSize,
+               coalesce(sum(case when folder_id = 0 then 1 else 0 end), 0) as unfiledCount
+        from doc_document
+        where owner_id = #{ownerId} and lifecycle_status != 'TRASH'
+    </select>
+
+    <select id="selectOwnedStorageBytes" resultType="long">
+        select coalesce(sum(file_size), 0)
+        from doc_document
+        where owner_id = #{ownerId}
+    </select>
+
+    <insert id="insertDefaultQuota">
+        insert ignore into doc_user_quota(user_id, quota_bytes, max_upload_bytes, create_by, create_time,
+                                          update_by, update_time)
+        values(#{userId}, 104857600, 104857600, #{operator}, now(), #{operator}, now())
+    </insert>
+
+    <select id="selectQuota" resultMap="DocUserQuotaResult">
+        select user_id, quota_bytes, max_upload_bytes, create_by, create_time, update_by, update_time
+        from doc_user_quota where user_id = #{userId}
+    </select>
+
+    <select id="selectQuotaForUpdate" resultMap="DocUserQuotaResult">
+        select user_id, quota_bytes, max_upload_bytes, create_by, create_time, update_by, update_time
+        from doc_user_quota where user_id = #{userId} for update
+    </select>
+
+    <update id="updateQuota">
+        update doc_user_quota
+        set quota_bytes = #{quotaBytes}, max_upload_bytes = #{maxUploadBytes},
+            update_by = #{operator}, update_time = now()
+        where user_id = #{userId}
+    </update>
+
+    <select id="countDocumentWorkspaceAccess" resultType="int">
+        select count(1)
+        from sys_user u
+        where u.user_id = #{userId} and u.status = '0' and u.del_flag = '0'
+          and exists(
+              select 1
+              from sys_user_role ur
+              join sys_role r on r.role_id = ur.role_id and r.status = '0' and r.del_flag = '0'
+              where ur.user_id = u.user_id
+                and (r.role_key = 'admin' or exists(
+                    select 1
+                    from sys_role_menu rm
+                    join sys_menu m on m.menu_id = rm.menu_id and m.status = '0'
+                    where rm.role_id = r.role_id and m.perms = 'document:file:manage'
+                ))
+          )
+    </select>
+
+    <select id="countDocumentAdminRole" resultType="int">
+        select count(1)
+        from sys_user_role ur
+        join sys_role r on r.role_id = ur.role_id and r.status = '0' and r.del_flag = '0'
+        where ur.user_id = #{userId} and r.role_key = 'admin'
+    </select>
+
+    <!--
+      文档共享候选人的可见范围只由文档管理权限决定，不能套用若依通用部门数据范围。
+      document角色保持“仅本人”是为了不扩大其他业务模块的数据权限；这里用独立查询
+      精确返回已获得document:file:manage的有效用户。
+    -->
+    <select id="selectCollaboratorCandidates" resultMap="DocUserResult">
+        select distinct u.user_id, u.user_name, u.nick_name, u.avatar,
+               coalesce(dept.dept_name, '') as dept_name
+        from sys_user u
+        left join sys_dept dept on dept.dept_id = u.dept_id
+        where u.status = '0' and u.del_flag = '0'
+          and u.user_id != #{excludeUserId}
+          and u.user_id != #{ownerId}
+          and exists(
+              select 1
+              from sys_user_role ur
+              join sys_role r on r.role_id = ur.role_id and r.status = '0' and r.del_flag = '0'
+              where ur.user_id = u.user_id
+                and (r.role_key = 'admin' or exists(
+                    select 1
+                    from sys_role_menu rm
+                    join sys_menu m on m.menu_id = rm.menu_id and m.status = '0'
+                    where rm.role_id = r.role_id and m.perms = 'document:file:manage'
+                ))
+          )
+          and (#{keyword} = '' or instr(lower(concat_ws(' ', u.user_name, u.nick_name,
+              coalesce(dept.dept_name, ''))), #{keyword}) > 0)
+        order by coalesce(nullif(u.nick_name, ''), u.user_name), u.user_id
+        limit #{limit}
+    </select>
+
+    <select id="selectDocumentStorageUsers" resultMap="DocUserStorageResult">
+        select u.user_id, u.user_name, u.nick_name, coalesce(dept.dept_name, '') as dept_name,
+               count(d.document_id) as file_count,
+               coalesce(sum(d.file_size), 0) as used_size,
+               coalesce(q.quota_bytes, 104857600) as quota_size,
+               coalesce(q.max_upload_bytes, 104857600) as max_upload_size,
+               case when exists(
+                   select 1 from sys_user_role admin_ur
+                   join sys_role admin_role on admin_role.role_id = admin_ur.role_id
+                     and admin_role.status = '0' and admin_role.del_flag = '0'
+                   where admin_ur.user_id = u.user_id and admin_role.role_key = 'admin'
+               ) then 1 else 0 end as admin_user
+        from sys_user u
+        left join sys_dept dept on dept.dept_id = u.dept_id
+        left join doc_document d on d.owner_id = u.user_id
+        left join doc_user_quota q on q.user_id = u.user_id
+        where u.status = '0' and u.del_flag = '0'
+          and exists(
+              select 1
+              from sys_user_role ur
+              join sys_role r on r.role_id = ur.role_id and r.status = '0' and r.del_flag = '0'
+              where ur.user_id = u.user_id
+                and (r.role_key = 'admin' or exists(
+                    select 1
+                    from sys_role_menu rm
+                    join sys_menu m on m.menu_id = rm.menu_id and m.status = '0'
+                    where rm.role_id = r.role_id and m.perms = 'document:file:manage'
+                ))
+          )
+        group by u.user_id, u.user_name, u.nick_name, dept.dept_name, q.quota_bytes, q.max_upload_bytes
+        order by used_size desc, u.user_id
+    </select>
+
+    <select id="selectFolderById" resultMap="DocFolderResult">
+        select folder_id, parent_id, owner_id, folder_name, folder_color, sort_order,
+               create_by, create_time, update_by, update_time
+        from doc_folder where folder_id = #{folderId} and deleted = '0'
+    </select>
+
+    <select id="selectFoldersByOwnerAndParentForUpdate" resultMap="DocFolderResult">
+        select folder_id, parent_id, owner_id, folder_name, folder_color, sort_order,
+               create_by, create_time, update_by, update_time
+        from doc_folder
+        where owner_id = #{ownerId} and parent_id = #{parentId} and deleted = '0'
+        order by sort_order, folder_name, folder_id
+        for update
+    </select>
+
+    <select id="selectNextFolderSortOrder" resultType="int">
+        select coalesce(max(sort_order), 0) + 10
+        from doc_folder
+        where owner_id = #{ownerId} and parent_id = #{parentId} and deleted = '0'
+    </select>
+
+    <select id="countSiblingFolder" resultType="int">
+        select count(1) from doc_folder
+        where owner_id = #{ownerId} and parent_id = #{parentId} and deleted = '0'
+          and folder_name = #{folderName}
+        <if test="excludeFolderId != null">
+          and folder_id != #{excludeFolderId}
+        </if>
+    </select>
+
+    <select id="countChildFolders" resultType="int">
+        select count(1) from doc_folder where parent_id = #{folderId} and deleted = '0'
+    </select>
+
+    <select id="countDocumentsByFolder" resultType="int">
+        select count(1) from doc_document where folder_id = #{folderId}
+    </select>
+
+    <insert id="insertFolder" parameterType="com.hm.manage.domain.DocFolder" useGeneratedKeys="true" keyProperty="folderId">
+        insert into doc_folder(parent_id, owner_id, folder_name, folder_color, sort_order, deleted, create_by, create_time)
+        values(#{parentId}, #{ownerId}, #{folderName}, #{folderColor}, #{sortOrder}, '0', #{createBy}, now())
+    </insert>
+
+    <update id="updateFolder" parameterType="com.hm.manage.domain.DocFolder">
+        update doc_folder
+        set parent_id = #{parentId}, folder_name = #{folderName}, folder_color = #{folderColor},
+            sort_order = #{sortOrder},
+            update_by = #{updateBy}, update_time = now()
+        where folder_id = #{folderId} and owner_id = #{ownerId} and deleted = '0'
+    </update>
+
+    <update id="updateFolderSortOrder">
+        update doc_folder
+        set sort_order = #{sortOrder}, update_by = #{operator}, update_time = now()
+        where folder_id = #{folderId} and owner_id = #{ownerId}
+          and parent_id = #{parentId} and deleted = '0'
+    </update>
+
+    <update id="deleteFolder">
+        update doc_folder set deleted = '1', update_time = now() where folder_id = #{folderId}
+    </update>
+
+    <select id="selectDocumentList" resultMap="DocDocumentResult">
+        select <include refid="documentProjection"/>
+        from doc_document d
+        join sys_user u on u.user_id = d.owner_id
+        left join doc_folder f on f.folder_id = d.folder_id and f.deleted = '0'
+        where 1 = 1
+        <if test="scope != 'ADMIN_ALL'">
+            and (d.owner_id = #{userId}
+                 or exists(select 1 from doc_acl access_acl
+                           where access_acl.document_id = d.document_id and access_acl.user_id = #{userId}
+                             and (access_acl.expires_at is null or access_acl.expires_at > now())))
+        </if>
+        <choose>
+            <when test="scope == 'ADMIN_ALL'">
+                and 1 = 1
+            </when>
+            <when test="scope == 'SHARED'">
+                and d.owner_id != #{userId} and d.lifecycle_status = 'ACTIVE'
+                <if test="accessPermission != null and accessPermission != ''">
+                    and exists(select 1 from doc_acl permission_acl
+                               where permission_acl.document_id = d.document_id
+                                 and permission_acl.user_id = #{userId}
+                                 and permission_acl.permission = #{accessPermission}
+                                 and (permission_acl.expires_at is null or permission_acl.expires_at > now()))
+                </if>
+            </when>
+            <when test="scope == 'RECENT'">
+                and d.lifecycle_status = 'ACTIVE'
+                and exists(select 1 from doc_operation_log recent_log
+                           where recent_log.document_id = d.document_id and recent_log.operator_id = #{userId}
+                             and recent_log.action_type in ('CREATE', 'OPEN'))
+            </when>
+            <when test="scope == 'ARCHIVED'">
+                and d.lifecycle_status = 'ARCHIVED'
+            </when>
+            <when test="scope == 'TRASH'">
+                and d.owner_id = #{userId} and d.lifecycle_status = 'TRASH'
+            </when>
+            <otherwise>
+                and d.owner_id = #{userId} and d.lifecycle_status = 'ACTIVE'
+            </otherwise>
+        </choose>
+        <if test="folderId != null">
+            and d.folder_id = #{folderId}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            and lower(d.title) like concat('%', lower(#{keyword}), '%')
+        </if>
+        <if test="fileType != null and fileType != ''">
+            and d.file_type = #{fileType}
+        </if>
+        <choose>
+            <when test="scope == 'RECENT'">order by last_opened_time desc, d.update_time desc</when>
+            <otherwise>order by d.update_time desc, d.document_id desc</otherwise>
+        </choose>
+    </select>
+
+    <select id="selectDocumentRecord" resultMap="DocDocumentResult">
+        select d.document_id, d.folder_id, d.owner_id, d.title, d.file_type, d.document_type,
+               d.storage_key, d.file_size, d.content_version, d.editor_key, d.checksum,
+               d.lifecycle_status, d.create_by, d.create_time, d.update_by, d.update_time
+        from doc_document d where d.document_id = #{documentId}
+    </select>
+
+    <select id="selectDocumentRecordForUpdate" resultMap="DocDocumentResult">
+        select d.document_id, d.folder_id, d.owner_id, d.title, d.file_type, d.document_type,
+               d.storage_key, d.file_size, d.content_version, d.editor_key, d.checksum,
+               d.lifecycle_status, d.create_by, d.create_time, d.update_by, d.update_time
+        from doc_document d where d.document_id = #{documentId} for update
+    </select>
+
+    <select id="selectAccessibleDocument" resultMap="DocDocumentResult">
+        select <include refid="documentProjection"/>
+        from doc_document d
+        join sys_user u on u.user_id = d.owner_id
+        left join doc_folder f on f.folder_id = d.folder_id and f.deleted = '0'
+        where d.document_id = #{documentId}
+          and (d.owner_id = #{userId}
+               or exists(select 1 from doc_acl access_acl
+                         where access_acl.document_id = d.document_id and access_acl.user_id = #{userId}
+                           and (access_acl.expires_at is null or access_acl.expires_at > now())))
+    </select>
+
+    <insert id="insertDocument" parameterType="com.hm.manage.domain.DocDocument" useGeneratedKeys="true" keyProperty="documentId">
+        insert into doc_document(folder_id, owner_id, title, file_type, document_type, storage_key,
+                                 file_size, content_version, editor_key, checksum, lifecycle_status,
+                                 create_by, create_time, update_by, update_time)
+        values(#{folderId}, #{ownerId}, #{title}, #{fileType}, #{documentType}, #{storageKey},
+               #{fileSize}, #{contentVersion}, #{editorKey}, #{checksum}, #{lifecycleStatus},
+               #{createBy}, now(), #{updateBy}, now())
+    </insert>
+
+    <select id="countDocumentTitle" resultType="int">
+        select count(1)
+        from doc_document
+        where owner_id = #{ownerId} and folder_id = #{folderId}
+          and lower(title) = lower(#{title}) and lifecycle_status != 'TRASH'
+    </select>
+
+    <update id="updateDocumentMetadata" parameterType="com.hm.manage.domain.DocDocument">
+        update doc_document
+        set folder_id = #{folderId}, title = #{title}, lifecycle_status = #{lifecycleStatus},
+            update_by = #{updateBy}, update_time = now()
+        where document_id = #{documentId}
+    </update>
+
+    <update id="updateDocumentContent" parameterType="com.hm.manage.domain.DocDocument">
+        update doc_document
+        set title = #{title}, file_type = #{fileType}, document_type = #{documentType},
+            storage_key = #{storageKey}, file_size = #{fileSize}, content_version = #{contentVersion},
+            editor_key = #{editorKey}, checksum = #{checksum}, update_by = #{updateBy}, update_time = now()
+        where document_id = #{documentId}
+    </update>
+
+    <select id="selectAclList" resultMap="DocAclResult">
+        select a.acl_id, a.document_id, a.user_id, a.permission, a.granted_by, a.expires_at,
+               a.create_time, a.update_time, u.user_name, u.nick_name, u.avatar
+        from doc_acl a join sys_user u on u.user_id = a.user_id
+        where a.document_id = #{documentId} and u.del_flag = '0'
+        order by a.permission, u.nick_name, u.user_name
+    </select>
+
+    <select id="selectAclRecords" resultMap="DocAclResult">
+        select acl_id, document_id, user_id, permission, granted_by, expires_at, create_time, update_time
+        from doc_acl where document_id = #{documentId}
+    </select>
+
+    <select id="selectAcl" resultMap="DocAclResult">
+        select acl_id, document_id, user_id, permission, granted_by, expires_at, create_time, update_time
+        from doc_acl where document_id = #{documentId} and user_id = #{userId}
+          and (expires_at is null or expires_at > now())
+    </select>
+
+    <delete id="deleteAclByDocumentId">
+        delete from doc_acl where document_id = #{documentId}
+    </delete>
+
+    <delete id="deleteAcl">
+        delete from doc_acl where document_id = #{documentId} and user_id = #{userId}
+    </delete>
+
+    <insert id="insertAcl" parameterType="com.hm.manage.domain.DocAcl">
+        insert into doc_acl(document_id, user_id, permission, granted_by, expires_at, create_time, update_time)
+        values(#{documentId}, #{userId}, #{permission}, #{grantedBy}, #{expiresAt}, now(), now())
+    </insert>
+
+    <update id="updateAcl" parameterType="com.hm.manage.domain.DocAcl">
+        update doc_acl
+        set permission = #{permission}, granted_by = #{grantedBy}, expires_at = #{expiresAt}, update_time = now()
+        where document_id = #{documentId} and user_id = #{userId}
+    </update>
+
+    <select id="selectExpiredAclRecords" resultMap="DocAclResult">
+        select a.acl_id, a.document_id, a.user_id, a.permission, a.granted_by, a.expires_at,
+               a.create_time, a.update_time, u.user_name, u.nick_name, u.avatar
+        from doc_acl a
+        left join sys_user u on u.user_id = a.user_id
+        where a.expires_at is not null and a.expires_at &lt;= now()
+        order by a.expires_at, a.acl_id
+        limit #{limit}
+    </select>
+
+    <delete id="deleteExpiredAcl">
+        delete from doc_acl where acl_id = #{aclId} and expires_at is not null and expires_at &lt;= now()
+    </delete>
+
+    <insert id="insertVersion" parameterType="com.hm.manage.domain.DocVersion" useGeneratedKeys="true" keyProperty="versionId">
+        insert into doc_version(document_id, version_no, source_type, creator_id, creator_name, create_time)
+        values(#{documentId}, #{versionNo}, #{sourceType}, #{creatorId}, #{creatorName}, now())
+    </insert>
+
+    <select id="selectVersions" resultMap="DocVersionResult">
+        select version_id, document_id, version_no, source_type, creator_id, creator_name, create_time
+        from doc_version where document_id = #{documentId} order by version_no desc
+    </select>
+
+    <insert id="insertOperationLog" parameterType="com.hm.manage.domain.DocOperationLog">
+        insert into doc_operation_log(document_id, action_type, operator_id, operator_name,
+                                      target_user_id, target_user_name, previous_value, current_value,
+                                      detail_content, create_time)
+        values(#{documentId}, #{actionType}, #{operatorId}, #{operatorName},
+               #{targetUserId}, #{targetUserName}, #{previousValue}, #{currentValue},
+               #{detailContent}, now())
+    </insert>
+
+
+    <select id="selectOperationLogs" resultMap="DocOperationLogResult">
+        select log_id, document_id, action_type, operator_id, operator_name,
+               target_user_id, target_user_name, previous_value, current_value,
+               detail_content, create_time
+        from doc_operation_log
+        where document_id = #{documentId}
+          and action_type not in ('CREATE', 'FORCE_SAVE', 'FINAL_SAVE',
+                                  'VERSION_DOWNLOAD', 'VERSION_RESTORE', 'DOWNLOAD')
+        order by create_time desc, log_id desc
+        limit 200
+    </select>
+</mapper>

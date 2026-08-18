@@ -43,7 +43,8 @@ is_shared_path() {
     RuoYi-Vue3-master/src/views/support/version/releaseNotes.js|\
     WDF100.0/pom.xml|WDF100.0/*/pom.xml|WDF100.0/sql/support_v1.sql|\
     WDF100.0/sql/support_deploy_all.sql|*/application.yml|*/application-*.yml|\
-    *GlobalExceptionHandler.java|*RouterVo.java|*SysMenuServiceImpl.java) return 0 ;;
+    *GlobalExceptionHandler.java|*RouterVo.java|*SysMenuServiceImpl.java|\
+    *RouterVoSerializationTest.java|*SysMenuServiceImplTest.java) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -54,7 +55,7 @@ is_module_path() {
   case "$module:$path" in
     auto-inspection:*autoInspection*|auto-inspection:*AutoInspection*|auto-inspection:*auto_inspection*|auto-inspection:*auto-version*|auto-inspection:*auto_version*) return 0 ;;
     site-fusion:*support/site/*|site-fusion:*SupportSite*|site-fusion:*SupportServer*|site-fusion:*SupportHardware*|site-fusion:*SupportEquipment*|site-fusion:*equipmentLocation*|site-fusion:*EquipmentLocation*|site-fusion:*hardware_asset*|site-fusion:*server_credential*) return 0 ;;
-    document-management:*document*|document-management:*Document*|document-management:*doc_*) return 0 ;;
+    document-management:*document*|document-management:*Document*|document-management:*Doc*|document-management:*doc_*) return 0 ;;
     ipam:*ipam*|ipam:*Ipam*) return 0 ;;
     *) return 1 ;;
   esac

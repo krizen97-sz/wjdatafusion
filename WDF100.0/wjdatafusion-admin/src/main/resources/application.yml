@@ -60,9 +60,9 @@ spring:
   servlet:
     multipart:
       # 单个文件大小
-      max-file-size: 10MB
+      max-file-size: ${DOCUMENT_UPLOAD_MAX_FILE_SIZE:100MB}
       # 设置总上传的文件大小
-      max-request-size: 20MB
+      max-request-size: ${DOCUMENT_UPLOAD_MAX_REQUEST_SIZE:102MB}
   jackson:
     time-zone: GMT+8
     date-format: yyyy-MM-dd HH:mm:ss
@@ -153,6 +153,37 @@ xss:
 support:
   credential:
     key: "Sz9227328"
+
+# 文档管理（纯内网部署）
+document-management:
+  # 生产环境应指向受备份保护的共享存储；默认落在 ruoyi.profile 下
+  storage-root: ${DOCUMENT_STORAGE_ROOT:${ruoyi.profile}/documents}
+  max-file-size: ${DOCUMENT_MAX_FILE_SIZE:104857600}
+  # OOXML 解压后体积和条目数上限，防止压缩炸弹拖垮内网服务器
+  max-expanded-file-size: ${DOCUMENT_MAX_EXPANDED_FILE_SIZE:262144000}
+  max-archive-entries: ${DOCUMENT_MAX_ARCHIVE_ENTRIES:10000}
+  # PDF 只做只读预览；上传时限制页数，避免异常页树消耗过多解析资源
+  max-pdf-pages: ${DOCUMENT_MAX_PDF_PAGES:2000}
+  # 批量下载只流式输出当前文件，不在服务器生成临时 zip
+  max-batch-download-files: ${DOCUMENT_MAX_BATCH_DOWNLOAD_FILES:50}
+  max-batch-download-size: ${DOCUMENT_MAX_BATCH_DOWNLOAD_SIZE:524288000}
+  only-office:
+    enabled: ${DOCUMENT_ONLYOFFICE_ENABLED:false}
+    # 浏览器可访问的内网 ONLYOFFICE 地址
+    server-url: ${DOCUMENT_ONLYOFFICE_SERVER_URL:http://127.0.0.1:8082}
+    # ONLYOFFICE 容器访问本平台后端时使用的内网地址
+    platform-base-url: ${DOCUMENT_PLATFORM_BASE_URL:http://host.docker.internal:8080}
+    # 必须与 DocumentServer 的 JWT_SECRET 一致，生产环境至少32位并从环境变量注入
+    jwt-secret: ${DOCUMENT_ONLYOFFICE_JWT_SECRET:}
+    file-token-minutes: ${DOCUMENT_FILE_TOKEN_MINUTES:15}
+    callback-token-hours: ${DOCUMENT_CALLBACK_TOKEN_HOURS:72}
+    connect-timeout-seconds: ${DOCUMENT_CONNECT_TIMEOUT_SECONDS:10}
+    read-timeout-seconds: ${DOCUMENT_READ_TIMEOUT_SECONDS:60}
+    # 编辑器界面语言与度量/日期地区，内网现场默认中国简体中文
+    language: ${DOCUMENT_ONLYOFFICE_LANGUAGE:zh-CN}
+    region: ${DOCUMENT_ONLYOFFICE_REGION:zh-CN}
+    # 仅允许从这些内网主机拉取 ONLYOFFICE 回调文件；多个值用英文逗号分隔
+    trusted-download-hosts: ${DOCUMENT_ONLYOFFICE_TRUSTED_HOSTS:onlyoffice-documentserver}
 
 whitelist:
   postgres:

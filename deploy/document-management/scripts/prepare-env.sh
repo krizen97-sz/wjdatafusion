@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=common.sh
+source "${SCRIPT_DIR}/common.sh"
+
+require_command openssl
+if [[ -e "${ENV_FILE}" ]]; then
+  echo "ERROR: ${ENV_FILE} 已存在；为避免覆盖现场密钥，本脚本不会改写它" >&2
+  exit 1
+fi
+
+umask 077
+JWT_SECRET="$(openssl rand -hex 32)"
+ONLYOFFICE_IMAGE_VALUE="${ONLYOFFICE_IMAGE:-onlyoffice/documentserver:9.4.0@sha256:e3da62a847b9a5d51a11f73cfea1d9c13c3be3809614490d4edddcf01dcf919b}"
+ONLYOFFICE_PUBLIC_BIND_IP_VALUE="${ONLYOFFICE_PUBLIC_BIND_IP:-0.0.0.0}"
+ONLYOFFICE_PUBLIC_PORT_VALUE="${ONLYOFFICE_PUBLIC_PORT:-8082}"
+ONLYOFFICE_PUBLIC_URL_VALUE="${ONLYOFFICE_PUBLIC_URL:-http://139.224.24.77:5555/onlyoffice}"
+RUOYI_BACKEND_URL_VALUE="${RUOYI_BACKEND_URL:-http://onlyoffice-gateway:8083}"
+ONLYOFFICE_SKIP_PULL_VALUE="${ONLYOFFICE_SKIP_PULL:-false}"
+
+printf '%s\n' \
+  "ONLYOFFICE_IMAGE=${ONLYOFFICE_IMAGE_VALUE}" \
+  "ONLYOFFICE_SKIP_PULL=${ONLYOFFICE_SKIP_PULL_VALUE}" \
+  "ONLYOFFICE_JWT_SECRET=${JWT_SECRET}" \
+  "ONLYOFFICE_PUBLIC_BIND_IP=${ONLYOFFICE_PUBLIC_BIND_IP_VALUE}" \
+  "ONLYOFFICE_PUBLIC_PORT=${ONLYOFFICE_PUBLIC_PORT_VALUE}" \
+  "ONLYOFFICE_SHM_SIZE=1gb" \
+  "RUOYI_BACKEND_URL=${RUOYI_BACKEND_URL_VALUE}" \
+  "ONLYOFFICE_PUBLIC_URL=${ONLYOFFICE_PUBLIC_URL_VALUE}" \
+  > "${ENV_FILE}"
+chmod 600 "${ENV_FILE}"
+unset JWT_SECRET
+
+echo "已生成 ${ENV_FILE}（权限 600，JWT 密钥未输出）"

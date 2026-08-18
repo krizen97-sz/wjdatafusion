@@ -381,7 +381,7 @@ public class SysMenuServiceImpl implements ISysMenuService
     }
 
     /**
-     * 校验路由名称是否唯一
+     * 校验路由配置是否唯一：路径在同一父菜单下唯一，路由名称全局唯一
      *
      * @param menu 菜单信息
      * @return 结果
@@ -404,11 +404,6 @@ public class SysMenuServiceImpl implements ISysMenuService
                 if (StringUtils.equalsAnyIgnoreCase(path, dbPath) && parentId.longValue() == dbParentId.longValue())
                 {
                     log.warn("[同级路由冲突] 同级下已存在相同路由路径 '{}'，冲突菜单：{}", dbPath, sysMenu.getMenuName());
-                    return UserConstants.NOT_UNIQUE;
-                }
-                else if (StringUtils.equalsAnyIgnoreCase(path, dbPath) && parentId.longValue() == MENU_ROOT_ID)
-                {
-                    log.warn("[根目录路由冲突] 根目录下路由 '{}' 必须唯一，已被菜单 '{}' 占用", path, sysMenu.getMenuName());
                     return UserConstants.NOT_UNIQUE;
                 }
                 else if (StringUtils.equalsAnyIgnoreCase(routeName, dbRouteName))
