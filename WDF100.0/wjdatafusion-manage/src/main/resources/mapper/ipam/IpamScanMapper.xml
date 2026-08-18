@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.IpamScanMapper">
+
+    <resultMap id="IpamScanJobResult" type="IpamScanJob">
+        <result property="scanId" column="scan_id"/>
+        <result property="scanScope" column="scan_scope"/>
+        <result property="triggerType" column="trigger_type"/>
+        <result property="networkId" column="network_id"/>
+        <result property="networkName" column="network_name"/>
+        <result property="scanStatus" column="scan_status"/>
+        <result property="totalCount" column="total_count"/>
+        <result property="completedCount" column="completed_count"/>
+        <result property="onlineCount" column="online_count"/>
+        <result property="offlineCount" column="offline_count"/>
+        <result property="errorCount" column="error_count"/>
+        <result property="timeoutMs" column="timeout_ms"/>
+        <result property="intervalMs" column="interval_ms"/>
+        <result property="concurrencyCount" column="concurrency_count"/>
+        <result property="startedTime" column="started_time"/>
+        <result property="finishedTime" column="finished_time"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <resultMap id="IpamScanResult" type="IpamScanResult">
+        <result property="resultId" column="result_id"/>
+        <result property="scanId" column="scan_id"/>
+        <result property="networkId" column="network_id"/>
+        <result property="segmentId" column="segment_id"/>
+        <result property="ipAddress" column="ip_address"/>
+        <result property="ipValue" column="ip_value"/>
+        <result property="connectivityStatus" column="connectivity_status"/>
+        <result property="responseTimeMs" column="response_time_ms"/>
+        <result property="lastScanTime" column="last_scan_time"/>
+        <result property="lastOnlineTime" column="last_online_time"/>
+        <result property="lastOfflineTime" column="last_offline_time"/>
+        <result property="errorMessage" column="error_message"/>
+    </resultMap>
+
+    <insert id="insertScanJob" parameterType="IpamScanJob" useGeneratedKeys="true" keyProperty="scanId">
+        insert into ipam_scan_job
+          (scan_scope, trigger_type, network_id, network_name, scan_status,
+           total_count, completed_count, online_count, offline_count, error_count,
+           timeout_ms, interval_ms, concurrency_count,
+           create_by, create_time, update_by, update_time)
+        values
+          (#{scanScope}, #{triggerType}, #{networkId}, #{networkName}, #{scanStatus},
+           0, 0, 0, 0, 0,
+           #{timeoutMs}, #{intervalMs}, #{concurrencyCount},
+           #{createBy}, #{createTime}, #{updateBy}, #{updateTime})
+    </insert>
+
+    <select id="selectScanJobById" parameterType="Long" resultMap="IpamScanJobResult">
+        select *
+        from ipam_scan_job
+        where scan_id = #{scanId}
+    </select>
+
+    <select id="selectLatestNetworkScanJob" parameterType="Long" resultMap="IpamScanJobResult">
+        select j.scan_id, j.scan_scope, j.trigger_type, #{networkId} as network_id, j.network_name,
+               j.scan_status,
+               case when j.scan_scope = 'ALL' then count(r.result_id) else j.total_count end as total_count,
+               case when j.scan_scope = 'ALL' then count(r.result_id) else j.completed_count end as completed_count,
+               case when j.scan_scope = 'ALL' then coalesce(sum(case when r.connectivity_status = 'ONLINE' then 1 else 0 end), 0) else j.online_count end as online_count,
+               case when j.scan_scope = 'ALL' then coalesce(sum(case when r.connectivity_status = 'OFFLINE' then 1 else 0 end), 0) else j.offline_count end as offline_count,
+               case when j.scan_scope = 'ALL' then coalesce(sum(case when r.connectivity_status = 'UNKNOWN' then 1 else 0 end), 0) else j.error_count end as error_count,
+               j.timeout_ms, j.interval_ms, j.concurrency_count, j.started_time, j.finished_time,
+               j.error_message, j.create_by, j.create_time, j.update_by, j.update_time
+        from ipam_scan_job j
+                 left join ipam_scan_result r
+                           on r.scan_id = j.scan_id and r.network_id = #{networkId}
+        where j.scan_id = (
+            select max(candidate.scan_id)
+            from ipam_scan_job candidate
+            where candidate.network_id = #{networkId}
+               or (
+                    candidate.scan_scope = 'ALL'
+                    and exists (
+                        select 1
+                        from ipam_scan_result candidate_result
+                        where candidate_result.scan_id = candidate.scan_id
+                          and candidate_result.network_id = #{networkId}
+                    )
+               )
+        )
+        group by j.scan_id, j.scan_scope, j.trigger_type, j.network_name, j.scan_status,
+                 j.total_count, j.completed_count, j.online_count, j.offline_count, j.error_count,
+                 j.timeout_ms, j.interval_ms, j.concurrency_count, j.started_time, j.finished_time,
+                 j.error_message, j.create_by, j.create_time, j.update_by, j.update_time
+    </select>
+
+    <update id="tryAcquireScanLock">
+        update ipam_scan_lock
+        set owner_token = #{ownerToken},
+            scan_id = null,
+            lease_until = #{leaseUntil},
+            update_time = #{now}
+        where lock_name = 'GLOBAL'
+          and (owner_token is null or lease_until is null or lease_until &lt; #{now})
+    </update>
+
+    <update id="bindScanLock">
+        update ipam_scan_lock
+        set scan_id = #{scanId},
+            lease_until = #{leaseUntil},
+            update_time = #{now}
+        where lock_name = 'GLOBAL'
+          and owner_token = #{ownerToken}
+    </update>
+
+    <update id="renewScanLock">
+        update ipam_scan_lock
+        set lease_until = #{leaseUntil},
+            update_time = #{now}
+        where lock_name = 'GLOBAL'
+          and owner_token = #{ownerToken}
+          and scan_id = #{scanId}
+    </update>
+
+    <update id="releaseScanLock">
+        update ipam_scan_lock
+        set owner_token = null,
+            scan_id = null,
+            lease_until = null,
+            update_time = #{now}
+        where lock_name = 'GLOBAL'
+          and owner_token = #{ownerToken}
+    </update>
+
+    <update id="clearExpiredScanLock">
+        update ipam_scan_lock
+        set owner_token = null,
+            scan_id = null,
+            lease_until = null,
+            update_time = #{now}
+        where lock_name = 'GLOBAL'
+          and lease_until is not null
+          and lease_until &lt; #{now}
+    </update>
+
+    <update id="markInterruptedJobsFailed">
+        update ipam_scan_job
+        set scan_status = 'FAILED',
+            finished_time = #{finishedTime},
+            error_message = #{errorMessage},
+            update_by = 'system',
+            update_time = #{finishedTime}
+        where scan_status in ('QUEUED', 'RUNNING')
+          and update_time &lt; #{staleBefore}
+    </update>
+
+    <update id="markScanJobRunning">
+        update ipam_scan_job
+        set scan_status = 'RUNNING',
+            total_count = #{totalCount},
+            completed_count = 0,
+            online_count = 0,
+            offline_count = 0,
+            error_count = 0,
+            started_time = #{startedTime},
+            finished_time = null,
+            error_message = null,
+            update_by = 'system',
+            update_time = #{startedTime}
+        where scan_id = #{scanId}
+          and scan_status = 'QUEUED'
+    </update>
+
+    <update id="updateScanJobProgress">
+        update ipam_scan_job
+        set completed_count = #{completedCount},
+            online_count = #{onlineCount},
+            offline_count = #{offlineCount},
+            error_count = #{errorCount},
+            update_by = 'system',
+            update_time = #{updateTime}
+        where scan_id = #{scanId}
+          and scan_status = 'RUNNING'
+    </update>
+
+    <update id="finishScanJob">
+        update ipam_scan_job
+        set scan_status = #{scanStatus},
+            completed_count = #{completedCount},
+            online_count = #{onlineCount},
+            offline_count = #{offlineCount},
+            error_count = #{errorCount},
+            finished_time = #{finishedTime},
+            error_message = #{errorMessage},
+            update_by = 'system',
+            update_time = #{finishedTime}
+        where scan_id = #{scanId}
+    </update>
+
+    <insert id="batchUpsertScanResults">
+        insert into ipam_scan_result
+          (scan_id, network_id, segment_id, ip_address, ip_value,
+           connectivity_status, response_time_ms, last_scan_time,
+           last_online_time, last_offline_time, error_message, update_time)
+        values
+        <foreach collection="results" item="item" separator=",">
+          (#{item.scanId}, #{item.networkId}, #{item.segmentId}, #{item.ipAddress}, #{item.ipValue},
+           #{item.connectivityStatus}, #{item.responseTimeMs}, #{item.lastScanTime},
+           #{item.lastOnlineTime}, #{item.lastOfflineTime}, #{item.errorMessage}, #{item.lastScanTime})
+        </foreach>
+        on duplicate key update
+          scan_id = values(scan_id),
+          network_id = values(network_id),
+          segment_id = values(segment_id),
+          ip_value = values(ip_value),
+          connectivity_status = values(connectivity_status),
+          response_time_ms = values(response_time_ms),
+          last_scan_time = values(last_scan_time),
+          last_online_time = coalesce(values(last_online_time), last_online_time),
+          last_offline_time = coalesce(values(last_offline_time), last_offline_time),
+          error_message = values(error_message),
+          update_time = values(update_time)
+    </insert>
+
+    <select id="selectResultsBySegmentIdAndRange" resultMap="IpamScanResult">
+        select result_id, scan_id, network_id, segment_id, ip_address, ip_value,
+               connectivity_status, response_time_ms, last_scan_time,
+               last_online_time, last_offline_time, error_message
+        from ipam_scan_result
+        where segment_id = #{segmentId}
+          and ip_value between #{startValue} and #{endValue}
+        order by ip_value
+    </select>
+
+</mapper>

@@ -154,6 +154,22 @@ support:
   credential:
     key: "Sz9227328"
 
+# IP分配管控连通性扫描
+ipam:
+  scan:
+    # 单个IP的Ping超时时间
+    timeout-ms: 1000
+    # 相邻探针的提交间隔，避免瞬时网络突发
+    interval-ms: 30
+    # 同一时间最多执行的Ping探针数量
+    concurrency: 12
+    # 每批写入数据库的扫描结果数量
+    batch-size: 100
+    # 扫描全局锁租约，任务会按批次自动续租
+    lease-seconds: 120
+    # 单个网段允许扫描的最大地址数，防止误配超大网段拖垮任务
+    max-addresses-per-network: 65536
+
 # 文档管理（纯内网部署）
 document-management:
   # 生产环境应指向受备份保护的共享存储；默认落在 ruoyi.profile 下
