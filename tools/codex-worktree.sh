@@ -54,7 +54,7 @@ is_module_path() {
   path=$2
   case "$module:$path" in
     auto-inspection:*autoInspection*|auto-inspection:*AutoInspection*|auto-inspection:*auto_inspection*|auto-inspection:*auto-version*|auto-inspection:*auto_version*) return 0 ;;
-    site-fusion:*support/site/*|site-fusion:*SupportSite*|site-fusion:*SupportServer*|site-fusion:*SupportHardware*|site-fusion:*SupportEquipment*|site-fusion:*equipmentLocation*|site-fusion:*EquipmentLocation*|site-fusion:*hardware_asset*|site-fusion:*server_credential*) return 0 ;;
+    site-fusion:*support/site/*|site-fusion:*SupportSite*|site-fusion:*SupportServer*|site-fusion:*SupportHardware*|site-fusion:*SupportEquipment*|site-fusion:*equipmentLocation*|site-fusion:*EquipmentLocation*|site-fusion:*equipment_location*|site-fusion:*hardware_asset*|site-fusion:*server_credential*) return 0 ;;
     document-management:*document*|document-management:*Document*|document-management:*Doc*|document-management:*doc_*) return 0 ;;
     ipam:*ipam*|ipam:*Ipam*) return 0 ;;
     *) return 1 ;;

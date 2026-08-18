@@ -224,6 +224,7 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
         {
             throw new ServiceException("IP地址不能为空");
         }
+        validateRackLocation(asset);
         if (StringUtils.isBlank(asset.getStatus()))
         {
             asset.setStatus("0");
@@ -243,6 +244,8 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
         asset.setAssetModel(StringUtils.trimToEmpty(asset.getAssetModel()));
         asset.setSerialNo(StringUtils.trimToEmpty(asset.getSerialNo()));
         asset.setInstallLocation(StringUtils.trimToEmpty(asset.getInstallLocation()));
+        asset.setEquipmentRoom(StringUtils.trimToEmpty(asset.getEquipmentRoom()));
+        asset.setCabinetNo(StringUtils.trimToEmpty(asset.getCabinetNo()));
         asset.setOwnerOrg(StringUtils.trimToEmpty(asset.getOwnerOrg()));
         asset.setOwnerContact(StringUtils.trimToEmpty(asset.getOwnerContact()));
         asset.setLoginUsername(StringUtils.trimToEmpty(asset.getLoginUsername()));
@@ -257,6 +260,28 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
         asset.setGatewayDirection(StringUtils.trimToEmpty(asset.getGatewayDirection()));
         asset.setGatewayBandwidth(StringUtils.trimToEmpty(asset.getGatewayBandwidth()));
         asset.setSecurityZone(StringUtils.trimToEmpty(asset.getSecurityZone()));
+    }
+
+    private void validateRackLocation(SupportHardwareAsset asset)
+    {
+        Integer rackUStart = asset.getRackUStart();
+        Integer rackUEnd = asset.getRackUEnd();
+        if (rackUStart == null && rackUEnd == null)
+        {
+            return;
+        }
+        if (rackUStart == null || rackUEnd == null)
+        {
+            throw new ServiceException("设备U位需要同时选择起始U位和结束U位");
+        }
+        if (rackUStart < 1 || rackUStart > 45 || rackUEnd < 1 || rackUEnd > 45)
+        {
+            throw new ServiceException("设备U位范围必须在1U到45U之间");
+        }
+        if (rackUStart > rackUEnd)
+        {
+            throw new ServiceException("设备起始U位不能大于结束U位");
+        }
     }
 
     private void encryptPassword(SupportHardwareAsset asset)

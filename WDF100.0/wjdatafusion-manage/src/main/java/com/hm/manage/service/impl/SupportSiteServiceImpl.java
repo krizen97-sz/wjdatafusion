@@ -54,6 +54,7 @@ import com.hm.manage.domain.vo.SupportSiteDashboardVo;
 import com.hm.manage.domain.vo.SupportSiteOverviewVo;
 import com.hm.manage.mapper.SupportContactMapper;
 import com.hm.manage.mapper.SupportChangeLogMapper;
+import com.hm.manage.mapper.SupportEquipmentLocationMapper;
 import com.hm.manage.mapper.SupportHardwareAssetMapper;
 import com.hm.manage.mapper.SupportOrgMapper;
 import com.hm.manage.mapper.SupportPlatformAssetRelMapper;
@@ -92,7 +93,7 @@ public class SupportSiteServiceImpl implements ISupportSiteService
     private static final String[] MAIN_PLATFORM_HEADERS = {"源平台ID", "平台名称", "网络环境", "状态", "备注"};
     private static final String[] SUB_PLATFORM_HEADERS = {"源平台ID", "源父平台ID", "子平台名称", "网络环境", "状态", "备注"};
     private static final String[] ENDPOINT_HEADERS = {"源页面ID", "源子平台ID", "页面名称", "访问URL", "登录账号", "登录密码", "备注"};
-    private static final String[] SERVER_HEADERS = {"源服务器ID", "服务器名称", "服务器IP", "SSH端口", "操作系统", "系统账号", "系统密码", "状态", "备注"};
+    private static final String[] SERVER_HEADERS = {"源服务器ID", "服务器名称", "服务器IP", "SSH端口", "操作系统", "所属机房", "机柜编号", "起始U位", "结束U位", "系统账号", "系统密码", "状态", "备注"};
     private static final String[] ORG_HEADERS = {"源组织ID", "组织类型", "组织名称", "组织简称", "状态", "备注"};
     private static final String[] CONTACT_HEADERS = {"源人员ID", "源组织ID", "联系人", "角色", "手机", "邮箱", "微信", "主联系人", "备注"};
     private static final String[] MESSAGE_HEADERS = {"源留言ID", "留言内容", "发布用户ID", "发布用户昵称", "状态", "创建时间", "备注"};
@@ -138,6 +139,9 @@ public class SupportSiteServiceImpl implements ISupportSiteService
 
     @Autowired
     private SupportHardwareAssetMapper hardwareAssetMapper;
+
+    @Autowired
+    private SupportEquipmentLocationMapper equipmentLocationMapper;
 
     @Autowired
     private SupportPlatformContactRelMapper platformContactRelMapper;
@@ -218,6 +222,8 @@ public class SupportSiteServiceImpl implements ISupportSiteService
         {
             platformAssetRelMapper.deleteBySiteIds(siteIds);
             hardwareAssetMapper.deleteSupportHardwareAssetBySiteIds(siteIds);
+            equipmentLocationMapper.deleteCabinetsBySiteIds(siteIds);
+            equipmentLocationMapper.deleteRoomsBySiteIds(siteIds);
             siteMessageMapper.deleteSupportSiteMessagesBySiteIds(siteIds);
             for (SupportSite site : deletedSites)
             {
@@ -498,6 +504,7 @@ public class SupportSiteServiceImpl implements ISupportSiteService
         for (SupportServer server : servers)
         {
             serverRows.add(row(server.getServerId(), server.getServerName(), server.getServerAddress(), server.getSshPort(), server.getOsType(),
+                server.getEquipmentRoom(), server.getCabinetNo(), server.getRackUStart(), server.getRackUEnd(),
                 server.getOsUsername(), safeDecrypt(server.getOsPasswordCipher()), server.getStatus(), server.getRemark()));
         }
         List<String[]> orgRows = new ArrayList<>();
@@ -738,6 +745,10 @@ public class SupportSiteServiceImpl implements ISupportSiteService
             server.setServerAddress(requiredValue(row, "服务器IP", SHEET_SERVER, fileName));
             server.setSshPort(defaultSshPort(value(row, "SSH端口"), fileName));
             server.setOsType(value(row, "操作系统"));
+            server.setEquipmentRoom(value(row, "所属机房"));
+            server.setCabinetNo(value(row, "机柜编号"));
+            server.setRackUStart(optionalInteger(value(row, "起始U位"), "起始U位", SHEET_SERVER, fileName));
+            server.setRackUEnd(optionalInteger(value(row, "结束U位"), "结束U位", SHEET_SERVER, fileName));
             server.setOsUsername(value(row, "系统账号"));
             server.setOsPasswordCipher(cryptoService.encrypt(value(row, "系统密码")));
             server.setStatus(defaultStatus(value(row, "状态")));
@@ -1136,6 +1147,22 @@ public class SupportSiteServiceImpl implements ISupportSiteService
     private String value(Map<String, String> row, String column)
     {
         return StringUtils.trimToNull(row.get(column));
+    }
+
+    private Integer optionalInteger(String value, String column, String sheetName, String fileName)
+    {
+        if (StringUtils.isBlank(value))
+        {
+            return null;
+        }
+        try
+        {
+            return new BigDecimal(value).intValueExact();
+        }
+        catch (Exception e)
+        {
+            throw new ServiceException("文件" + fileName + "的工作表" + sheetName + "字段" + column + "必须是整数");
+        }
     }
 
     private void assertUniqueSourceId(Map<Long, Long> idMap, Long sourceId, String sheetName, String fileName)

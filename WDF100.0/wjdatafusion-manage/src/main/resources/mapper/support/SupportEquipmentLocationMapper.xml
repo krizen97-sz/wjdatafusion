@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportEquipmentLocationMapper">
+
+    <resultMap id="SupportEquipmentRoomResult" type="SupportEquipmentRoom">
+        <result property="roomId" column="room_id"/>
+        <result property="siteId" column="site_id"/>
+        <result property="roomName" column="room_name"/>
+        <result property="roomCode" column="room_code"/>
+        <result property="status" column="status"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <resultMap id="SupportEquipmentCabinetResult" type="SupportEquipmentCabinet">
+        <result property="cabinetId" column="cabinet_id"/>
+        <result property="roomId" column="room_id"/>
+        <result property="siteId" column="site_id"/>
+        <result property="cabinetNo" column="cabinet_no"/>
+        <result property="uCapacity" column="u_capacity"/>
+        <result property="status" column="status"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <select id="selectRoomsBySiteId" resultMap="SupportEquipmentRoomResult">
+        select * from sup_equipment_room where site_id = #{siteId} order by room_id desc
+    </select>
+
+    <select id="selectRoomByRoomId" resultMap="SupportEquipmentRoomResult">
+        select * from sup_equipment_room where room_id = #{roomId}
+    </select>
+
+    <insert id="insertRoom" parameterType="SupportEquipmentRoom" useGeneratedKeys="true" keyProperty="roomId">
+        insert into sup_equipment_room(site_id, room_name, room_code, status, create_by, create_time, remark)
+        values(#{siteId}, #{roomName}, #{roomCode}, #{status}, #{createBy}, #{createTime}, #{remark})
+    </insert>
+
+    <update id="updateRoom" parameterType="SupportEquipmentRoom">
+        update sup_equipment_room
+        set room_name = #{roomName},
+            room_code = #{roomCode},
+            status = #{status},
+            update_by = #{updateBy},
+            update_time = #{updateTime},
+            remark = #{remark}
+        where room_id = #{roomId}
+    </update>
+
+    <delete id="deleteRoomByRoomId">
+        delete from sup_equipment_room where room_id = #{roomId}
+    </delete>
+
+    <delete id="deleteRoomsBySiteIds">
+        delete from sup_equipment_room where site_id in
+        <foreach item="siteId" collection="array" open="(" separator="," close=")">
+            #{siteId}
+        </foreach>
+    </delete>
+
+    <select id="selectCabinetsBySiteId" resultMap="SupportEquipmentCabinetResult">
+        select * from sup_equipment_cabinet where site_id = #{siteId} order by room_id desc, cabinet_no asc
+    </select>
+
+    <select id="selectCabinetsByRoomId" resultMap="SupportEquipmentCabinetResult">
+        select * from sup_equipment_cabinet where room_id = #{roomId} order by cabinet_no asc
+    </select>
+
+    <select id="selectCabinetByCabinetId" resultMap="SupportEquipmentCabinetResult">
+        select * from sup_equipment_cabinet where cabinet_id = #{cabinetId}
+    </select>
+
+    <insert id="insertCabinet" parameterType="SupportEquipmentCabinet" useGeneratedKeys="true" keyProperty="cabinetId">
+        insert into sup_equipment_cabinet(room_id, site_id, cabinet_no, u_capacity, status, create_by, create_time, remark)
+        values(#{roomId}, #{siteId}, #{cabinetNo}, #{uCapacity}, #{status}, #{createBy}, #{createTime}, #{remark})
+    </insert>
+
+    <update id="updateCabinet" parameterType="SupportEquipmentCabinet">
+        update sup_equipment_cabinet
+        set cabinet_no = #{cabinetNo},
+            u_capacity = #{uCapacity},
+            status = #{status},
+            update_by = #{updateBy},
+            update_time = #{updateTime},
+            remark = #{remark}
+        where cabinet_id = #{cabinetId}
+    </update>
+
+    <delete id="deleteCabinetByCabinetId">
+        delete from sup_equipment_cabinet where cabinet_id = #{cabinetId}
+    </delete>
+
+    <delete id="deleteCabinetsByRoomId">
+        delete from sup_equipment_cabinet where room_id = #{roomId}
+    </delete>
+
+    <delete id="deleteCabinetsBySiteIds">
+        delete from sup_equipment_cabinet where site_id in
+        <foreach item="siteId" collection="array" open="(" separator="," close=")">
+            #{siteId}
+        </foreach>
+    </delete>
+
+    <select id="countCabinetNo" resultType="int">
+        select count(1) from sup_equipment_cabinet
+        where room_id = #{roomId}
+          and cabinet_no = #{cabinetNo}
+        <if test="cabinetId != null">
+          and cabinet_id &lt;&gt; #{cabinetId}
+        </if>
+    </select>
+</mapper>

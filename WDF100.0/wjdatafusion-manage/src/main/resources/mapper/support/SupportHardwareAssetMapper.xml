@@ -17,6 +17,10 @@
         <result property="assetModel" column="asset_model"/>
         <result property="serialNo" column="serial_no"/>
         <result property="installLocation" column="install_location"/>
+        <result property="equipmentRoom" column="equipment_room"/>
+        <result property="cabinetNo" column="cabinet_no"/>
+        <result property="rackUStart" column="rack_u_start"/>
+        <result property="rackUEnd" column="rack_u_end"/>
         <result property="ownerOrg" column="owner_org"/>
         <result property="ownerContact" column="owner_contact"/>
         <result property="loginUsername" column="login_username"/>
@@ -49,7 +53,8 @@
 
     <sql id="selectSupportHardwareAssetVo">
         select a.asset_id, a.site_id, a.asset_name, a.asset_type, a.network_env, a.ip_address, a.manage_ip,
-               a.mac_address, a.manufacturer, a.asset_model, a.serial_no, a.install_location, a.owner_org,
+               a.mac_address, a.manufacturer, a.asset_model, a.serial_no, a.install_location,
+               a.equipment_room, a.cabinet_no, a.rack_u_start, a.rack_u_end, a.owner_org,
                a.owner_contact, a.login_username, a.login_password_cipher, a.status, a.channel_count, a.output_type, a.terminal_type, a.department,
                a.use_location, a.switch_level, a.port_count, a.uplink_device, a.vlan_info,
                a.gateway_mode, a.gateway_direction, a.gateway_bandwidth, a.security_zone,
@@ -107,6 +112,10 @@
             <if test="assetModel != null">asset_model,</if>
             <if test="serialNo != null">serial_no,</if>
             <if test="installLocation != null">install_location,</if>
+            <if test="equipmentRoom != null">equipment_room,</if>
+            <if test="cabinetNo != null">cabinet_no,</if>
+            <if test="rackUStart != null">rack_u_start,</if>
+            <if test="rackUEnd != null">rack_u_end,</if>
             <if test="ownerOrg != null">owner_org,</if>
             <if test="ownerContact != null">owner_contact,</if>
             <if test="loginUsername != null">login_username,</if>
@@ -143,6 +152,10 @@
             <if test="assetModel != null">#{assetModel},</if>
             <if test="serialNo != null">#{serialNo},</if>
             <if test="installLocation != null">#{installLocation},</if>
+            <if test="equipmentRoom != null">#{equipmentRoom},</if>
+            <if test="cabinetNo != null">#{cabinetNo},</if>
+            <if test="rackUStart != null">#{rackUStart},</if>
+            <if test="rackUEnd != null">#{rackUEnd},</if>
             <if test="ownerOrg != null">#{ownerOrg},</if>
             <if test="ownerContact != null">#{ownerContact},</if>
             <if test="loginUsername != null">#{loginUsername},</if>
@@ -183,6 +196,12 @@
             <if test="assetModel != null">asset_model = #{assetModel},</if>
             <if test="serialNo != null">serial_no = #{serialNo},</if>
             <if test="installLocation != null">install_location = #{installLocation},</if>
+            <if test="equipmentRoom != null">equipment_room = #{equipmentRoom},</if>
+            <if test="cabinetNo != null">cabinet_no = #{cabinetNo},</if>
+            <if test="rackUStart != null">rack_u_start = #{rackUStart},</if>
+            <if test="rackUStart == null">rack_u_start = null,</if>
+            <if test="rackUEnd != null">rack_u_end = #{rackUEnd},</if>
+            <if test="rackUEnd == null">rack_u_end = null,</if>
             <if test="ownerOrg != null">owner_org = #{ownerOrg},</if>
             <if test="ownerContact != null">owner_contact = #{ownerContact},</if>
             <if test="loginUsername != null">login_username = #{loginUsername},</if>

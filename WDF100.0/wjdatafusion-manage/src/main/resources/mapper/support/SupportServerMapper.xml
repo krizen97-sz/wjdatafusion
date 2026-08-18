@@ -11,6 +11,10 @@
         <result property="serverAddress" column="server_address"/>
         <result property="sshPort" column="ssh_port"/>
         <result property="osType" column="os_type"/>
+        <result property="equipmentRoom" column="equipment_room"/>
+        <result property="cabinetNo" column="cabinet_no"/>
+        <result property="rackUStart" column="rack_u_start"/>
+        <result property="rackUEnd" column="rack_u_end"/>
         <result property="osUsername" column="os_username"/>
         <result property="osPasswordCipher" column="os_password_cipher"/>
         <result property="status" column="status"/>
@@ -22,7 +26,9 @@
     </resultMap>
 
     <sql id="selectSupportServerVo">
-        select server_id, site_id, server_name, server_address, ssh_port, os_type, os_username, os_password_cipher,
+        select server_id, site_id, server_name, server_address, ssh_port, os_type,
+               equipment_room, cabinet_no, rack_u_start, rack_u_end,
+               os_username, os_password_cipher,
                status, create_by, create_time, update_by, update_time, remark
         from sup_server
     </sql>
@@ -64,6 +70,10 @@
             <if test="serverAddress != null and serverAddress != ''">server_address,</if>
             <if test="sshPort != null">ssh_port,</if>
             <if test="osType != null">os_type,</if>
+            <if test="equipmentRoom != null">equipment_room,</if>
+            <if test="cabinetNo != null">cabinet_no,</if>
+            <if test="rackUStart != null">rack_u_start,</if>
+            <if test="rackUEnd != null">rack_u_end,</if>
             <if test="osUsername != null">os_username,</if>
             <if test="osPasswordCipher != null and osPasswordCipher != ''">os_password_cipher,</if>
             <if test="status != null and status != ''">status,</if>
@@ -79,6 +89,10 @@
             <if test="serverAddress != null and serverAddress != ''">#{serverAddress},</if>
             <if test="sshPort != null">#{sshPort},</if>
             <if test="osType != null">#{osType},</if>
+            <if test="equipmentRoom != null">#{equipmentRoom},</if>
+            <if test="cabinetNo != null">#{cabinetNo},</if>
+            <if test="rackUStart != null">#{rackUStart},</if>
+            <if test="rackUEnd != null">#{rackUEnd},</if>
             <if test="osUsername != null">#{osUsername},</if>
             <if test="osPasswordCipher != null and osPasswordCipher != ''">#{osPasswordCipher},</if>
             <if test="status != null and status != ''">#{status},</if>
@@ -98,6 +112,14 @@
             <if test="serverAddress != null and serverAddress != ''">server_address = #{serverAddress},</if>
             <if test="sshPort != null">ssh_port = #{sshPort},</if>
             <if test="osType != null">os_type = #{osType},</if>
+            <if test="equipmentRoom != null">equipment_room = #{equipmentRoom},</if>
+            <if test="equipmentRoom == null">equipment_room = null,</if>
+            <if test="cabinetNo != null">cabinet_no = #{cabinetNo},</if>
+            <if test="cabinetNo == null">cabinet_no = null,</if>
+            <if test="rackUStart != null">rack_u_start = #{rackUStart},</if>
+            <if test="rackUStart == null">rack_u_start = null,</if>
+            <if test="rackUEnd != null">rack_u_end = #{rackUEnd},</if>
+            <if test="rackUEnd == null">rack_u_end = null,</if>
             <if test="osUsername != null">os_username = #{osUsername},</if>
             <if test="osPasswordCipher != null and osPasswordCipher != ''">os_password_cipher = #{osPasswordCipher},</if>
             <if test="status != null and status != ''">status = #{status},</if>
