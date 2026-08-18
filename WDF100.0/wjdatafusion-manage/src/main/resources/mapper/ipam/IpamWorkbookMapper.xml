@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.IpamWorkbookMapper">
+
+    <resultMap id="IpamWorkbookCommunityResult" type="com.hm.manage.domain.vo.IpamCommunityOverviewVo">
+        <result property="communityName" column="community_name"/>
+        <result property="addressCount" column="address_count"/>
+        <result property="firstIp" column="first_ip"/>
+        <result property="lastIp" column="last_ip"/>
+        <result property="networkNameSummary" column="network_name_summary"/>
+        <result property="policeStationSummary" column="police_station_summary"/>
+    </resultMap>
+
+    <resultMap id="IpamWorkbookAddressResult" type="com.hm.manage.domain.IpamAddress">
+        <id property="addressId" column="address_id"/>
+        <result property="networkId" column="network_id"/>
+        <result property="segmentId" column="segment_id"/>
+        <result property="ipAddress" column="ip_address"/>
+        <result property="ipValue" column="ip_value"/>
+        <result property="status" column="status"/>
+        <result property="communityName" column="community_name"/>
+        <result property="internalIpAddress" column="internal_ip_address"/>
+        <result property="targetType" column="target_type"/>
+        <result property="targetName" column="target_name"/>
+        <result property="manufacturer" column="manufacturer"/>
+        <result property="accessUnit" column="access_unit"/>
+        <result property="purpose" column="purpose"/>
+        <result property="loginUsername" column="login_username"/>
+        <result property="credentialConfigured" column="credential_configured"/>
+        <result property="mappingAddress" column="mapping_address"/>
+        <result property="mappingPort" column="mapping_port"/>
+        <result property="mappingDescription" column="mapping_description"/>
+        <result property="ownerName" column="owner_name"/>
+        <result property="ownerPhone" column="owner_phone"/>
+        <result property="remark" column="remark"/>
+        <result property="networkName" column="network_name"/>
+        <result property="policeStationName" column="police_station_name"/>
+        <result property="networkCidr" column="network_cidr"/>
+        <result property="segmentName" column="segment_name"/>
+        <result property="segmentCidr" column="segment_cidr"/>
+        <result property="connectivityStatus" column="connectivity_status"/>
+        <result property="scanResponseTimeMs" column="response_time_ms"/>
+        <result property="lastScanTime" column="last_scan_time"/>
+        <result property="lastOnlineTime" column="last_online_time"/>
+    </resultMap>
+
+    <select id="selectCommunityCatalog" resultMap="IpamWorkbookCommunityResult">
+        select trim(a.community_name) as community_name,
+               count(1) as address_count,
+               inet_ntoa(min(a.ip_value)) as first_ip,
+               inet_ntoa(max(a.ip_value)) as last_ip,
+               group_concat(distinct nullif(trim(n.network_name), '') order by n.start_value separator '、') as network_name_summary,
+               group_concat(distinct nullif(trim(n.police_station_name), '') order by n.police_station_name separator '、') as police_station_summary
+        from ipam_address a
+                 left join ipam_network n on n.network_id = a.network_id
+        where a.status in ('ALLOCATED', 'ISSUED')
+          and nullif(trim(a.community_name), '') is not null
+        group by trim(a.community_name)
+        order by min(a.ip_value)
+    </select>
+
+    <select id="selectCommunityAddressList" resultMap="IpamWorkbookAddressResult">
+        select a.address_id, a.network_id, a.segment_id, a.ip_address, a.ip_value, a.status,
+               a.community_name, a.internal_ip_address, a.target_type, a.target_name,
+               a.manufacturer, a.access_unit, a.purpose, a.login_username,
+               case when nullif(a.login_password, '') is not null then 1 else 0 end as credential_configured,
+               a.mapping_address, a.mapping_port, a.mapping_description,
+               a.owner_name, a.owner_phone, a.remark,
+               n.network_name, n.cidr_block as network_cidr,
+               s.segment_name, s.cidr_block as segment_cidr,
+               n.police_station_name,
+               scan.connectivity_status, scan.response_time_ms,
+               scan.last_scan_time, scan.last_online_time
+        from ipam_address a
+                 left join ipam_network n on n.network_id = a.network_id
+                 left join ipam_segment s on s.segment_id = a.segment_id
+                 left join ipam_scan_result scan on scan.ip_address = a.ip_address
+        where a.status in ('ALLOCATED', 'ISSUED')
+          and trim(a.community_name) = #{communityName}
+        order by a.ip_value
+    </select>
+</mapper>

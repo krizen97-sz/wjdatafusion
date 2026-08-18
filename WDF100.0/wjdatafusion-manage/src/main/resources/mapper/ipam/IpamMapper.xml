@@ -1,0 +1,715 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.IpamMapper">
+
+    <resultMap id="IpamNetworkResult" type="IpamNetwork">
+        <result property="networkId" column="network_id"/>
+        <result property="networkName" column="network_name"/>
+        <result property="policeStationName" column="police_station_name"/>
+        <result property="cidrBlock" column="cidr_block"/>
+        <result property="startIp" column="start_ip"/>
+        <result property="endIp" column="end_ip"/>
+        <result property="startValue" column="start_value"/>
+        <result property="endValue" column="end_value"/>
+        <result property="prefixLength" column="prefix_length"/>
+        <result property="segmentId" column="segment_id"/>
+        <result property="gatewayIp" column="gateway_ip"/>
+        <result property="scenarioType" column="scenario_type"/>
+        <result property="status" column="status"/>
+        <result property="segmentCount" column="segment_count"/>
+        <result property="totalCount" column="total_count"/>
+        <result property="reservedCount" column="reserved_count"/>
+        <result property="allocatedCount" column="allocated_count"/>
+        <result property="issuedCount" column="issued_count"/>
+        <result property="disabledCount" column="disabled_count"/>
+        <result property="freeCount" column="free_count"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <resultMap id="IpamSegmentResult" type="IpamSegment">
+        <result property="segmentId" column="segment_id"/>
+        <result property="networkId" column="network_id"/>
+        <result property="segmentName" column="segment_name"/>
+        <result property="cidrBlock" column="cidr_block"/>
+        <result property="startIp" column="start_ip"/>
+        <result property="endIp" column="end_ip"/>
+        <result property="gatewayIp" column="gateway_ip"/>
+        <result property="prefixLength" column="prefix_length"/>
+        <result property="totalCount" column="total_count"/>
+        <result property="status" column="status"/>
+        <result property="networkName" column="network_name"/>
+        <result property="networkCidr" column="network_cidr"/>
+        <result property="reservedCount" column="reserved_count"/>
+        <result property="allocatedCount" column="allocated_count"/>
+        <result property="issuedCount" column="issued_count"/>
+        <result property="disabledCount" column="disabled_count"/>
+        <result property="freeCount" column="free_count"/>
+        <result property="communityCount" column="community_count"/>
+        <result property="deviceCount" column="device_count"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <resultMap id="IpamAddressResult" type="IpamAddress">
+        <result property="addressId" column="address_id"/>
+        <result property="networkId" column="network_id"/>
+        <result property="segmentId" column="segment_id"/>
+        <result property="ipAddress" column="ip_address"/>
+        <result property="ipValue" column="ip_value"/>
+        <result property="status" column="status"/>
+        <result property="communityName" column="community_name"/>
+        <result property="targetType" column="target_type"/>
+        <result property="targetName" column="target_name"/>
+        <result property="manufacturer" column="manufacturer"/>
+        <result property="internalIpAddress" column="internal_ip_address"/>
+        <result property="accessUnit" column="access_unit"/>
+        <result property="purpose" column="purpose"/>
+        <result property="loginUsername" column="login_username"/>
+        <result property="loginPassword" column="login_password"/>
+        <result property="credentialConfigured" column="credential_configured"/>
+        <result property="mappingAddress" column="mapping_address"/>
+        <result property="mappingPort" column="mapping_port"/>
+        <result property="mappingDescription" column="mapping_description"/>
+        <result property="ownerName" column="owner_name"/>
+        <result property="ownerPhone" column="owner_phone"/>
+        <result property="allocatedTime" column="allocated_time"/>
+        <result property="issueBatch" column="issue_batch"/>
+        <result property="issuedTime" column="issued_time"/>
+        <result property="releasedTime" column="released_time"/>
+        <result property="networkName" column="network_name"/>
+        <result property="networkCidr" column="network_cidr"/>
+        <result property="segmentName" column="segment_name"/>
+        <result property="segmentCidr" column="segment_cidr"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+        <result property="remark" column="remark"/>
+    </resultMap>
+
+    <resultMap id="IpamCommunityOverviewResult" type="com.hm.manage.domain.vo.IpamCommunityOverviewVo">
+        <result property="communityName" column="community_name"/>
+        <result property="addressCount" column="address_count"/>
+        <result property="deviceCount" column="device_count"/>
+        <result property="firstIp" column="first_ip"/>
+        <result property="lastIp" column="last_ip"/>
+        <result property="internalIpSummary" column="internal_ip_summary"/>
+        <result property="targetTypeSummary" column="target_type_summary"/>
+        <result property="manufacturerSummary" column="manufacturer_summary"/>
+        <result property="accessUnitSummary" column="access_unit_summary"/>
+        <result property="ownerSummary" column="owner_summary"/>
+        <result property="mappingSummary" column="mapping_summary"/>
+    </resultMap>
+
+    <sql id="networkStats">
+        select s.network_id,
+               count(1) as segment_count,
+               case when count(1) = 1 then max(s.segment_id) end as segment_id,
+               case when count(1) = 1 then max(s.gateway_ip) end as gateway_ip,
+               ifnull(sum(s.total_count), 0) as total_count,
+               ifnull(sum(2 + case when s.gateway_ip is not null and s.gateway_ip != '' and s.gateway_ip != s.start_ip and s.gateway_ip != s.end_ip then 1 else 0 end + ifnull(ac.reserved_count, 0)), 0) as reserved_count,
+               ifnull(sum(ifnull(ac.allocated_count, 0)), 0) as allocated_count,
+               ifnull(sum(ifnull(ac.issued_count, 0)), 0) as issued_count,
+               ifnull(sum(ifnull(ac.disabled_count, 0)), 0) as disabled_count,
+               ifnull(sum(greatest(s.total_count - 2 - case when s.gateway_ip is not null and s.gateway_ip != '' and s.gateway_ip != s.start_ip and s.gateway_ip != s.end_ip then 1 else 0 end - ifnull(ac.active_count, 0), 0)), 0) as free_count
+        from ipam_segment s
+                 left join (
+                     select a.segment_id,
+                            sum(case when a.status = 'RESERVED' and (seg.gateway_ip is null or seg.gateway_ip = '' or a.ip_address != seg.gateway_ip) then 1 else 0 end) as reserved_count,
+                            sum(case when a.status = 'ALLOCATED' then 1 else 0 end) as allocated_count,
+                            sum(case when a.status = 'ISSUED' then 1 else 0 end) as issued_count,
+                            sum(case when a.status = 'DISABLED' then 1 else 0 end) as disabled_count,
+                            sum(case when a.status in ('RESERVED', 'ALLOCATED', 'ISSUED', 'DISABLED') and not (a.status = 'RESERVED' and seg.gateway_ip is not null and seg.gateway_ip != '' and a.ip_address = seg.gateway_ip) then 1 else 0 end) as active_count
+                     from ipam_address a
+                              left join ipam_segment seg on seg.segment_id = a.segment_id
+                     group by a.segment_id
+                 ) ac on ac.segment_id = s.segment_id
+        group by s.network_id
+    </sql>
+
+    <sql id="segmentStats">
+        select a.segment_id,
+               sum(case when a.status = 'RESERVED' and (s.gateway_ip is null or s.gateway_ip = '' or a.ip_address != s.gateway_ip) then 1 else 0 end) as reserved_count,
+               sum(case when a.status = 'ALLOCATED' then 1 else 0 end) as allocated_count,
+               sum(case when a.status = 'ISSUED' then 1 else 0 end) as issued_count,
+               sum(case when a.status = 'DISABLED' then 1 else 0 end) as disabled_count,
+               sum(case when a.status in ('RESERVED', 'ALLOCATED', 'ISSUED', 'DISABLED') and not (a.status = 'RESERVED' and s.gateway_ip is not null and s.gateway_ip != '' and a.ip_address = s.gateway_ip) then 1 else 0 end) as active_count,
+               count(distinct case when a.status in ('ALLOCATED', 'ISSUED') and nullif(trim(a.community_name), '') is not null then trim(a.community_name) end) as community_count,
+               sum(case when a.status in ('ALLOCATED', 'ISSUED') and (nullif(trim(a.target_type), '') is not null or nullif(trim(a.target_name), '') is not null) then 1 else 0 end) as device_count
+        from ipam_address a
+                 left join ipam_segment s on s.segment_id = a.segment_id
+        group by a.segment_id
+    </sql>
+
+    <sql id="selectNetworkVo">
+        select n.network_id, n.network_name, n.police_station_name, n.cidr_block, n.start_ip, n.end_ip, n.start_value, n.end_value, n.prefix_length,
+               n.scenario_type, n.status, n.create_by, n.create_time, n.update_by, n.update_time, n.remark,
+               ifnull(ns.segment_count, 0) as segment_count,
+               ns.segment_id,
+               ns.gateway_ip,
+               ifnull(ns.total_count, 0) as total_count,
+               ifnull(ns.reserved_count, 0) as reserved_count,
+               ifnull(ns.allocated_count, 0) as allocated_count,
+               ifnull(ns.issued_count, 0) as issued_count,
+               ifnull(ns.disabled_count, 0) as disabled_count,
+               ifnull(ns.free_count, 0) as free_count
+        from ipam_network n
+                 left join (<include refid="networkStats"/>) ns on ns.network_id = n.network_id
+    </sql>
+
+    <sql id="selectSegmentVo">
+        select s.segment_id, s.network_id, s.segment_name, s.cidr_block, s.start_ip, s.end_ip, s.gateway_ip,
+               s.prefix_length, s.total_count, s.status, s.create_by, s.create_time,
+               s.update_by, s.update_time, s.remark,
+               n.network_name, n.cidr_block as network_cidr,
+               2 + case when s.gateway_ip is not null and s.gateway_ip != '' and s.gateway_ip != s.start_ip and s.gateway_ip != s.end_ip then 1 else 0 end + ifnull(ss.reserved_count, 0) as reserved_count,
+               ifnull(ss.allocated_count, 0) as allocated_count,
+               ifnull(ss.issued_count, 0) as issued_count,
+               ifnull(ss.disabled_count, 0) as disabled_count,
+               greatest(s.total_count - 2 - case when s.gateway_ip is not null and s.gateway_ip != '' and s.gateway_ip != s.start_ip and s.gateway_ip != s.end_ip then 1 else 0 end - ifnull(ss.active_count, 0), 0) as free_count,
+               ifnull(ss.community_count, 0) as community_count,
+               ifnull(ss.device_count, 0) as device_count
+        from ipam_segment s
+                 left join ipam_network n on n.network_id = s.network_id
+                 left join (<include refid="segmentStats"/>) ss on ss.segment_id = s.segment_id
+    </sql>
+
+    <sql id="selectAddressVo">
+        select a.address_id, a.network_id, a.segment_id, a.ip_address, a.ip_value, a.status,
+               a.community_name, a.target_type, a.target_name, a.manufacturer,
+               a.internal_ip_address, a.access_unit, a.purpose, a.login_username,
+               a.login_password,
+               case when nullif(a.login_password, '') is not null then 1 else 0 end as credential_configured,
+               a.mapping_address, a.mapping_port, a.mapping_description,
+               a.owner_name, a.owner_phone, a.issue_batch, a.allocated_time, a.issued_time,
+               a.released_time, a.create_by, a.create_time, a.update_by, a.update_time, a.remark,
+               n.network_name, n.cidr_block as network_cidr,
+               s.segment_name, s.cidr_block as segment_cidr
+        from ipam_address a
+                 left join ipam_network n on n.network_id = a.network_id
+                 left join ipam_segment s on s.segment_id = a.segment_id
+    </sql>
+
+    <select id="selectNetworkList" parameterType="IpamNetwork" resultMap="IpamNetworkResult">
+        <include refid="selectNetworkVo"/>
+        <where>
+            <if test="keyword != null and keyword != ''">
+                and (
+                    n.network_name like concat('%', #{keyword}, '%')
+                    or n.police_station_name like concat('%', #{keyword}, '%')
+                    or n.start_ip like concat('%', #{keyword}, '%')
+                    or n.end_ip like concat('%', #{keyword}, '%')
+                    or ns.gateway_ip like concat('%', #{keyword}, '%')
+                    or exists (
+                        select 1
+                        from ipam_address search_address
+                        where search_address.network_id = n.network_id
+                          and (
+                              search_address.community_name like concat('%', #{keyword}, '%')
+                              or search_address.ip_address = #{keyword}
+                              or search_address.internal_ip_address = #{keyword}
+                          )
+                    )
+                    or (
+                        inet_ntoa(inet_aton(#{keyword})) = #{keyword}
+                        and inet_aton(#{keyword}) between inet_aton(n.start_ip) and inet_aton(n.end_ip)
+                    )
+                )
+            </if>
+            <if test="status != null and status != ''">and n.status = #{status}</if>
+            <if test="policeStationName != null and policeStationName != ''">and trim(n.police_station_name) = #{policeStationName}</if>
+        </where>
+        order by case when ns.gateway_ip is null or ns.gateway_ip = '' then 1 else 0 end,
+                 inet_aton(ns.gateway_ip),
+                 inet_aton(n.start_ip),
+                 n.network_id
+    </select>
+
+    <select id="selectNetworkById" parameterType="Long" resultMap="IpamNetworkResult">
+        <include refid="selectNetworkVo"/>
+        where n.network_id = #{networkId}
+    </select>
+
+    <select id="selectNetworkByCidr" parameterType="String" resultMap="IpamNetworkResult">
+        <include refid="selectNetworkVo"/>
+        where n.cidr_block = #{cidrBlock}
+        limit 1
+    </select>
+
+    <select id="selectOverlappingNetwork" resultMap="IpamNetworkResult">
+        <include refid="selectNetworkVo"/>
+        where n.start_value &lt;= #{endValue}
+          and n.end_value &gt;= #{startValue}
+        <if test="excludeNetworkId != null">and n.network_id != #{excludeNetworkId}</if>
+        order by n.start_value, n.network_id
+        limit 1
+    </select>
+
+    <select id="selectSettingValue" parameterType="String" resultType="String">
+        select setting_value
+        from ipam_setting
+        where setting_key = #{settingKey}
+        limit 1
+    </select>
+
+    <select id="lockSettingRow" parameterType="String" resultType="String">
+        select setting_value
+        from ipam_setting
+        where setting_key = #{settingKey}
+        for update
+    </select>
+
+    <select id="selectFirstNetworkScenario" resultType="String">
+        select scenario_type
+        from ipam_network
+        where scenario_type in ('SOCIAL', 'INTERNAL')
+        order by network_id
+        limit 1
+    </select>
+
+    <insert id="upsertSetting">
+        insert into ipam_setting
+            (setting_key, setting_value, setting_name, create_by, create_time, update_by, update_time)
+        values
+            (#{settingKey}, #{settingValue}, #{settingName}, #{username}, #{now}, #{username}, #{now})
+        on duplicate key update
+            setting_value = values(setting_value),
+            setting_name = values(setting_name),
+            update_by = values(update_by),
+            update_time = values(update_time)
+    </insert>
+
+    <update id="updateAllNetworkScenario">
+        update ipam_network
+        set scenario_type = #{scenarioType},
+            update_by = #{username},
+            update_time = #{now}
+        where scenario_type is null or scenario_type != #{scenarioType}
+    </update>
+
+    <insert id="insertNetwork" parameterType="IpamNetwork" useGeneratedKeys="true" keyProperty="networkId">
+        insert into ipam_network
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="networkName != null">network_name,</if>
+            <if test="policeStationName != null">police_station_name,</if>
+            <if test="cidrBlock != null">cidr_block,</if>
+            <if test="startIp != null">start_ip,</if>
+            <if test="endIp != null">end_ip,</if>
+            <if test="startValue != null">start_value,</if>
+            <if test="endValue != null">end_value,</if>
+            <if test="prefixLength != null">prefix_length,</if>
+            <if test="scenarioType != null">scenario_type,</if>
+            <if test="status != null">status,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="networkName != null">#{networkName},</if>
+            <if test="policeStationName != null">#{policeStationName},</if>
+            <if test="cidrBlock != null">#{cidrBlock},</if>
+            <if test="startIp != null">#{startIp},</if>
+            <if test="endIp != null">#{endIp},</if>
+            <if test="startValue != null">#{startValue},</if>
+            <if test="endValue != null">#{endValue},</if>
+            <if test="prefixLength != null">#{prefixLength},</if>
+            <if test="scenarioType != null">#{scenarioType},</if>
+            <if test="status != null">#{status},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateSegment" parameterType="IpamSegment">
+        update ipam_segment
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="segmentName != null">segment_name = #{segmentName},</if>
+            <if test="cidrBlock != null">cidr_block = #{cidrBlock},</if>
+            <if test="startIp != null">start_ip = #{startIp},</if>
+            <if test="endIp != null">end_ip = #{endIp},</if>
+            <if test="gatewayIp != null">gateway_ip = #{gatewayIp},</if>
+            <if test="prefixLength != null">prefix_length = #{prefixLength},</if>
+            <if test="totalCount != null">total_count = #{totalCount},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where segment_id = #{segmentId}
+    </update>
+
+    <update id="updateNetwork" parameterType="IpamNetwork">
+        update ipam_network
+        <trim prefix="SET" suffixOverrides=",">
+            <if test="networkName != null">network_name = #{networkName},</if>
+            <if test="policeStationName != null">police_station_name = #{policeStationName},</if>
+            <if test="cidrBlock != null">cidr_block = #{cidrBlock},</if>
+            <if test="startIp != null">start_ip = #{startIp},</if>
+            <if test="endIp != null">end_ip = #{endIp},</if>
+            <if test="startValue != null">start_value = #{startValue},</if>
+            <if test="endValue != null">end_value = #{endValue},</if>
+            <if test="prefixLength != null">prefix_length = #{prefixLength},</if>
+            <if test="scenarioType != null">scenario_type = #{scenarioType},</if>
+            <if test="status != null">status = #{status},</if>
+            <if test="updateBy != null">update_by = #{updateBy},</if>
+            <if test="updateTime != null">update_time = #{updateTime},</if>
+            <if test="remark != null">remark = #{remark},</if>
+        </trim>
+        where network_id = #{networkId}
+    </update>
+
+    <delete id="deleteNetworkByIds" parameterType="String">
+        delete from ipam_network where network_id in
+        <foreach item="networkId" collection="array" open="(" separator="," close=")">
+            #{networkId}
+        </foreach>
+    </delete>
+
+    <select id="countActiveAddressesByNetworkIds" resultType="int">
+        select count(1)
+        from ipam_address
+        where status in ('RESERVED', 'ALLOCATED', 'ISSUED', 'DISABLED')
+          and network_id in
+        <foreach item="networkId" collection="array" open="(" separator="," close=")">
+            #{networkId}
+        </foreach>
+    </select>
+
+    <delete id="deleteFreeAddressesByNetworkIds" parameterType="String">
+        delete from ipam_address
+        where status = 'FREE'
+          and network_id in
+        <foreach item="networkId" collection="array" open="(" separator="," close=")">
+            #{networkId}
+        </foreach>
+    </delete>
+
+    <delete id="deleteSegmentsByNetworkIds" parameterType="String">
+        delete from ipam_segment where network_id in
+        <foreach item="networkId" collection="array" open="(" separator="," close=")">
+            #{networkId}
+        </foreach>
+    </delete>
+
+    <select id="selectSegmentList" parameterType="IpamSegment" resultMap="IpamSegmentResult">
+        <include refid="selectSegmentVo"/>
+        <where>
+            <if test="networkId != null">and s.network_id = #{networkId}</if>
+            <if test="segmentName != null and segmentName != ''">and s.segment_name like concat('%', #{segmentName}, '%')</if>
+            <if test="cidrBlock != null and cidrBlock != ''">and s.cidr_block like concat('%', #{cidrBlock}, '%')</if>
+            <if test="status != null and status != ''">and s.status = #{status}</if>
+        </where>
+        order by inet_aton(s.start_ip), s.segment_id
+    </select>
+
+    <select id="selectSegmentById" parameterType="Long" resultMap="IpamSegmentResult">
+        <include refid="selectSegmentVo"/>
+        where s.segment_id = #{segmentId}
+    </select>
+
+    <select id="selectSegmentByCidr" parameterType="String" resultMap="IpamSegmentResult">
+        <include refid="selectSegmentVo"/>
+        where s.cidr_block = #{cidrBlock}
+        limit 1
+    </select>
+
+    <insert id="insertSegment" parameterType="IpamSegment" useGeneratedKeys="true" keyProperty="segmentId">
+        insert into ipam_segment
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="networkId != null">network_id,</if>
+            <if test="segmentName != null">segment_name,</if>
+            <if test="cidrBlock != null">cidr_block,</if>
+            <if test="startIp != null">start_ip,</if>
+            <if test="endIp != null">end_ip,</if>
+            <if test="gatewayIp != null">gateway_ip,</if>
+            <if test="prefixLength != null">prefix_length,</if>
+            <if test="totalCount != null">total_count,</if>
+            <if test="status != null">status,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="networkId != null">#{networkId},</if>
+            <if test="segmentName != null">#{segmentName},</if>
+            <if test="cidrBlock != null">#{cidrBlock},</if>
+            <if test="startIp != null">#{startIp},</if>
+            <if test="endIp != null">#{endIp},</if>
+            <if test="gatewayIp != null">#{gatewayIp},</if>
+            <if test="prefixLength != null">#{prefixLength},</if>
+            <if test="totalCount != null">#{totalCount},</if>
+            <if test="status != null">#{status},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <select id="selectAddressList" parameterType="IpamAddress" resultMap="IpamAddressResult">
+        <include refid="selectAddressVo"/>
+        <where>
+            <if test="networkId != null">and a.network_id = #{networkId}</if>
+            <if test="segmentId != null">and a.segment_id = #{segmentId}</if>
+            <if test="ipAddress != null and ipAddress != ''">and a.ip_address like concat('%', #{ipAddress}, '%')</if>
+            <if test="status != null and status != ''">and a.status = #{status}</if>
+            <if test="status == null or status == ''">and a.status &lt;&gt; 'FREE'</if>
+            <if test="communityName != null and communityName != ''">and a.community_name like concat('%', #{communityName}, '%')</if>
+            <if test="targetType != null and targetType != ''">and a.target_type = #{targetType}</if>
+            <if test="targetName != null and targetName != ''">and a.target_name like concat('%', #{targetName}, '%')</if>
+            <if test="manufacturer != null and manufacturer != ''">and a.manufacturer = #{manufacturer}</if>
+            <if test="internalIpAddress != null and internalIpAddress != ''">and a.internal_ip_address like concat('%', #{internalIpAddress}, '%')</if>
+            <if test="accessUnit != null and accessUnit != ''">and a.access_unit like concat('%', #{accessUnit}, '%')</if>
+        </where>
+        order by a.ip_value
+    </select>
+
+    <select id="selectAddressesBySegmentId" parameterType="Long" resultMap="IpamAddressResult">
+        <include refid="selectAddressVo"/>
+        where a.segment_id = #{segmentId}
+    </select>
+
+    <select id="selectAddressesBySegmentIdAndRange" resultMap="IpamAddressResult">
+        <include refid="selectAddressVo"/>
+        where a.segment_id = #{segmentId}
+          and a.ip_value between #{startValue} and #{endValue}
+        order by a.ip_value
+    </select>
+
+    <select id="selectAddressById" parameterType="Long" resultMap="IpamAddressResult">
+        <include refid="selectAddressVo"/>
+        where a.address_id = #{addressId}
+    </select>
+
+    <select id="selectAddressByIp" parameterType="String" resultMap="IpamAddressResult">
+        <include refid="selectAddressVo"/>
+        where a.ip_address = #{ipAddress}
+        limit 1
+    </select>
+
+    <insert id="insertAddress" parameterType="IpamAddress" useGeneratedKeys="true" keyProperty="addressId">
+        insert into ipam_address
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="networkId != null">network_id,</if>
+            <if test="segmentId != null">segment_id,</if>
+            <if test="ipAddress != null">ip_address,</if>
+            <if test="ipValue != null">ip_value,</if>
+            <if test="status != null">status,</if>
+            <if test="communityName != null">community_name,</if>
+            <if test="targetType != null">target_type,</if>
+            <if test="targetName != null">target_name,</if>
+            <if test="manufacturer != null">manufacturer,</if>
+            <if test="internalIpAddress != null">internal_ip_address,</if>
+            <if test="accessUnit != null">access_unit,</if>
+            <if test="purpose != null">purpose,</if>
+            <if test="loginUsername != null">login_username,</if>
+            <if test="loginPassword != null">login_password,</if>
+            <if test="mappingAddress != null">mapping_address,</if>
+            <if test="mappingPort != null">mapping_port,</if>
+            <if test="mappingDescription != null">mapping_description,</if>
+            <if test="ownerName != null">owner_name,</if>
+            <if test="ownerPhone != null">owner_phone,</if>
+            <if test="issueBatch != null">issue_batch,</if>
+            <if test="allocatedTime != null">allocated_time,</if>
+            <if test="issuedTime != null">issued_time,</if>
+            <if test="releasedTime != null">released_time,</if>
+            <if test="createBy != null">create_by,</if>
+            <if test="createTime != null">create_time,</if>
+            <if test="updateBy != null">update_by,</if>
+            <if test="updateTime != null">update_time,</if>
+            <if test="remark != null">remark,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="networkId != null">#{networkId},</if>
+            <if test="segmentId != null">#{segmentId},</if>
+            <if test="ipAddress != null">#{ipAddress},</if>
+            <if test="ipValue != null">#{ipValue},</if>
+            <if test="status != null">#{status},</if>
+            <if test="communityName != null">#{communityName},</if>
+            <if test="targetType != null">#{targetType},</if>
+            <if test="targetName != null">#{targetName},</if>
+            <if test="manufacturer != null">#{manufacturer},</if>
+            <if test="internalIpAddress != null">#{internalIpAddress},</if>
+            <if test="accessUnit != null">#{accessUnit},</if>
+            <if test="purpose != null">#{purpose},</if>
+            <if test="loginUsername != null">#{loginUsername},</if>
+            <if test="loginPassword != null">#{loginPassword},</if>
+            <if test="mappingAddress != null">#{mappingAddress},</if>
+            <if test="mappingPort != null">#{mappingPort},</if>
+            <if test="mappingDescription != null">#{mappingDescription},</if>
+            <if test="ownerName != null">#{ownerName},</if>
+            <if test="ownerPhone != null">#{ownerPhone},</if>
+            <if test="issueBatch != null">#{issueBatch},</if>
+            <if test="allocatedTime != null">#{allocatedTime},</if>
+            <if test="issuedTime != null">#{issuedTime},</if>
+            <if test="releasedTime != null">#{releasedTime},</if>
+            <if test="createBy != null">#{createBy},</if>
+            <if test="createTime != null">#{createTime},</if>
+            <if test="updateBy != null">#{updateBy},</if>
+            <if test="updateTime != null">#{updateTime},</if>
+            <if test="remark != null">#{remark},</if>
+        </trim>
+    </insert>
+
+    <update id="updateAddress" parameterType="IpamAddress">
+        update ipam_address
+        set status = #{status},
+            community_name = #{communityName},
+            target_type = #{targetType},
+            target_name = #{targetName},
+            manufacturer = #{manufacturer},
+            internal_ip_address = #{internalIpAddress},
+            access_unit = #{accessUnit},
+            purpose = #{purpose},
+            login_username = #{loginUsername},
+            login_password = #{loginPassword},
+            mapping_address = #{mappingAddress},
+            mapping_port = #{mappingPort},
+            mapping_description = #{mappingDescription},
+            owner_name = #{ownerName},
+            owner_phone = #{ownerPhone},
+            issue_batch = #{issueBatch},
+            allocated_time = #{allocatedTime},
+            issued_time = #{issuedTime},
+            released_time = #{releasedTime},
+            update_by = #{updateBy},
+            update_time = #{updateTime},
+            remark = #{remark}
+        where address_id = #{addressId}
+    </update>
+
+    <update id="updateAddressIfFree" parameterType="IpamAddress">
+        update ipam_address
+        set status = #{status},
+            community_name = #{communityName},
+            target_type = #{targetType},
+            target_name = #{targetName},
+            manufacturer = #{manufacturer},
+            internal_ip_address = #{internalIpAddress},
+            access_unit = #{accessUnit},
+            purpose = #{purpose},
+            login_username = #{loginUsername},
+            login_password = #{loginPassword},
+            mapping_address = #{mappingAddress},
+            mapping_port = #{mappingPort},
+            mapping_description = #{mappingDescription},
+            owner_name = #{ownerName},
+            owner_phone = #{ownerPhone},
+            issue_batch = #{issueBatch},
+            allocated_time = #{allocatedTime},
+            issued_time = #{issuedTime},
+            released_time = #{releasedTime},
+            update_by = #{updateBy},
+            update_time = #{updateTime},
+            remark = #{remark}
+        where address_id = #{addressId}
+          and status = 'FREE'
+    </update>
+
+    <update id="markAddressFree" parameterType="IpamAddress">
+        update ipam_address
+        set status = 'FREE',
+            community_name = null,
+            target_type = null,
+            target_name = null,
+            manufacturer = null,
+            internal_ip_address = null,
+            access_unit = null,
+            purpose = null,
+            login_username = null,
+            login_password = null,
+            mapping_address = null,
+            mapping_port = null,
+            mapping_description = null,
+            owner_name = null,
+            owner_phone = null,
+            issue_batch = null,
+            allocated_time = null,
+            issued_time = null,
+            released_time = #{releasedTime},
+            update_by = #{updateBy},
+            update_time = #{updateTime},
+            remark = #{remark}
+        where address_id = #{addressId}
+    </update>
+
+    <select id="selectCommunityOverview" resultMap="IpamCommunityOverviewResult">
+        select ifnull(nullif(trim(a.community_name), ''), '未填写名称') as community_name,
+               count(1) as address_count,
+               sum(case when nullif(trim(a.target_type), '') is not null or nullif(trim(a.target_name), '') is not null then 1 else 0 end) as device_count,
+               substring_index(group_concat(a.ip_address order by a.ip_value separator ','), ',', 1) as first_ip,
+               substring_index(group_concat(a.ip_address order by a.ip_value desc separator ','), ',', 1) as last_ip,
+               group_concat(distinct nullif(a.internal_ip_address, '') order by a.internal_ip_address separator '、') as internal_ip_summary,
+               group_concat(distinct nullif(a.target_type, '') order by a.target_type separator '、') as target_type_summary,
+               group_concat(distinct nullif(a.manufacturer, '') order by a.manufacturer separator '、') as manufacturer_summary,
+               group_concat(distinct nullif(a.access_unit, '') order by a.access_unit separator '、') as access_unit_summary,
+               group_concat(distinct nullif(a.owner_name, '') order by a.owner_name separator '、') as owner_summary,
+               group_concat(distinct nullif(concat_ws(' ', a.mapping_address, a.mapping_port, a.mapping_description), '') order by a.mapping_address separator '、') as mapping_summary
+        from ipam_address a
+        where a.status in ('ALLOCATED', 'ISSUED')
+        <if test="networkId != null">and a.network_id = #{networkId}</if>
+        <if test="segmentId != null">and a.segment_id = #{segmentId}</if>
+        <if test="targetType != null and targetType != ''">and a.target_type = #{targetType}</if>
+        <if test="manufacturer != null and manufacturer != ''">and a.manufacturer = #{manufacturer}</if>
+        <if test="keyword != null and keyword != ''">
+            and (
+                a.community_name like concat('%', #{keyword}, '%')
+                or a.ip_address like concat('%', #{keyword}, '%')
+                or a.internal_ip_address like concat('%', #{keyword}, '%')
+                or a.target_name like concat('%', #{keyword}, '%')
+                or a.target_type like concat('%', #{keyword}, '%')
+                or a.manufacturer like concat('%', #{keyword}, '%')
+                or a.access_unit like concat('%', #{keyword}, '%')
+                or a.owner_name like concat('%', #{keyword}, '%')
+                or a.mapping_address like concat('%', #{keyword}, '%')
+                or a.mapping_port like concat('%', #{keyword}, '%')
+                or a.mapping_description like concat('%', #{keyword}, '%')
+            )
+        </if>
+        group by ifnull(nullif(trim(a.community_name), ''), '未填写名称')
+        order by min(a.ip_value)
+    </select>
+
+    <insert id="insertOperationLog" parameterType="IpamOperationLog" useGeneratedKeys="true" keyProperty="logId">
+        insert into ipam_operation_log
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            <if test="actionType != null">action_type,</if>
+            <if test="targetType != null">target_type,</if>
+            <if test="targetId != null">target_id,</if>
+            <if test="ipAddress != null">ip_address,</if>
+            <if test="summary != null">summary,</if>
+            <if test="detailContent != null">detail_content,</if>
+            <if test="operatorName != null">operator_name,</if>
+            <if test="operatorIp != null">operator_ip,</if>
+            <if test="createTime != null">create_time,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            <if test="actionType != null">#{actionType},</if>
+            <if test="targetType != null">#{targetType},</if>
+            <if test="targetId != null">#{targetId},</if>
+            <if test="ipAddress != null">#{ipAddress},</if>
+            <if test="summary != null">#{summary},</if>
+            <if test="detailContent != null">#{detailContent},</if>
+            <if test="operatorName != null">#{operatorName},</if>
+            <if test="operatorIp != null">#{operatorIp},</if>
+            <if test="createTime != null">#{createTime},</if>
+        </trim>
+    </insert>
+</mapper>
