@@ -131,7 +131,16 @@ create_worktree() {
   [ -n "$safe_slug" ] || die "task-slug 无有效字符"
 
   git fetch origin main
-  worktree_root=${RYNEW_WORKTREE_ROOT:-"$(dirname "$repo_root")/rynew-worktrees"}
+  if [ -n "${RYNEW_WORKTREE_ROOT:-}" ]; then
+    worktree_root=$RYNEW_WORKTREE_ROOT
+  else
+    repo_parent=$(dirname "$repo_root")
+    if [ "$(basename "$repo_parent")" = "rynew-worktrees" ]; then
+      worktree_root=$repo_parent
+    else
+      worktree_root="$repo_parent/rynew-worktrees"
+    fi
+  fi
   target="$worktree_root/$module-$safe_slug"
   branch="codex/$module-$safe_slug"
 
