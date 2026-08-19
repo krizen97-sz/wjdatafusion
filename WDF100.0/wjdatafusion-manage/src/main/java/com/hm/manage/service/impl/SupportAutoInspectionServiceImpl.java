@@ -20,6 +20,11 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.security.cert.X509Certificate;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.Statement;
 import java.time.DayOfWeek;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -105,6 +110,7 @@ import com.hm.manage.domain.vo.AutoInspectionDashboardVo;
 import com.hm.manage.domain.vo.AutoInspectionRecordDetailVo;
 import com.hm.manage.domain.vo.AutoInspectionRunResultVo;
 import com.hm.manage.domain.vo.AutoInspectionServerAssetNodeVo;
+import com.hm.manage.domain.vo.AutoInspectionTargetPreviewVo;
 import com.hm.manage.domain.vo.SupportAutoInspectionExportVo;
 import com.hm.manage.mapper.SupportAutoInspectionMapper;
 import com.hm.manage.mapper.SupportServerCredentialMapper;
@@ -150,7 +156,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final String TOOL_BIG_DATA_SERVER_DISK = "BIG_DATA_SERVER_DISK";
     private static final String TOOL_TCP_PORT_CHECK = "TCP_PORT_CHECK";
     private static final String TOOL_SERVER_SERVICE_STATUS = "SERVER_SERVICE_STATUS";
+    private static final String TOOL_DATABASE_QUERY = "DATABASE_QUERY";
     private static final String TARGET_BIG_DATA_SERVER = "BIG_DATA_SERVER";
+    private static final String TARGET_DATABASE = "DATABASE";
     private static final String PRIVILEGE_NONE = "NONE";
     private static final String PRIVILEGE_SUDO = "SUDO";
     private static final String PRIVILEGE_SU = "SU";
@@ -159,6 +167,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final int BIG_DATA_DEFAULT_SSH_PORT = 2343;
     private static final int SERVER_DEFAULT_SSH_PORT = 55555;
     private static final int TARGET_RESULT_TEXT_MAX_LENGTH = 30000;
+    private static final int DATABASE_PREVIEW_ROW_LIMIT = 10;
+    private static final int DATABASE_QUERY_MAX_ROWS = 500;
 
     private final Map<String, InspectionToolHandler> inspectionHandlers = buildInspectionHandlers();
 
@@ -429,6 +439,40 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         Map<String, Object> effective = buildEffectiveTargetForTest(target);
         normalizeTarget(effective, toLong(effective.get("targetId")) != null);
         withPlainSecret(effective);
+        TargetCheckResult result = executeTargetTest(effective);
+        if (RESULT_ABNORMAL.equals(result.status))
+        {
+            throw new ServiceException(StringUtils.defaultIfBlank(result.errorMessage, result.detail));
+        }
+        return buildTestSuccessMessage(result);
+    }
+
+    @Override
+    public AutoInspectionTargetPreviewVo previewTarget(AutoInspectionTargetSaveBo target)
+    {
+        Map<String, Object> source = toMap(target);
+        try
+        {
+            Map<String, Object> effective = buildEffectiveTargetForTest(source);
+            normalizeTarget(effective, toLong(effective.get("targetId")) != null);
+            withPlainSecret(effective);
+            return toTargetPreviewVo(executeTargetTest(effective));
+        }
+        catch (Exception e)
+        {
+            AutoInspectionTargetPreviewVo preview = new AutoInspectionTargetPreviewVo();
+            preview.setPassed(false);
+            preview.setResultStatus(RESULT_ABNORMAL);
+            preview.setTargetName(str(source, "targetName"));
+            preview.setTargetType(str(source, "targetType"));
+            preview.setMessage("测试未通过");
+            preview.setErrorMessage(StringUtils.defaultIfBlank(e.getMessage(), "目标测试失败"));
+            return preview;
+        }
+    }
+
+    private TargetCheckResult executeTargetTest(Map<String, Object> effective)
+    {
         TargetCheckResult result;
         String targetType = str(effective, "targetType");
         switch (targetType)
@@ -448,14 +492,30 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             case TARGET_BIG_DATA_SERVER:
                 result = testBigDataServerTarget(effective);
                 break;
+            case TARGET_DATABASE:
+                result = testDatabaseTarget(effective);
+                break;
             default:
                 throw new ServiceException("不支持的目标类型：" + targetType);
         }
-        if (RESULT_ABNORMAL.equals(result.status))
-        {
-            throw new ServiceException(StringUtils.defaultIfBlank(result.errorMessage, result.detail));
-        }
-        return buildTestSuccessMessage(result);
+        return result;
+    }
+
+    private AutoInspectionTargetPreviewVo toTargetPreviewVo(TargetCheckResult result)
+    {
+        AutoInspectionTargetPreviewVo preview = new AutoInspectionTargetPreviewVo();
+        boolean passed = RESULT_NORMAL.equals(result.status);
+        preview.setPassed(passed);
+        preview.setResultStatus(result.status);
+        preview.setMessage(passed ? buildTestSuccessMessage(result) : "测试未通过");
+        preview.setTargetName(result.targetName);
+        preview.setTargetType(result.targetType);
+        preview.setActualValue(result.actualValue);
+        preview.setActualUnit(result.actualUnit);
+        preview.setDetail(result.detail);
+        preview.setErrorMessage(result.errorMessage);
+        preview.setPreview(result.preview);
+        return preview;
     }
 
     @Override
@@ -1740,6 +1800,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         int skippedCount = 0;
         int targetCount = 0;
         int abnormalCount = 0;
+        boolean flowStopped = false;
         List<String> abnormalSummaries = new ArrayList<>();
         for (Map<String, Object> step : steps)
         {
@@ -1754,6 +1815,16 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 continue;
             }
 
+            if (flowStopped)
+            {
+                skippedCount++;
+                stepResult.put("resultStatus", RESULT_SKIP);
+                stepResult.put("resultSummary", str(step, "stepName") + "未执行：前序步骤异常并设置为停止后续步骤");
+                autoInspectionMapper.insertStepResult(stepResult);
+                continue;
+            }
+
+            AutoInspectionExecutionPolicy executionPolicy = AutoInspectionExecutionPolicy.fromStep(step);
             enabledCount++;
             List<Map<String, Object>> targets = autoInspectionMapper.selectEnabledTargetsByStepId(toLong(step.get("stepId")));
             if (targets.isEmpty())
@@ -1763,6 +1834,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 stepResult.put("resultSummary", str(step, "stepName") + "已启用但未配置目标");
                 abnormalSummaries.add(str(stepResult, "resultSummary"));
                 autoInspectionMapper.insertStepResult(stepResult);
+                flowStopped = executionPolicy.shouldStopAfterFailure();
                 continue;
             }
 
@@ -1771,7 +1843,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             boolean hasAbnormal = false;
             for (Map<String, Object> target : targets)
             {
-                TargetCheckResult result = runSingleTarget(step, tool, withPlainSecret(target), true);
+                TargetCheckResult result = runTargetWithPolicy(step, tool, withPlainSecret(target), executionPolicy);
                 results.add(result);
                 if (RESULT_ABNORMAL.equals(result.status))
                 {
@@ -1785,6 +1857,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             stepResult.put("resultSummary", buildStepSummary(step, results, hasAbnormal));
             if (hasAbnormal)
             {
+                if (executionPolicy.shouldStopAfterFailure())
+                {
+                    stepResult.put("resultSummary", str(stepResult, "resultSummary") + "；已停止后续步骤");
+                    flowStopped = true;
+                }
                 abnormalCount++;
                 abnormalSummaries.add(str(step, "stepName") + "：" + str(stepResult, "resultSummary"));
             }
@@ -1807,6 +1884,36 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         record.put("updateTime", DateUtils.getNowDate());
         autoInspectionMapper.updateRecord(record);
         return selectRecordDetailMap(toLong(record.get("recordId")));
+    }
+
+    private TargetCheckResult runTargetWithPolicy(Map<String, Object> step, Map<String, Object> tool,
+                                                   Map<String, Object> target, AutoInspectionExecutionPolicy policy)
+    {
+        TargetCheckResult result = null;
+        int attempts = policy.getRetryCount() + 1;
+        for (int attempt = 1; attempt <= attempts; attempt++)
+        {
+            result = runSingleTarget(step, tool, target, true);
+            if (RESULT_NORMAL.equals(result.status) || attempt >= attempts)
+            {
+                if (attempt > 1)
+                {
+                    result.appendDetail("复检：共执行" + attempt + "次，最终" + (RESULT_NORMAL.equals(result.status) ? "恢复正常" : "仍为异常"));
+                }
+                return result;
+            }
+            try
+            {
+                Thread.sleep(policy.getRetryIntervalSeconds() * 1000L);
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+                result.appendDetail("复检被中断");
+                return result;
+            }
+        }
+        return result;
     }
 
     private TargetCheckResult runSingleTarget(Map<String, Object> step, Map<String, Object> tool, Map<String, Object> target, boolean thresholdEnabled)
@@ -1849,6 +1956,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         handlers.put(TOOL_HTTP_API_TEST, context -> checkHttpApiTest(context.step, context.target));
         handlers.put(TOOL_TCP_PORT_CHECK, context -> checkTcpPort(context.step, context.target));
         handlers.put(TOOL_SERVER_SERVICE_STATUS, context -> checkServerServiceStatus(context.step, context.target));
+        handlers.put(TOOL_DATABASE_QUERY, context -> checkDatabaseQuery(context.step, context.target));
         return Collections.unmodifiableMap(handlers);
     }
 
@@ -2130,19 +2238,34 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         String responseBody = StringUtils.defaultString(response.body());
         ApiAssertionSummary assertionSummary = evaluateApiAssertions(options, response, responseBody, latency);
         String maskedUrl = maskSensitiveText(url, secretBucket);
+        String responsePreview = buildSafeResponsePreview(responseBody, secretBucket);
+        Map<String, Object> preview = new LinkedHashMap<>();
+        preview.put("kind", "HTTP");
+        preview.put("method", method);
+        preview.put("url", maskedUrl);
+        preview.put("statusCode", response.statusCode());
+        preview.put("latencyMs", latency);
+        preview.put("responsePreview", responsePreview);
+        preview.put("detectedFields", detectJsonFields(responseBody));
+        preview.put("conditionCount", assertionSummary.totalCount);
+        preview.put("conditionPassedCount", assertionSummary.passedCount);
+        preview.put("conditionFailures", assertionSummary.failures);
         String detail = "调用方式：接口调用测试 " + method
                 + "；接口地址：" + maskedUrl
                 + "；状态码：" + response.statusCode()
                 + "；响应耗时：" + formatDecimal(latency) + "ms"
                 + "；条件：" + assertionSummary.passedCount + "/" + assertionSummary.totalCount + "通过"
-                + "；响应预览：" + maskSensitiveText(abbreviate(responseBody), secretBucket);
+                + "；响应预览：" + responsePreview;
         if (!assertionSummary.failures.isEmpty())
         {
             TargetCheckResult result = TargetCheckResult.abnormal(target, latency, "ms", detail);
             result.errorMessage = "条件不满足：" + StringUtils.join(assertionSummary.failures, "；");
+            result.setPreview(preview);
             return result;
         }
-        return TargetCheckResult.normal(target, latency, "ms", detail);
+        TargetCheckResult result = TargetCheckResult.normal(target, latency, "ms", detail);
+        result.setPreview(preview);
+        return result;
     }
 
     private TargetCheckResult checkTcpPort(Map<String, Object> step, Map<String, Object> target) throws Exception
@@ -3031,6 +3154,101 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         }
     }
 
+    private List<Map<String, String>> detectJsonFields(String responseBody)
+    {
+        Object root = parseJsonRoot(responseBody);
+        if (root == null)
+        {
+            return Collections.emptyList();
+        }
+        List<Map<String, String>> fields = new ArrayList<>();
+        collectJsonFields(root, "", 0, fields);
+        return fields;
+    }
+
+    private String buildSafeResponsePreview(String responseBody, Map<String, Object> secretBucket)
+    {
+        Object root = parseJsonRoot(responseBody);
+        String source = responseBody;
+        if (root != null)
+        {
+            redactSensitiveJsonFields(root);
+            source = JSON.toJSONString(root);
+        }
+        return maskSensitiveText(abbreviate(source), secretBucket);
+    }
+
+    private void redactSensitiveJsonFields(Object value)
+    {
+        if (value instanceof JSONObject object)
+        {
+            for (String key : new ArrayList<>(object.keySet()))
+            {
+                if (key.matches("(?i).*(password|passwd|pwd|secret|token|credential|private[_-]?key).*"))
+                {
+                    object.put(key, "******");
+                }
+                else
+                {
+                    redactSensitiveJsonFields(object.get(key));
+                }
+            }
+        }
+        else if (value instanceof JSONArray array)
+        {
+            for (Object item : array)
+            {
+                redactSensitiveJsonFields(item);
+            }
+        }
+    }
+
+    private void collectJsonFields(Object value, String path, int depth, List<Map<String, String>> fields)
+    {
+        if (value == null || depth > 5 || fields.size() >= 60)
+        {
+            return;
+        }
+        if (value instanceof JSONObject object)
+        {
+            for (Map.Entry<String, Object> entry : object.entrySet())
+            {
+                String childPath = StringUtils.isBlank(path) ? entry.getKey() : path + "." + entry.getKey();
+                collectJsonFields(entry.getValue(), childPath, depth + 1, fields);
+                if (fields.size() >= 60)
+                {
+                    break;
+                }
+            }
+            return;
+        }
+        if (value instanceof JSONArray array)
+        {
+            if (StringUtils.isNotBlank(path))
+            {
+                addDetectedField(fields, path, "array");
+            }
+            if (!array.isEmpty())
+            {
+                collectJsonFields(array.get(0), path + "[0]", depth + 1, fields);
+            }
+            return;
+        }
+        if (StringUtils.isNotBlank(path))
+        {
+            addDetectedField(fields, path, value instanceof Number ? "number"
+                    : value instanceof Boolean ? "boolean" : "string");
+        }
+    }
+
+    private void addDetectedField(List<Map<String, String>> fields, String path, String type)
+    {
+        Map<String, String> field = new LinkedHashMap<>();
+        field.put("path", path);
+        field.put("type", type);
+        fields.add(field);
+    }
+
     private Object findJsonPathValue(Object root, String path)
     {
         if (root == null || StringUtils.isBlank(path))
@@ -3461,6 +3679,175 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                         + "；平均积压：" + average);
     }
 
+    private TargetCheckResult checkDatabaseQuery(Map<String, Object> step, Map<String, Object> target) throws Exception
+    {
+        Map<String, Object> options = parseExtraParamsMap(target);
+        String databaseType = normalizeDatabaseType(str(options, "databaseType"));
+        LocalDateTime end = LocalDateTime.now();
+        LocalDateTime begin = end.minusMinutes(toInt(step.get("timeWindowMinutes"), 0));
+        String query = normalizeReadOnlyQuery(replaceTimePlaceholders(str(options, "query"), begin, end));
+        String resultMode = StringUtils.defaultIfBlank(str(options, "resultMode"), "FIRST_VALUE").toUpperCase(Locale.ROOT);
+        String host = str(target, "host");
+        String databaseName = str(target, "path");
+        String username = str(target, "username");
+        String password = str(target, "password");
+        int port = toInt(target.get("port"), "POSTGRESQL".equals(databaseType) ? 5432 : 3306);
+        int timeout = resolveTimeout(step);
+        requireText(host, "数据库主机不能为空");
+        requireText(databaseName, "数据库名称不能为空");
+        requireText(username, "数据库账号不能为空");
+        requireText(password, "数据库密码不能为空");
+
+        String jdbcUrl = buildReadOnlyJdbcUrl(databaseType, host, port, databaseName, timeout);
+        List<String> columns = new ArrayList<>();
+        List<Map<String, Object>> previewRows = new ArrayList<>();
+        BigDecimal actualValue = BigDecimal.ZERO;
+        int rowCount = 0;
+        String resultColumn = StringUtils.trimToEmpty(str(target, "resultPath"));
+        try (Connection connection = DriverManager.getConnection(jdbcUrl, username, password))
+        {
+            connection.setReadOnly(true);
+            try (Statement statement = connection.createStatement())
+            {
+                statement.setQueryTimeout(timeout);
+                statement.setMaxRows(DATABASE_QUERY_MAX_ROWS + 1);
+                try (ResultSet resultSet = statement.executeQuery(query))
+                {
+                    ResultSetMetaData metadata = resultSet.getMetaData();
+                    for (int index = 1; index <= metadata.getColumnCount(); index++)
+                    {
+                        columns.add(metadata.getColumnLabel(index));
+                    }
+                    while (resultSet.next())
+                    {
+                        rowCount++;
+                        if (previewRows.size() < DATABASE_PREVIEW_ROW_LIMIT)
+                        {
+                            Map<String, Object> row = new LinkedHashMap<>();
+                            for (int index = 1; index <= metadata.getColumnCount(); index++)
+                            {
+                                String columnLabel = metadata.getColumnLabel(index);
+                                row.put(columnLabel, previewDatabaseValue(columnLabel, resultSet.getObject(index)));
+                            }
+                            previewRows.add(row);
+                        }
+                        if (rowCount == 1 && !"ROW_COUNT".equals(resultMode))
+                        {
+                            Object metric = StringUtils.isBlank(resultColumn)
+                                    ? resultSet.getObject(1) : resultSet.getObject(resultColumn);
+                            actualValue = parseDatabaseMetric(metric, StringUtils.defaultIfBlank(resultColumn, columns.get(0)));
+                        }
+                    }
+                }
+            }
+        }
+        if ("ROW_COUNT".equals(resultMode))
+        {
+            if (rowCount > DATABASE_QUERY_MAX_ROWS)
+            {
+                throw new ServiceException("查询返回超过" + DATABASE_QUERY_MAX_ROWS + "行，请使用COUNT等聚合查询直接返回巡检指标");
+            }
+            actualValue = new BigDecimal(rowCount);
+            resultColumn = "返回行数";
+        }
+        else if (StringUtils.isBlank(resultColumn) && !columns.isEmpty())
+        {
+            resultColumn = columns.get(0);
+        }
+
+        Map<String, Object> preview = new LinkedHashMap<>();
+        preview.put("kind", "DATABASE");
+        preview.put("databaseType", databaseType);
+        preview.put("host", host + ":" + port);
+        preview.put("databaseName", databaseName);
+        preview.put("query", abbreviate(query));
+        preview.put("columns", columns);
+        preview.put("rows", previewRows);
+        preview.put("rowCount", rowCount);
+        preview.put("resultMode", resultMode);
+        preview.put("resultColumn", resultColumn);
+
+        TargetCheckResult result = TargetCheckResult.normal(target, actualValue,
+                StringUtils.defaultIfBlank(str(step, "thresholdUnit"), "条"),
+                "调用方式：只读数据库查询；类型：" + databaseType
+                        + "；地址：" + host + ":" + port
+                        + "；数据库：" + databaseName
+                        + "；返回行数：" + rowCount
+                        + "；取值字段：" + StringUtils.defaultIfBlank(resultColumn, "-")
+                        + "；当前取值：" + formatDecimal(actualValue));
+        result.setPreview(preview);
+        return result;
+    }
+
+    private String normalizeDatabaseType(String value)
+    {
+        String type = StringUtils.defaultIfBlank(value, "MYSQL").toUpperCase(Locale.ROOT);
+        if (!"MYSQL".equals(type) && !"POSTGRESQL".equals(type))
+        {
+            throw new ServiceException("数据库类型仅支持MySQL或PostgreSQL");
+        }
+        return type;
+    }
+
+    private String normalizeReadOnlyQuery(String query)
+    {
+        return AutoInspectionReadOnlyQueryGuard.normalize(query);
+    }
+
+    private String buildReadOnlyJdbcUrl(String type, String host, int port, String databaseName, int timeout)
+    {
+        if (port <= 0 || port > 65535)
+        {
+            throw new ServiceException("数据库端口范围必须在1-65535之间");
+        }
+        if (!host.matches("[A-Za-z0-9._:-]+"))
+        {
+            throw new ServiceException("数据库主机格式不正确");
+        }
+        if (!databaseName.matches("[A-Za-z0-9_$-]+"))
+        {
+            throw new ServiceException("数据库名称只能包含字母、数字、下划线、短横线或$符号");
+        }
+        if ("POSTGRESQL".equals(type))
+        {
+            return "jdbc:postgresql://" + host + ":" + port + "/" + databaseName
+                    + "?connectTimeout=" + timeout + "&socketTimeout=" + timeout + "&sslmode=disable";
+        }
+        int timeoutMillis = timeout * 1000;
+        return "jdbc:mysql://" + host + ":" + port + "/" + databaseName
+                + "?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=Asia/Shanghai"
+                + "&connectTimeout=" + timeoutMillis + "&socketTimeout=" + timeoutMillis;
+    }
+
+    private BigDecimal parseDatabaseMetric(Object value, String column)
+    {
+        if (value == null)
+        {
+            return BigDecimal.ZERO;
+        }
+        try
+        {
+            return new BigDecimal(value.toString().trim());
+        }
+        catch (Exception e)
+        {
+            throw new ServiceException("查询字段“" + column + "”不是数字，无法进行阈值判断");
+        }
+    }
+
+    private Object previewDatabaseValue(String column, Object value)
+    {
+        if (StringUtils.defaultString(column).matches("(?i).*(password|passwd|pwd|secret|token|credential|private[_-]?key).*"))
+        {
+            return "******";
+        }
+        if (value == null || value instanceof Number || value instanceof Boolean)
+        {
+            return value;
+        }
+        return StringUtils.abbreviate(value.toString(), 200);
+    }
+
     private TargetCheckResult testKafkaTarget(Map<String, Object> target)
     {
         Properties props = new Properties();
@@ -3547,6 +3934,14 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             throw new ServiceException(e.getMessage());
         }
+    }
+
+    private TargetCheckResult testDatabaseTarget(Map<String, Object> target)
+    {
+        Map<String, Object> tool = requireTool(TOOL_DATABASE_QUERY);
+        Map<String, Object> step = defaultStep(TOOL_DATABASE_QUERY,
+                StringUtils.defaultIfBlank(str(tool, "valueUnit"), "条"));
+        return runSingleTarget(step, tool, target, false);
     }
 
     private void applyThreshold(Map<String, Object> step, Map<String, Object> tool, TargetCheckResult result)
@@ -3744,6 +4139,20 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                     requireText(str(target, "password"), "SSH密码不能为空");
                 }
                 target.put("port", toInt(target.get("port"), BIG_DATA_DEFAULT_SSH_PORT));
+                break;
+            case TARGET_DATABASE:
+                requireText(str(target, "host"), "数据库主机不能为空");
+                requireText(str(target, "path"), "数据库名称不能为空");
+                requireText(str(target, "username"), "数据库账号不能为空");
+                if (!update)
+                {
+                    requireText(str(target, "password"), "数据库密码不能为空");
+                }
+                Map<String, Object> databaseOptions = parseExtraParamsMap(target);
+                String databaseType = normalizeDatabaseType(str(databaseOptions, "databaseType"));
+                normalizeReadOnlyQuery(str(databaseOptions, "query"));
+                target.put("port", toInt(target.get("port"), "POSTGRESQL".equals(databaseType) ? 5432 : 3306));
+                target.put("resultPath", StringUtils.trimToEmpty(str(target, "resultPath")));
                 break;
             default:
                 throw new ServiceException("不支持的目标类型：" + targetType);
@@ -4202,6 +4611,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             return "SERVER";
         }
+        if (TOOL_DATABASE_QUERY.equals(toolCode))
+        {
+            return TARGET_DATABASE;
+        }
         throw new ServiceException("不支持的巡检工具：" + toolCode);
     }
 
@@ -4428,6 +4841,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 "{\"fields\":[\"host\",\"port\",\"timeoutSeconds\"]}");
         insertBuiltinTool(TOOL_SERVER_SERVICE_STATUS, "服务器服务状态检测", TOOL_SERVER_SERVICE_STATUS, "状态", RULE_MIN, BigDecimal.ONE, 15, 0,
                 "{\"fields\":[\"serverTargets\",\"serviceName\",\"privilegeMode\",\"autoRestart\",\"restartWaitSeconds\"]}");
+        insertBuiltinTool(TOOL_DATABASE_QUERY, "数据库查询检查", TOOL_DATABASE_QUERY, "条", RULE_MIN, BigDecimal.ONE, 15, 0,
+                "{\"fields\":[\"databaseType\",\"host\",\"port\",\"databaseName\",\"query\",\"resultMode\",\"resultColumn\"]}");
     }
 
     private void insertBuiltinTool(String code, String name, String type, String unit, String rule,
@@ -5213,6 +5628,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             return "大数据服务器";
         }
+        if (TARGET_DATABASE.equals(targetType))
+        {
+            return "数据库";
+        }
         return StringUtils.defaultIfBlank(targetType, "-");
     }
 
@@ -5649,8 +6068,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         private String status;
         private final BigDecimal actualValue;
         private final String actualUnit;
-        private final String detail;
+        private String detail;
         private String errorMessage;
+        private Map<String, Object> preview = new LinkedHashMap<>();
 
         private TargetCheckResult(Map<String, Object> target, String status, BigDecimal actualValue, String actualUnit, String detail)
         {
@@ -5672,6 +6092,20 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         private static TargetCheckResult abnormal(Map<String, Object> target, BigDecimal actualValue, String actualUnit, String detail)
         {
             return new TargetCheckResult(target, RESULT_ABNORMAL, actualValue, actualUnit, detail);
+        }
+
+        private void appendDetail(String value)
+        {
+            if (StringUtils.isBlank(value))
+            {
+                return;
+            }
+            detail = StringUtils.isBlank(detail) ? value : detail + "；" + value;
+        }
+
+        private void setPreview(Map<String, Object> preview)
+        {
+            this.preview = preview == null ? new LinkedHashMap<>() : preview;
         }
 
         private Map<String, Object> toTargetResult(Long recordId, Long stepResultId, Date now, String operator)

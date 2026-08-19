@@ -15,6 +15,7 @@ test('automatic inspection keeps the mature business workspace', () => {
   const requiredMarkers = [
     'TOOL_HTTP_API_TEST',
     'TOOL_SERVER_SERVICE_STATUS',
+    'TOOL_DATABASE_QUERY',
     'BIG_DATA_DEFAULT_SSH_PORT',
     'openServerAssetPicker',
     'handleCopyTemplate',
@@ -22,7 +23,9 @@ test('automatic inspection keeps the mature business workspace', () => {
     'dashboardDrawerOpen',
     'operationGuideOpen',
     'server-tree-box',
-    'target-step-groups'
+    'target-step-groups',
+    'InspectionFlowCanvas',
+    'handlePreviewStepTarget'
   ]
 
   for (const marker of requiredMarkers) {
@@ -38,7 +41,8 @@ test('mature workspace is adapted to resource-style backend endpoints', () => {
     '/support/autoInspection/targets',
     '/support/autoInspection/templates',
     '/support/autoInspection/plans',
-    '/support/autoInspection/records'
+    '/support/autoInspection/records',
+    '/support/autoInspection/targets/preview'
   ]
   const compatibilityExports = [
     'listAutoInspectionTool',
@@ -68,4 +72,14 @@ test('typed backend preserves mature inspection payload fields', () => {
   assert.ok(serverNodeSource.includes('private Long value;'))
   assert.ok(inspectionServiceSource.includes('node.put("value", value);'))
   assert.ok(!inspectionServiceSource.includes('node.put("value", value == null ? id : value);'))
+})
+
+test('etl-inspired workflow additions remain compatible with existing templates', () => {
+  assert.ok(workspaceSource.includes('executionPolicy'))
+  assert.ok(workspaceSource.includes('retryCount'))
+  assert.ok(workspaceSource.includes('failureAction'))
+  assert.ok(workspaceSource.includes('databaseConfig'))
+  assert.ok(inspectionServiceSource.includes('AutoInspectionExecutionPolicy.fromStep(step)'))
+  assert.ok(inspectionServiceSource.includes('checkDatabaseQuery'))
+  assert.ok(inspectionServiceSource.includes('detectJsonFields'))
 })

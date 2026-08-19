@@ -4,7 +4,6 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>自动化巡检功能操作手册</title>
-
   <style>
     :root { --page-bg:#f4f7fb; --surface:#fff; --soft:#f7fbff; --border:#dce8f6; --text:#18324f; --muted:#657d98; --primary:#2f80ed; --primary-soft:#eaf4ff; --shadow:0 16px 36px rgba(24,50,79,.08); }
     * { box-sizing:border-box; } html { scroll-behavior:smooth; } body { margin:0; background:var(--page-bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",Arial,sans-serif; line-height:1.75; }
@@ -23,7 +22,49 @@
     @media print { body { background:#fff; } .layout { display:block; max-width:none; padding:0; } .toc { display:none; } main { box-shadow:none; border:0; } figure { break-inside:avoid; } }
   </style>
 </head>
-<body><div class="layout"><nav class="toc"><strong>目录</strong><a class="toc-l1" href="#自动化巡检功能操作手册">自动化巡检功能操作手册</a><a class="toc-l2" href="#模块简介">模块简介</a><a class="toc-l2" href="#1-功能定位">1. 功能定位</a><a class="toc-l2" href="#2-页面入口与权限">2. 页面入口与权限</a><a class="toc-l2" href="#3-巡检总览">3. 巡检总览</a><a class="toc-l2" href="#4-巡检看板">4. 巡检看板</a><a class="toc-l2" href="#5-周报和月度周报导出">5. 周报和月度周报导出</a><a class="toc-l2" href="#6-查看巡检详情">6. 查看巡检详情</a><a class="toc-l2" href="#7-巡检配置总览">7. 巡检配置总览</a><a class="toc-l2" href="#8-系统内操作指引">8. 系统内操作指引</a><a class="toc-l2" href="#9-创建和维护巡检模板">9. 创建和维护巡检模板</a><a class="toc-l2" href="#10-选择巡检工具">10. 选择巡检工具</a><a class="toc-l2" href="#11-配置-http--海康接口步骤">11. 配置 HTTP / 海康接口步骤</a><a class="toc-l2" href="#12-配置-ftp-目录文件数量检测">12. 配置 FTP 目录文件数量检测</a><a class="toc-l2" href="#13-配置服务器目录磁盘和服务状态检测">13. 配置服务器目录、磁盘和服务状态检测</a><a class="toc-l3" href="#131-服务器目录文件数量检测">13.1 服务器目录文件数量检测</a><a class="toc-l3" href="#132-服务器磁盘使用率检测">13.2 服务器磁盘使用率检测</a><a class="toc-l3" href="#133-大数据服务器爆盘检测">13.3 大数据服务器爆盘检测</a><a class="toc-l3" href="#134-服务器服务状态检测">13.4 服务器服务状态检测</a><a class="toc-l2" href="#14-从现场融合管理选择服务器">14. 从现场融合管理选择服务器</a><a class="toc-l2" href="#15-与现场融合管理的业务关系">15. 与现场融合管理的业务关系</a><a class="toc-l2" href="#16-配置巡检计划">16. 配置巡检计划</a><a class="toc-l2" href="#17-单次报告周报和归档">17. 单次报告、周报和归档</a><a class="toc-l2" href="#18-推荐落地流程">18. 推荐落地流程</a><a class="toc-l2" href="#19-常见问题">19. 常见问题</a><a class="toc-l3" href="#191-测试目标成功但计划执行失败">19.1 测试目标成功，但计划执行失败</a><a class="toc-l3" href="#192-从现场服务器选择后为什么还要填巡检账号密码">19.2 从现场服务器选择后，为什么还要填巡检账号密码</a><a class="toc-l3" href="#193-密码显示为星号">19.3 密码显示为星号</a><a class="toc-l3" href="#194-http-接口返回了数据但提示无法解析计数字段">19.4 HTTP 接口返回了数据，但提示无法解析计数字段</a><a class="toc-l3" href="#195-服务状态检测显示-inactive-dead">19.5 服务状态检测显示 `inactive (dead)`</a><a class="toc-l3" href="#196-周报导出没有数据">19.6 周报导出没有数据</a><a class="toc-l3" href="#197-月度导出的-zip-里为什么有跨月日期">19.7 月度导出的 zip 里为什么有跨月日期</a><a class="toc-l2" href="#20-部署携带文件">20. 部署携带文件</a></nav><main><h1 id="自动化巡检功能操作手册">自动化巡检功能操作手册</h1><h2 id="模块简介">模块简介</h2><p>自动化巡检是平台面向日常运维巡查、系统健康检查和周期性报告归档建设的统一巡检能力。它把过去分散在人工登录、脚本执行、共享文档记录和临时截图里的检查动作，沉淀为“巡检工具、巡检步骤、巡检模板、巡检计划、巡检记录、巡检报告”这一套闭环流程。用户可以在页面中选择 Kafka、HTTP 接口调用测试、HTTP 健康、FTP 目录、服务器目录、磁盘、端口、服务状态、大数据服务器爆盘等巡检工具，按业务系统自由组合成模板，再通过手动执行或若依定时任务自动执行，最终形成可查询、可追溯、可导出的巡检结果。</p><p>该模块重点服务于现场运维人员、平台管理员和项目交付人员：现场运维人员可以快速确认系统是否正常运行；平台管理员可以统一维护巡检模板、计划和执行账号；项目交付人员可以将巡检结果整理为周报、月度周报和验收支撑材料。自动化巡检同时和“现场融合管理”联动，能够复用现场服务器资产的名称、IP、SSH 端口和归属关系，但巡检执行使用的 SSH 账号密码始终以巡检配置中填写的内容为准，避免资产登记账号和巡检执行账号混用。</p><p>从业务价值上看，自动化巡检解决的是“检查动作标准化、执行过程自动化、异常定位结构化、报告归档规范化”的问题。它不是简单的记录表，也不是固定写死的巡检清单，而是一个可以随着项目变化持续扩展的巡检工作台。后续只要新增巡检工具或调整目标配置，就可以复用现有模板、计划、看板和报告能力，降低现场巡检的人力成本和交接成本。</p><p>适用版本：<code>v3.7.5</code></p><p>适用模块：自动化巡检 / 巡检配置 / 巡检总览 / 巡检版本记录</p><p>编写时间：2026-06-25</p><p>部署形态：离线部署可用，截图和 HTML 文档均为本地静态资源</p><h2 id="1-功能定位">1. 功能定位</h2><p>自动化巡检用于把日常运维检查动作沉淀为可复用、可编排、可定时执行、可追溯归档的巡检流程。它不是一个固定的“七项巡检”页面，而是把 Kafka、HTTP 接口调用、HTTP 健康、FTP、服务器目录、磁盘、端口和服务状态等能力抽象为巡检工具，再由用户自由组合成巡检模板，最终通过手动执行或计划任务生成巡检记录、看板和周报。</p><p>它主要解决以下业务问题：</p><div class="table-wrap"><table><thead><tr><th>痛点</th><th>平台解决方式</th></tr></thead><tbody><tr><td>巡检脚本分散，执行结果靠人工截图或共享文档记录</td><td>巡检统一在平台配置，执行结果自动形成记录和详情</td></tr><tr><td>检查目标、账号、阈值写死，调整要改代码</td><td>目标、阈值、账号、计划都在页面配置，保存后下次执行生效</td></tr><tr><td>多个系统巡检逻辑相似但无法复用</td><td>通过“模板复制”和“步骤复制”快速创建同类巡检方案</td></tr><tr><td>异常结果难定位</td><td>详情页按“步骤 / 子项”展示调用信息、实际值和异常原因</td></tr><tr><td>管理层需要周期性报告</td><td>支持按周导出 Word 周报，按月导出每周独立 Word 的压缩包</td></tr><tr><td>现场服务器账号和巡检执行账号容易混用</td><td>从现场融合管理只带出服务器资产信息，巡检执行只使用巡检配置里的账号密码</td></tr></tbody></table></div><p>核心业务关系如下：</p><pre class="code-block mermaid-block"><span>mermaid</span><code>flowchart LR
+<body><div class="layout"><nav class="toc"><strong>目录</strong><a class="toc-l1" href="#自动化巡检功能操作手册">自动化巡检功能操作手册</a><a class="toc-l2" href="#模块简介">模块简介</a><a class="toc-l2" href="#1-功能定位">1. 功能定位</a><a class="toc-l2" href="#2-页面入口与权限">2. 页面入口与权限</a><a class="toc-l2" href="#3-巡检总览">3. 巡检总览</a><a class="toc-l2" href="#4-巡检看板">4. 巡检看板</a><a class="toc-l2" href="#5-周报和月度周报导出">5. 周报和月度周报导出</a><a class="toc-l2" href="#6-查看巡检详情">6. 查看巡检详情</a><a class="toc-l2" href="#7-巡检配置总览">7. 巡检配置总览</a><a class="toc-l2" href="#8-系统内操作指引">8. 系统内操作指引</a><a class="toc-l2" href="#9-创建和维护巡检模板">9. 创建和维护巡检模板</a><a class="toc-l2" href="#10-选择巡检工具">10. 选择巡检工具</a><a class="toc-l2" href="#11-配置-http-海康接口步骤">11. 配置 HTTP / 海康接口步骤</a><a class="toc-l2" href="#12-配置数据库查询检查">12. 配置数据库查询检查</a><a class="toc-l2" href="#13-配置-ftp-目录文件数量检测">13. 配置 FTP 目录文件数量检测</a><a class="toc-l2" href="#14-配置服务器目录-磁盘和服务状态检测">14. 配置服务器目录、磁盘和服务状态检测</a><a class="toc-l3" href="#14-1-服务器目录文件数量检测">14.1 服务器目录文件数量检测</a><a class="toc-l3" href="#14-2-服务器磁盘使用率检测">14.2 服务器磁盘使用率检测</a><a class="toc-l3" href="#14-3-大数据服务器爆盘检测">14.3 大数据服务器爆盘检测</a><a class="toc-l3" href="#14-4-服务器服务状态检测">14.4 服务器服务状态检测</a><a class="toc-l2" href="#15-从现场融合管理选择服务器">15. 从现场融合管理选择服务器</a><a class="toc-l2" href="#16-与现场融合管理的业务关系">16. 与现场融合管理的业务关系</a><a class="toc-l2" href="#17-配置巡检计划">17. 配置巡检计划</a><a class="toc-l2" href="#18-单次报告-周报和归档">18. 单次报告、周报和归档</a><a class="toc-l2" href="#19-推荐落地流程">19. 推荐落地流程</a><a class="toc-l2" href="#20-常见问题">20. 常见问题</a><a class="toc-l3" href="#20-1-测试目标成功-但计划执行失败">20.1 测试目标成功，但计划执行失败</a><a class="toc-l3" href="#20-2-从现场服务器选择后-为什么还要填巡检账号密码">20.2 从现场服务器选择后，为什么还要填巡检账号密码</a><a class="toc-l3" href="#20-3-密码显示为星号">20.3 密码显示为星号</a><a class="toc-l3" href="#20-4-http-接口返回了数据-但提示无法解析计数字段">20.4 HTTP 接口返回了数据，但提示无法解析计数字段</a><a class="toc-l3" href="#20-5-服务状态检测显示-inactive-dead">20.5 服务状态检测显示 inactive (dead)</a><a class="toc-l3" href="#20-6-周报导出没有数据">20.6 周报导出没有数据</a><a class="toc-l3" href="#20-7-月度导出的-zip-里为什么有跨月日期">20.7 月度导出的 zip 里为什么有跨月日期</a><a class="toc-l2" href="#21-部署携带文件">21. 部署携带文件</a></nav><main><h1 id="自动化巡检功能操作手册">自动化巡检功能操作手册</h1><h2 id="模块简介">模块简介</h2><p>自动化巡检是平台面向日常运维巡查、系统健康检查和周期性报告归档建设的统一巡检能力。它把过去分散在人工登录、脚本执行、共享文档记录和临时截图里的检查动作，沉淀为“巡检工具、巡检步骤、巡检模板、巡检计划、巡检记录、巡检报告”这一套闭环流程。用户可以在页面中选择 Kafka、HTTP 接口调用测试、HTTP 健康、数据库只读查询、FTP 目录、服务器目录、磁盘、端口、服务状态、大数据服务器爆盘等巡检工具，按业务系统自由组合成模板，再通过手动执行或若依定时任务自动执行，最终形成可查询、可追溯、可导出的巡检结果。</p>
+<p>该模块重点服务于现场运维人员、平台管理员和项目交付人员：现场运维人员可以快速确认系统是否正常运行；平台管理员可以统一维护巡检模板、计划和执行账号；项目交付人员可以将巡检结果整理为周报、月度周报和验收支撑材料。自动化巡检同时和“现场融合管理”联动，能够复用现场服务器资产的名称、IP、SSH 端口和归属关系，但巡检执行使用的 SSH 账号密码始终以巡检配置中填写的内容为准，避免资产登记账号和巡检执行账号混用。</p>
+<p>从业务价值上看，自动化巡检解决的是“检查动作标准化、执行过程自动化、异常定位结构化、报告归档规范化”的问题。它不是简单的记录表，也不是固定写死的巡检清单，而是一个可以随着项目变化持续扩展的巡检工作台。后续只要新增巡检工具或调整目标配置，就可以复用现有模板、计划、看板和报告能力，降低现场巡检的人力成本和交接成本。</p>
+<p>适用版本：<code>v3.10.0</code></p>
+<p>适用模块：自动化巡检 / 巡检配置 / 巡检总览 / 巡检版本记录</p>
+<p>更新时间：2026-08-19</p>
+<p>部署形态：离线部署可用，截图和 HTML 文档均为本地静态资源</p>
+<h2 id="1-功能定位">1. 功能定位</h2><p>自动化巡检用于把日常运维检查动作沉淀为可复用、可编排、可定时执行、可追溯归档的巡检流程。它不是一个固定的“七项巡检”页面，而是把 Kafka、HTTP 接口调用、HTTP 健康、数据库只读查询、FTP、服务器目录、磁盘、端口和服务状态等能力抽象为巡检工具，再由用户自由组合成巡检模板，最终通过手动执行或计划任务生成巡检记录、看板和周报。</p>
+<p>它主要解决以下业务问题：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>痛点</th>
+<th>平台解决方式</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>巡检脚本分散，执行结果靠人工截图或共享文档记录</td>
+<td>巡检统一在平台配置，执行结果自动形成记录和详情</td>
+</tr>
+<tr>
+<td>检查目标、账号、阈值写死，调整要改代码</td>
+<td>目标、阈值、账号、计划都在页面配置，保存后下次执行生效</td>
+</tr>
+<tr>
+<td>多个系统巡检逻辑相似但无法复用</td>
+<td>通过“模板复制”和“步骤复制”快速创建同类巡检方案</td>
+</tr>
+<tr>
+<td>异常结果难定位</td>
+<td>详情页按“步骤 / 子项”展示调用信息、实际值和异常原因</td>
+</tr>
+<tr>
+<td>管理层需要周期性报告</td>
+<td>支持按周导出 Word 周报，按月导出每周独立 Word 的压缩包</td>
+</tr>
+<tr>
+<td>现场服务器账号和巡检执行账号容易混用</td>
+<td>从现场融合管理只带出服务器资产信息，巡检执行只使用巡检配置里的账号密码</td>
+</tr>
+</tbody></table></div>
+<p>核心业务关系如下：</p>
+<pre class="code-block mermaid-block"><span>mermaid</span><code>flowchart LR
   A[&quot;现场融合管理&quot;] --&gt; B[&quot;服务器资产&quot;]
   B --&gt; C[&quot;巡检步骤中的服务器目标&quot;]
   D[&quot;巡检工具&quot;] --&gt; C
@@ -36,9 +77,960 @@
   I --&gt; J[&quot;详情明细&quot;]
   I --&gt; K[&quot;巡检看板&quot;]
   I --&gt; L[&quot;单次 Word 报告&quot;]
-  I --&gt; M[&quot;周报 / 月度周报包&quot;]</code></pre><h2 id="2-页面入口与权限">2. 页面入口与权限</h2><p>登录系统后，在左侧菜单进入：</p><ul><li><code>自动化巡检</code> -&gt; <code>巡检总览</code></li><li><code>自动化巡检</code> -&gt; <code>巡检配置</code></li><li><code>自动化巡检</code> -&gt; <code>巡检版本记录</code></li></ul><p><code>巡检总览</code> 用于查看记录、展开图表看板、查看详情和导出报告。<code>巡检配置</code> 用于维护巡检模板和巡检计划。<code>巡检版本记录</code> 用于查看自动化巡检模块的独立版本号、关联平台总版本号、修改重点和涉及 SQL。</p><p>常用权限如下：</p><div class="table-wrap"><table><thead><tr><th>操作</th><th>权限字符</th></tr></thead><tbody><tr><td>查看巡检记录和配置</td><td><code>support:autoInspection:query</code></td></tr><tr><td>维护巡检模板</td><td><code>support:autoInspection:template</code></td></tr><tr><td>维护巡检计划</td><td><code>support:autoInspection:plan</code></td></tr><tr><td>手动执行巡检</td><td><code>support:autoInspection:run</code></td></tr><tr><td>导出巡检报告</td><td><code>support:autoInspection:export</code></td></tr><tr><td>查看巡检密码明文</td><td><code>support:credential:viewPlain</code></td></tr></tbody></table></div><p>拥有 <code>datafusion</code> 权限字符的用户，会按现场融合体系具备自动化巡检相关权限。若按钮不可见，优先检查用户角色是否绑定了对应菜单权限。</p><h2 id="3-巡检总览">3. 巡检总览</h2><figure><img src="auto-inspection-manual-assets/01-overview-records.png" alt="巡检总览"><figcaption>巡检总览</figcaption></figure><p>巡检总览打开后优先展示巡检记录，方便用户第一时间处理最新结果。顶部保留轻量的本周巡检情况和趋势图，避免看板占用过多首屏空间。</p><p>页面主要区域如下：</p><div class="table-wrap"><table><thead><tr><th>区域</th><th>说明</th></tr></thead><tbody><tr><td>本周巡检情况</td><td>展示本周巡检次数、异常子项、巡检天数和本周趋势</td></tr><tr><td>筛选区</td><td>按模板、计划、来源、结果筛选记录</td></tr><tr><td>导出周/月报</td><td>生成周期性 Word 巡检报告</td></tr><tr><td>巡检记录表</td><td>展示巡检时间、结果、来源、模板、计划、摘要、异常摘要和操作</td></tr><tr><td>展开看板</td><td>打开完整图表看板和当月日历</td></tr></tbody></table></div><p>建议日常使用顺序：</p><ol><li>进入巡检总览先看最新记录结果。</li><li>如果出现异常，点击“详情”查看步骤和子项。</li><li>需要周期归档时点击“导出周/月报”。</li><li>需要看整体趋势时点击“展开看板”。</li></ol><h2 id="4-巡检看板">4. 巡检看板</h2><figure><img src="auto-inspection-manual-assets/02-dashboard-drawer.png" alt="巡检看板"><figcaption>巡检看板</figcaption></figure><p>巡检看板默认收起，点击“展开看板”后以抽屉形式展示。看板以图表为主，减少大段文字。</p><p>看板包含：</p><div class="table-wrap"><table><thead><tr><th>内容</th><th>业务价值</th></tr></thead><tbody><tr><td>本周巡检趋势</td><td>查看每天巡检次数和异常次数变化</td></tr><tr><td>结果分布</td><td>快速判断正常、异常、跳过的比例</td></tr><tr><td>工具健康度</td><td>按巡检工具聚合正常率，定位是哪类检测经常异常</td></tr><tr><td>异常目标</td><td>展示最近异常目标，方便优先处理</td></tr><tr><td>当月巡检日历</td><td>按天展示巡检次数和异常结果，便于月度回顾</td></tr></tbody></table></div><h2 id="5-周报和月度周报导出">5. 周报和月度周报导出</h2><figure><img src="auto-inspection-manual-assets/03-report-export-week.png" alt="按周导出"><figcaption>按周导出</figcaption></figure><p>点击“导出周/月报”后，可以选择按周或按月导出。</p><p>按周导出时，系统生成一个 Word 周报，文件名类似：</p><pre class="code-block"><span>text</span><code>自动化巡检周报_20260622-20260628.doc</code></pre><p>周报内容包含：</p><div class="table-wrap"><table><thead><tr><th>章节</th><th>内容</th></tr></thead><tbody><tr><td>签字确认</td><td>文档开头包含巡检人员签字、用户签字、确认日期和备注</td></tr><tr><td>整体健康度分析</td><td>统计巡检次数、正常/异常/未检测数量、记录健康度、目标子项健康度</td></tr><tr><td>异常展示</td><td>汇总本周异常目标、调用信息、实际值和异常原因</td></tr><tr><td>本周巡检内容汇总</td><td>展示本周所有巡检记录</td></tr><tr><td>巡检明细</td><td>按记录、步骤和目标展开完整结果</td></tr></tbody></table></div><figure><img src="auto-inspection-manual-assets/04-report-export-month.png" alt="按月导出"><figcaption>按月导出</figcaption></figure><p>按月导出时，系统会把该月份涉及的自然周逐周生成 Word 文件，再打包为 zip。每个周报都是独立文件，方便按周归档和签字确认。即使某周没有巡检记录，也会生成一份“暂无巡检记录”的留档文档。</p><h2 id="6-查看巡检详情">6. 查看巡检详情</h2><figure><img src="auto-inspection-manual-assets/05-record-detail.png" alt="巡检详情"><figcaption>巡检详情</figcaption></figure><p>巡检记录行点击“详情”后，会打开右侧详情抽屉。详情页重点突出“步骤 / 子项”的层级关系。</p><p>详情页包含：</p><div class="table-wrap"><table><thead><tr><th>区域</th><th>说明</th></tr></thead><tbody><tr><td>报告概览</td><td>展示模板名称、整体结果、摘要和计划来源</td></tr><tr><td>指标卡片</td><td>展示步骤数、目标数、异常目标和执行计划</td></tr><tr><td>步骤结果</td><td>按模板步骤顺序展示工具、结果、实际值、判定规则和摘要</td></tr><tr><td>目标明细</td><td>按步骤分组展示每个子项的目标、实际值、调用信息和异常原因</td></tr></tbody></table></div><p>排障时建议先看“目标明细”：</p><ol><li>先找到异常步骤。</li><li>再看该步骤下具体异常子项。</li><li>查看“实际值”和“调用信息”确认接口返回、命令输出或服务状态。</li><li>查看“异常原因”判断是连通性、鉴权、阈值、路径还是服务状态问题。</li></ol><h2 id="7-巡检配置总览">7. 巡检配置总览</h2><figure><img src="auto-inspection-manual-assets/06-config-template-plan.png" alt="巡检配置"><figcaption>巡检配置</figcaption></figure><p>巡检配置页面把模板和计划收敛到一个入口内，避免用户在多个菜单之间来回切换。</p><p>配置页主要包含：</p><div class="table-wrap"><table><thead><tr><th>区域</th><th>用途</th></tr></thead><tbody><tr><td>巡检模板</td><td>维护一套可重复执行的巡检步骤</td></tr><tr><td>巡检计划</td><td>把模板交给若依定时任务按周期执行</td></tr><tr><td>操作指引</td><td>新用户可按步骤查看完整配置流程和截图说明</td></tr></tbody></table></div><p>第一次配置建议顺序：</p><ol><li>创建巡检模板。</li><li>添加巡检步骤并选择工具。</li><li>配置目标、账号、阈值并测试目标。</li><li>保存模板。</li><li>手动执行模板验证结果。</li><li>配置巡检计划。</li><li>后续在巡检总览查看记录和导出报告。</li></ol><h2 id="8-系统内操作指引">8. 系统内操作指引</h2><figure><img src="auto-inspection-manual-assets/07-operation-guide.png" alt="操作指引"><figcaption>操作指引</figcaption></figure><p>“操作指引”入口位于巡检配置页面右侧。点击后会打开抽屉，按步骤展示模板、工具、目标、计划、记录和报告导出的操作路径，并提供完整离线文档入口。</p><p>指引适合以下场景：</p><div class="table-wrap"><table><thead><tr><th>场景</th><th>使用方式</th></tr></thead><tbody><tr><td>新用户第一次配置</td><td>按抽屉步骤从模板开始逐项完成</td></tr><tr><td>忘记工具含义</td><td>对照工具选择说明和截图</td></tr><tr><td>部署交付培训</td><td>直接打开完整文档进行讲解</td></tr><tr><td>离线环境使用</td><td>文档和截图均随前端静态资源打包，无需外网</td></tr></tbody></table></div><h2 id="9-创建和维护巡检模板">9. 创建和维护巡检模板</h2><figure><img src="auto-inspection-manual-assets/08-template-editor.png" alt="模板编辑"><figcaption>模板编辑</figcaption></figure><p>巡检模板是自动化巡检的核心。一个模板可以包含多个巡检步骤，每个步骤代表一个具体检测动作。</p><p>模板字段说明：</p><div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td>模板名称</td><td>建议按系统、平台或业务命名，例如“TIM 平台每日巡检”</td></tr><tr><td>模板说明</td><td>说明巡检范围、适用系统和执行时机</td></tr><tr><td>状态</td><td>正常表示可执行，停用后不建议绑定新计划</td></tr><tr><td>步骤列表</td><td>当前模板包含的巡检步骤</td></tr></tbody></table></div><p>模板支持的操作：</p><div class="table-wrap"><table><thead><tr><th>操作</th><th>说明</th></tr></thead><tbody><tr><td>新增模板</td><td>从零创建一套巡检方案</td></tr><tr><td>编辑模板</td><td>修改名称、说明、步骤和状态</td></tr><tr><td>执行</td><td>对模板做一次手动巡检</td></tr><tr><td>一键复制</td><td>复制出相同模板，名称后追加“（复制）”</td></tr><tr><td>删除</td><td>删除不再使用的模板</td></tr></tbody></table></div><p>步骤支持的操作：</p><div class="table-wrap"><table><thead><tr><th>操作</th><th>说明</th></tr></thead><tbody><tr><td>添加步骤</td><td>先选择巡检工具，再进入对应配置页</td></tr><tr><td>上移 / 下移</td><td>调整步骤执行和展示顺序</td></tr><tr><td>复制步骤</td><td>复制一个相同步骤后再微调</td></tr><tr><td>编辑步骤</td><td>修改工具、目标、账号、阈值</td></tr><tr><td>删除步骤</td><td>删除不需要的检测动作</td></tr></tbody></table></div><h2 id="10-选择巡检工具">10. 选择巡检工具</h2><figure><img src="auto-inspection-manual-assets/09-tool-picker.png" alt="巡检工具箱"><figcaption>巡检工具箱</figcaption></figure><p>点击“添加步骤”后，系统会先打开巡检工具箱。工具按树状分类展示，右侧提供工具简介、适用场景、配置重点和使用案例。用户先选工具，再进入具体配置页面。</p><p>当前内置工具如下：</p><div class="table-wrap"><table><thead><tr><th>分类</th><th>工具</th><th>典型用途</th></tr></thead><tbody><tr><td>消息队列检测</td><td>Kafka 消费积压检测</td><td>检查 topic 和 consumer group 的 lag</td></tr><tr><td>接口与平台探测</td><td>海康接口数量检测</td><td>统计过车、违法、任务等接口返回数量</td></tr><tr><td>接口与平台探测</td><td>HTTP 接口健康检测</td><td>检查接口是否可访问、响应是否超时</td></tr><tr><td>接口与平台探测</td><td>接口调用测试</td><td>模拟 GET/POST 请求，并按状态码、JSON 字段、文本、Header、耗时等多条件判断</td></tr><tr><td>文件目录检测</td><td>FTP 目录文件数量检测</td><td>统计一个或多个 FTP 目录文件数</td></tr><tr><td>文件目录检测</td><td>服务器目录文件数量检测</td><td>SSH 登录服务器统计目录文件数</td></tr><tr><td>服务器检测</td><td>服务器磁盘使用率检测</td><td>检查指定路径或挂载点磁盘使用率</td></tr><tr><td>服务器检测</td><td>大数据服务器爆盘检测</td><td>检查多台大数据服务器所有分区</td></tr><tr><td>服务器检测</td><td>服务器服务状态检测</td><td>检查 systemd 服务状态，可异常后自动重启</td></tr><tr><td>网络端口检测</td><td>TCP 端口连通性检测</td><td>检查主机端口是否可连通</td></tr></tbody></table></div><p>选择工具时建议遵循：</p><ol><li>能通过接口拿到业务数量时，优先使用海康接口数量检测；需要完整模拟业务接口调用和多条件判断时，使用接口调用测试。</li><li>需要看链路积压时，使用 Kafka 消费积压检测。</li><li>检查目录积压时，区分 FTP 目录和服务器本地目录。</li><li>检查服务器可用性时，区分磁盘、端口和服务状态。</li><li>多台同类服务器尽量放在同一个步骤下配置多个子项，便于详情页按步骤聚合展示。</li></ol><h2 id="11-配置-http--海康接口步骤">11. 配置 HTTP / 海康接口步骤</h2><figure><img src="auto-inspection-manual-assets/10-http-step-config.png" alt="HTTP 步骤配置"><figcaption>HTTP 步骤配置</figcaption></figure><p>HTTP 类步骤适合做接口计数、平台健康检查和通用接口调用测试。</p><p>关键字段：</p><div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td>步骤名称</td><td>展示在记录和报告中的业务名称</td></tr><tr><td>比较规则</td><td>海康接口数量和 HTTP 健康使用数值阈值；接口调用测试使用多条件全部满足规则</td></tr><tr><td>告警阈值</td><td>触发异常的边界值</td></tr><tr><td>统计窗口</td><td>用于生成 <code>${beginTime}</code>、<code>${endTime}</code> 等变量</td></tr><tr><td>目标名称</td><td>当前接口目标的业务名称</td></tr><tr><td>请求方法</td><td>GET 或 POST</td></tr><tr><td>接口 URL</td><td>支持日期变量</td></tr><tr><td>结果路径</td><td>海康接口数量检测从 JSON 响应中解析计数值，例如 <code>data.total</code></td></tr><tr><td>AppKey / Secret</td><td>对接海康 Artemis 接口时使用</td></tr><tr><td>请求体模板</td><td>可使用日期变量生成动态请求参数</td></tr></tbody></table></div><p>接口调用测试配置页按页签填写，判定规则说明已压缩，主要空间留给接口目标和参数配置：</p><div class="table-wrap"><table><thead><tr><th>配置区</th><th>说明</th></tr></thead><tbody><tr><td>请求信息</td><td>填接口名称、GET/POST、URL 和 HTTPS 证书校验方式，URL 输入区独占整行</td></tr><tr><td>参数与鉴权</td><td>填 Query、Header、Cookie、鉴权方式和请求体；参数名和值使用宽输入区，敏感值保存为密文</td></tr><tr><td>返回条件</td><td>配置状态码、耗时、JSON 字段、列表数量、响应原文、原文正则和返回 Header；字段路径、Header 名称、匹配内容和正则表达式分区展示，适合第三方接口返回结构不固定的场景</td></tr></tbody></table></div><p>“HTTPS 证书校验”默认选严格；只有自建证书测试报错时，再选兼容自建证书。</p><p>支持的日期变量：</p><div class="table-wrap"><table><thead><tr><th>变量</th><th>示例</th><th>说明</th></tr></thead><tbody><tr><td><code>${today}</code></td><td><code>2026-06-24</code></td><td>当天日期</td></tr><tr><td><code>${todayStart}</code></td><td><code>2026-06-24 00:00:00</code></td><td>当天开始时间</td></tr><tr><td><code>${todayEnd}</code></td><td><code>2026-06-24 23:59:59</code></td><td>当天结束时间</td></tr><tr><td><code>${yyyyMMdd}</code></td><td><code>20260624</code></td><td>紧凑日期</td></tr><tr><td><code>${beginTime}</code></td><td>按统计窗口计算</td><td>窗口开始时间</td></tr><tr><td><code>${endTime}</code></td><td>当前执行时间</td><td>窗口结束时间</td></tr></tbody></table></div><p>配置建议：</p><ol><li>先确认接口是否需要 Artemis 签名。</li><li>计数接口必须填写结果路径。</li><li>健康检测可配置期望状态码。</li><li>接口调用测试至少保留一条返回条件；所有条件满足才算正常，任一条件不满足会在目标明细中展示失败原因。</li><li>第三方接口返回结构不稳定时，优先使用“响应原文”或“原文正则”，不要强行按 <code>data.total</code> 这类固定 JSON 路径配置。</li><li>保存步骤前先点击“测试目标”。</li><li>接口返回很大时，系统只保存脱敏后的响应预览，避免记录过长和敏感信息泄露。</li></ol><h2 id="12-配置-ftp-目录文件数量检测">12. 配置 FTP 目录文件数量检测</h2><p>FTP 文件数量检测支持一个步骤配置多个 FTP 目录目标。</p><p>每个 FTP 目标需要填写：</p><div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td>目标名称</td><td>例如“FTP 入库目录”</td></tr><tr><td>主机地址</td><td>FTP 服务器 IP 或域名</td></tr><tr><td>端口</td><td>默认 FTP 端口为 21，可按现场调整</td></tr><tr><td>目录路径</td><td>需要统计的 FTP 目录</td></tr><tr><td>账号 / 密码</td><td>FTP 登录凭据</td></tr></tbody></table></div><p>操作要点：</p><ol><li>点击“手动添加”增加一个 FTP 目录目标。</li><li>已填写好的目标可以点击“复制”，快速生成同类目录配置。</li><li>阈值通常用于控制目录积压数量，例如高于 50 个文件告警。</li><li>多个 FTP 目录放在一个步骤内，详情页会以同一个步骤下多个子项展示。</li></ol><h2 id="13-配置服务器目录磁盘和服务状态检测">13. 配置服务器目录、磁盘和服务状态检测</h2><figure><img src="auto-inspection-manual-assets/13-service-step-config.png" alt="服务状态步骤配置"><figcaption>服务状态步骤配置</figcaption></figure><p>服务器类工具需要通过 SSH 登录目标服务器。当前平台强调“巡检凭据隔离”：</p><ul><li>从现场融合管理选择服务器时，只带出服务器名称、IP、SSH 端口和账号提示。</li><li>测试目标、手动执行、计划执行都只使用巡检配置里保存的用户名和密码。</li><li>不会回退读取现场服务器资产里的密码，避免资产登记账号和巡检执行账号混用。</li></ul><p>默认账号和端口口径：</p><div class="table-wrap"><table><thead><tr><th>工具</th><th>默认账号</th><th>默认端口</th></tr></thead><tbody><tr><td>服务器目录文件数量检测</td><td><code>hik</code></td><td>优先使用现场服务器 <code>ssh_port</code>，为空时用 <code>55555</code></td></tr><tr><td>服务器磁盘使用率检测</td><td><code>hik</code></td><td>优先使用现场服务器 <code>ssh_port</code>，为空时用 <code>55555</code></td></tr><tr><td>服务器服务状态检测</td><td><code>hik</code></td><td>优先使用现场服务器 <code>ssh_port</code>，为空时用 <code>55555</code></td></tr><tr><td>大数据服务器爆盘检测</td><td><code>root</code></td><td>优先使用现场服务器 <code>ssh_port</code>，为空时用 <code>2343</code></td></tr></tbody></table></div><h3 id="131-服务器目录文件数量检测">13.1 服务器目录文件数量检测</h3><p>适合检查服务器本地目录是否产生文件或是否积压。</p><p>关键配置：</p><div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td>检测路径</td><td>需要统计的服务器目录</td></tr><tr><td>递归查询</td><td>开启后统计当前目录和子目录；关闭后只统计当前目录第一层</td></tr><tr><td>文件匹配</td><td>例如 <code>*.dat</code>，不填则统计全部文件</td></tr><tr><td>多服务器目标</td><td>支持手动添加和从现场服务器树选择</td></tr></tbody></table></div><h3 id="132-服务器磁盘使用率检测">13.2 服务器磁盘使用率检测</h3><p>适合检查某台服务器指定路径或挂载点的使用率。</p><p>配置建议：</p><ol><li>检测路径优先填写业务数据目录，例如 <code>/data</code>。</li><li>阈值通常设置为 80% 或 85%。</li><li>如果服务器存在多个关键挂载点，可拆成多个步骤或多个目标。</li></ol><h3 id="133-大数据服务器爆盘检测">13.3 大数据服务器爆盘检测</h3><p>适合检查 Kafka、HDFS、Spark、ClickHouse 等大数据节点。它会逐台服务器读取分区占用情况，任意分区超过阈值即告警。</p><p>配置建议：</p><ol><li>多台大数据服务器放在一个步骤里统一管理。</li><li>默认账号为 <code>root</code>，但最终以步骤内填写的账号密码为准。</li><li>若现场不允许 root 登录，需要填写实际可登录账号，并按现场权限配置提权策略。</li><li>可根据业务需要决定是否包含临时文件系统。</li></ol><h3 id="134-服务器服务状态检测">13.4 服务器服务状态检测</h3><p>服务状态检测会执行类似：</p><pre class="code-block"><span>bash</span><code>systemctl status firewalld</code></pre><p>或通过 <code>systemctl is-active</code> 判断服务是否为 <code>active</code>。</p><p>正常规则展示为：</p><div class="table-wrap"><table><thead><tr><th>状态</th><th>含义</th></tr></thead><tbody><tr><td><code>active (running)</code></td><td>正常</td></tr><tr><td><code>inactive (dead)</code></td><td>异常</td></tr><tr><td><code>failed</code></td><td>异常</td></tr><tr><td><code>unknown</code></td><td>异常</td></tr></tbody></table></div><p>可选能力：</p><div class="table-wrap"><table><thead><tr><th>配置</th><th>说明</th></tr></thead><tbody><tr><td>服务名称</td><td>例如 <code>firewalld</code>、<code>nginx</code>、<code>sshd</code></td></tr><tr><td>提权方式</td><td>不提权、sudo 或 su</td></tr><tr><td>异常自动拉起</td><td>异常时执行 <code>systemctl restart 服务名</code></td></tr><tr><td>复查等待秒数</td><td>重启后等待一段时间再检查状态</td></tr></tbody></table></div><h2 id="14-从现场融合管理选择服务器">14. 从现场融合管理选择服务器</h2><figure><img src="auto-inspection-manual-assets/14-site-server-tree-picker.png" alt="现场服务器选择"><figcaption>现场服务器选择</figcaption></figure><p>自动化巡检和现场融合管理的关联主要体现在服务器资产复用上。现场融合管理维护现场、平台、子平台和服务器资产；自动化巡检在配置服务器类步骤时，可以直接从这批服务器中选择。</p><p>选择弹窗特点：</p><div class="table-wrap"><table><thead><tr><th>能力</th><th>说明</th></tr></thead><tbody><tr><td>树状展示</td><td>按现场 / 平台 / 服务器层级展示</td></tr><tr><td>默认不展开</td><td>避免服务器很多时弹窗过长</td></tr><tr><td>数量提示</td><td>每个现场或平台节点显示下面服务器数量</td></tr><tr><td>搜索</td><td>可按现场、平台、服务器名称或 IP 搜索</td></tr><tr><td>多选</td><td>可一次选择多台服务器</td></tr><tr><td>已选列表</td><td>右侧展示已选服务器和来源路径</td></tr></tbody></table></div><p>需要特别注意：</p><ul><li>现场服务器资产中的账号密码用于资产管理。</li><li>巡检步骤中的账号密码用于实际执行。</li><li>从现场服务器选择后，系统可以带出默认账号和密码提示，但测试和计划执行只使用巡检步骤保存的数据。</li><li>修改现场服务器密码不会自动改变已保存的巡检步骤密码。</li></ul><h2 id="15-与现场融合管理的业务关系">15. 与现场融合管理的业务关系</h2><figure><img src="auto-inspection-manual-assets/15-site-management-relation.png" alt="现场融合管理"><figcaption>现场融合管理</figcaption></figure><p>现场融合管理是自动化巡检的重要资产来源。两者关系如下：</p><div class="table-wrap"><table><thead><tr><th>现场融合管理</th><th>自动化巡检</th></tr></thead><tbody><tr><td>维护现场、主平台、子平台、服务器和设备资产</td><td>从服务器资产树中选择巡检目标</td></tr><tr><td>记录服务器 IP、SSH 端口、hik/root 等登录信息</td><td>生成巡检目标时可带出 IP、端口和账号提示</td></tr><tr><td>设备资产按现场和网络环境归类</td><td>巡检模板按系统或业务场景组合目标</td></tr><tr><td>资产变更记录用于追踪现场配置变化</td><td>巡检记录用于追踪运行状态变化</td></tr></tbody></table></div><p>推荐管理方式：</p><ol><li>先在现场融合管理中维护清楚现场、平台、服务器资产。</li><li>在自动化巡检中从现场服务器树选择目标。</li><li>在巡检步骤里单独确认巡检执行账号和密码。</li><li>服务器发生迁移或 IP 变更时，先更新现场融合管理，再检查相关巡检模板。</li></ol><h2 id="16-配置巡检计划">16. 配置巡检计划</h2><figure><img src="auto-inspection-manual-assets/11-plan-list.png" alt="巡检计划列表"><figcaption>巡检计划列表</figcaption></figure><p>巡检计划用于把已经验证过的模板交给若依定时任务调度。</p><figure><img src="auto-inspection-manual-assets/12-plan-dialog.png" alt="巡检计划弹窗"><figcaption>巡检计划弹窗</figcaption></figure><p>计划字段说明：</p><div class="table-wrap"><table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody><tr><td>计划名称</td><td>建议按系统和周期命名，例如“TIM 每日 9 点巡检”</td></tr><tr><td>巡检模板</td><td>选择已经验证过的模板</td></tr><tr><td>任务编码</td><td>对应若依定时任务编码，用于排查调度</td></tr><tr><td>执行周期</td><td>页面可视化选择每日、每周、每月或间隔执行</td></tr><tr><td>Cron 预览</td><td>系统自动生成，只读展示</td></tr><tr><td>状态</td><td>启用后按计划执行，暂停后不再触发</td></tr></tbody></table></div><p>计划配置建议：</p><ol><li>新模板先手动执行成功，再配置计划。</li><li>计划名称和任务编码要能看出系统和周期。</li><li>对关键业务建议设置固定每日巡检时间。</li><li>对高频链路可使用间隔执行，但要注意目标系统压力。</li><li>修改计划后，下一次调度按最新配置执行。</li></ol><h2 id="17-单次报告周报和归档">17. 单次报告、周报和归档</h2><p>自动化巡检提供三类报告能力：</p><div class="table-wrap"><table><thead><tr><th>报告</th><th>入口</th><th>适用场景</th></tr></thead><tbody><tr><td>单次 Word 报告</td><td>巡检记录行“Word”</td><td>某一次巡检详情留档</td></tr><tr><td>按周 Word 周报</td><td>“导出周/月报”选择按周</td><td>每周巡检签字确认</td></tr><tr><td>月度周报包</td><td>“导出周/月报”选择按月</td><td>一次导出某月所有自然周周报</td></tr></tbody></table></div><p>周报适合运维交付和用户确认，月度周报包适合月底统一归档。周报中的签字区可以打印后线下签字，也可以作为电子归档附件。</p><h2 id="18-推荐落地流程">18. 推荐落地流程</h2><p>建议项目交付时按以下流程落地：</p><ol><li>在现场融合管理中确认现场、平台、服务器资产已经完整维护。</li><li>梳理需要巡检的业务对象，例如 Kafka、海康接口、FTP 目录、服务器目录、磁盘和服务。</li><li>按系统创建巡检模板，例如“TIM 每日巡检”“大数据节点巡检”。</li><li>每个模板中按业务动作添加步骤。</li><li>每个步骤配置目标、账号、阈值并测试目标。</li><li>保存模板后手动执行一次。</li><li>在巡检总览中查看详情，确认步骤结果和目标明细符合预期。</li><li>配置巡检计划。</li><li>每周导出周报并由巡检人员和用户签字确认。</li><li>每月导出月度周报包归档。</li></ol><h2 id="19-常见问题">19. 常见问题</h2><h3 id="191-测试目标成功但计划执行失败">19.1 测试目标成功，但计划执行失败</h3><p>先确认模板保存的是最新步骤。服务器类工具还要确认巡检配置里保存的 SSH 账号和密码正确，系统不会回退使用现场服务器资产里登记的密码。</p><h3 id="192-从现场服务器选择后为什么还要填巡检账号密码">19.2 从现场服务器选择后，为什么还要填巡检账号密码</h3><p>现场服务器资产记录的是资产登记信息，自动化巡检执行需要单独的巡检凭据。这样可以避免 root、hik、sudo 等账号混用，也避免资产密码修改影响历史巡检模板。</p><h3 id="193-密码显示为星号">19.3 密码显示为星号</h3><p>星号是前端脱敏显示。用户需要具备 <code>support:credential:viewPlain</code> 权限，点击小眼睛后才会显示明文。</p><h3 id="194-http-接口返回了数据但提示无法解析计数字段">19.4 HTTP 接口返回了数据，但提示无法解析计数字段</h3><p>检查“结果路径”是否和接口返回结构一致。例如返回：</p><pre class="code-block"><span>json</span><code>{
+  I --&gt; M[&quot;周报 / 月度周报包&quot;]</code></pre><h2 id="2-页面入口与权限">2. 页面入口与权限</h2><p>登录系统后，在左侧菜单进入：</p>
+<ul>
+<li><code>自动化巡检</code> -&gt; <code>巡检总览</code></li>
+<li><code>自动化巡检</code> -&gt; <code>巡检配置</code></li>
+<li><code>自动化巡检</code> -&gt; <code>巡检版本记录</code></li>
+</ul>
+<p><code>巡检总览</code> 用于查看记录、展开图表看板、查看详情和导出报告。<code>巡检配置</code> 用于维护巡检模板和巡检计划。<code>巡检版本记录</code> 用于查看自动化巡检模块的独立版本号、关联平台总版本号、修改重点和涉及 SQL。</p>
+<p>常用权限如下：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>操作</th>
+<th>权限字符</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>查看巡检记录和配置</td>
+<td><code>support:autoInspection:query</code></td>
+</tr>
+<tr>
+<td>维护巡检模板</td>
+<td><code>support:autoInspection:template</code></td>
+</tr>
+<tr>
+<td>维护巡检计划</td>
+<td><code>support:autoInspection:plan</code></td>
+</tr>
+<tr>
+<td>手动执行巡检</td>
+<td><code>support:autoInspection:run</code></td>
+</tr>
+<tr>
+<td>导出巡检报告</td>
+<td><code>support:autoInspection:export</code></td>
+</tr>
+<tr>
+<td>查看巡检密码明文</td>
+<td><code>support:credential:viewPlain</code></td>
+</tr>
+</tbody></table></div>
+<p>拥有 <code>datafusion</code> 权限字符的用户，会按现场融合体系具备自动化巡检相关权限。若按钮不可见，优先检查用户角色是否绑定了对应菜单权限。</p>
+<h2 id="3-巡检总览">3. 巡检总览</h2><p><figure><img src="auto-inspection-manual-assets/01-overview-records.png" alt="巡检总览"><figcaption>巡检总览</figcaption></figure></p>
+<p>巡检总览打开后优先展示巡检记录，方便用户第一时间处理最新结果。顶部保留轻量的本周巡检情况和趋势图，避免看板占用过多首屏空间。</p>
+<p>页面主要区域如下：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>区域</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>本周巡检情况</td>
+<td>展示本周巡检次数、异常子项、巡检天数和本周趋势</td>
+</tr>
+<tr>
+<td>筛选区</td>
+<td>按模板、计划、来源、结果筛选记录</td>
+</tr>
+<tr>
+<td>导出周/月报</td>
+<td>生成周期性 Word 巡检报告</td>
+</tr>
+<tr>
+<td>巡检记录表</td>
+<td>展示巡检时间、结果、来源、模板、计划、摘要、异常摘要和操作</td>
+</tr>
+<tr>
+<td>展开看板</td>
+<td>打开完整图表看板和当月日历</td>
+</tr>
+</tbody></table></div>
+<p>建议日常使用顺序：</p>
+<ol>
+<li>进入巡检总览先看最新记录结果。</li>
+<li>如果出现异常，点击“详情”查看步骤和子项。</li>
+<li>需要周期归档时点击“导出周/月报”。</li>
+<li>需要看整体趋势时点击“展开看板”。</li>
+</ol>
+<h2 id="4-巡检看板">4. 巡检看板</h2><p><figure><img src="auto-inspection-manual-assets/02-dashboard-drawer.png" alt="巡检看板"><figcaption>巡检看板</figcaption></figure></p>
+<p>巡检看板默认收起，点击“展开看板”后以抽屉形式展示。看板以图表为主，减少大段文字。</p>
+<p>看板包含：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>内容</th>
+<th>业务价值</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>本周巡检趋势</td>
+<td>查看每天巡检次数和异常次数变化</td>
+</tr>
+<tr>
+<td>结果分布</td>
+<td>快速判断正常、异常、跳过的比例</td>
+</tr>
+<tr>
+<td>工具健康度</td>
+<td>按巡检工具聚合正常率，定位是哪类检测经常异常</td>
+</tr>
+<tr>
+<td>异常目标</td>
+<td>展示最近异常目标，方便优先处理</td>
+</tr>
+<tr>
+<td>当月巡检日历</td>
+<td>按天展示巡检次数和异常结果，便于月度回顾</td>
+</tr>
+</tbody></table></div>
+<h2 id="5-周报和月度周报导出">5. 周报和月度周报导出</h2><p><figure><img src="auto-inspection-manual-assets/03-report-export-week.png" alt="按周导出"><figcaption>按周导出</figcaption></figure></p>
+<p>点击“导出周/月报”后，可以选择按周或按月导出。</p>
+<p>按周导出时，系统生成一个 Word 周报，文件名类似：</p>
+<pre class="code-block"><span>text</span><code>自动化巡检周报_20260622-20260628.doc</code></pre><p>周报内容包含：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>章节</th>
+<th>内容</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>签字确认</td>
+<td>文档开头包含巡检人员签字、用户签字、确认日期和备注</td>
+</tr>
+<tr>
+<td>整体健康度分析</td>
+<td>统计巡检次数、正常/异常/未检测数量、记录健康度、目标子项健康度</td>
+</tr>
+<tr>
+<td>异常展示</td>
+<td>汇总本周异常目标、调用信息、实际值和异常原因</td>
+</tr>
+<tr>
+<td>本周巡检内容汇总</td>
+<td>展示本周所有巡检记录</td>
+</tr>
+<tr>
+<td>巡检明细</td>
+<td>按记录、步骤和目标展开完整结果</td>
+</tr>
+</tbody></table></div>
+<p><figure><img src="auto-inspection-manual-assets/04-report-export-month.png" alt="按月导出"><figcaption>按月导出</figcaption></figure></p>
+<p>按月导出时，系统会把该月份涉及的自然周逐周生成 Word 文件，再打包为 zip。每个周报都是独立文件，方便按周归档和签字确认。即使某周没有巡检记录，也会生成一份“暂无巡检记录”的留档文档。</p>
+<h2 id="6-查看巡检详情">6. 查看巡检详情</h2><p><figure><img src="auto-inspection-manual-assets/05-record-detail.png" alt="巡检详情"><figcaption>巡检详情</figcaption></figure></p>
+<p>巡检记录行点击“详情”后，会打开右侧详情抽屉。详情页重点突出“步骤 / 子项”的层级关系。</p>
+<p>详情页包含：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>区域</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>报告概览</td>
+<td>展示模板名称、整体结果、摘要和计划来源</td>
+</tr>
+<tr>
+<td>指标卡片</td>
+<td>展示步骤数、目标数、异常目标和执行计划</td>
+</tr>
+<tr>
+<td>步骤结果</td>
+<td>按模板步骤顺序展示工具、结果、实际值、判定规则和摘要</td>
+</tr>
+<tr>
+<td>目标明细</td>
+<td>按步骤分组展示每个子项的目标、实际值、调用信息和异常原因</td>
+</tr>
+</tbody></table></div>
+<p>排障时建议先看“目标明细”：</p>
+<ol>
+<li>先找到异常步骤。</li>
+<li>再看该步骤下具体异常子项。</li>
+<li>查看“实际值”和“调用信息”确认接口返回、命令输出或服务状态。</li>
+<li>查看“异常原因”判断是连通性、鉴权、阈值、路径还是服务状态问题。</li>
+</ol>
+<h2 id="7-巡检配置总览">7. 巡检配置总览</h2><p><figure><img src="auto-inspection-manual-assets/06-config-template-plan.png" alt="巡检配置"><figcaption>巡检配置</figcaption></figure></p>
+<p>巡检配置页面把模板和计划收敛到一个入口内，避免用户在多个菜单之间来回切换。</p>
+<p>配置页主要包含：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>区域</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>巡检模板</td>
+<td>维护一套可重复执行的巡检步骤</td>
+</tr>
+<tr>
+<td>巡检计划</td>
+<td>把模板交给若依定时任务按周期执行</td>
+</tr>
+<tr>
+<td>操作指引</td>
+<td>新用户可按步骤查看完整配置流程和截图说明</td>
+</tr>
+</tbody></table></div>
+<p>第一次配置建议顺序：</p>
+<ol>
+<li>创建巡检模板。</li>
+<li>添加巡检步骤并选择工具。</li>
+<li>配置目标、账号、阈值并测试目标。</li>
+<li>保存模板。</li>
+<li>手动执行模板验证结果。</li>
+<li>配置巡检计划。</li>
+<li>后续在巡检总览查看记录和导出报告。</li>
+</ol>
+<h2 id="8-系统内操作指引">8. 系统内操作指引</h2><p><figure><img src="auto-inspection-manual-assets/07-operation-guide.png" alt="操作指引"><figcaption>操作指引</figcaption></figure></p>
+<p>“操作指引”入口位于巡检配置页面右侧。点击后会打开抽屉，按步骤展示模板、工具、目标、计划、记录和报告导出的操作路径，并提供完整离线文档入口。</p>
+<p>指引适合以下场景：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>场景</th>
+<th>使用方式</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>新用户第一次配置</td>
+<td>按抽屉步骤从模板开始逐项完成</td>
+</tr>
+<tr>
+<td>忘记工具含义</td>
+<td>对照工具选择说明和截图</td>
+</tr>
+<tr>
+<td>部署交付培训</td>
+<td>直接打开完整文档进行讲解</td>
+</tr>
+<tr>
+<td>离线环境使用</td>
+<td>文档和截图均随前端静态资源打包，无需外网</td>
+</tr>
+</tbody></table></div>
+<h2 id="9-创建和维护巡检模板">9. 创建和维护巡检模板</h2><p><figure><img src="auto-inspection-manual-assets/08-template-editor.png" alt="模板编辑"><figcaption>模板编辑</figcaption></figure></p>
+<p>巡检模板是自动化巡检的核心。一个模板可以包含多个巡检步骤，每个步骤代表一个具体检测动作。</p>
+<p>模板字段说明：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>模板名称</td>
+<td>建议按系统、平台或业务命名，例如“TIM 平台每日巡检”</td>
+</tr>
+<tr>
+<td>模板说明</td>
+<td>说明巡检范围、适用系统和执行时机</td>
+</tr>
+<tr>
+<td>状态</td>
+<td>正常表示可执行，停用后不建议绑定新计划</td>
+</tr>
+<tr>
+<td>执行流程</td>
+<td>以流程节点展示步骤顺序、数据来源、结果判断和执行策略</td>
+</tr>
+</tbody></table></div>
+<p>模板支持的操作：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>操作</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>新增模板</td>
+<td>从零创建一套巡检方案</td>
+</tr>
+<tr>
+<td>编辑模板</td>
+<td>修改名称、说明、步骤和状态</td>
+</tr>
+<tr>
+<td>执行</td>
+<td>对模板做一次手动巡检</td>
+</tr>
+<tr>
+<td>一键复制</td>
+<td>复制出相同模板，名称后追加“（复制）”</td>
+</tr>
+<tr>
+<td>删除</td>
+<td>删除不再使用的模板</td>
+</tr>
+</tbody></table></div>
+<p>步骤支持的操作：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>操作</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>添加步骤</td>
+<td>先选择巡检工具，再进入对应配置页</td>
+</tr>
+<tr>
+<td>上移 / 下移</td>
+<td>调整步骤执行和展示顺序</td>
+</tr>
+<tr>
+<td>复制步骤</td>
+<td>复制一个相同步骤后再微调</td>
+</tr>
+<tr>
+<td>编辑步骤</td>
+<td>修改工具、目标、账号、阈值</td>
+</tr>
+<tr>
+<td>删除步骤</td>
+<td>删除不需要的检测动作</td>
+</tr>
+</tbody></table></div>
+<p>每个流程节点固定展示三类信息：</p>
+<ul>
+<li><strong>数据来源</strong>：本步骤从哪个接口、Kafka、FTP、服务器或数据库取数。</li>
+<li><strong>结果判断</strong>：实际值满足什么条件才算正常。</li>
+<li><strong>执行策略</strong>：异常是否复检、复检间隔，以及异常后继续还是停止后续步骤。</li>
+</ul>
+<p>旧模板默认保持“异常不复检、异常后继续”，不需要重新保存即可继续执行。</p>
+<h2 id="10-选择巡检工具">10. 选择巡检工具</h2><p><figure><img src="auto-inspection-manual-assets/09-tool-picker.png" alt="巡检工具箱"><figcaption>巡检工具箱</figcaption></figure></p>
+<p>点击“添加步骤”后，系统会先打开巡检工具箱。工具按树状分类展示，右侧提供工具简介、适用场景、配置重点和使用案例。用户先选工具，再进入具体配置页面。</p>
+<p>当前内置工具如下：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>分类</th>
+<th>工具</th>
+<th>典型用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>消息队列检测</td>
+<td>Kafka 消费积压检测</td>
+<td>检查 topic 和 consumer group 的 lag</td>
+</tr>
+<tr>
+<td>接口与平台探测</td>
+<td>海康接口数量检测</td>
+<td>统计过车、违法、任务等接口返回数量</td>
+</tr>
+<tr>
+<td>接口与平台探测</td>
+<td>HTTP 接口健康检测</td>
+<td>检查接口是否可访问、响应是否超时</td>
+</tr>
+<tr>
+<td>接口与平台探测</td>
+<td>接口调用测试</td>
+<td>模拟 GET/POST 请求，并按状态码、JSON 字段、文本、Header、耗时等多条件判断</td>
+</tr>
+<tr>
+<td>数据库存储检查</td>
+<td>数据库查询检查</td>
+<td>使用只读 SQL 从 MySQL/PostgreSQL 获取数量、积压或业务指标</td>
+</tr>
+<tr>
+<td>文件目录检测</td>
+<td>FTP 目录文件数量检测</td>
+<td>统计一个或多个 FTP 目录文件数</td>
+</tr>
+<tr>
+<td>文件目录检测</td>
+<td>服务器目录文件数量检测</td>
+<td>SSH 登录服务器统计目录文件数</td>
+</tr>
+<tr>
+<td>服务器检测</td>
+<td>服务器磁盘使用率检测</td>
+<td>检查指定路径或挂载点磁盘使用率</td>
+</tr>
+<tr>
+<td>服务器检测</td>
+<td>大数据服务器爆盘检测</td>
+<td>检查多台大数据服务器所有分区</td>
+</tr>
+<tr>
+<td>服务器检测</td>
+<td>服务器服务状态检测</td>
+<td>检查 systemd 服务状态，可异常后自动重启</td>
+</tr>
+<tr>
+<td>网络端口检测</td>
+<td>TCP 端口连通性检测</td>
+<td>检查主机端口是否可连通</td>
+</tr>
+</tbody></table></div>
+<p>选择工具时建议遵循：</p>
+<ol>
+<li>能通过接口拿到业务数量时，优先使用海康接口数量检测；需要完整模拟业务接口调用和多条件判断时，使用接口调用测试。</li>
+<li>需要看链路积压时，使用 Kafka 消费积压检测。</li>
+<li>数据只能从业务库准确获得时，使用数据库查询检查，并为巡检配置独立只读账号。</li>
+<li>检查目录积压时，区分 FTP 目录和服务器本地目录。</li>
+<li>检查服务器可用性时，区分磁盘、端口和服务状态。</li>
+<li>多台同类服务器尽量放在同一个步骤下配置多个子项，便于详情页按步骤聚合展示。</li>
+</ol>
+<h2 id="11-配置-http-海康接口步骤">11. 配置 HTTP / 海康接口步骤</h2><p><figure><img src="auto-inspection-manual-assets/10-http-step-config.png" alt="HTTP 步骤配置"><figcaption>HTTP 步骤配置</figcaption></figure></p>
+<p>HTTP 类步骤适合做接口计数、平台健康检查和通用接口调用测试。</p>
+<p>关键字段：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>步骤名称</td>
+<td>展示在记录和报告中的业务名称</td>
+</tr>
+<tr>
+<td>比较规则</td>
+<td>海康接口数量和 HTTP 健康使用数值阈值；接口调用测试使用多条件全部满足规则</td>
+</tr>
+<tr>
+<td>告警阈值</td>
+<td>触发异常的边界值</td>
+</tr>
+<tr>
+<td>统计窗口</td>
+<td>用于生成 <code>${beginTime}</code>、<code>${endTime}</code> 等变量</td>
+</tr>
+<tr>
+<td>目标名称</td>
+<td>当前接口目标的业务名称</td>
+</tr>
+<tr>
+<td>请求方法</td>
+<td>GET 或 POST</td>
+</tr>
+<tr>
+<td>接口 URL</td>
+<td>支持日期变量</td>
+</tr>
+<tr>
+<td>结果路径</td>
+<td>海康接口数量检测从 JSON 响应中解析计数值，例如 <code>data.total</code></td>
+</tr>
+<tr>
+<td>AppKey / Secret</td>
+<td>对接海康 Artemis 接口时使用</td>
+</tr>
+<tr>
+<td>请求体模板</td>
+<td>可使用日期变量生成动态请求参数</td>
+</tr>
+</tbody></table></div>
+<p>接口调用测试配置页按页签填写，判定规则说明已压缩，主要空间留给接口目标和参数配置：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>配置区</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>请求信息</td>
+<td>填接口名称、GET/POST、URL 和 HTTPS 证书校验方式，URL 输入区独占整行</td>
+</tr>
+<tr>
+<td>参数与鉴权</td>
+<td>填 Query、Header、Cookie、鉴权方式和请求体；参数名和值使用宽输入区，敏感值保存为密文</td>
+</tr>
+<tr>
+<td>返回条件</td>
+<td>配置状态码、耗时、JSON 字段、列表数量、响应原文、原文正则和返回 Header；字段路径、Header 名称、匹配内容和正则表达式分区展示，适合第三方接口返回结构不固定的场景</td>
+</tr>
+</tbody></table></div>
+<p>“HTTPS 证书校验”默认选严格；只有自建证书测试报错时，再选兼容自建证书。</p>
+<p>支持的日期变量：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>变量</th>
+<th>示例</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>${today}</code></td>
+<td><code>2026-06-24</code></td>
+<td>当天日期</td>
+</tr>
+<tr>
+<td><code>${todayStart}</code></td>
+<td><code>2026-06-24 00:00:00</code></td>
+<td>当天开始时间</td>
+</tr>
+<tr>
+<td><code>${todayEnd}</code></td>
+<td><code>2026-06-24 23:59:59</code></td>
+<td>当天结束时间</td>
+</tr>
+<tr>
+<td><code>${yyyyMMdd}</code></td>
+<td><code>20260624</code></td>
+<td>紧凑日期</td>
+</tr>
+<tr>
+<td><code>${beginTime}</code></td>
+<td>按统计窗口计算</td>
+<td>窗口开始时间</td>
+</tr>
+<tr>
+<td><code>${endTime}</code></td>
+<td>当前执行时间</td>
+<td>窗口结束时间</td>
+</tr>
+</tbody></table></div>
+<p>配置建议：</p>
+<ol>
+<li>先确认接口是否需要 Artemis 签名。</li>
+<li>计数接口必须填写结果路径。</li>
+<li>健康检测可配置期望状态码。</li>
+<li>接口调用测试至少保留一条返回条件；所有条件满足才算正常，任一条件不满足会在目标明细中展示失败原因。</li>
+<li>第三方接口返回结构不稳定时，优先使用“响应原文”或“原文正则”，不要强行按 <code>data.total</code> 这类固定 JSON 路径配置。</li>
+<li>保存步骤前先点击“测试并预览”；接口返回 JSON 时，系统会识别字段路径，点击字段即可添加为返回条件。</li>
+<li>接口返回很大时，系统只保存脱敏后的响应预览，避免记录过长和敏感信息泄露。</li>
+</ol>
+<h2 id="12-配置数据库查询检查">12. 配置数据库查询检查</h2><p>数据库查询检查用于把数据库中的业务数量、积压数量或状态指标直接纳入巡检。当前支持 MySQL 和 PostgreSQL。</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>数据库类型</td>
+<td>MySQL 或 PostgreSQL</td>
+</tr>
+<tr>
+<td>主机地址 / 端口</td>
+<td>数据库访问地址；MySQL 默认 3306，PostgreSQL 默认 5432</td>
+</tr>
+<tr>
+<td>数据库名称</td>
+<td>要查询的业务数据库</td>
+</tr>
+<tr>
+<td>只读账号 / 登录密码</td>
+<td>建议创建仅具备查询权限的专用巡检账号</td>
+</tr>
+<tr>
+<td>只读查询 SQL</td>
+<td>仅允许一条 <code>SELECT</code> 或 <code>WITH</code> 查询，支持 <code>${today}</code>、<code>${todayStart}</code>、<code>${todayEnd}</code> 等日期变量</td>
+</tr>
+<tr>
+<td>取值方式</td>
+<td>读取首行字段值，或统计查询返回行数</td>
+</tr>
+<tr>
+<td>取值字段</td>
+<td>例如 <code>total</code>；留空时读取第一列</td>
+</tr>
+</tbody></table></div>
+<p>推荐优先使用聚合查询直接返回单个指标：</p>
+<pre class="code-block"><span>sql</span><code>SELECT COUNT(*) AS total
+FROM pass_record
+WHERE create_time &gt;= CURRENT_DATE;</code></pre><p>安全与执行规则：</p>
+<ol>
+<li>后端会拒绝 INSERT、UPDATE、DELETE、DDL、多语句、<code>FOR UPDATE</code> 和数据库文件读取函数。</li>
+<li>JDBC 连接强制设置为只读，并配置查询超时和最大返回行数。</li>
+<li>“测试并预览”会展示字段名、前几行数据、返回行数和最终取值，便于保存前核对。</li>
+<li>正式巡检只记录取值、行数和调用摘要，不在记录中保存数据库密码。</li>
+</ol>
+<h2 id="13-配置-ftp-目录文件数量检测">13. 配置 FTP 目录文件数量检测</h2><p>FTP 文件数量检测支持一个步骤配置多个 FTP 目录目标。</p>
+<p>每个 FTP 目标需要填写：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>目标名称</td>
+<td>例如“FTP 入库目录”</td>
+</tr>
+<tr>
+<td>主机地址</td>
+<td>FTP 服务器 IP 或域名</td>
+</tr>
+<tr>
+<td>端口</td>
+<td>默认 FTP 端口为 21，可按现场调整</td>
+</tr>
+<tr>
+<td>目录路径</td>
+<td>需要统计的 FTP 目录</td>
+</tr>
+<tr>
+<td>账号 / 密码</td>
+<td>FTP 登录凭据</td>
+</tr>
+</tbody></table></div>
+<p>操作要点：</p>
+<ol>
+<li>点击“手动添加”增加一个 FTP 目录目标。</li>
+<li>已填写好的目标可以点击“复制”，快速生成同类目录配置。</li>
+<li>阈值通常用于控制目录积压数量，例如高于 50 个文件告警。</li>
+<li>多个 FTP 目录放在一个步骤内，详情页会以同一个步骤下多个子项展示。</li>
+</ol>
+<h2 id="14-配置服务器目录-磁盘和服务状态检测">14. 配置服务器目录、磁盘和服务状态检测</h2><p><figure><img src="auto-inspection-manual-assets/13-service-step-config.png" alt="服务状态步骤配置"><figcaption>服务状态步骤配置</figcaption></figure></p>
+<p>服务器类工具需要通过 SSH 登录目标服务器。当前平台强调“巡检凭据隔离”：</p>
+<ul>
+<li>从现场融合管理选择服务器时，只带出服务器名称、IP、SSH 端口和账号提示。</li>
+<li>测试目标、手动执行、计划执行都只使用巡检配置里保存的用户名和密码。</li>
+<li>不会回退读取现场服务器资产里的密码，避免资产登记账号和巡检执行账号混用。</li>
+</ul>
+<p>默认账号和端口口径：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>工具</th>
+<th>默认账号</th>
+<th>默认端口</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>服务器目录文件数量检测</td>
+<td><code>hik</code></td>
+<td>优先使用现场服务器 <code>ssh_port</code>，为空时用 <code>55555</code></td>
+</tr>
+<tr>
+<td>服务器磁盘使用率检测</td>
+<td><code>hik</code></td>
+<td>优先使用现场服务器 <code>ssh_port</code>，为空时用 <code>55555</code></td>
+</tr>
+<tr>
+<td>服务器服务状态检测</td>
+<td><code>hik</code></td>
+<td>优先使用现场服务器 <code>ssh_port</code>，为空时用 <code>55555</code></td>
+</tr>
+<tr>
+<td>大数据服务器爆盘检测</td>
+<td><code>root</code></td>
+<td>优先使用现场服务器 <code>ssh_port</code>，为空时用 <code>2343</code></td>
+</tr>
+</tbody></table></div>
+<h3 id="14-1-服务器目录文件数量检测">14.1 服务器目录文件数量检测</h3><p>适合检查服务器本地目录是否产生文件或是否积压。</p>
+<p>关键配置：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>检测路径</td>
+<td>需要统计的服务器目录</td>
+</tr>
+<tr>
+<td>递归查询</td>
+<td>开启后统计当前目录和子目录；关闭后只统计当前目录第一层</td>
+</tr>
+<tr>
+<td>文件匹配</td>
+<td>例如 <code>*.dat</code>，不填则统计全部文件</td>
+</tr>
+<tr>
+<td>多服务器目标</td>
+<td>支持手动添加和从现场服务器树选择</td>
+</tr>
+</tbody></table></div>
+<h3 id="14-2-服务器磁盘使用率检测">14.2 服务器磁盘使用率检测</h3><p>适合检查某台服务器指定路径或挂载点的使用率。</p>
+<p>配置建议：</p>
+<ol>
+<li>检测路径优先填写业务数据目录，例如 <code>/data</code>。</li>
+<li>阈值通常设置为 80% 或 85%。</li>
+<li>如果服务器存在多个关键挂载点，可拆成多个步骤或多个目标。</li>
+</ol>
+<h3 id="14-3-大数据服务器爆盘检测">14.3 大数据服务器爆盘检测</h3><p>适合检查 Kafka、HDFS、Spark、ClickHouse 等大数据节点。它会逐台服务器读取分区占用情况，任意分区超过阈值即告警。</p>
+<p>配置建议：</p>
+<ol>
+<li>多台大数据服务器放在一个步骤里统一管理。</li>
+<li>默认账号为 <code>root</code>，但最终以步骤内填写的账号密码为准。</li>
+<li>若现场不允许 root 登录，需要填写实际可登录账号，并按现场权限配置提权策略。</li>
+<li>可根据业务需要决定是否包含临时文件系统。</li>
+</ol>
+<h3 id="14-4-服务器服务状态检测">14.4 服务器服务状态检测</h3><p>服务状态检测会执行类似：</p>
+<pre class="code-block"><span>bash</span><code>systemctl status firewalld</code></pre><p>或通过 <code>systemctl is-active</code> 判断服务是否为 <code>active</code>。</p>
+<p>正常规则展示为：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>状态</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>active (running)</code></td>
+<td>正常</td>
+</tr>
+<tr>
+<td><code>inactive (dead)</code></td>
+<td>异常</td>
+</tr>
+<tr>
+<td><code>failed</code></td>
+<td>异常</td>
+</tr>
+<tr>
+<td><code>unknown</code></td>
+<td>异常</td>
+</tr>
+</tbody></table></div>
+<p>可选能力：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>配置</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>服务名称</td>
+<td>例如 <code>firewalld</code>、<code>nginx</code>、<code>sshd</code></td>
+</tr>
+<tr>
+<td>提权方式</td>
+<td>不提权、sudo 或 su</td>
+</tr>
+<tr>
+<td>异常自动拉起</td>
+<td>异常时执行 <code>systemctl restart 服务名</code></td>
+</tr>
+<tr>
+<td>复查等待秒数</td>
+<td>重启后等待一段时间再检查状态</td>
+</tr>
+</tbody></table></div>
+<h2 id="15-从现场融合管理选择服务器">15. 从现场融合管理选择服务器</h2><p><figure><img src="auto-inspection-manual-assets/14-site-server-tree-picker.png" alt="现场服务器选择"><figcaption>现场服务器选择</figcaption></figure></p>
+<p>自动化巡检和现场融合管理的关联主要体现在服务器资产复用上。现场融合管理维护现场、平台、子平台和服务器资产；自动化巡检在配置服务器类步骤时，可以直接从这批服务器中选择。</p>
+<p>选择弹窗特点：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>能力</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>树状展示</td>
+<td>按现场 / 平台 / 服务器层级展示</td>
+</tr>
+<tr>
+<td>默认不展开</td>
+<td>避免服务器很多时弹窗过长</td>
+</tr>
+<tr>
+<td>数量提示</td>
+<td>每个现场或平台节点显示下面服务器数量</td>
+</tr>
+<tr>
+<td>搜索</td>
+<td>可按现场、平台、服务器名称或 IP 搜索</td>
+</tr>
+<tr>
+<td>多选</td>
+<td>可一次选择多台服务器</td>
+</tr>
+<tr>
+<td>已选列表</td>
+<td>右侧展示已选服务器和来源路径</td>
+</tr>
+</tbody></table></div>
+<p>需要特别注意：</p>
+<ul>
+<li>现场服务器资产中的账号密码用于资产管理。</li>
+<li>巡检步骤中的账号密码用于实际执行。</li>
+<li>从现场服务器选择后，系统可以带出默认账号和密码提示，但测试和计划执行只使用巡检步骤保存的数据。</li>
+<li>修改现场服务器密码不会自动改变已保存的巡检步骤密码。</li>
+</ul>
+<h2 id="16-与现场融合管理的业务关系">16. 与现场融合管理的业务关系</h2><p><figure><img src="auto-inspection-manual-assets/15-site-management-relation.png" alt="现场融合管理"><figcaption>现场融合管理</figcaption></figure></p>
+<p>现场融合管理是自动化巡检的重要资产来源。两者关系如下：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>现场融合管理</th>
+<th>自动化巡检</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>维护现场、主平台、子平台、服务器和设备资产</td>
+<td>从服务器资产树中选择巡检目标</td>
+</tr>
+<tr>
+<td>记录服务器 IP、SSH 端口、hik/root 等登录信息</td>
+<td>生成巡检目标时可带出 IP、端口和账号提示</td>
+</tr>
+<tr>
+<td>设备资产按现场和网络环境归类</td>
+<td>巡检模板按系统或业务场景组合目标</td>
+</tr>
+<tr>
+<td>资产变更记录用于追踪现场配置变化</td>
+<td>巡检记录用于追踪运行状态变化</td>
+</tr>
+</tbody></table></div>
+<p>推荐管理方式：</p>
+<ol>
+<li>先在现场融合管理中维护清楚现场、平台、服务器资产。</li>
+<li>在自动化巡检中从现场服务器树选择目标。</li>
+<li>在巡检步骤里单独确认巡检执行账号和密码。</li>
+<li>服务器发生迁移或 IP 变更时，先更新现场融合管理，再检查相关巡检模板。</li>
+</ol>
+<h2 id="17-配置巡检计划">17. 配置巡检计划</h2><p><figure><img src="auto-inspection-manual-assets/11-plan-list.png" alt="巡检计划列表"><figcaption>巡检计划列表</figcaption></figure></p>
+<p>巡检计划用于把已经验证过的模板交给若依定时任务调度。</p>
+<p><figure><img src="auto-inspection-manual-assets/12-plan-dialog.png" alt="巡检计划弹窗"><figcaption>巡检计划弹窗</figcaption></figure></p>
+<p>计划字段说明：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>计划名称</td>
+<td>建议按系统和周期命名，例如“TIM 每日 9 点巡检”</td>
+</tr>
+<tr>
+<td>巡检模板</td>
+<td>选择已经验证过的模板</td>
+</tr>
+<tr>
+<td>任务编码</td>
+<td>对应若依定时任务编码，用于排查调度</td>
+</tr>
+<tr>
+<td>执行周期</td>
+<td>页面可视化选择每日、每周、每月或间隔执行</td>
+</tr>
+<tr>
+<td>Cron 预览</td>
+<td>系统自动生成，只读展示</td>
+</tr>
+<tr>
+<td>状态</td>
+<td>启用后按计划执行，暂停后不再触发</td>
+</tr>
+</tbody></table></div>
+<p>计划配置建议：</p>
+<ol>
+<li>新模板先手动执行成功，再配置计划。</li>
+<li>计划名称和任务编码要能看出系统和周期。</li>
+<li>对关键业务建议设置固定每日巡检时间。</li>
+<li>对高频链路可使用间隔执行，但要注意目标系统压力。</li>
+<li>修改计划后，下一次调度按最新配置执行。</li>
+</ol>
+<h2 id="18-单次报告-周报和归档">18. 单次报告、周报和归档</h2><p>自动化巡检提供三类报告能力：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>报告</th>
+<th>入口</th>
+<th>适用场景</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>单次 Word 报告</td>
+<td>巡检记录行“Word”</td>
+<td>某一次巡检详情留档</td>
+</tr>
+<tr>
+<td>按周 Word 周报</td>
+<td>“导出周/月报”选择按周</td>
+<td>每周巡检签字确认</td>
+</tr>
+<tr>
+<td>月度周报包</td>
+<td>“导出周/月报”选择按月</td>
+<td>一次导出某月所有自然周周报</td>
+</tr>
+</tbody></table></div>
+<p>周报适合运维交付和用户确认，月度周报包适合月底统一归档。周报中的签字区可以打印后线下签字，也可以作为电子归档附件。</p>
+<h2 id="19-推荐落地流程">19. 推荐落地流程</h2><p>建议项目交付时按以下流程落地：</p>
+<ol>
+<li>在现场融合管理中确认现场、平台、服务器资产已经完整维护。</li>
+<li>梳理需要巡检的业务对象，例如 Kafka、海康接口、FTP 目录、服务器目录、磁盘和服务。</li>
+<li>按系统创建巡检模板，例如“TIM 每日巡检”“大数据节点巡检”。</li>
+<li>每个模板中按业务动作添加步骤。</li>
+<li>每个步骤配置目标、账号、阈值并测试目标。</li>
+<li>保存模板后手动执行一次。</li>
+<li>在巡检总览中查看详情，确认步骤结果和目标明细符合预期。</li>
+<li>配置巡检计划。</li>
+<li>每周导出周报并由巡检人员和用户签字确认。</li>
+<li>每月导出月度周报包归档。</li>
+</ol>
+<h2 id="20-常见问题">20. 常见问题</h2><h3 id="20-1-测试目标成功-但计划执行失败">20.1 测试目标成功，但计划执行失败</h3><p>先确认模板保存的是最新步骤。服务器类工具还要确认巡检配置里保存的 SSH 账号和密码正确，系统不会回退使用现场服务器资产里登记的密码。</p>
+<h3 id="20-2-从现场服务器选择后-为什么还要填巡检账号密码">20.2 从现场服务器选择后，为什么还要填巡检账号密码</h3><p>现场服务器资产记录的是资产登记信息，自动化巡检执行需要单独的巡检凭据。这样可以避免 root、hik、sudo 等账号混用，也避免资产密码修改影响历史巡检模板。</p>
+<h3 id="20-3-密码显示为星号">20.3 密码显示为星号</h3><p>星号是前端脱敏显示。用户需要具备 <code>support:credential:viewPlain</code> 权限，点击小眼睛后才会显示明文。</p>
+<h3 id="20-4-http-接口返回了数据-但提示无法解析计数字段">20.4 HTTP 接口返回了数据，但提示无法解析计数字段</h3><p>检查“结果路径”是否和接口返回结构一致。例如返回：</p>
+<pre class="code-block"><span>json</span><code>{
   &quot;data&quot;: {
     &quot;total&quot;: 12
   }
-}</code></pre><p>结果路径应填写：</p><pre class="code-block"><span>text</span><code>data.total</code></pre><h3 id="195-服务状态检测显示-inactive-dead">19.5 服务状态检测显示 <code>inactive (dead)</code></h3><p>说明服务不是运行状态。检查服务名是否正确，确认巡检账号是否有执行 <code>systemctl</code> 的权限。如果需要自动拉起，配置 sudo 或 su 提权并开启异常自动重启。</p><h3 id="196-周报导出没有数据">19.6 周报导出没有数据</h3><p>周报按巡检时间统计。如果选中的自然周没有记录，系统仍会生成留档文件，并在文档中提示“本周期暂无巡检记录”。</p><h3 id="197-月度导出的-zip-里为什么有跨月日期">19.7 月度导出的 zip 里为什么有跨月日期</h3><p>月度导出按自然周生成，只要某个自然周和所选月份有交集，就会生成该周周报。例如某月第一周可能从上个月最后几天开始。</p><h2 id="20-部署携带文件">20. 部署携带文件</h2><p>部署时建议同步以下文件：</p><div class="table-wrap"><table><thead><tr><th>文件</th><th>用途</th></tr></thead><tbody><tr><td><code>WDF100.0/doc/自动化巡检功能操作手册.md</code></td><td>Markdown 源文档</td></tr><tr><td><code>WDF100.0/doc/自动化巡检功能操作手册.html</code></td><td>离线渲染版文档</td></tr><tr><td><code>WDF100.0/doc/自动化巡检功能操作手册.docx</code></td><td>Word 版操作手册，适合邮件转发和交付归档</td></tr><tr><td><code>WDF100.0/doc/auto-inspection-manual-assets/</code></td><td>手册截图素材</td></tr><tr><td><code>RuoYi-Vue3-master/public/docs/auto-inspection/auto-inspection-manual.md</code></td><td>前端静态 Markdown 备份</td></tr><tr><td><code>RuoYi-Vue3-master/public/docs/auto-inspection/auto-inspection-manual.html</code></td><td>系统“打开完整文档”入口</td></tr><tr><td><code>RuoYi-Vue3-master/public/docs/auto-inspection/auto-inspection-manual.docx</code></td><td>前端静态 Word 备份，可随 dist 一起部署</td></tr><tr><td><code>RuoYi-Vue3-master/public/docs/auto-inspection/auto-inspection-manual-assets/</code></td><td>前端静态截图资源，打包进入 <code>dist/docs/auto-inspection/</code></td></tr></tbody></table></div><p>本次文档更新不涉及数据库结构变化，不需要新增 SQL 升级脚本。</p></main></div></body>
+}</code></pre><p>结果路径应填写：</p>
+<pre class="code-block"><span>text</span><code>data.total</code></pre><h3 id="20-5-服务状态检测显示-inactive-dead">20.5 服务状态检测显示 <code>inactive (dead)</code></h3><p>说明服务不是运行状态。检查服务名是否正确，确认巡检账号是否有执行 <code>systemctl</code> 的权限。如果需要自动拉起，配置 sudo 或 su 提权并开启异常自动重启。</p>
+<h3 id="20-6-周报导出没有数据">20.6 周报导出没有数据</h3><p>周报按巡检时间统计。如果选中的自然周没有记录，系统仍会生成留档文件，并在文档中提示“本周期暂无巡检记录”。</p>
+<h3 id="20-7-月度导出的-zip-里为什么有跨月日期">20.7 月度导出的 zip 里为什么有跨月日期</h3><p>月度导出按自然周生成，只要某个自然周和所选月份有交集，就会生成该周周报。例如某月第一周可能从上个月最后几天开始。</p>
+<h2 id="21-部署携带文件">21. 部署携带文件</h2><p>部署时建议同步以下文件：</p>
+<div class="table-wrap"><table>
+<thead>
+<tr>
+<th>文件</th>
+<th>用途</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>WDF100.0/doc/自动化巡检功能操作手册.md</code></td>
+<td>Markdown 源文档</td>
+</tr>
+<tr>
+<td><code>WDF100.0/doc/自动化巡检功能操作手册.html</code></td>
+<td>离线渲染版文档</td>
+</tr>
+<tr>
+<td><code>WDF100.0/doc/自动化巡检功能操作手册.docx</code></td>
+<td>Word 版操作手册，适合邮件转发和交付归档</td>
+</tr>
+<tr>
+<td><code>WDF100.0/doc/auto-inspection-manual-assets/</code></td>
+<td>手册截图素材</td>
+</tr>
+<tr>
+<td><code>RuoYi-Vue3-master/public/docs/auto-inspection/auto-inspection-manual.md</code></td>
+<td>前端静态 Markdown 备份</td>
+</tr>
+<tr>
+<td><code>RuoYi-Vue3-master/public/docs/auto-inspection/auto-inspection-manual.html</code></td>
+<td>系统“打开完整文档”入口</td>
+</tr>
+<tr>
+<td><code>RuoYi-Vue3-master/public/docs/auto-inspection/auto-inspection-manual.docx</code></td>
+<td>前端静态 Word 备份，可随 dist 一起部署</td>
+</tr>
+<tr>
+<td><code>RuoYi-Vue3-master/public/docs/auto-inspection/auto-inspection-manual-assets/</code></td>
+<td>前端静态截图资源，打包进入 <code>dist/docs/auto-inspection/</code></td>
+</tr>
+</tbody></table></div>
+<p>本版本不修改业务表结构；新增数据库查询检查工具注册脚本：<code>WDF100.0/sql/support_upgrade_20260819_auto_inspection_etl_workflow_v3_10_0.sql</code>。</p>
+</main></div></body>
 </html>

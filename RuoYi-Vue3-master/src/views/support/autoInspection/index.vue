@@ -244,6 +244,72 @@
       </div>
     </el-drawer>
 
+    <el-drawer v-model="targetPreviewOpen" title="测试结果与数据预览" direction="rtl" size="680px" append-to-body class="target-preview-drawer">
+      <div v-loading="targetPreviewLoading" class="target-preview">
+        <section class="target-preview__status" :class="{ 'is-passed': targetPreviewData.passed, 'is-failed': !targetPreviewData.passed }">
+          <span class="status-dot" :class="`status-dot--${targetPreviewData.resultStatus || '3'}`"></span>
+          <div>
+            <strong>{{ targetPreviewData.passed ? '测试通过' : '测试未通过' }}</strong>
+            <p>{{ targetPreviewData.message || targetPreviewData.errorMessage || '等待测试结果' }}</p>
+          </div>
+          <el-tag :type="targetPreviewData.passed ? 'success' : 'danger'">{{ targetPreviewData.passed ? '正常' : '异常' }}</el-tag>
+        </section>
+
+        <section class="target-preview__metrics">
+          <span><label>目标</label><strong>{{ targetPreviewData.targetName || stepDraft.stepName || '-' }}</strong></span>
+          <span><label>实际值</label><strong>{{ formatPreviewActualValue(targetPreviewData) }}</strong></span>
+          <span><label>响应耗时</label><strong>{{ targetPreviewData.preview?.latencyMs != null ? `${targetPreviewData.preview.latencyMs} ms` : '-' }}</strong></span>
+        </section>
+
+        <section v-if="targetPreviewData.preview?.kind === 'HTTP'" class="target-preview__section">
+          <header><strong>请求与响应</strong><span>确认实际调用信息，再从真实返回中选择字段。</span></header>
+          <dl class="target-preview__request">
+            <div><dt>请求</dt><dd>{{ targetPreviewData.preview.method }} {{ targetPreviewData.preview.url }}</dd></div>
+            <div><dt>状态码</dt><dd>{{ targetPreviewData.preview.statusCode ?? '-' }}</dd></div>
+            <div><dt>返回条件</dt><dd>{{ targetPreviewData.preview.conditionPassedCount || 0 }} / {{ targetPreviewData.preview.conditionCount || 0 }} 通过</dd></div>
+          </dl>
+          <div v-if="targetPreviewFields.length" class="target-preview__fields">
+            <div>
+              <strong>识别到的字段</strong>
+              <span>点击字段可直接添加为返回条件</span>
+            </div>
+            <button v-for="field in targetPreviewFields" :key="`${field.path}-${field.type}`" type="button" @click="useDetectedFieldAsCondition(field)">
+              <span>{{ field.path }}</span>
+              <em>{{ formatPreviewFieldType(field.type) }}</em>
+            </button>
+          </div>
+          <div class="target-preview__code">
+            <label>响应预览</label>
+            <pre>{{ targetPreviewData.preview.responsePreview || '接口没有返回正文' }}</pre>
+          </div>
+        </section>
+
+        <section v-if="targetPreviewData.preview?.kind === 'DATABASE'" class="target-preview__section">
+          <header><strong>查询预览</strong><span>只读执行，最多展示前 {{ databasePreviewRows.length }} 行。</span></header>
+          <dl class="target-preview__request">
+            <div><dt>数据源</dt><dd>{{ targetPreviewData.preview.databaseType }} · {{ targetPreviewData.preview.host }} / {{ targetPreviewData.preview.databaseName }}</dd></div>
+            <div><dt>取值方式</dt><dd>{{ targetPreviewData.preview.resultMode === 'ROW_COUNT' ? '返回行数' : `字段 ${targetPreviewData.preview.resultColumn || '第一列'}` }}</dd></div>
+            <div><dt>返回行数</dt><dd>{{ targetPreviewData.preview.rowCount || 0 }}</dd></div>
+          </dl>
+          <div class="target-preview__table-wrap">
+            <el-table :data="databasePreviewRows" size="small" max-height="280" empty-text="查询未返回数据">
+              <el-table-column v-for="column in databasePreviewColumns" :key="column" :prop="column" :label="column" min-width="130" show-overflow-tooltip />
+            </el-table>
+          </div>
+          <div class="target-preview__code">
+            <label>执行 SQL</label>
+            <pre>{{ targetPreviewData.preview.query || '-' }}</pre>
+          </div>
+        </section>
+
+        <section v-if="targetPreviewData.detail || targetPreviewData.errorMessage" class="target-preview__section">
+          <header><strong>诊断信息</strong></header>
+          <p class="target-preview__detail">{{ targetPreviewData.detail || '-' }}</p>
+          <el-alert v-if="targetPreviewData.errorMessage" :title="targetPreviewData.errorMessage" type="error" show-icon :closable="false" />
+        </section>
+      </div>
+    </el-drawer>
+
     <el-dialog v-model="reportExportOpen" width="560px" append-to-body class="auto-dialog report-export-dialog">
       <template #header>
         <div class="dialog-title">
@@ -294,27 +360,24 @@
 
     <section v-show="activeTab === 'config'" class="auto-content-section">
         <div class="config-shell">
-          <div class="config-guide">
-            <span v-if="operationGuideOpen" class="guide-page-badge guide-page-badge--flow">1 选择配置区</span>
-            <button :class="{ active: configTab === 'template' }" @click="switchConfigTab('template')">
-              <span>1</span>
-              <strong>巡检模板</strong>
-              <em>添加步骤、选择工具，并在步骤里配置目标和阈值</em>
-            </button>
-            <button :class="{ active: configTab === 'plan' }" @click="switchConfigTab('plan')">
-              <span>2</span>
-              <strong>巡检计划</strong>
-              <em>选择模板和执行周期，交给若依定时任务调度</em>
-            </button>
-          </div>
-
-          <div class="config-help-strip">
-            <div>
-              <strong>第一次配置自动化巡检？</strong>
-              <span>按“模板、步骤、计划、记录”的顺序完成配置，遇到服务器类巡检时优先确认巡检账号和密码。</span>
+          <header class="config-commandbar">
+            <div class="config-switcher" role="tablist" aria-label="巡检配置区域">
+              <button role="tab" :aria-selected="configTab === 'template'" :class="{ active: configTab === 'template' }" @click="switchConfigTab('template')">
+                <strong>模板编排</strong>
+                <span>{{ templateTotal || 0 }}</span>
+              </button>
+              <button role="tab" :aria-selected="configTab === 'plan'" :class="{ active: configTab === 'plan' }" @click="switchConfigTab('plan')">
+                <strong>执行计划</strong>
+                <span>{{ planTotal || 0 }}</span>
+              </button>
             </div>
-            <el-button type="primary" plain icon="QuestionFilled" @click="openOperationGuide">操作指引</el-button>
-          </div>
+            <div class="config-sequence" aria-label="推荐操作顺序">
+              <span :class="{ active: configTab === 'template' }">编排模板</span><i></i>
+              <span :class="{ active: configTab === 'plan' }">安排周期</span><i></i>
+              <span>查看记录</span>
+            </div>
+            <el-button plain icon="QuestionFilled" @click="openOperationGuide">操作指引</el-button>
+          </header>
 
           <section v-show="configTab === 'template'" class="config-panel">
         <el-form :model="templateQuery" :inline="true" class="auto-query-bar">
@@ -467,6 +530,21 @@
             </el-row>
           </section>
 
+          <section v-if="targetForm.targetType === 'DATABASE'" class="target-section">
+            <header><strong>数据库连接与查询</strong><span>使用只读账号执行一条 SELECT / WITH 查询。</span></header>
+            <el-row :gutter="16">
+              <el-col :span="12"><el-form-item label="数据库类型"><el-radio-group v-model="targetForm.databaseConfig.databaseType" @change="handleDatabaseTypeChange(targetForm)"><el-radio-button value="MYSQL">MySQL</el-radio-button><el-radio-button value="POSTGRESQL">PostgreSQL</el-radio-button></el-radio-group></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="主机地址"><el-input v-model="targetForm.host" placeholder="10.0.0.20" /></el-form-item></el-col>
+              <el-col :span="8"><el-form-item label="端口"><el-input-number v-model="targetForm.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+              <el-col :span="8"><el-form-item label="数据库名称"><el-input v-model="targetForm.path" /></el-form-item></el-col>
+              <el-col :span="8"><el-form-item label="取值字段"><el-input v-model="targetForm.resultPath" placeholder="total" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="只读账号"><el-input v-model="targetForm.username" /></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="登录密码"><el-input v-model="targetForm.password" show-password /></el-form-item></el-col>
+              <el-col :span="8"><el-form-item label="取值方式"><el-select v-model="targetForm.databaseConfig.resultMode" style="width: 100%"><el-option label="读取首行字段值" value="FIRST_VALUE" /><el-option label="统计返回行数" value="ROW_COUNT" /></el-select></el-form-item></el-col>
+              <el-col :span="24"><el-form-item label="只读查询SQL"><el-input v-model="targetForm.databaseConfig.query" type="textarea" :rows="5" placeholder="SELECT COUNT(*) AS total FROM ..." /></el-form-item></el-col>
+            </el-row>
+          </section>
+
           <section v-if="targetForm.targetType === 'FTP'" class="target-section">
             <header>
               <strong>FTP 目录</strong>
@@ -538,7 +616,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="templateDialogOpen" width="1080px" append-to-body class="template-dialog">
+    <el-dialog v-model="templateDialogOpen" width="1280px" append-to-body class="template-dialog template-flow-dialog">
       <template #header><div class="dialog-title"><span>{{ templateForm.templateId ? '编辑模板' : '新增模板' }}</span><strong>步骤式巡检模板</strong></div></template>
       <el-form ref="templateRef" :model="templateForm" :rules="templateRules" label-width="100px">
         <el-row :gutter="16">
@@ -547,33 +625,35 @@
           <el-col :span="24"><el-form-item label="模板说明"><el-input v-model="templateForm.templateDesc" type="textarea" :rows="2" /></el-form-item></el-col>
         </el-row>
       </el-form>
-      <div class="step-layout">
-        <aside class="step-list">
-          <button v-for="(step, index) in templateForm.steps" :key="index" :class="{ active: activeStepIndex === index }" @click="activeStepIndex = index">
-            <span>{{ index + 1 }}</span>
-            <strong>{{ step.stepName || '未命名步骤' }}</strong>
-            <em>{{ getToolLabel(step.toolCode) }} · {{ formatStepTarget(step) }}</em>
-          </button>
-          <el-button type="primary" plain icon="Plus" @click="openNewStepToolPicker">添加步骤</el-button>
-        </aside>
-        <section v-if="activeStep" class="step-editor step-summary-panel">
+      <InspectionFlowCanvas
+        :steps="templateForm.steps"
+        :active-index="activeStepIndex"
+        :tool-label="getToolLabel"
+        :target-label="formatStepTarget"
+        :rule-label="formatStepThreshold"
+        :policy-label="formatStepExecutionPolicy"
+        @select="activeStepIndex = $event"
+        @add="openNewStepToolPicker"
+        @edit="openStepDialog"
+        @duplicate="duplicateTemplateStep"
+        @remove="removeTemplateStep"
+        @move="moveTemplateStep"
+      />
+      <section v-if="activeStep" class="step-editor step-summary-panel">
           <div class="step-summary-head">
             <div>
-              <span>当前步骤</span>
+              <span>当前选中步骤</span>
               <strong>{{ activeStep.stepName || '未命名步骤' }}</strong>
               <em>{{ getToolLabel(activeStep.toolCode) }}</em>
             </div>
             <div class="step-summary-actions">
-              <el-button plain icon="Top" :disabled="activeStepIndex <= 0" @click="moveTemplateStep(activeStepIndex, -1)">上移</el-button>
-              <el-button plain icon="Bottom" :disabled="activeStepIndex >= templateForm.steps.length - 1" @click="moveTemplateStep(activeStepIndex, 1)">下移</el-button>
-              <el-button type="success" plain icon="CopyDocument" @click="duplicateTemplateStep(activeStepIndex)">复制步骤</el-button>
               <el-button type="primary" plain icon="Edit" @click="openStepDialog(activeStepIndex)">编辑步骤</el-button>
-              <el-button type="danger" plain icon="Delete" @click="removeTemplateStep(activeStepIndex)">删除</el-button>
             </div>
           </div>
           <div class="step-summary-grid">
-            <span><label>目标</label><strong>{{ formatStepTarget(activeStep) }}</strong></span>
-            <span><label>判定规则</label><strong>{{ formatStepThreshold(activeStep) }}</strong></span>
+            <span><label>数据来源</label><strong>{{ formatStepTarget(activeStep) }}</strong></span>
+            <span><label>结果判断</label><strong>{{ formatStepThreshold(activeStep) }}</strong></span>
+            <span><label>执行策略</label><strong>{{ formatStepExecutionPolicy(activeStep) }}</strong></span>
             <span><label>窗口/超时</label><strong>{{ activeStep.timeWindowMinutes || 0 }} 分钟 / {{ activeStep.timeoutSeconds || 10 }} 秒</strong></span>
             <span><label>状态</label><strong>{{ activeStep.enabledFlag === 'Y' ? '启用' : '停用' }}</strong></span>
           </div>
@@ -582,19 +662,17 @@
             <p v-for="item in getStepDetailItems(activeStep)" :key="item.label"><label>{{ item.label }}</label><span>{{ item.value }}</span></p>
           </div>
           <el-alert v-if="!activeStep.target" title="当前步骤还没有配置巡检目标，执行时会记录为配置缺失异常。" type="warning" show-icon :closable="false" />
-        </section>
-        <el-empty v-else description="请添加巡检步骤" />
-      </div>
+      </section>
       <template #footer>
         <el-button @click="templateDialogOpen = false">取消</el-button>
         <el-button type="primary" :loading="templateSubmitLoading" @click="submitTemplate">保存模板</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="stepDialogOpen" width="1120px" append-to-body class="template-dialog step-dialog">
+    <el-dialog v-model="stepDialogOpen" width="1240px" append-to-body class="template-dialog step-dialog">
       <template #header><div class="dialog-title"><span>{{ stepEditingIndex === null ? '新增步骤配置' : '编辑步骤配置' }}</span><strong>{{ currentStepTool?.toolName || '巡检步骤' }}</strong></div></template>
       <el-form ref="stepRef" :model="stepDraft" label-width="110px">
-        <section class="target-section">
+        <section class="target-section step-stage step-stage--setup">
           <header>
             <strong>巡检工具</strong>
             <span>当前步骤已选择工具，如需调整可重新选择，切换工具会重置当前步骤配置。</span>
@@ -617,7 +695,13 @@
           </el-row>
         </section>
 
-        <section class="target-section" :class="{ 'target-section--rule-compact': isHttpApiTestStep }">
+        <nav class="step-stage-nav" aria-label="步骤配置导航">
+          <button type="button" @click="scrollStepStage('step-stage-source')"><span>1</span>数据来源</button>
+          <button type="button" @click="scrollStepStage('step-stage-rule')"><span>2</span>结果判断</button>
+          <button type="button" @click="scrollStepStage('step-stage-policy')"><span>3</span>执行策略</button>
+        </nav>
+
+        <section id="step-stage-rule" class="target-section step-stage step-stage--rule" :class="{ 'target-section--rule-compact': isHttpApiTestStep }">
           <header>
             <strong>判定规则</strong>
             <span>{{ isServiceStatusStep ? '服务状态按 systemctl 返回值判定。' : (isHttpApiTestStep ? '返回条件全部满足才正常；请求失败或任一条件不满足即告警。' : '设置异常阈值、统计窗口和超时。') }}</span>
@@ -667,7 +751,7 @@
           </div>
         </section>
 
-        <section class="target-section">
+        <section id="step-stage-source" class="target-section step-stage step-stage--source">
           <header>
             <strong>{{ stepTargetSectionTitle }}</strong>
             <span>{{ stepTargetSectionHint }}</span>
@@ -942,6 +1026,63 @@
               </el-tab-pane>
             </el-tabs>
           </div>
+          <div v-if="stepTargetType === 'DATABASE'" class="database-target-config">
+            <div class="database-target-grid">
+              <div class="api-field database-target-grid__name">
+                <label>目标名称</label>
+                <el-input v-model="stepDraft.target.targetName" placeholder="例如：今日过车入库量" />
+              </div>
+              <div class="api-field">
+                <label>数据库类型</label>
+                <el-radio-group v-model="stepDraft.target.databaseConfig.databaseType" @change="handleDatabaseTypeChange(stepDraft.target)">
+                  <el-radio-button value="MYSQL">MySQL</el-radio-button>
+                  <el-radio-button value="POSTGRESQL">PostgreSQL</el-radio-button>
+                </el-radio-group>
+              </div>
+              <div class="api-field">
+                <label>主机地址</label>
+                <el-input v-model="stepDraft.target.host" placeholder="10.0.0.20" />
+              </div>
+              <div class="api-field">
+                <label>端口</label>
+                <el-input-number v-model="stepDraft.target.port" :min="1" :max="65535" controls-position="right" />
+              </div>
+              <div class="api-field">
+                <label>数据库名称</label>
+                <el-input v-model="stepDraft.target.path" placeholder="业务数据库名称" />
+              </div>
+              <div class="api-field">
+                <label>只读账号</label>
+                <el-input v-model="stepDraft.target.username" placeholder="建议使用只读数据库账号" />
+              </div>
+              <div class="api-field">
+                <label>登录密码</label>
+                <el-input v-model="stepDraft.target.password" show-password placeholder="数据库登录密码" />
+              </div>
+              <div class="api-field">
+                <label>取值方式</label>
+                <el-select v-model="stepDraft.target.databaseConfig.resultMode">
+                  <el-option label="读取首行字段值" value="FIRST_VALUE" />
+                  <el-option label="统计返回行数" value="ROW_COUNT" />
+                </el-select>
+              </div>
+              <div v-if="stepDraft.target.databaseConfig.resultMode === 'FIRST_VALUE'" class="api-field">
+                <label>取值字段</label>
+                <el-input v-model="stepDraft.target.resultPath" placeholder="例如：total；留空则读取第一列" />
+              </div>
+              <div class="api-field database-target-grid__query">
+                <label>只读查询 SQL</label>
+                <el-input
+                  v-model="stepDraft.target.databaseConfig.query"
+                  type="textarea"
+                  :rows="6"
+                  resize="vertical"
+                  placeholder="例如：SELECT COUNT(*) AS total FROM pass_record WHERE create_time >= CURRENT_DATE"
+                />
+                <small>仅允许一条 SELECT 或 WITH 查询；支持 ${today}、${todayStart}、${todayEnd} 等日期变量。</small>
+              </div>
+            </div>
+          </div>
           <div v-if="stepTargetType === 'FTP'" class="bigdata-server-config ftp-target-config">
             <div class="bigdata-server-toolbar">
               <span>已配置 {{ ftpStepTargets.length }} 个 FTP 目录目标</span>
@@ -1189,10 +1330,37 @@
             </div>
           </div>
         </section>
+
+        <section id="step-stage-policy" class="target-section step-stage execution-policy-section">
+          <header>
+            <strong>执行策略</strong>
+            <span>用于处理短暂网络抖动，并决定异常后是否继续执行后续步骤。</span>
+          </header>
+          <div class="execution-policy-grid">
+            <div class="api-field">
+              <label>异常复检次数</label>
+              <el-input-number v-model="stepDraft.stepParams.executionPolicy.retryCount" :min="0" :max="3" controls-position="right" />
+              <small>0 表示不复检；最多复检 3 次。</small>
+            </div>
+            <div class="api-field">
+              <label>复检间隔</label>
+              <el-input-number v-model="stepDraft.stepParams.executionPolicy.retryIntervalSeconds" :min="1" :max="60" :disabled="stepDraft.stepParams.executionPolicy.retryCount === 0" controls-position="right" />
+              <small>等待目标恢复后再重新检查。</small>
+            </div>
+            <div class="api-field execution-policy-grid__action">
+              <label>步骤异常后</label>
+              <el-radio-group v-model="stepDraft.stepParams.executionPolicy.failureAction">
+                <el-radio-button value="CONTINUE">继续后续步骤</el-radio-button>
+                <el-radio-button value="STOP">停止后续步骤</el-radio-button>
+              </el-radio-group>
+              <small>关键前置系统不可用时可选择停止，避免产生连锁误报。</small>
+            </div>
+          </div>
+        </section>
       </el-form>
       <template #footer>
         <el-button @click="stepDialogOpen = false">取消</el-button>
-        <el-button :loading="targetTesting" @click="handleTestStepTarget">测试目标</el-button>
+        <el-button :loading="targetTesting || targetPreviewLoading" @click="handlePreviewStepTarget">测试并预览</el-button>
         <el-button type="primary" @click="submitStepDraft">保存步骤</el-button>
       </template>
     </el-dialog>
@@ -1216,7 +1384,7 @@
                 :class="{ active: isToolGroupActive(group) }"
               >
                 <button type="button" class="tool-picker-group__head" @click="toggleToolGroup(group.key)">
-                  <i :class="{ collapsed: isToolGroupCollapsed(group.key) }"></i>
+                  <el-icon :class="{ collapsed: isToolGroupCollapsed(group.key) }"><ArrowRight /></el-icon>
                   <span>
                     <strong>{{ group.label }}</strong>
                     <em>{{ group.brief }}</em>
@@ -1502,6 +1670,8 @@
 <script setup name="SupportAutoInspection">
 import * as echarts from 'echarts'
 import { saveAs } from 'file-saver'
+import { ArrowRight } from '@element-plus/icons-vue'
+import InspectionFlowCanvas from './components/InspectionFlowCanvas.vue'
 import {
   addAutoInspectionPlan,
   addAutoInspectionTarget,
@@ -1524,6 +1694,7 @@ import {
   listAutoInspectionTarget,
   listAutoInspectionTemplate,
   listAutoInspectionTool,
+  previewAutoInspectionTarget,
   runAutoInspectionPlan,
   runAutoInspectionTemplate,
   testAutoInspectionTarget,
@@ -1547,6 +1718,7 @@ const TOOL_HTTP_HEALTH = 'HTTP_HEALTH'
 const TOOL_HTTP_API_TEST = 'HTTP_API_TEST'
 const TOOL_TCP_PORT_CHECK = 'TCP_PORT_CHECK'
 const TOOL_SERVER_SERVICE_STATUS = 'SERVER_SERVICE_STATUS'
+const TOOL_DATABASE_QUERY = 'DATABASE_QUERY'
 const configTabNames = ['template', 'plan']
 const activeTab = ref(resolveRouteTab(route.query.tab, route.path))
 const configTab = ref(resolveConfigTab(route.query.tab, route.query.configTab, route.path))
@@ -1571,6 +1743,9 @@ const targetList = ref([])
 const targetTotal = ref(0)
 const targetTestId = ref(null)
 const targetTesting = ref(false)
+const targetPreviewOpen = ref(false)
+const targetPreviewLoading = ref(false)
+const targetPreviewData = ref({ passed: false, resultStatus: '3', preview: {} })
 const apiSecretRevealLoading = ref(false)
 const targetQuery = ref({ pageNum: 1, pageSize: 10, targetName: '', targetType: '', status: '' })
 
@@ -1679,7 +1854,7 @@ const operationGuideSteps = [
     desc: '点击添加步骤后先进入巡检工具箱，按树状分类选择工具，再进入具体配置页面。',
     manual: [
       '工具箱按消息队列、接口平台、文件目录、服务器和网络端口分类，右侧会展示工具说明、默认规则、配置重点和使用案例。',
-      '当前内置 Kafka 消费积压、海康接口数量、接口调用测试、HTTP 健康、FTP 目录、服务器目录、磁盘、大数据爆盘、TCP 端口和服务器服务状态检测。'
+      '当前内置 Kafka 消费积压、海康接口数量、接口调用测试、HTTP 健康、数据库查询、FTP 目录、服务器目录、磁盘、大数据爆盘、TCP 端口和服务器服务状态检测。'
     ],
     actions: ['点击“添加步骤”打开工具箱。', '先阅读工具用途和案例，再点击“进入配置”。', '相同工具可以在一个模板中配置多次。'],
     images: [
@@ -1690,12 +1865,13 @@ const operationGuideSteps = [
     index: '04',
     title: '配置目标和阈值',
     place: '步骤配置弹窗',
-    desc: '目标决定去哪里取数，阈值决定什么情况算异常；保存前建议先测试目标。',
+    desc: '每个步骤按数据来源、结果判断和执行策略配置；保存前建议先测试并预览真实结果。',
     manual: [
       'HTTP 和海康接口类步骤需要配置 URL、请求方式、结果路径、AppKey、Secret 和请求体模板；接口调用测试还支持 Header、Cookie、静态鉴权、请求体和多条件判断，支持 ${todayStart}、${todayEnd} 等日期变量。',
-      'FTP 和服务器目录工具支持一个步骤配置多个子项；服务器服务状态检测会清晰展示 active、inactive、failed 等状态规则。'
+      '数据库工具使用只读 SQL 获取业务指标；FTP 和服务器目录工具支持一个步骤配置多个子项；服务器服务状态检测会清晰展示 active、inactive、failed 等状态规则。',
+      '执行策略可以设置异常复检次数、复检间隔，以及异常后继续或停止后续步骤。'
     ],
-    actions: ['填写目标、比较规则、告警阈值和超时时间。', '使用日期变量生成当天接口参数。', '点击“测试目标”确认能取到真实返回值。'],
+    actions: ['填写数据来源、结果判断和执行策略。', '使用日期变量生成当天接口参数。', '点击“测试并预览”核对真实返回值和可用字段。'],
     images: [
       guideImage('10-http-step-config.png', 'HTTP / 海康接口类步骤配置示例'),
       guideImage('13-service-step-config.png', '服务器服务状态检测步骤配置')
@@ -1769,7 +1945,8 @@ const targetTypeOptions = [
   { label: 'HTTP接口', value: 'HTTP' },
   { label: 'FTP目录', value: 'FTP' },
   { label: '服务器资产', value: 'SERVER' },
-  { label: '大数据服务器', value: 'BIG_DATA_SERVER' }
+  { label: '大数据服务器', value: 'BIG_DATA_SERVER' },
+  { label: '数据库', value: 'DATABASE' }
 ]
 const serverTreeProps = {
   label: 'label',
@@ -1823,6 +2000,13 @@ const toolGuideMap = {
     scenario: '适合检测平台查询接口、统计接口、网关接口、第三方回传接口是否可访问、是否返回期望字段和数量。',
     configs: ['填写接口 URL 和请求方法。', '按需配置 Header、Cookie、鉴权和请求体。', '使用 ${todayStart}、${todayEnd} 等日期变量生成动态参数。', '添加状态码、JSON字段、列表数量、返回内容、返回Header、耗时等条件。'],
     example: '例如“今日任务接口”：POST JSON Body 使用 {"beginTime":"${todayStart}","endTime":"${todayEnd}"}，条件设置为状态码 200-399、data.total >= 1、data.message == success。'
+  },
+  DATABASE_QUERY: {
+    brief: '执行只读 SQL，从 MySQL 或 PostgreSQL 获取巡检指标。',
+    description: '通过数据库账号连接业务库，只允许 SELECT / WITH 查询，可取首行字段值或返回行数，再与阈值比较。',
+    scenario: '适合检查当天数据量、待处理任务数、异常记录数、同步积压数等只能从数据库准确获取的业务指标。',
+    configs: ['选择 MySQL 或 PostgreSQL。', '填写主机、端口、数据库和只读账号。', '填写一条只读查询 SQL，可使用日期变量。', '选择首行字段值或返回行数作为巡检值。'],
+    example: '例如“今日过车入库量”：SQL 填 SELECT COUNT(*) AS total FROM pass_record WHERE create_time >= CURRENT_DATE，取值字段填 total，低于 1 条告警。'
   },
   FTP_FILE_COUNT: {
     brief: '统计一个或多个 FTP 目录下的文件数量。',
@@ -1882,6 +2066,12 @@ const toolTreeCategoryList = [
     matcher: (toolCode) => ['HTTP_COUNT', TOOL_HTTP_HEALTH, TOOL_HTTP_API_TEST].includes(toolCode)
   },
   {
+    key: 'database',
+    label: '数据库取数检查',
+    brief: '通过只读 SQL 获取数量、积压和业务状态指标。',
+    matcher: (toolCode) => toolCode === TOOL_DATABASE_QUERY
+  },
+  {
     key: 'file',
     label: '文件目录检测',
     brief: 'FTP 目录和服务器目录文件数量检查。',
@@ -1920,6 +2110,9 @@ const planRules = {
 }
 
 const activeStep = computed(() => templateForm.value.steps?.[activeStepIndex.value])
+const targetPreviewFields = computed(() => targetPreviewData.value?.preview?.detectedFields || [])
+const databasePreviewColumns = computed(() => targetPreviewData.value?.preview?.columns || [])
+const databasePreviewRows = computed(() => targetPreviewData.value?.preview?.rows || [])
 const currentStepTool = computed(() => toolList.value.find((item) => item.toolCode === stepDraft.value.toolCode))
 const currentStepToolGuide = computed(() => getToolGuide(stepDraft.value.toolCode))
 const filteredToolList = computed(() => {
@@ -2017,6 +2210,7 @@ const stepTargetSectionTitle = computed(() => {
   if (isHttpHealthStep.value) return 'HTTP 健康目标'
   if (isHttpApiTestStep.value) return '接口调用测试目标'
   if (stepTargetType.value === 'HTTP') return 'HTTP 接口目标'
+  if (stepTargetType.value === 'DATABASE') return '数据库查询目标'
   if (stepTargetType.value === 'FTP') return 'FTP 目录目标'
   if (stepTargetType.value === 'BIG_DATA_SERVER') return '大数据服务器'
   if (isTcpPortStep.value) return 'TCP 端口目标'
@@ -2028,6 +2222,7 @@ const stepTargetSectionHint = computed(() => {
   if (isHttpHealthStep.value) return '健康检测关注接口是否可访问、状态码是否符合预期，以及接口响应耗时。'
   if (isHttpApiTestStep.value) return '把请求参数、鉴权、请求体和返回条件放在一个步骤里，所有条件满足才算正常。'
   if (stepTargetType.value === 'HTTP') return '接口数量检测关注请求地址、参数模板、认证信息和结果取值路径。'
+  if (stepTargetType.value === 'DATABASE') return '使用只读数据库账号执行一条查询，并把首行字段值或返回行数作为巡检指标。'
   if (stepTargetType.value === 'FTP') return 'FTP 文件数量检测只需要连接信息和目录路径。'
   if (stepTargetType.value === 'BIG_DATA_SERVER') return '逐台配置服务器 IP、SSH 端口和登录信息，执行时读取每台服务器的所有磁盘分区。'
   if (isTcpPortStep.value) return '端口连通性检测只需要服务器或主机 IP 和端口，不需要 SSH 账号密码。'
@@ -2762,11 +2957,21 @@ function handleTargetTypeChange(type) {
   if (type === 'BIG_DATA_SERVER' && !targetForm.value.port) targetForm.value.port = BIG_DATA_DEFAULT_SSH_PORT
   if (type === 'BIG_DATA_SERVER' && !targetForm.value.username) targetForm.value.username = BIG_DATA_DEFAULT_USERNAME
   if (type === 'HTTP' && !targetForm.value.resultPath) targetForm.value.resultPath = 'data.total'
+  if (type === 'DATABASE') {
+    targetForm.value.databaseConfig = normalizeDatabaseConfig(targetForm.value)
+    targetForm.value.port = targetForm.value.databaseConfig.databaseType === 'POSTGRESQL' ? 5432 : 3306
+  }
+}
+
+function handleDatabaseTypeChange(target) {
+  const config = ensureDatabaseConfig(target)
+  target.port = config.databaseType === 'POSTGRESQL' ? 5432 : 3306
 }
 
 function handleUpdateTarget(row) {
   getAutoInspectionTarget(row.targetId).then((res) => {
     targetForm.value = { ...defaultTargetForm(), ...res.data }
+    if (targetForm.value.targetType === 'DATABASE') ensureDatabaseConfig(targetForm.value)
     targetDialogOpen.value = true
   })
 }
@@ -2875,6 +3080,71 @@ function handleTestStepTarget() {
   })
 }
 
+function handlePreviewStepTarget() {
+  if (['FTP_FILE_COUNT', 'SERVER_FILE_COUNT', 'BIG_DATA_SERVER_DISK', TOOL_SERVER_SERVICE_STATUS].includes(stepDraft.value.toolCode)) {
+    return handleTestStepTarget()
+  }
+  const payload = cleanTargetPayload(buildSingleStepTargetPayload(stepDraft.value))
+  const warning = validateTargetBusiness(payload)
+  if (warning) {
+    proxy.$modal.msgWarning(warning)
+    return Promise.resolve()
+  }
+  targetPreviewOpen.value = true
+  targetPreviewLoading.value = true
+  targetPreviewData.value = {
+    passed: false,
+    resultStatus: '3',
+    targetName: payload.targetName,
+    targetType: payload.targetType,
+    message: '正在连接目标并读取数据...',
+    preview: {}
+  }
+  return previewAutoInspectionTarget(payload)
+    .then((res) => {
+      targetPreviewData.value = res.data || res || {}
+      if (targetPreviewData.value.passed) proxy.$modal.msgSuccess('测试通过，已生成数据预览')
+    })
+    .catch((error) => {
+      targetPreviewData.value = {
+        passed: false,
+        resultStatus: '2',
+        targetName: payload.targetName,
+        targetType: payload.targetType,
+        message: '测试未通过',
+        errorMessage: error?.msg || error?.message || '目标测试失败',
+        preview: {}
+      }
+    })
+    .finally(() => {
+      targetPreviewLoading.value = false
+    })
+}
+
+function useDetectedFieldAsCondition(field) {
+  if (!isHttpApiTestStep.value || !field?.path) return
+  const typeMap = {
+    number: { type: 'JSON_NUMBER', operator: 'GTE', expected: '0' },
+    boolean: { type: 'JSON_BOOLEAN', operator: 'EQ', expected: 'true' },
+    array: { type: 'ARRAY_LENGTH', operator: 'GTE', expected: '1' },
+    string: { type: 'JSON_STRING', operator: 'NOT_EMPTY', expected: '' }
+  }
+  const condition = typeMap[field.type] || typeMap.string
+  addApiAssertion({ ...condition, path: field.path })
+  apiConfigActiveTab.value = 'conditions'
+  targetPreviewOpen.value = false
+  proxy.$modal.msgSuccess(`已把 ${field.path} 添加为返回条件`)
+}
+
+function formatPreviewActualValue(data) {
+  if (data?.actualValue === undefined || data?.actualValue === null || data?.actualValue === '') return data?.passed ? '已连通' : '-'
+  return `${data.actualValue}${data.actualUnit || ''}`
+}
+
+function formatPreviewFieldType(type) {
+  return ({ number: '数字', string: '文本', boolean: '真假值', array: '列表' })[type] || type || '字段'
+}
+
 function buildSingleStepTargetPayload(step) {
   if (step?.toolCode === TOOL_SERVER_SERVICE_STATUS) {
     ensureServiceStatusParams(step)
@@ -2906,6 +3176,16 @@ function validateTargetBusiness(target) {
     if (target.toolCode === TOOL_HTTP_API_TEST) {
       return validateApiTestConfig(target)
     }
+  }
+  if (target.targetType === 'DATABASE') {
+    const config = normalizeDatabaseConfig(target)
+    if (!String(target.host || '').trim()) return '请填写数据库主机'
+    if (!Number(target.port)) return '请填写数据库端口'
+    if (!String(target.path || '').trim()) return '请填写数据库名称'
+    if (!String(target.username || '').trim()) return '请填写数据库账号'
+    if (!target.targetId && !String(target.password || '').trim()) return '请填写数据库密码'
+    if (!String(config.query || '').trim()) return '请填写只读查询 SQL'
+    if (!/^\s*(select|with)\b/i.test(config.query)) return '数据库巡检只允许 SELECT 或 WITH 查询'
   }
   if (target.targetType === 'FTP') {
     if (!String(target.host || '').trim()) return '请填写 FTP 主机地址'
@@ -2972,6 +3252,23 @@ function cleanTargetPayload(target) {
       payload.extraParams = JSON.stringify(packed.extraParams)
       payload.secret = Object.keys(packed.secret).length ? JSON.stringify(packed.secret) : ''
     }
+  }
+  if (payload.targetType === 'DATABASE') {
+    const config = ensureDatabaseConfig(payload)
+    payload.port = payload.port || (config.databaseType === 'POSTGRESQL' ? 5432 : 3306)
+    payload.url = ''
+    payload.httpMethod = 'POST'
+    payload.topic = ''
+    payload.consumerGroup = ''
+    payload.appKey = ''
+    payload.secret = ''
+    payload.serverId = undefined
+    payload.extraParams = JSON.stringify({
+      databaseType: config.databaseType,
+      query: config.query,
+      resultMode: config.resultMode
+    })
+    if (config.resultMode === 'ROW_COUNT') payload.resultPath = ''
   }
   if (payload.targetType === 'FTP') {
     payload.url = ''
@@ -3506,6 +3803,7 @@ function handleUpdateTemplate(row) {
 function openStepDialog(index = null) {
   stepEditingIndex.value = index
   stepDraft.value = index === null ? defaultStepForm(templateForm.value.steps.length + 1) : cloneStep(templateForm.value.steps[index])
+  ensureExecutionPolicy(stepDraft.value)
   apiConfigActiveTab.value = 'request'
   if (!stepDraft.value.toolCode && toolList.value.length) handleStepToolChange(toolList.value[0].toolCode)
   if (getTargetTypeByTool(stepDraft.value.toolCode) === 'FTP') {
@@ -3521,6 +3819,12 @@ function openStepDialog(index = null) {
     ensureServiceStatusParams(stepDraft.value)
   }
   stepDialogOpen.value = true
+}
+
+function scrollStepStage(id) {
+  nextTick(() => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  })
 }
 
 function openNewStepToolPicker() {
@@ -3641,7 +3945,7 @@ function defaultStepForm(order, toolCode = '') {
     timeoutSeconds: tool?.defaultTimeoutSeconds || 10,
     targetIds: [],
     target: normalizeStepTarget({}, tool?.toolCode, stepName),
-    stepParams: {}
+    stepParams: { executionPolicy: defaultExecutionPolicy() }
   }
   if (getTargetTypeByTool(step.toolCode) === 'BIG_DATA_SERVER') {
     ensureBigDataServerParams(step)
@@ -3751,6 +4055,28 @@ function resequenceTemplateSteps() {
   })
 }
 
+function defaultExecutionPolicy() {
+  return {
+    retryCount: 0,
+    retryIntervalSeconds: 3,
+    failureAction: 'CONTINUE'
+  }
+}
+
+function normalizeExecutionPolicy(policy = {}) {
+  return {
+    retryCount: Math.max(0, Math.min(Number(policy.retryCount || 0), 3)),
+    retryIntervalSeconds: Math.max(1, Math.min(Number(policy.retryIntervalSeconds || 3), 60)),
+    failureAction: policy.failureAction === 'STOP' ? 'STOP' : 'CONTINUE'
+  }
+}
+
+function ensureExecutionPolicy(step) {
+  if (!step.stepParams || typeof step.stepParams !== 'object') step.stepParams = {}
+  step.stepParams.executionPolicy = normalizeExecutionPolicy(step.stepParams.executionPolicy)
+  return step.stepParams.executionPolicy
+}
+
 function applyToolDefaults(step, forceName = false) {
   const tool = toolList.value.find((item) => item.toolCode === step.toolCode)
   if (!tool) return
@@ -3761,7 +4087,8 @@ function applyToolDefaults(step, forceName = false) {
   step.timeWindowMinutes = tool.defaultTimeWindowMinutes || 0
   step.timeoutSeconds = tool.defaultTimeoutSeconds || 10
   step.targetIds = []
-  step.stepParams = {}
+  const executionPolicy = normalizeExecutionPolicy(step.stepParams?.executionPolicy)
+  step.stepParams = { executionPolicy }
   if (getTargetTypeByTool(step.toolCode) === 'FTP') {
     ensureFtpStepParams(step)
   }
@@ -3788,6 +4115,10 @@ function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
       next.apiConfig = normalizeApiTestConfig(next)
     }
   }
+  if (targetType === 'DATABASE') {
+    next.databaseConfig = normalizeDatabaseConfig(next)
+    next.port = next.port || (next.databaseConfig.databaseType === 'POSTGRESQL' ? 5432 : 3306)
+  }
   if (targetType === 'BIG_DATA_SERVER') {
     next.port = next.port || BIG_DATA_DEFAULT_SSH_PORT
     next.username = next.username || BIG_DATA_DEFAULT_USERNAME
@@ -3807,11 +4138,13 @@ function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
 
 function normalizeStepForSave(step) {
   const next = cloneStep(step)
+  const executionPolicy = normalizeExecutionPolicy(next.stepParams?.executionPolicy)
   if (next.toolCode === 'BIG_DATA_SERVER_DISK') {
     const servers = normalizeBigDataServerTargets(next.stepParams?.serverTargets || [])
     next.stepParams = {
       includePseudo: next.stepParams?.includePseudo || 'false',
-      serverTargets: servers
+      serverTargets: servers,
+      executionPolicy
     }
     next.target = {}
     next.targetIds = servers.filter((server) => server.targetId).map((server) => server.targetId)
@@ -3820,7 +4153,8 @@ function normalizeStepForSave(step) {
   if (next.toolCode === 'FTP_FILE_COUNT') {
     const targets = normalizeFtpStepTargets(next.stepParams?.ftpTargets || [])
     next.stepParams = {
-      ftpTargets: targets
+      ftpTargets: targets,
+      executionPolicy
     }
     next.target = {}
     next.targetIds = targets.filter((target) => target.targetId).map((target) => target.targetId)
@@ -3831,7 +4165,8 @@ function normalizeStepForSave(step) {
     next.stepParams = {
       recursive: next.stepParams?.recursive || 'true',
       filePattern: next.stepParams?.filePattern || '',
-      serverTargets: servers
+      serverTargets: servers,
+      executionPolicy
     }
     next.target = {}
     next.targetIds = servers.filter((server) => server.targetId).map((server) => server.targetId)
@@ -3841,7 +4176,8 @@ function normalizeStepForSave(step) {
     ensureServiceStatusParams(next)
     const servers = normalizeServiceStatusTargets(next.stepParams?.serverTargets || [])
     next.stepParams = {
-      serverTargets: servers
+      serverTargets: servers,
+      executionPolicy
     }
     next.target = {}
     next.targetIds = servers.filter((server) => server.targetId).map((server) => server.targetId)
@@ -3849,7 +4185,7 @@ function normalizeStepForSave(step) {
   }
   next.target = normalizeStepTarget(next.target, next.toolCode, next.stepName)
   next.targetIds = next.target?.targetId ? [next.target.targetId] : []
-  next.stepParams = {}
+  next.stepParams = { executionPolicy }
   return next
 }
 
@@ -3876,6 +4212,7 @@ function validateStepDraft(step) {
 function getTargetTypeByTool(toolCode) {
   if (toolCode === 'KAFKA_LAG') return 'KAFKA'
   if (toolCode === 'HTTP_COUNT' || toolCode === TOOL_HTTP_HEALTH || toolCode === TOOL_HTTP_API_TEST) return 'HTTP'
+  if (toolCode === TOOL_DATABASE_QUERY) return 'DATABASE'
   if (toolCode === 'FTP_FILE_COUNT') return 'FTP'
   if (toolCode === 'BIG_DATA_SERVER_DISK') return 'BIG_DATA_SERVER'
   if ([TOOL_TCP_PORT_CHECK, TOOL_SERVER_SERVICE_STATUS].includes(toolCode)) return 'SERVER'
@@ -3937,6 +4274,31 @@ function defaultApiTestConfig() {
       { type: 'STATUS', operator: 'RANGE', expected: '200-399', path: '' }
     ]
   }
+}
+
+function defaultDatabaseConfig() {
+  return {
+    databaseType: 'MYSQL',
+    query: '',
+    resultMode: 'FIRST_VALUE'
+  }
+}
+
+function normalizeDatabaseConfig(target = {}) {
+  const raw = parseCronConfig(target.extraParams) || {}
+  return {
+    ...defaultDatabaseConfig(),
+    ...raw,
+    ...(target.databaseConfig || {}),
+    databaseType: String(target.databaseConfig?.databaseType || raw.databaseType || 'MYSQL').toUpperCase(),
+    resultMode: String(target.databaseConfig?.resultMode || raw.resultMode || 'FIRST_VALUE').toUpperCase()
+  }
+}
+
+function ensureDatabaseConfig(target) {
+  if (!target) return defaultDatabaseConfig()
+  target.databaseConfig = normalizeDatabaseConfig(target)
+  return target.databaseConfig
 }
 
 function ensureApiTestConfig(target) {
@@ -4434,6 +4796,7 @@ function compatibleTargets(step) {
   if (!tool) return targetOptions.value
   if (tool.toolType === 'KAFKA_LAG') return targetOptions.value.filter((item) => item.targetType === 'KAFKA')
   if (['HTTP_COUNT', TOOL_HTTP_HEALTH, TOOL_HTTP_API_TEST].includes(tool.toolType)) return targetOptions.value.filter((item) => item.targetType === 'HTTP')
+  if (tool.toolType === TOOL_DATABASE_QUERY) return targetOptions.value.filter((item) => item.targetType === 'DATABASE')
   if (tool.toolType === 'FTP_FILE_COUNT') return targetOptions.value.filter((item) => item.targetType === 'FTP')
   if (['SERVER_FILE_COUNT', 'SERVER_DISK', TOOL_TCP_PORT_CHECK, TOOL_SERVER_SERVICE_STATUS].includes(tool.toolType)) return targetOptions.value.filter((item) => item.targetType === 'SERVER')
   if (tool.toolType === 'BIG_DATA_SERVER_DISK') return targetOptions.value.filter((item) => item.targetType === 'BIG_DATA_SERVER')
@@ -4442,6 +4805,7 @@ function compatibleTargets(step) {
 
 function normalizeStepFromServer(step) {
   const params = parseCronConfig(step.stepParams) || {}
+  params.executionPolicy = normalizeExecutionPolicy(params.executionPolicy)
   if (step.toolCode === 'FTP_FILE_COUNT') {
     const ftpTargets = (step.targets?.length ? step.targets : params.ftpTargets || (step.target ? [step.target] : []))
       .map((target, index) => ({
@@ -4512,7 +4876,7 @@ function normalizeStepFromServer(step) {
 }
 
 function defaultTargetForm() {
-  return { targetName: '', targetType: 'KAFKA', serverId: undefined, host: '', port: undefined, path: '', url: '', httpMethod: 'POST', topic: '', consumerGroup: '', username: '', password: '', appKey: '', secret: '', resultPath: 'data.total', extraParams: '', apiConfig: defaultApiTestConfig(), status: '0', remark: '' }
+  return { targetName: '', targetType: 'KAFKA', serverId: undefined, host: '', port: undefined, path: '', url: '', httpMethod: 'POST', topic: '', consumerGroup: '', username: '', password: '', appKey: '', secret: '', resultPath: 'data.total', extraParams: '', apiConfig: defaultApiTestConfig(), databaseConfig: defaultDatabaseConfig(), status: '0', remark: '' }
 }
 
 function defaultTemplateForm() {
@@ -4629,6 +4993,7 @@ function getToolGuide(toolCode) {
 function getToolCategory(toolCode) {
   if (toolCode === 'KAFKA_LAG') return '消息队列'
   if (['HTTP_COUNT', TOOL_HTTP_HEALTH, TOOL_HTTP_API_TEST].includes(toolCode)) return 'HTTP接口'
+  if (toolCode === TOOL_DATABASE_QUERY) return '数据库'
   if (toolCode === 'FTP_FILE_COUNT') return '文件目录'
   if (['SERVER_FILE_COUNT', 'SERVER_DISK', 'BIG_DATA_SERVER_DISK', TOOL_SERVER_SERVICE_STATUS].includes(toolCode)) return '服务器'
   if (toolCode === TOOL_TCP_PORT_CHECK) return '网络端口'
@@ -4642,6 +5007,7 @@ function getToolTreeCategory(toolCode) {
 function getToolTagType(toolCode) {
   if (toolCode === 'KAFKA_LAG') return 'warning'
   if (['HTTP_COUNT', TOOL_HTTP_HEALTH, TOOL_HTTP_API_TEST].includes(toolCode)) return 'success'
+  if (toolCode === TOOL_DATABASE_QUERY) return 'warning'
   if (toolCode === 'FTP_FILE_COUNT') return 'info'
   if (['SERVER_FILE_COUNT', 'SERVER_DISK', 'BIG_DATA_SERVER_DISK', TOOL_SERVER_SERVICE_STATUS].includes(toolCode)) return 'primary'
   if (toolCode === TOOL_TCP_PORT_CHECK) return 'danger'
@@ -4653,6 +5019,7 @@ function formatTargetAddress(row) {
   if (row.targetType === 'SERVER') return `${row.serverName || '服务器'}（${row.serverAddress || row.serverId || '-'}）${row.path ? ' ' + row.path : ''}`
   if (row.targetType === 'BIG_DATA_SERVER') return `${row.host || '-'}:${row.port || BIG_DATA_DEFAULT_SSH_PORT}`
   if (row.targetType === 'HTTP') return row.url || '-'
+  if (row.targetType === 'DATABASE') return `${row.host || '-'}:${row.port || '-'} / ${row.path || '-'}`
   if (row.targetType === 'KAFKA') return `${row.host || '-'} ${row.topic || ''} ${row.consumerGroup || ''}`
   return `${row.host || '-'}:${row.port || ''}${row.path ? ' ' + row.path : ''}`
 }
@@ -4762,6 +5129,13 @@ function getStepDetailItems(step) {
     } else {
       items.push({ label: '结果路径', value: target.resultPath || '-' })
     }
+  } else if (target.targetType === 'DATABASE') {
+    const config = normalizeDatabaseConfig(target)
+    items.push(
+      { label: '数据库', value: `${config.databaseType} · ${target.host || '-'}:${target.port || '-'} / ${target.path || '-'}` },
+      { label: '取值方式', value: config.resultMode === 'ROW_COUNT' ? '返回行数' : `首行字段 ${target.resultPath || '第一列'}` },
+      { label: '只读查询', value: config.query || '-' }
+    )
   } else if (step.toolCode === TOOL_SERVER_SERVICE_STATUS) {
     const targets = serviceStatusTargetsFromStep(step)
     items.push(
@@ -4836,6 +5210,12 @@ function formatStepThreshold(row) {
   if (!row) return '-'
   if (row.thresholdValue === undefined || row.thresholdValue === null || row.thresholdValue === '') return '-'
   return `${row.compareRule === 'MIN' ? '不低于' : '不高于'} ${row.thresholdValue}${row.thresholdUnit || ''}`
+}
+
+function formatStepExecutionPolicy(step) {
+  const policy = normalizeExecutionPolicy(step?.stepParams?.executionPolicy)
+  const retry = policy.retryCount ? `复检 ${policy.retryCount} 次` : '不复检'
+  return `${retry} · ${policy.failureAction === 'STOP' ? '异常即停止' : '异常后继续'}`
 }
 
 function extractServiceStatusText(row) {
@@ -5793,7 +6173,7 @@ function resultTagType(value) {
   gap: 6px;
   margin: 8px 0 10px;
   padding: 10px 12px;
-  border-left: 3px solid #409eff;
+  border: 1px solid #dce9f7;
   border-radius: 6px;
   background: #f7fbff;
 
@@ -5961,6 +6341,82 @@ function resultTagType(value) {
   display: grid;
   gap: 16px;
   min-width: 0;
+}
+
+.config-commandbar {
+  display: grid;
+  grid-template-columns: auto minmax(280px, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  min-height: 52px;
+  padding: 7px 9px;
+  border: 1px solid #dfe8f3;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.config-switcher {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border: 1px solid #d7e2ef;
+  border-radius: 7px;
+  background: #f4f7fb;
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 34px;
+    padding: 0 13px;
+    border: 0;
+    border-radius: 5px;
+    background: transparent;
+    color: #58718e;
+    cursor: pointer;
+
+    &.active {
+      background: #fff;
+      color: #236fbf;
+      box-shadow: 0 2px 8px rgba(37, 77, 118, .1);
+    }
+
+    strong {
+      font-size: 13px;
+    }
+
+    span {
+      min-width: 20px;
+      color: #7d8fa3;
+      font-size: 12px;
+      text-align: center;
+    }
+  }
+}
+
+.config-sequence {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+
+  span {
+    color: #8190a3;
+    font-size: 12px;
+    white-space: nowrap;
+
+    &.active {
+      color: #2b73bd;
+      font-weight: 700;
+    }
+  }
+
+  i {
+    width: clamp(24px, 5vw, 72px);
+    height: 1px;
+    background: #cdd9e7;
+  }
 }
 
 .config-guide {
@@ -6293,12 +6749,8 @@ function resultTagType(value) {
     background: #f5f9ff;
   }
 
-  i {
-    width: 0;
-    height: 0;
-    border-top: 5px solid transparent;
-    border-bottom: 5px solid transparent;
-    border-left: 6px solid #6f8cad;
+  .el-icon {
+    color: #6f8cad;
     transition: transform 0.18s ease;
     transform: rotate(90deg);
 
@@ -6607,6 +7059,17 @@ function resultTagType(value) {
   :deep(.el-dialog__body) {
     max-height: 72vh;
     overflow: hidden;
+  }
+}
+
+.template-flow-dialog {
+  :deep(.el-dialog) {
+    max-width: 96vw;
+  }
+
+  :deep(.el-dialog__body) {
+    max-height: 74vh;
+    overflow-y: auto;
   }
 }
 
@@ -7487,7 +7950,7 @@ function resultTagType(value) {
 
 .step-summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 10px;
 
   span {
@@ -7554,9 +8017,129 @@ function resultTagType(value) {
 }
 
 .step-dialog {
+  :deep(.el-dialog) {
+    max-width: 96vw;
+  }
+
   :deep(.el-dialog__body) {
-    max-height: 68vh;
+    max-height: 72vh;
     overflow-y: auto;
+    scroll-behavior: smooth;
+  }
+
+  :deep(.el-form) {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+}
+
+.step-stage {
+  scroll-margin-top: 64px;
+}
+
+.step-stage--setup {
+  order: 1;
+}
+
+.step-stage-nav {
+  position: sticky;
+  top: -1px;
+  z-index: 4;
+  order: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid #dce6f2;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 5px 14px rgba(36, 67, 101, .08);
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 32px;
+    padding: 0 11px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #4f6680;
+    cursor: pointer;
+    font: inherit;
+
+    &:hover,
+    &:focus-visible {
+      background: #eef6ff;
+      color: #276fb9;
+      outline: none;
+    }
+
+    span {
+      display: grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #e8f2fe;
+      color: #2c78c5;
+      font-size: 11px;
+      font-weight: 700;
+    }
+  }
+}
+
+.step-stage--source {
+  order: 3;
+}
+
+.step-stage--rule {
+  order: 4;
+}
+
+.execution-policy-section {
+  order: 5;
+}
+
+.execution-policy-grid {
+  display: grid;
+  grid-template-columns: minmax(180px, .7fr) minmax(180px, .7fr) minmax(360px, 1.6fr);
+  gap: 14px;
+  align-items: start;
+
+  :deep(.el-input-number),
+  :deep(.el-radio-group) {
+    width: 100%;
+  }
+}
+
+.database-target-config {
+  padding: 2px;
+}
+
+.database-target-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+
+  :deep(.el-input-number),
+  :deep(.el-select),
+  :deep(.el-radio-group) {
+    width: 100%;
+  }
+}
+
+.database-target-grid__name {
+  grid-column: span 2;
+}
+
+.database-target-grid__query {
+  grid-column: 1 / -1;
+
+  small {
+    color: #74869b;
+    line-height: 1.45;
   }
 }
 
@@ -7571,6 +8154,224 @@ function resultTagType(value) {
   align-items: center;
   gap: 10px;
   min-height: 40px;
+}
+
+.target-preview-drawer {
+  :deep(.el-drawer__body) {
+    padding: 16px 18px 22px;
+    background: #f4f7fb;
+  }
+}
+
+.target-preview {
+  display: grid;
+  gap: 12px;
+}
+
+.target-preview__status {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 15px 16px;
+  border: 1px solid #dce6f2;
+  border-radius: 8px;
+  background: #fff;
+
+  > div {
+    display: grid;
+    gap: 3px;
+  }
+
+  strong {
+    color: #203853;
+    font-size: 16px;
+  }
+
+  p {
+    margin: 0;
+    color: #6e8198;
+    line-height: 1.45;
+  }
+
+  &.is-passed {
+    border-color: #c9e8d0;
+  }
+
+  &.is-failed {
+    border-color: #f1cccc;
+  }
+}
+
+.target-preview__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+
+  span {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+    padding: 11px 12px;
+    border: 1px solid #e0e8f2;
+    border-radius: 8px;
+    background: #fff;
+  }
+
+  label {
+    color: #7a8ba0;
+    font-size: 12px;
+  }
+
+  strong {
+    overflow: hidden;
+    color: #263f5c;
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.target-preview__section {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #dde7f2;
+  border-radius: 8px;
+  background: #fff;
+
+  > header {
+    display: flex;
+    align-items: baseline;
+    gap: 9px;
+
+    strong {
+      color: #213a57;
+      font-size: 15px;
+    }
+
+    span {
+      color: #7a8ca1;
+      font-size: 12px;
+    }
+  }
+}
+
+.target-preview__request {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+
+  div {
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  dt {
+    color: #7b8da2;
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: #2b435e;
+  }
+}
+
+.target-preview__fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+
+  > div {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+
+    strong {
+      color: #2a425e;
+    }
+
+    span {
+      color: #7a8ca1;
+      font-size: 12px;
+    }
+  }
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    max-width: 100%;
+    min-height: 30px;
+    padding: 5px 9px;
+    border: 1px solid #d5e3f2;
+    border-radius: 6px;
+    background: #f8fbff;
+    color: #315d8d;
+    cursor: pointer;
+    font: inherit;
+
+    &:hover,
+    &:focus-visible {
+      border-color: #75aae2;
+      background: #edf6ff;
+      outline: none;
+    }
+
+    span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    em {
+      color: #7e91a6;
+      font-size: 11px;
+      font-style: normal;
+    }
+  }
+}
+
+.target-preview__code {
+  display: grid;
+  gap: 6px;
+
+  label {
+    color: #62778f;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  pre {
+    max-height: 260px;
+    margin: 0;
+    overflow: auto;
+    padding: 11px 12px;
+    border: 1px solid #e1e8f0;
+    border-radius: 6px;
+    background: #f7f9fc;
+    color: #263b52;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+}
+
+.target-preview__detail {
+  margin: 0;
+  color: #526a84;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.target-preview__table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
 }
 
 .inspection-detail-drawer {
@@ -8004,6 +8805,23 @@ function resultTagType(value) {
     grid-template-columns: 1fr;
   }
 
+  .config-commandbar {
+    grid-template-columns: auto minmax(220px, 1fr) auto;
+  }
+
+  .execution-policy-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .execution-policy-grid__action,
+  .database-target-grid__query {
+    grid-column: 1 / -1;
+  }
+
+  .database-target-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .config-help-strip,
   .operation-guide__steps header,
   .operation-guide__manual-link {
@@ -8017,6 +8835,52 @@ function resultTagType(value) {
 
   .operation-guide__images {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .config-commandbar,
+  .execution-policy-grid,
+  .database-target-grid,
+  .target-preview__metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .config-switcher {
+    width: 100%;
+
+    button {
+      flex: 1;
+      justify-content: center;
+    }
+  }
+
+  .config-sequence {
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+
+  .config-commandbar > .el-button {
+    justify-self: stretch;
+  }
+
+  .database-target-grid__name,
+  .database-target-grid__query,
+  .execution-policy-grid__action {
+    grid-column: auto;
+  }
+
+  .step-stage-nav {
+    overflow-x: auto;
+
+    button {
+      flex: 0 0 auto;
+    }
+  }
+
+  .target-preview__section > header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>

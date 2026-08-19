@@ -949,6 +949,10 @@ INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit
 SELECT 'SERVER_SERVICE_STATUS', '服务器服务状态检测', 'SERVER_SERVICE_STATUS', '状态', 'MIN', 1, 15, 0, '{"fields":["serverTargets","serviceName","privilegeMode","autoRestart","restartWaitSeconds"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
 WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'SERVER_SERVICE_STATUS');
 
+INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
+SELECT 'DATABASE_QUERY', '数据库查询检查', 'DATABASE_QUERY', '条', 'MIN', 1, 15, 0, '{"fields":["databaseType","host","port","databaseName","query","resultMode","resultColumn"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置只读数据库取数工具'
+WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'DATABASE_QUERY');
+
 UPDATE sys_menu SET visible = '1', update_time = NOW(), remark = '已由自动化巡检模块替代，保留旧数据入口隐藏'
 WHERE menu_id = 2206;
 

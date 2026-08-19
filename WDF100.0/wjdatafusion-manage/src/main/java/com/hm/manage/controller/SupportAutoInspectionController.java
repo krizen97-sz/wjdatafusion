@@ -116,6 +116,13 @@ public class SupportAutoInspectionController extends BaseController
         return success().put("message", autoInspectionService.testTarget(target));
     }
 
+    @PreAuthorize("@ss.hasPermi('support:autoInspection:target')")
+    @PostMapping("/targets/preview")
+    public AjaxResult previewTarget(@RequestBody AutoInspectionTargetSaveBo target)
+    {
+        return success(autoInspectionService.previewTarget(target));
+    }
+
     @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
     @Log(title = "查看自动化巡检敏感信息", businessType = BusinessType.GRANT)
     @GetMapping("/targets/plain/{targetId}")
