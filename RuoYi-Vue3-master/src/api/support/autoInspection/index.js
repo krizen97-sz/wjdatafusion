@@ -69,6 +69,10 @@ export function testAutoInspectionTarget(data) {
   return request({ url: '/support/autoInspection/targets/test', method: 'post', data, headers: { repeatSubmit: false, interval: 3000 } })
 }
 
+export function previewAutoInspectionTarget(data) {
+  return request({ url: '/support/autoInspection/targets/preview', method: 'post', data, headers: { repeatSubmit: false, interval: 3000 } })
+}
+
 export function viewAutoInspectionTargetPlain(targetId) {
   return request({ url: `/support/autoInspection/targets/plain/${targetId}`, method: 'get' })
 }

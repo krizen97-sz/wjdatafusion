@@ -22,6 +22,7 @@ import com.hm.manage.domain.vo.AutoInspectionDashboardVo;
 import com.hm.manage.domain.vo.AutoInspectionRecordDetailVo;
 import com.hm.manage.domain.vo.AutoInspectionRunResultVo;
 import com.hm.manage.domain.vo.AutoInspectionServerAssetNodeVo;
+import com.hm.manage.domain.vo.AutoInspectionTargetPreviewVo;
 
 public interface ISupportAutoInspectionService
 {
@@ -44,6 +45,8 @@ public interface ISupportAutoInspectionService
     int deleteTargetById(Long targetId);
 
     String testTarget(AutoInspectionTargetSaveBo target);
+
+    AutoInspectionTargetPreviewVo previewTarget(AutoInspectionTargetSaveBo target);
 
     String getTargetPasswordPlain(Long targetId);
 

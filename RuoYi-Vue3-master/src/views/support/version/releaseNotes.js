@@ -1,5 +1,30 @@
 export const releaseNotes = [
   {
+    version: 'v3.10.0',
+    submitTime: '2026-08-19 23:40:25',
+    level: 'minor',
+    levelLabel: '小版本',
+    tagType: 'primary',
+    title: '自动化巡检数据源与可视化编排升级',
+    summary: '借鉴成熟ETL平台的数据源、测试预览、流程编排和失败处理思路，将巡检模板升级为可视化执行流程，并新增只读数据库查询检查、结构化预览和异常复检策略。',
+    changes: [
+      '新增数据库查询检查工具，支持MySQL和PostgreSQL，可按首行字段值或返回行数进行阈值判断，适用于业务数量、积压数量和状态指标巡检。',
+      '数据库查询只允许单条SELECT或WITH语句，拒绝写入、DDL、锁表、多语句和数据库文件读取，并使用只读连接、查询超时和返回行数上限。',
+      '新增“测试并预览”接口与抽屉，统一展示目标、实际值、耗时和诊断信息；接口调用测试可识别JSON字段路径，点击即可生成返回条件。',
+      '模板步骤新增异常复检次数、复检间隔和异常后继续/停止策略，配置继续保存在step_params中，旧模板默认不复检且继续后续步骤。',
+      '模板编辑改为可视化流程节点，节点直接展示数据来源、结果判断和执行策略，并保留顺序调整、复制、编辑和删除能力。',
+      '巡检配置页压缩重复说明和大块入口，模板与计划改为紧凑切换；步骤配置按数据来源、结果判断、执行策略重新排序并提供阶段导航。',
+      '同步更新离线Markdown/HTML操作手册、系统内操作指引、完整部署SQL和专项回归测试。'
+    ],
+    scope: ['自动化巡检', '数据库查询检查', 'MySQL', 'PostgreSQL', '测试预览', 'JSON字段识别', '异常复检', '失败策略', '可视化流程', '操作手册'],
+    database: '不修改现有业务表结构；在sup_auto_inspection_tool中注册DATABASE_QUERY内置工具，步骤执行策略继续存入现有step_params JSON。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260819_auto_inspection_etl_workflow_v3_10_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v3.9.31',
     submitTime: '2026-08-18 20:40:30',
     level: 'patch',
