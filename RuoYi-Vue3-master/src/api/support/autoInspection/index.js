@@ -1,5 +1,7 @@
 import request from '@/utils/request'
 
+const MANUAL_INSPECTION_TIMEOUT = 10 * 60 * 1000
+
 function stringifyConfig(value) {
   if (value === undefined || value === null || value === '') return value ?? ''
   return typeof value === 'string' ? value : JSON.stringify(value)
@@ -102,7 +104,12 @@ export function deleteAutoInspectionTemplate(templateId) {
 }
 
 export function runAutoInspectionTemplate(templateId) {
-  return request({ url: `/support/autoInspection/templates/${templateId}/run`, method: 'post', headers: { repeatSubmit: false, interval: 5000 } })
+  return request({
+    url: `/support/autoInspection/templates/${templateId}/run`,
+    method: 'post',
+    timeout: MANUAL_INSPECTION_TIMEOUT,
+    headers: { repeatSubmit: false, interval: MANUAL_INSPECTION_TIMEOUT }
+  })
 }
 
 export function listAutoInspectionPlans(query) {
@@ -126,7 +133,12 @@ export function changeAutoInspectionPlanStatus(data) {
 }
 
 export function runAutoInspectionPlan(planId) {
-  return request({ url: `/support/autoInspection/plans/${planId}/run`, method: 'post', headers: { repeatSubmit: false, interval: 5000 } })
+  return request({
+    url: `/support/autoInspection/plans/${planId}/run`,
+    method: 'post',
+    timeout: MANUAL_INSPECTION_TIMEOUT,
+    headers: { repeatSubmit: false, interval: MANUAL_INSPECTION_TIMEOUT }
+  })
 }
 
 export function deleteAutoInspectionPlan(planId) {

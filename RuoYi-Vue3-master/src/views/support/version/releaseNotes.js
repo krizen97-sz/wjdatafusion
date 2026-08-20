@@ -1,5 +1,24 @@
 export const releaseNotes = [
   {
+    version: 'v3.11.1',
+    submitTime: '2026-08-20 16:17:14',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '模板执行超时与数据库配置回显修复',
+    summary: '修复手动巡检超过全局10秒请求时限后前端误报超时、重复触发执行，以及数据库查询步骤重新编辑时类型、SQL和密码显示不正确的问题。',
+    changes: [
+      '模板和计划手动执行使用独立10分钟请求时限，执行期间按钮持续保持加载和禁用状态，避免前端提前断开后用户重复提交。',
+      '业务Nginx代理补充30秒连接时限和600秒读写时限，允许包含多个远程目标的巡检完整执行并返回结果。',
+      '数据库查询目标重新编辑时优先解析数据库已保存的extra_params，再叠加当前表单值，正确回显MySQL/PostgreSQL类型、只读SQL和取值方式。',
+      '数据库登录密码改用统一的小眼睛入口，按support:credential:viewPlain权限读取目标自身的已保存密文；默认继续保持隐藏状态。',
+      '新增数据库目标配置恢复测试，覆盖持久化配置回显和编辑中配置优先级，确认不改写已有模板、目标和巡检记录。'
+    ],
+    scope: ['自动化巡检', '模板执行', '计划执行', '数据库查询检查', '密码明文查看', 'Nginx', '前端交互', '版本记录'],
+    database: '无数据库结构或业务数据修改；继续使用现有sup_auto_inspection_target.extra_params和password_cipher字段。',
+    scripts: []
+  },
+  {
     version: 'v3.11.0',
     submitTime: '2026-08-20 11:43:07',
     level: 'minor',

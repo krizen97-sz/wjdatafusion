@@ -97,3 +97,11 @@ test('overview and configuration keep one clear presentation path', () => {
   assert.ok(workspaceSource.includes('template-action--copy'))
   assert.ok(!workspaceSource.includes('class="config-sequence"'))
 })
+
+test('manual execution and database editing keep production-safe behavior', () => {
+  assert.ok(apiSource.includes('MANUAL_INSPECTION_TIMEOUT = 10 * 60 * 1000'))
+  assert.ok(apiSource.includes('timeout: MANUAL_INSPECTION_TIMEOUT'))
+  assert.ok(workspaceSource.includes('hydrateDatabaseTarget(target, defaultTargetForm())'))
+  assert.ok(workspaceSource.includes('toggleDatabaseTargetPassword'))
+  assert.ok(workspaceSource.includes('viewAutoInspectionTargetPlain(target.targetId)'))
+})

@@ -663,7 +663,23 @@
               <el-col :span="8"><el-form-item label="数据库名称"><el-input v-model="targetForm.path" /></el-form-item></el-col>
               <el-col :span="8"><el-form-item label="取值字段"><el-input v-model="targetForm.resultPath" placeholder="total" /></el-form-item></el-col>
               <el-col :span="12"><el-form-item label="只读账号"><el-input v-model="targetForm.username" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="登录密码"><el-input v-model="targetForm.password" show-password /></el-form-item></el-col>
+              <el-col :span="12">
+                <el-form-item label="登录密码">
+                  <el-input v-model="targetForm.password" :type="targetForm._passwordVisible ? 'text' : 'password'" placeholder="数据库登录密码">
+                    <template #suffix>
+                      <el-button
+                        class="inspection-password-eye"
+                        link
+                        type="primary"
+                        icon="View"
+                        :title="targetForm._passwordVisible ? '隐藏密码' : '显示密码'"
+                        :loading="isServerPasswordRevealLoading(targetForm)"
+                        @click.stop="toggleDatabaseTargetPassword(targetForm)"
+                      />
+                    </template>
+                  </el-input>
+                </el-form-item>
+              </el-col>
               <el-col :span="8"><el-form-item label="取值方式"><el-select v-model="targetForm.databaseConfig.resultMode" style="width: 100%"><el-option label="读取首行字段值" value="FIRST_VALUE" /><el-option label="统计返回行数" value="ROW_COUNT" /></el-select></el-form-item></el-col>
               <el-col :span="24"><el-form-item label="只读查询SQL"><el-input v-model="targetForm.databaseConfig.query" type="textarea" :rows="5" placeholder="SELECT COUNT(*) AS total FROM ..." /></el-form-item></el-col>
             </el-row>
@@ -1188,7 +1204,19 @@
               </div>
               <div class="api-field">
                 <label>登录密码</label>
-                <el-input v-model="stepDraft.target.password" show-password placeholder="数据库登录密码" />
+                <el-input v-model="stepDraft.target.password" :type="stepDraft.target._passwordVisible ? 'text' : 'password'" placeholder="数据库登录密码">
+                  <template #suffix>
+                    <el-button
+                      class="inspection-password-eye"
+                      link
+                      type="primary"
+                      icon="View"
+                      :title="stepDraft.target._passwordVisible ? '隐藏密码' : '显示密码'"
+                      :loading="isServerPasswordRevealLoading(stepDraft.target)"
+                      @click.stop="toggleDatabaseTargetPassword(stepDraft.target)"
+                    />
+                  </template>
+                </el-input>
               </div>
               <div class="api-field">
                 <label>取值方式</label>
@@ -1832,6 +1860,7 @@ import {
   VideoPlay
 } from '@element-plus/icons-vue'
 import InspectionFlowCanvas from './components/InspectionFlowCanvas.vue'
+import { hydrateDatabaseTarget, normalizeDatabaseTargetConfig } from './databaseTargetConfig'
 import {
   buildInspectionRecordTableRows,
   buildLabelTreeOptions,
@@ -2838,6 +2867,37 @@ async function toggleStepServerPassword(server, toolOrType) {
   server._passwordVisible = true
 }
 
+async function toggleDatabaseTargetPassword(target) {
+  if (!target) return
+  if (target._passwordVisible) {
+    target._passwordVisible = false
+    return
+  }
+  if (!target.password || isMaskedPassword(target.password)) {
+    if (!target.targetId) {
+      proxy.$modal.msgWarning('当前目标尚未保存，请先填写数据库登录密码')
+      return
+    }
+    const key = getServerPasswordKey(target)
+    serverPasswordRevealLoadingKey.value = key
+    try {
+      const res = await viewAutoInspectionTargetPlain(target.targetId)
+      const password = res.password || res.data?.password || ''
+      if (!password) {
+        proxy.$modal.msgWarning('该数据库目标未保存登录密码')
+        return
+      }
+      target.password = password
+    } catch (error) {
+      proxy.$modal.msgWarning(error?.msg || error?.message || '读取数据库登录密码失败，请确认当前账号具有敏感信息查看权限')
+      return
+    } finally {
+      if (serverPasswordRevealLoadingKey.value === key) serverPasswordRevealLoadingKey.value = ''
+    }
+  }
+  target._passwordVisible = true
+}
+
 async function loadStepServerPasswordPlain(server, toolOrType) {
   if (server.targetId) {
     const res = await viewAutoInspectionTargetPlain(server.targetId)
@@ -3187,8 +3247,10 @@ function handleDatabaseTypeChange(target) {
 
 function handleUpdateTarget(row) {
   getAutoInspectionTarget(row.targetId).then((res) => {
-    targetForm.value = { ...defaultTargetForm(), ...res.data }
-    if (targetForm.value.targetType === 'DATABASE') ensureDatabaseConfig(targetForm.value)
+    const target = res.data || {}
+    targetForm.value = target.targetType === 'DATABASE'
+      ? hydrateDatabaseTarget(target, defaultTargetForm())
+      : { ...defaultTargetForm(), ...target }
     targetDialogOpen.value = true
   })
 }
@@ -4322,7 +4384,8 @@ function applyToolDefaults(step, forceName = false) {
 
 function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
   const targetType = getTargetTypeByTool(toolCode)
-  const next = cleanTargetPayload({ ...defaultTargetForm(), ...target, targetType, toolCode, status: '0' })
+  const sourceTarget = targetType === 'DATABASE' ? hydrateDatabaseTarget(target) : target
+  const next = cleanTargetPayload({ ...defaultTargetForm(), ...sourceTarget, targetType, toolCode, status: '0' })
   if (!next.targetName) next.targetName = fallbackName || getToolLabel(toolCode)
   if (targetType === 'FTP' && !next.port) next.port = 21
   if (targetType === 'HTTP') {
@@ -4502,14 +4565,7 @@ function defaultDatabaseConfig() {
 }
 
 function normalizeDatabaseConfig(target = {}) {
-  const raw = parseCronConfig(target.extraParams) || {}
-  return {
-    ...defaultDatabaseConfig(),
-    ...raw,
-    ...(target.databaseConfig || {}),
-    databaseType: String(target.databaseConfig?.databaseType || raw.databaseType || 'MYSQL').toUpperCase(),
-    resultMode: String(target.databaseConfig?.resultMode || raw.resultMode || 'FIRST_VALUE').toUpperCase()
-  }
+  return normalizeDatabaseTargetConfig(target)
 }
 
 function ensureDatabaseConfig(target) {
@@ -5095,7 +5151,7 @@ function normalizeStepFromServer(step) {
 }
 
 function defaultTargetForm() {
-  return { targetName: '', targetType: 'KAFKA', serverId: undefined, host: '', port: undefined, path: '', url: '', httpMethod: 'POST', topic: '', consumerGroup: '', username: '', password: '', appKey: '', secret: '', resultPath: 'data.total', extraParams: '', apiConfig: defaultApiTestConfig(), databaseConfig: defaultDatabaseConfig(), status: '0', remark: '' }
+  return { targetName: '', targetType: 'KAFKA', serverId: undefined, host: '', port: undefined, path: '', url: '', httpMethod: 'POST', topic: '', consumerGroup: '', username: '', password: '', appKey: '', secret: '', resultPath: 'data.total', extraParams: '', apiConfig: defaultApiTestConfig(), databaseConfig: defaultDatabaseConfig(), status: '0', remark: '', _passwordVisible: false }
 }
 
 function defaultTemplateForm() {
