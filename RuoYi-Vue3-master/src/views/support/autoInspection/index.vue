@@ -1,39 +1,49 @@
 <template>
   <div class="app-container auto-page">
-    <section v-show="activeTab === 'dashboard'" class="auto-content-section">
-        <section class="record-board record-board--primary">
-          <header class="record-board__head">
-            <div>
-              <strong>巡检记录</strong>
-              <span>打开页面优先处理巡检结果，右侧按钮可展开图表看板。</span>
-            </div>
+    <section v-show="activeTab === 'dashboard'" class="auto-content-section auto-content-section--overview">
+      <section class="record-board record-board--primary">
+        <header class="record-board__head">
+          <div>
+            <strong>巡检记录</strong>
+            <span>按日期归集当天结果，异常记录优先显示，便于值守人员逐日回看。</span>
+          </div>
+          <div class="record-board__actions">
+            <el-button type="primary" plain icon="DataAnalysis" @click="openDashboardDrawer">展开看板</el-button>
             <el-button icon="Refresh" @click="getRecordList">刷新记录</el-button>
-          </header>
-          <section class="dashboard-brief" :class="`dashboard-brief--${dashboardWeekSummary.status || '3'}`">
-            <div class="dashboard-brief__status">
-              <span class="status-dot" :class="`status-dot--${dashboardWeekSummary.status || '3'}`"></span>
-              <div>
-                <strong>本周巡检情况</strong>
-                <em>巡检 {{ dashboardWeekSummary.recordCount || 0 }} 次 · 正常 {{ dashboardWeekSummary.normalCount || 0 }} 次 · 异常 {{ dashboardWeekSummary.abnormalCount || 0 }} 次 · 正常率 {{ dashboardWeekSummary.successRate || '0%' }}</em>
-              </div>
+          </div>
+        </header>
+
+        <section class="dashboard-brief" :class="`dashboard-brief--${dashboardWeekSummary.status || '3'}`">
+          <div class="dashboard-brief__status">
+            <span class="status-dot" :class="`status-dot--${dashboardWeekSummary.status || '3'}`"></span>
+            <div>
+              <strong>本周巡检情况</strong>
+              <em>共运行 {{ dashboardWeekSummary.recordCount || 0 }} 次，正常率 {{ dashboardWeekSummary.successRate || '0%' }}</em>
             </div>
-            <div class="dashboard-brief__metrics">
-              <span><strong>{{ dashboardWeekSummary.recordCount || 0 }}</strong><em>本周巡检</em></span>
-              <span><strong>{{ dashboardWeekSummary.abnormalTargetCount || 0 }}</strong><em>异常子项</em></span>
-              <span><strong>{{ dashboardWeekSummary.activeDays || 0 }}</strong><em>巡检天数</em></span>
-            </div>
-            <div class="dashboard-brief__chart">
+          </div>
+          <div class="dashboard-brief__metrics" aria-label="本周巡检关键指标">
+            <span><strong>{{ dashboardWeekSummary.recordCount || 0 }}</strong><em>巡检次数</em></span>
+            <span><strong>{{ dashboardWeekSummary.abnormalTargetCount || 0 }}</strong><em>异常子项</em></span>
+            <span><strong>{{ dashboardWeekSummary.activeDays || 0 }}</strong><em>运行天数</em></span>
+          </div>
+          <div class="dashboard-brief__charts">
+            <article class="dashboard-brief__chart">
               <div class="dashboard-brief__chart-head">
-                <span>本周趋势</span>
+                <span>每日运行趋势</span>
                 <em>巡检 / 异常</em>
               </div>
               <div ref="weekBriefChartRef" class="dashboard-brief-chart"></div>
-            </div>
-            <div class="dashboard-brief__actions">
-              <el-button type="primary" plain icon="DataAnalysis" @click="openDashboardDrawer">展开看板</el-button>
-            </div>
-          </section>
-          <el-form :model="recordQuery" :inline="true" class="auto-query-bar">
+            </article>
+            <article class="dashboard-brief__chart dashboard-brief__chart--result">
+              <div class="dashboard-brief__chart-head">
+                <span>本周结果</span>
+                <em>正常 / 异常</em>
+              </div>
+              <div ref="weekResultChartRef" class="dashboard-brief-chart"></div>
+            </article>
+          </div>
+        </section>
+        <el-form :model="recordQuery" :inline="true" class="auto-query-bar">
             <el-form-item label="模板">
               <el-input v-model="recordQuery.templateName" clearable placeholder="模板名称" @keyup.enter="getRecordList" />
             </el-form-item>
@@ -57,37 +67,62 @@
               <el-button type="primary" icon="Search" @click="getRecordList">搜索</el-button>
               <el-button icon="Refresh" @click="resetRecordQuery">重置</el-button>
             </el-form-item>
-          </el-form>
+        </el-form>
 
-          <div class="auto-toolbar">
-            <el-button type="primary" plain icon="Document" @click="openReportExportDialog" v-hasPermi="['support:autoInspection:export']">导出周/月报</el-button>
-          </div>
+        <div class="auto-toolbar">
+          <el-button type="primary" plain icon="Document" @click="openReportExportDialog" v-hasPermi="['support:autoInspection:export']">导出周/月报</el-button>
+        </div>
 
-          <el-table v-loading="recordLoading" :data="recordList" class="auto-table record-table">
-            <el-table-column label="巡检时间" prop="inspectionTime" width="170" align="center" />
-            <el-table-column label="结果" prop="resultStatus" width="90" align="center">
-              <template #default="scope"><el-tag class="soft-status-tag" size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
-            </el-table-column>
-            <el-table-column label="来源" prop="sourceType" width="90" align="center">
-              <template #default="scope"><el-tag size="small" :type="scope.row.sourceType === 'MANUAL' ? 'success' : 'info'">{{ scope.row.sourceType === 'MANUAL' ? '手动' : '自动' }}</el-tag></template>
-            </el-table-column>
-            <el-table-column label="模板" prop="templateName" min-width="160" show-overflow-tooltip />
-            <el-table-column label="计划" prop="planName" min-width="140" show-overflow-tooltip />
-            <el-table-column label="摘要" prop="summary" min-width="260" show-overflow-tooltip />
-            <el-table-column label="异常摘要" prop="abnormalSummary" min-width="260" show-overflow-tooltip />
-            <el-table-column label="步骤/目标/异常" width="130" align="center">
-              <template #default="scope">{{ scope.row.enabledStepCount || 0 }} / {{ scope.row.targetCount || 0 }} / {{ scope.row.abnormalCount || 0 }}</template>
-            </el-table-column>
-            <el-table-column label="操作" width="150" fixed="right" align="center">
-              <template #default="scope">
-                <el-button link type="primary" @click="handleRecordDetail(scope.row)" v-hasPermi="['support:autoInspection:query']">详情</el-button>
-                <el-button link type="success" @click="exportWord(scope.row)" v-hasPermi="['support:autoInspection:export']">Word</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+        <section v-loading="recordLoading" class="record-day-groups" aria-live="polite">
+          <el-empty v-if="!recordDayGroups.length && !recordLoading" description="暂无巡检记录" :image-size="72" />
+          <article v-for="day in recordDayGroups" :key="day.key" class="record-day-group" :class="`record-day-group--${day.status}`">
+            <header class="record-day-group__head">
+              <div class="record-day-group__date">
+                <span class="status-dot" :class="`status-dot--${day.status}`"></span>
+                <div>
+                  <strong>{{ day.label }}</strong>
+                  <em>{{ day.dateKey || '-' }} {{ day.weekday }}</em>
+                </div>
+              </div>
+              <div class="record-day-group__summary">
+                <span><strong>{{ day.records.length }}</strong><em>当日记录</em></span>
+                <span><strong>{{ day.normalCount }}</strong><em>正常</em></span>
+                <span :class="{ 'has-abnormal': day.abnormalCount > 0 }"><strong>{{ day.abnormalCount }}</strong><em>异常</em></span>
+                <span><strong>{{ day.successRate }}</strong><em>正常率</em></span>
+              </div>
+            </header>
 
-          <pagination v-show="recordTotal > 0" :total="recordTotal" v-model:page="recordQuery.pageNum" v-model:limit="recordQuery.pageSize" @pagination="getRecordList" />
+            <div class="record-day-group__list">
+              <div v-for="row in day.records" :key="row.recordId" class="record-entry" :class="`record-entry--${row.resultStatus || '3'}`">
+                <time class="record-entry__time">
+                  <strong>{{ formatInspectionClock(row.inspectionTime) }}</strong>
+                  <span>{{ row.sourceType === 'MANUAL' ? '手动执行' : '计划执行' }}</span>
+                </time>
+                <el-tag class="soft-status-tag" size="small" :type="resultTagType(row.resultStatus)">{{ formatResult(row.resultStatus) }}</el-tag>
+                <div class="record-entry__identity">
+                  <strong>{{ row.templateName || '未命名模板' }}</strong>
+                  <span>{{ row.planName || '未绑定计划' }}</span>
+                </div>
+                <div class="record-entry__summary">
+                  <strong>{{ row.abnormalSummary || row.summary || '本次巡检未填写摘要' }}</strong>
+                  <span v-if="row.abnormalSummary && row.summary && row.abnormalSummary !== row.summary">{{ row.summary }}</span>
+                </div>
+                <div class="record-entry__metrics" aria-label="步骤、目标和异常数量">
+                  <span>步骤 {{ row.enabledStepCount || 0 }}</span>
+                  <span>目标 {{ row.targetCount || 0 }}</span>
+                  <span :class="{ 'has-abnormal': Number(row.abnormalCount || 0) > 0 }">异常 {{ row.abnormalCount || 0 }}</span>
+                </div>
+                <div class="record-entry__actions">
+                  <el-button link type="primary" icon="View" @click="handleRecordDetail(row)" v-hasPermi="['support:autoInspection:query']">详情</el-button>
+                  <el-button link type="success" icon="Document" @click="exportWord(row)" v-hasPermi="['support:autoInspection:export']">Word</el-button>
+                </div>
+              </div>
+            </div>
+          </article>
         </section>
+
+        <pagination v-show="recordTotal > 0" :total="recordTotal" v-model:page="recordQuery.pageNum" v-model:limit="recordQuery.pageSize" @pagination="getRecordList" />
+      </section>
     </section>
 
     <el-drawer v-model="dashboardDrawerOpen" title="巡检看板" direction="rtl" size="820px" append-to-body class="dashboard-drawer" @opened="renderDashboardCharts">
@@ -358,26 +393,29 @@
       </template>
     </el-dialog>
 
-    <section v-show="activeTab === 'config'" class="auto-content-section">
-        <div class="config-shell">
-          <header class="config-commandbar">
-            <div class="config-switcher" role="tablist" aria-label="巡检配置区域">
-              <button role="tab" :aria-selected="configTab === 'template'" :class="{ active: configTab === 'template' }" @click="switchConfigTab('template')">
+    <section v-show="activeTab === 'config'" class="auto-content-section auto-content-section--config">
+      <div class="config-shell">
+        <header class="config-commandbar">
+          <div class="config-switcher" role="tablist" aria-label="巡检配置区域">
+            <button role="tab" :aria-selected="configTab === 'template'" :class="{ active: configTab === 'template' }" @click="switchConfigTab('template')">
+              <el-icon><Files /></el-icon>
+              <span class="config-switcher__copy">
                 <strong>模板编排</strong>
-                <span>{{ templateTotal || 0 }}</span>
-              </button>
-              <button role="tab" :aria-selected="configTab === 'plan'" :class="{ active: configTab === 'plan' }" @click="switchConfigTab('plan')">
+                <small>定义检查步骤、目标和判定规则</small>
+              </span>
+              <em>{{ templateTotal || 0 }}</em>
+            </button>
+            <button role="tab" :aria-selected="configTab === 'plan'" :class="{ active: configTab === 'plan' }" @click="switchConfigTab('plan')">
+              <el-icon><CalendarIcon /></el-icon>
+              <span class="config-switcher__copy">
                 <strong>执行计划</strong>
-                <span>{{ planTotal || 0 }}</span>
-              </button>
-            </div>
-            <div class="config-sequence" aria-label="推荐操作顺序">
-              <span :class="{ active: configTab === 'template' }">编排模板</span><i></i>
-              <span :class="{ active: configTab === 'plan' }">安排周期</span><i></i>
-              <span>查看记录</span>
-            </div>
-            <el-button plain icon="QuestionFilled" @click="openOperationGuide">操作指引</el-button>
-          </header>
+                <small>选择模板并安排自动执行周期</small>
+              </span>
+              <em>{{ planTotal || 0 }}</em>
+            </button>
+          </div>
+          <el-button class="config-guide-button" plain icon="QuestionFilled" @click="openOperationGuide">操作指引</el-button>
+        </header>
 
           <section v-show="configTab === 'template'" class="config-panel">
         <el-form :model="templateQuery" :inline="true" class="auto-query-bar">
@@ -398,7 +436,7 @@
 
         <div class="auto-toolbar guide-toolbar">
           <span v-if="operationGuideOpen" class="guide-page-badge guide-page-badge--inline">2 新增模板并添加步骤</span>
-          <el-button type="primary" plain icon="Plus" @click="handleAddTemplate" v-hasPermi="['support:autoInspection:template']">新增模板</el-button>
+          <el-button class="primary-create-action" type="primary" plain icon="Plus" @click="handleAddTemplate" v-hasPermi="['support:autoInspection:template']">新增模板</el-button>
           <el-button icon="Refresh" @click="getTemplateList">刷新</el-button>
         </div>
 
@@ -412,12 +450,14 @@
             <template #default="scope"><el-tag size="small" :type="scope.row.status === '1' ? 'info' : 'success'">{{ scope.row.status === '1' ? '停用' : '正常' }}</el-tag></template>
           </el-table-column>
           <el-table-column label="更新时间" prop="updateTime" width="170" align="center" />
-          <el-table-column label="操作" width="300" fixed="right" align="center">
+          <el-table-column label="操作" width="340" fixed="right" align="center">
             <template #default="scope">
-              <el-button link type="primary" @click="handleUpdateTemplate(scope.row)" v-hasPermi="['support:autoInspection:template']">编辑</el-button>
-              <el-button link type="success" :loading="templateRunId === scope.row.templateId" @click="handleRunTemplate(scope.row)" v-hasPermi="['support:autoInspection:run']">执行</el-button>
-              <el-button link type="warning" :loading="templateCopyId === scope.row.templateId" @click="handleCopyTemplate(scope.row)" v-hasPermi="['support:autoInspection:template']">复制</el-button>
-              <el-button link type="danger" @click="handleDeleteTemplate(scope.row)" v-hasPermi="['support:autoInspection:template']">删除</el-button>
+              <div class="template-row-actions">
+                <el-button class="template-action template-action--edit" link type="primary" :icon="EditPen" @click="handleUpdateTemplate(scope.row)" v-hasPermi="['support:autoInspection:template']">编辑</el-button>
+                <el-button class="template-action template-action--run" link type="success" :icon="VideoPlay" :loading="templateRunId === scope.row.templateId" @click="handleRunTemplate(scope.row)" v-hasPermi="['support:autoInspection:run']">执行</el-button>
+                <el-button class="template-action template-action--copy" link type="warning" :icon="CopyDocument" :loading="templateCopyId === scope.row.templateId" @click="handleCopyTemplate(scope.row)" v-hasPermi="['support:autoInspection:template']">复制</el-button>
+                <el-button class="template-action template-action--delete" link type="danger" :icon="DeleteIcon" @click="handleDeleteTemplate(scope.row)" v-hasPermi="['support:autoInspection:template']">删除</el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -449,7 +489,7 @@
 
         <div class="auto-toolbar guide-toolbar">
           <span v-if="operationGuideOpen" class="guide-page-badge guide-page-badge--inline">5 新增计划并绑定模板</span>
-          <el-button type="primary" plain icon="Plus" @click="handleAddPlan" v-hasPermi="['support:autoInspection:plan']">新增计划</el-button>
+          <el-button class="primary-create-action" type="primary" plain icon="Plus" @click="handleAddPlan" v-hasPermi="['support:autoInspection:plan']">新增计划</el-button>
           <el-button icon="Refresh" @click="getPlanList">刷新</el-button>
         </div>
 
@@ -470,16 +510,18 @@
           <el-table-column label="更新时间" prop="updateTime" width="170" align="center" />
           <el-table-column label="操作" width="260" fixed="right" align="center">
             <template #default="scope">
-              <el-button link type="primary" @click="handleUpdatePlan(scope.row)" v-hasPermi="['support:autoInspection:plan']">编辑</el-button>
-              <el-button link type="success" :loading="planRunId === scope.row.planId" @click="handleRunPlan(scope.row)" v-hasPermi="['support:autoInspection:run']">执行</el-button>
-              <el-button link type="danger" @click="handleDeletePlan(scope.row)" v-hasPermi="['support:autoInspection:plan']">删除</el-button>
+              <div class="template-row-actions">
+                <el-button class="template-action template-action--edit" link type="primary" :icon="EditPen" @click="handleUpdatePlan(scope.row)" v-hasPermi="['support:autoInspection:plan']">编辑</el-button>
+                <el-button class="template-action template-action--run" link type="success" :icon="VideoPlay" :loading="planRunId === scope.row.planId" @click="handleRunPlan(scope.row)" v-hasPermi="['support:autoInspection:run']">执行</el-button>
+                <el-button class="template-action template-action--delete" link type="danger" :icon="DeleteIcon" @click="handleDeletePlan(scope.row)" v-hasPermi="['support:autoInspection:plan']">删除</el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
 
         <pagination v-show="planTotal > 0" :total="planTotal" v-model:page="planQuery.pageNum" v-model:limit="planQuery.pageSize" @pagination="getPlanList" />
           </section>
-        </div>
+      </div>
     </section>
 
     <el-dialog v-model="targetDialogOpen" width="860px" append-to-body class="auto-dialog target-dialog">
@@ -1670,8 +1712,21 @@
 <script setup name="SupportAutoInspection">
 import * as echarts from 'echarts'
 import { saveAs } from 'file-saver'
-import { ArrowRight } from '@element-plus/icons-vue'
+import {
+  ArrowRight,
+  Calendar as CalendarIcon,
+  CopyDocument,
+  Delete as DeleteIcon,
+  EditPen,
+  Files,
+  VideoPlay
+} from '@element-plus/icons-vue'
 import InspectionFlowCanvas from './components/InspectionFlowCanvas.vue'
+import {
+  buildWeekResultDistribution,
+  formatInspectionClock,
+  groupInspectionRecordsByDay
+} from './overviewPresentation'
 import {
   addAutoInspectionPlan,
   addAutoInspectionTarget,
@@ -1760,6 +1815,7 @@ const dashboardData = ref(defaultDashboardData())
 const dashboardDrawerOpen = ref(false)
 const operationGuideOpen = ref(false)
 const weekBriefChartRef = ref(null)
+const weekResultChartRef = ref(null)
 const trendChartRef = ref(null)
 const resultPieChartRef = ref(null)
 const toolHealthChartRef = ref(null)
@@ -1767,7 +1823,7 @@ const abnormalChartRef = ref(null)
 const recordLoading = ref(false)
 const recordList = ref([])
 const recordTotal = ref(0)
-const recordQuery = ref({ pageNum: 1, pageSize: 10, templateName: '', planName: '', sourceType: '', resultStatus: '' })
+const recordQuery = ref({ pageNum: 1, pageSize: 20, templateName: '', planName: '', sourceType: '', resultStatus: '' })
 const reportExportOpen = ref(false)
 const reportExportLoading = ref(false)
 const reportExportForm = ref(defaultReportExportForm())
@@ -2245,6 +2301,8 @@ const dashboardCalendarOffset = computed(() => {
 const dashboardToolStats = computed(() => dashboardData.value?.toolStats || [])
 const dashboardAbnormalTargets = computed(() => dashboardData.value?.latestAbnormalTargets || [])
 const dashboardRecentRecords = computed(() => dashboardData.value?.recentRecords || [])
+const recordDayGroups = computed(() => groupInspectionRecordsByDay(recordList.value))
+const dashboardWeekResultPieData = computed(() => buildWeekResultDistribution(dashboardWeekSummary.value))
 const dashboardResultPieData = computed(() => {
   const total = Number(dashboardSummary.value.recordCount || 0)
   const abnormal = Number(dashboardSummary.value.abnormalCount || 0)
@@ -2765,57 +2823,97 @@ function renderWeekBriefChart() {
   nextTick(() => {
     if (activeTab.value !== 'dashboard') return
     const chart = getDashboardChart(weekBriefChartRef, 'weekBrief')
-    if (!chart) return
-    const rows = dashboardWeekTrend.value
-    const totalData = rows.map((item) => Number(item.total || 0))
-    const abnormalData = rows.map((item) => Number(item.abnormal || 0))
-    chart.setOption({
-      color: ['#2f80ed', '#f56c6c'],
-      grid: { top: 10, right: 8, bottom: 18, left: 24 },
-      tooltip: {
-        trigger: 'axis',
-        appendToBody: true,
-        axisPointer: { type: 'shadow' },
-        formatter(params = []) {
-          const title = params[0]?.axisValue || ''
-          const total = params.find((item) => item.seriesName === '巡检次数')?.value || 0
-          const abnormal = params.find((item) => item.seriesName === '异常次数')?.value || 0
-          return `${title}<br/>巡检次数：${total}<br/>异常次数：${abnormal}`
-        }
-      },
-      xAxis: {
-        type: 'category',
-        data: rows.map((item) => formatTrendDate(item.date)),
-        axisTick: { show: false },
-        axisLine: { lineStyle: { color: '#dce7f4' } },
-        axisLabel: { color: '#7890aa', fontSize: 10 }
-      },
-      yAxis: {
-        type: 'value',
-        minInterval: 1,
-        axisLabel: { color: '#9aa9ba', fontSize: 10 },
-        splitLine: { lineStyle: { color: '#edf3f8' } }
-      },
-      series: [
-        {
-          name: '巡检次数',
-          type: 'bar',
-          barWidth: 10,
-          itemStyle: { borderRadius: [6, 6, 0, 0] },
-          data: totalData
+    if (chart) {
+      const rows = dashboardWeekTrend.value
+      const totalData = rows.map((item) => Number(item.total || 0))
+      const abnormalData = rows.map((item) => Number(item.abnormal || 0))
+      chart.setOption({
+        color: ['#2f80ed', '#f56c6c'],
+        grid: { top: 10, right: 8, bottom: 18, left: 24 },
+        tooltip: {
+          trigger: 'axis',
+          appendToBody: true,
+          axisPointer: { type: 'shadow' },
+          formatter(params = []) {
+            const title = params[0]?.axisValue || ''
+            const total = params.find((item) => item.seriesName === '巡检次数')?.value || 0
+            const abnormal = params.find((item) => item.seriesName === '异常次数')?.value || 0
+            return `${title}<br/>巡检次数：${total}<br/>异常次数：${abnormal}`
+          }
         },
-        {
-          name: '异常次数',
-          type: 'line',
-          smooth: true,
-          symbolSize: 5,
-          lineStyle: { width: 2 },
-          data: abnormalData
-        }
-      ]
-    }, true)
-    chart.resize()
+        xAxis: {
+          type: 'category',
+          data: rows.map((item) => formatTrendDate(item.date)),
+          axisTick: { show: false },
+          axisLine: { lineStyle: { color: '#dce7f4' } },
+          axisLabel: { color: '#7890aa', fontSize: 10 }
+        },
+        yAxis: {
+          type: 'value',
+          minInterval: 1,
+          axisLabel: { color: '#9aa9ba', fontSize: 10 },
+          splitLine: { lineStyle: { color: '#edf3f8' } }
+        },
+        series: [
+          {
+            name: '巡检次数',
+            type: 'bar',
+            barWidth: 10,
+            itemStyle: { borderRadius: [6, 6, 0, 0] },
+            data: totalData
+          },
+          {
+            name: '异常次数',
+            type: 'line',
+            smooth: true,
+            symbolSize: 5,
+            lineStyle: { width: 2 },
+            data: abnormalData
+          }
+        ]
+      }, true)
+      chart.resize()
+    }
+    renderWeekResultChart()
   })
+}
+
+function renderWeekResultChart() {
+  const chart = getDashboardChart(weekResultChartRef, 'weekResult')
+  if (!chart) return
+  chart.setOption({
+    color: ['#45ad6f', '#eb6262', '#a8b5c5'],
+    tooltip: { trigger: 'item', appendToBody: true },
+    legend: {
+      orient: 'vertical',
+      right: 2,
+      top: 'center',
+      itemWidth: 8,
+      itemHeight: 8,
+      textStyle: { color: '#687f98', fontSize: 10 }
+    },
+    graphic: [{
+      type: 'text',
+      left: '28%',
+      top: '43%',
+      style: {
+        text: dashboardWeekSummary.value.successRate || '0%',
+        fill: '#1d3554',
+        font: '600 14px sans-serif',
+        textAlign: 'center'
+      }
+    }],
+    series: [{
+      type: 'pie',
+      radius: ['54%', '76%'],
+      center: ['30%', '50%'],
+      silent: false,
+      avoidLabelOverlap: true,
+      label: { show: false },
+      data: dashboardWeekResultPieData.value
+    }]
+  }, true)
+  chart.resize()
 }
 
 function renderDashboardCharts() {
@@ -2941,7 +3039,7 @@ function resetPlanQuery() {
 }
 
 function resetRecordQuery() {
-  recordQuery.value = { pageNum: 1, pageSize: 10, templateName: '', planName: '', sourceType: '', resultStatus: '' }
+  recordQuery.value = { pageNum: 1, pageSize: 20, templateName: '', planName: '', sourceType: '', resultStatus: '' }
   getRecordList()
 }
 
@@ -5350,6 +5448,13 @@ function resultTagType(value) {
   padding: 14px;
 }
 
+.auto-content-section--config {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 .dashboard-shell {
   display: grid;
   gap: 14px;
@@ -5357,10 +5462,10 @@ function resultTagType(value) {
 
 .dashboard-brief {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) auto minmax(260px, 340px) auto;
-  gap: 12px;
+  grid-template-columns: minmax(220px, .8fr) auto minmax(440px, 1.35fr);
+  gap: 18px;
   align-items: center;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border: 1px solid #dfeaf6;
   border-radius: 8px;
   background: #f8fbff;
@@ -5404,18 +5509,15 @@ function resultTagType(value) {
 }
 
 .dashboard-brief__metrics {
-  display: grid;
-  grid-template-columns: repeat(3, 72px);
-  gap: 6px;
+  display: flex;
+  align-items: stretch;
 
   span {
     display: grid;
     gap: 2px;
     min-width: 0;
-    padding: 6px 8px;
-    border: 1px solid #e2ebf7;
-    border-radius: 7px;
-    background: #fff;
+    padding: 2px 14px;
+    border-left: 1px solid #dce6f1;
     text-align: center;
   }
 
@@ -5435,15 +5537,26 @@ function resultTagType(value) {
   }
 }
 
+.dashboard-brief__charts {
+  display: grid;
+  grid-template-columns: minmax(250px, 1fr) 190px;
+  gap: 14px;
+  min-width: 0;
+  padding-left: 16px;
+  border-left: 1px solid #dce6f1;
+}
+
 .dashboard-brief__chart {
   display: grid;
   gap: 4px;
   min-width: 0;
-  min-height: 86px;
-  padding: 8px 10px 6px;
-  border: 1px solid #e2ebf7;
-  border-radius: 7px;
-  background: #fff;
+  min-height: 78px;
+  padding: 0;
+}
+
+.dashboard-brief__chart--result {
+  padding-left: 14px;
+  border-left: 1px solid #dce6f1;
 }
 
 .dashboard-brief__chart-head {
@@ -5475,14 +5588,7 @@ function resultTagType(value) {
 
 .dashboard-brief-chart {
   width: 100%;
-  height: 54px;
-}
-
-.dashboard-brief__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  white-space: nowrap;
+  height: 58px;
 }
 
 .record-board {
@@ -5515,6 +5621,213 @@ function resultTagType(value) {
     color: #7890aa;
     font-size: 13px;
   }
+}
+
+.record-board__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+}
+
+.record-day-groups {
+  display: grid;
+  gap: 14px;
+  min-height: 120px;
+}
+
+.record-day-group {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #dfe8f3;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.record-day-group--1 {
+  border-color: #d5e9de;
+}
+
+.record-day-group--2 {
+  border-color: #f1d4d4;
+}
+
+.record-day-group__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-height: 58px;
+  padding: 9px 14px;
+  border-bottom: 1px solid #e7eef7;
+  background: #f8fafc;
+}
+
+.record-day-group--1 .record-day-group__head {
+  background: #f6faf8;
+}
+
+.record-day-group--2 .record-day-group__head {
+  background: #fff8f8;
+}
+
+.record-day-group__date {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+
+  strong,
+  em {
+    display: block;
+  }
+
+  strong {
+    color: #1d3554;
+    font-size: 16px;
+    line-height: 1.2;
+  }
+
+  em {
+    margin-top: 2px;
+    color: #74889f;
+    font-size: 11px;
+    font-style: normal;
+  }
+}
+
+.record-day-group__summary {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+
+  span {
+    display: grid;
+    min-width: 72px;
+    padding: 0 12px;
+    border-left: 1px solid #dbe5f0;
+    text-align: center;
+  }
+
+  strong {
+    color: #294766;
+    font-size: 14px;
+    line-height: 1.2;
+  }
+
+  em {
+    margin-top: 2px;
+    color: #8192a5;
+    font-size: 10px;
+    font-style: normal;
+  }
+
+  .has-abnormal strong {
+    color: #c45656;
+  }
+}
+
+.record-day-group__list {
+  display: grid;
+}
+
+.record-entry {
+  display: grid;
+  grid-template-columns: 72px 66px minmax(150px, .8fr) minmax(240px, 1.35fr) 208px 126px;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+  min-height: 62px;
+  padding: 9px 14px;
+  border-bottom: 1px solid #edf2f7;
+  transition: background-color 160ms ease-out;
+
+  &:last-child {
+    border-bottom: 0;
+  }
+
+  &:hover {
+    background: #f8fbff;
+  }
+}
+
+.record-entry--2 {
+  background: #fffafa;
+
+  &:hover {
+    background: #fff5f5;
+  }
+}
+
+.record-entry__time {
+  display: grid;
+  gap: 2px;
+
+  strong {
+    color: #244361;
+    font-size: 15px;
+    line-height: 1.2;
+  }
+
+  span {
+    color: #8192a5;
+    font-size: 10px;
+  }
+}
+
+.record-entry__identity,
+.record-entry__summary {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+
+  strong,
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: #294766;
+    font-size: 13px;
+  }
+
+  span {
+    color: #7b8ea4;
+    font-size: 11px;
+  }
+}
+
+.record-entry--2 .record-entry__summary strong {
+  color: #b94d4d;
+}
+
+.record-entry__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+
+  span {
+    padding: 3px 7px;
+    border-radius: 4px;
+    background: #f0f4f8;
+    color: #60758d;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  .has-abnormal {
+    background: #fff0f0;
+    color: #c45656;
+  }
+}
+
+.record-entry__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  white-space: nowrap;
 }
 
 .dashboard-status {
@@ -6339,165 +6652,108 @@ function resultTagType(value) {
 
 .config-shell {
   display: grid;
-  gap: 16px;
+  gap: 10px;
   min-width: 0;
 }
 
 .config-commandbar {
-  display: grid;
-  grid-template-columns: auto minmax(280px, 1fr) auto;
-  align-items: center;
-  gap: 18px;
-  min-height: 52px;
-  padding: 7px 9px;
-  border: 1px solid #dfe8f3;
-  border-radius: 8px;
-  background: #fff;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  min-height: 64px;
+  padding: 0 2px 10px;
+  border-bottom: 1px solid #dfe8f3;
 }
 
 .config-switcher {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px;
-  border: 1px solid #d7e2ef;
-  border-radius: 7px;
-  background: #f4f7fb;
-
-  button {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 34px;
-    padding: 0 13px;
-    border: 0;
-    border-radius: 5px;
-    background: transparent;
-    color: #58718e;
-    cursor: pointer;
-
-    &.active {
-      background: #fff;
-      color: #236fbf;
-      box-shadow: 0 2px 8px rgba(37, 77, 118, .1);
-    }
-
-    strong {
-      font-size: 13px;
-    }
-
-    span {
-      min-width: 20px;
-      color: #7d8fa3;
-      font-size: 12px;
-      text-align: center;
-    }
-  }
-}
-
-.config-sequence {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(230px, 320px));
+  align-items: end;
   min-width: 0;
 
-  span {
-    color: #8190a3;
-    font-size: 12px;
-    white-space: nowrap;
-
-    &.active {
-      color: #2b73bd;
-      font-weight: 700;
-    }
-  }
-
-  i {
-    width: clamp(24px, 5vw, 72px);
-    height: 1px;
-    background: #cdd9e7;
-  }
-}
-
-.config-guide {
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-
   button {
+    position: relative;
     display: grid;
-    grid-template-columns: 32px 1fr;
-    gap: 3px 10px;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
     align-items: center;
-    min-height: 74px;
-    padding: 12px 14px;
-    border: 1px solid #dfeaf6;
-    border-radius: 8px;
-    background: #fbfdff;
+    gap: 10px;
+    min-height: 58px;
+    padding: 8px 14px 10px;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 6px 6px 0 0;
+    background: transparent;
+    color: #58718e;
     text-align: left;
     cursor: pointer;
+    transition: color 180ms ease-out, background-color 180ms ease-out, border-color 180ms ease-out;
+
+    &:hover {
+      background: #f3f7fb;
+      color: #2f6ea9;
+    }
+
+    &:focus-visible {
+      outline: 2px solid rgba(64, 158, 255, .4);
+      outline-offset: -2px;
+    }
 
     &.active {
-      border-color: #409eff;
-      background: #f2f8ff;
-      box-shadow: 0 0 0 2px rgba(64, 158, 255, .1);
+      border-bottom-color: #409eff;
+      background: #eef6ff;
+      color: #236fbf;
     }
 
-    span {
-      grid-row: span 2;
-      width: 28px;
-      height: 28px;
-      line-height: 28px;
-      border-radius: 50%;
-      background: #e8f3ff;
-      color: #2f80ed;
-      text-align: center;
-      font-weight: 700;
-    }
-
-    strong {
-      color: #1d3554;
-      font-size: 15px;
+    .el-icon {
+      font-size: 20px;
     }
 
     em {
-      color: #7488a0;
+      min-width: 26px;
+      padding: 3px 7px;
+      border-radius: 999px;
+      background: #e4ebf3;
+      color: #657b93;
+      font-size: 11px;
       font-style: normal;
-      font-size: 12px;
-      line-height: 1.35;
+      text-align: center;
+    }
+
+    &.active {
+      em {
+        background: #dcecff;
+        color: #236fbf;
+      }
     }
   }
 }
 
-.config-help-strip {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding: 10px 12px;
-  border: 1px solid #dce8f6;
-  border-radius: 8px;
-  background: #f8fbff;
+.config-switcher__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
 
-  div {
-    display: grid;
-    gap: 2px;
-    min-width: 0;
-  }
-
-  strong {
-    color: #1d3554;
-    font-size: 14px;
-  }
-
-  span {
+  strong,
+  small {
     overflow: hidden;
-    color: #6f8299;
-    font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  strong {
+    color: inherit;
+    font-size: 14px;
+  }
+
+  small {
+    color: #7a8ea5;
+    font-size: 11px;
+  }
+}
+
+.config-guide-button {
+  flex: 0 0 auto;
 }
 
 .guide-toolbar {
@@ -6532,6 +6788,14 @@ function resultTagType(value) {
 
 .config-panel {
   min-width: 0;
+  padding-top: 4px;
+}
+
+.config-panel .auto-query-bar {
+  padding: 10px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .auto-query-bar {
@@ -6546,6 +6810,46 @@ function resultTagType(value) {
   display: flex;
   gap: 10px;
   margin-bottom: 10px;
+}
+
+.primary-create-action,
+.template-action {
+  transition: transform 160ms ease-out, color 160ms ease-out, background-color 160ms ease-out;
+
+  &:hover {
+    transform: translateY(-1px);
+  }
+
+  &:active {
+    transform: translateY(0) scale(.98);
+  }
+}
+
+.template-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+:deep(.template-action .el-icon) {
+  transition: transform 180ms ease-out;
+}
+
+:deep(.template-action--edit:hover .el-icon) {
+  transform: rotate(-8deg);
+}
+
+:deep(.template-action--run:hover .el-icon) {
+  transform: translateX(2px);
+}
+
+:deep(.template-action--copy:hover .el-icon) {
+  transform: translate(1px, -1px);
+}
+
+:deep(.template-action--delete:hover .el-icon) {
+  transform: scale(1.08);
 }
 
 .record-insight-strip {
@@ -8699,8 +9003,11 @@ function resultTagType(value) {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-brief__actions {
-    justify-content: flex-start;
+  .dashboard-brief__charts {
+    padding-top: 10px;
+    padding-left: 0;
+    border-top: 1px solid #dce6f1;
+    border-left: 0;
   }
 
   .dashboard-brief__chart {
@@ -8732,6 +9039,33 @@ function resultTagType(value) {
   .record-board__head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .record-entry {
+    grid-template-columns: 72px 66px minmax(160px, .8fr) minmax(220px, 1.2fr);
+    align-items: start;
+  }
+
+  .record-entry__time,
+  .record-entry > .soft-status-tag {
+    grid-row: 1 / 3;
+  }
+
+  .record-entry__identity {
+    grid-column: 3;
+  }
+
+  .record-entry__summary {
+    grid-column: 4;
+  }
+
+  .record-entry__metrics {
+    grid-column: 3;
+  }
+
+  .record-entry__actions {
+    grid-column: 4;
+    justify-content: flex-start;
   }
 
   .trend-days {
@@ -8801,14 +9135,6 @@ function resultTagType(value) {
     }
   }
 
-  .config-guide {
-    grid-template-columns: 1fr;
-  }
-
-  .config-commandbar {
-    grid-template-columns: auto minmax(220px, 1fr) auto;
-  }
-
   .execution-policy-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -8822,15 +9148,10 @@ function resultTagType(value) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .config-help-strip,
   .operation-guide__steps header,
   .operation-guide__manual-link {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .config-help-strip span {
-    white-space: normal;
   }
 
   .operation-guide__images {
@@ -8839,28 +9160,92 @@ function resultTagType(value) {
 }
 
 @media (max-width: 760px) {
-  .config-commandbar,
   .execution-policy-grid,
   .database-target-grid,
   .target-preview__metrics {
     grid-template-columns: 1fr;
   }
 
-  .config-switcher {
+  .dashboard-brief__metrics,
+  .record-day-group__summary {
     width: 100%;
-
-    button {
-      flex: 1;
-      justify-content: center;
-    }
-  }
-
-  .config-sequence {
     justify-content: flex-start;
     overflow-x: auto;
   }
 
-  .config-commandbar > .el-button {
+  .record-board__actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .record-day-group__head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .record-entry {
+    grid-template-columns: 74px minmax(0, 1fr) auto;
+  }
+
+  .record-entry__time,
+  .record-entry > .soft-status-tag,
+  .record-entry__identity,
+  .record-entry__summary,
+  .record-entry__metrics,
+  .record-entry__actions {
+    grid-row: auto;
+    grid-column: auto;
+  }
+
+  .record-entry__time {
+    grid-row: 1;
+    grid-column: 1;
+  }
+
+  .record-entry > .soft-status-tag {
+    grid-row: 1;
+    grid-column: 3;
+    justify-self: end;
+    width: auto;
+  }
+
+  .record-entry__identity {
+    grid-row: 1;
+    grid-column: 2;
+  }
+
+  .record-entry__summary {
+    grid-row: 2;
+    grid-column: 1 / -1;
+  }
+
+  .record-entry__metrics {
+    grid-row: 3;
+    grid-column: 1 / 3;
+  }
+
+  .record-entry__actions {
+    grid-row: 3;
+    grid-column: 3;
+  }
+
+  .config-commandbar {
+    display: grid;
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .config-switcher {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+
+    button {
+      grid-template-columns: 24px minmax(0, 1fr) auto;
+      padding-inline: 10px;
+    }
+  }
+
+  .config-guide-button {
     justify-self: stretch;
   }
 
@@ -8881,6 +9266,40 @@ function resultTagType(value) {
   .target-preview__section > header {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 560px) {
+  .dashboard-brief__charts {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-brief__chart--result {
+    padding-top: 10px;
+    padding-left: 0;
+    border-top: 1px solid #dce6f1;
+    border-left: 0;
+  }
+
+  .config-switcher {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .record-entry,
+  .primary-create-action,
+  .template-action,
+  :deep(.template-action .el-icon) {
+    transition: none;
+  }
+
+  .primary-create-action:hover,
+  .primary-create-action:active,
+  .template-action:hover,
+  .template-action:active,
+  :deep(.template-action:hover .el-icon) {
+    transform: none;
   }
 }
 </style>
