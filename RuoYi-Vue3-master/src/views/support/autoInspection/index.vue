@@ -643,7 +643,15 @@
               <el-col :span="8"><el-form-item label="请求方法"><el-select v-model="targetForm.httpMethod" style="width: 100%"><el-option label="POST" value="POST" /><el-option label="GET" value="GET" /></el-select></el-form-item></el-col>
               <el-col :span="8"><el-form-item label="结果路径"><el-input v-model="targetForm.resultPath" placeholder="data.total" /></el-form-item></el-col>
               <el-col :span="8"><el-form-item label="AppKey"><el-input v-model="targetForm.appKey" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="Secret"><el-input v-model="targetForm.secret" show-password /></el-form-item></el-col>
+              <el-col :span="12">
+                <el-form-item label="Secret">
+                  <el-input v-model="targetForm.secret" :type="targetForm._secretVisible ? 'text' : 'password'">
+                    <template #suffix>
+                      <el-button class="inspection-password-eye" link type="primary" icon="View" :title="targetForm._secretVisible ? '隐藏Secret' : '显示Secret'" :loading="isTargetSecretRevealLoading(targetForm)" @click.stop="toggleStepTargetSecret(targetForm, 'Secret')" />
+                    </template>
+                  </el-input>
+                </el-form-item>
+              </el-col>
               <el-col :span="12">
                 <div class="placeholder-panel">
                   <span>可用日期变量</span>
@@ -695,7 +703,15 @@
               <el-col :span="12"><el-form-item label="端口"><el-input-number v-model="targetForm.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
               <el-col :span="24"><el-form-item label="目录路径" prop="path"><el-input v-model="targetForm.path" placeholder="/data/ftp/inbox" /></el-form-item></el-col>
               <el-col :span="12"><el-form-item label="账号" prop="username"><el-input v-model="targetForm.username" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="密码"><el-input v-model="targetForm.password" show-password /></el-form-item></el-col>
+              <el-col :span="12">
+                <el-form-item label="密码">
+                  <el-input v-model="targetForm.password" :type="targetForm._passwordVisible ? 'text' : 'password'">
+                    <template #suffix>
+                      <el-button class="inspection-password-eye" link type="primary" icon="View" :title="targetForm._passwordVisible ? '隐藏密码' : '显示密码'" :loading="isServerPasswordRevealLoading(targetForm)" @click.stop="toggleStepServerPassword(targetForm, 'FTP_FILE_COUNT')" />
+                    </template>
+                  </el-input>
+                </el-form-item>
+              </el-col>
             </el-row>
           </section>
 
@@ -723,7 +739,15 @@
               </el-col>
               <el-col :span="24"><el-form-item label="默认路径"><el-input v-model="targetForm.path" placeholder="目录路径或磁盘挂载点，可在模板步骤覆盖" /></el-form-item></el-col>
               <el-col :span="12"><el-form-item label="巡检登录账号" required><el-input v-model="targetForm.username" placeholder="本次巡检使用的登录账号" /></el-form-item></el-col>
-              <el-col :span="12"><el-form-item label="巡检登录密码" required><el-input v-model="targetForm.password" show-password placeholder="本次巡检使用的登录密码" /></el-form-item></el-col>
+              <el-col :span="12">
+                <el-form-item label="巡检登录密码" required>
+                  <el-input v-model="targetForm.password" :type="targetForm._passwordVisible ? 'text' : 'password'" placeholder="本次巡检使用的登录密码">
+                    <template #suffix>
+                      <el-button class="inspection-password-eye" link type="primary" icon="View" :title="targetForm._passwordVisible ? '隐藏密码' : '显示密码'" :loading="isServerPasswordRevealLoading(targetForm)" @click.stop="toggleStepServerPassword(targetForm, 'SERVER_DISK')" />
+                    </template>
+                  </el-input>
+                </el-form-item>
+              </el-col>
             </el-row>
           </section>
 
@@ -737,7 +761,15 @@
               <el-col :span="12"><el-form-item label="服务器IP" required><el-input v-model="targetForm.host" placeholder="172.18.16.172" /></el-form-item></el-col>
               <el-col :span="8"><el-form-item label="SSH端口"><el-input-number v-model="targetForm.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
               <el-col :span="8"><el-form-item label="巡检登录账号" required><el-input v-model="targetForm.username" /></el-form-item></el-col>
-              <el-col :span="8"><el-form-item label="巡检登录密码" required><el-input v-model="targetForm.password" show-password /></el-form-item></el-col>
+              <el-col :span="8">
+                <el-form-item label="巡检登录密码" required>
+                  <el-input v-model="targetForm.password" :type="targetForm._passwordVisible ? 'text' : 'password'">
+                    <template #suffix>
+                      <el-button class="inspection-password-eye" link type="primary" icon="View" :title="targetForm._passwordVisible ? '隐藏密码' : '显示密码'" :loading="isServerPasswordRevealLoading(targetForm)" @click.stop="toggleStepServerPassword(targetForm, 'BIG_DATA_SERVER_DISK')" />
+                    </template>
+                  </el-input>
+                </el-form-item>
+              </el-col>
             </el-row>
           </section>
 
@@ -916,7 +948,15 @@
             <el-col v-if="!isHttpHealthStep" :span="12"><el-form-item label="结果路径"><el-input v-model="stepDraft.target.resultPath" placeholder="例如：data.total" /></el-form-item></el-col>
             <el-col v-else :span="12"><el-form-item label="期望状态码"><el-input v-model="stepDraft.target.extraParams" placeholder='可选：{"expectedStatus": "200"} 或 {"expectedStatusMin":200,"expectedStatusMax":399}' /></el-form-item></el-col>
             <el-col :span="12"><el-form-item label="AppKey"><el-input v-model="stepDraft.target.appKey" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="Secret"><el-input v-model="stepDraft.target.secret" show-password /></el-form-item></el-col>
+            <el-col :span="12">
+              <el-form-item label="Secret">
+                <el-input v-model="stepDraft.target.secret" :type="stepDraft.target._secretVisible ? 'text' : 'password'">
+                  <template #suffix>
+                    <el-button class="inspection-password-eye" link type="primary" icon="View" :title="stepDraft.target._secretVisible ? '隐藏Secret' : '显示Secret'" :loading="isTargetSecretRevealLoading(stepDraft.target)" @click.stop="toggleStepTargetSecret(stepDraft.target, 'Secret')" />
+                  </template>
+                </el-input>
+              </el-form-item>
+            </el-col>
             <el-col :span="12">
               <div class="placeholder-panel placeholder-panel--examples">
                 <span>可用日期变量和效果示例</span>
@@ -1265,7 +1305,15 @@
                   <el-col :span="8"><el-form-item label="端口"><el-input-number v-model="target.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
                   <el-col :span="12"><el-form-item label="目录路径" required><el-input v-model="target.path" placeholder="/data/ftp/inbox" /></el-form-item></el-col>
                   <el-col :span="6"><el-form-item label="账号" required><el-input v-model="target.username" /></el-form-item></el-col>
-                  <el-col :span="6"><el-form-item label="密码"><el-input v-model="target.password" show-password /></el-form-item></el-col>
+                  <el-col :span="6">
+                    <el-form-item label="密码">
+                      <el-input v-model="target.password" :type="target._passwordVisible ? 'text' : 'password'">
+                        <template #suffix>
+                          <el-button class="inspection-password-eye" link type="primary" icon="View" :title="target._passwordVisible ? '隐藏密码' : '显示密码'" :loading="isServerPasswordRevealLoading(target)" @click.stop="toggleStepServerPassword(target, 'FTP_FILE_COUNT')" />
+                        </template>
+                      </el-input>
+                    </el-form-item>
+                  </el-col>
                 </el-row>
               </div>
             </div>
@@ -1374,7 +1422,11 @@
                   <el-col v-if="server.privilegeMode === 'SU'" :span="8"><el-form-item label="提权用户"><el-input v-model="server.privilegeUser" placeholder="默认 root" /></el-form-item></el-col>
                   <el-col v-if="server.privilegeMode !== 'NONE'" :span="8">
                     <el-form-item label="提权密码">
-                      <el-input v-model="server.secret" show-password :placeholder="server.privilegeMode === 'SUDO' ? '可留空，默认使用巡检登录密码' : '请输入 root 或目标用户密码'" />
+                      <el-input v-model="server.secret" :type="server._secretVisible ? 'text' : 'password'" :placeholder="server.privilegeMode === 'SUDO' ? '可留空，默认使用巡检登录密码' : '请输入 root 或目标用户密码'">
+                        <template #suffix>
+                          <el-button class="inspection-password-eye" link type="primary" icon="View" :title="server._secretVisible ? '隐藏提权密码' : '显示提权密码'" :loading="isTargetSecretRevealLoading(server)" @click.stop="toggleStepTargetSecret(server, '提权密码')" />
+                        </template>
+                      </el-input>
                     </el-form-item>
                   </el-col>
                   <el-col :span="8">
@@ -1416,7 +1468,15 @@
             <el-col v-if="isServiceStatusStep" :span="12"><el-form-item label="服务名称" required><el-input v-model="stepDraft.stepParams.serviceName" placeholder="例如：firewalld / nginx.service" /></el-form-item></el-col>
             <el-col v-if="!isTcpPortStep && !isServiceStatusStep" :span="12"><el-form-item label="检测路径" required><el-input v-model="stepDraft.target.path" placeholder="目录路径或磁盘挂载点" /></el-form-item></el-col>
             <el-col v-if="!isTcpPortStep" :span="12"><el-form-item label="巡检登录账号" required><el-input v-model="stepDraft.target.username" placeholder="本次巡检使用的登录账号" /></el-form-item></el-col>
-            <el-col v-if="!isTcpPortStep" :span="12"><el-form-item label="巡检登录密码" required><el-input v-model="stepDraft.target.password" show-password placeholder="本次巡检使用的登录密码" /></el-form-item></el-col>
+            <el-col v-if="!isTcpPortStep" :span="12">
+              <el-form-item label="巡检登录密码" required>
+                <el-input v-model="stepDraft.target.password" :type="stepDraft.target._passwordVisible ? 'text' : 'password'" placeholder="本次巡检使用的登录密码">
+                  <template #suffix>
+                    <el-button class="inspection-password-eye" link type="primary" icon="View" :title="stepDraft.target._passwordVisible ? '隐藏密码' : '显示密码'" :loading="isServerPasswordRevealLoading(stepDraft.target)" @click.stop="toggleStepServerPassword(stepDraft.target, stepDraft.toolCode)" />
+                  </template>
+                </el-input>
+              </el-form-item>
+            </el-col>
             <el-col v-if="isServiceStatusStep" :span="12">
               <el-form-item label="提权方式">
                 <el-select v-model="stepDraft.stepParams.privilegeMode" style="width: 100%">
@@ -1429,7 +1489,11 @@
             <el-col v-if="isServiceStatusStep && stepDraft.stepParams.privilegeMode === 'SU'" :span="12"><el-form-item label="提权用户"><el-input v-model="stepDraft.stepParams.privilegeUser" placeholder="默认 root" /></el-form-item></el-col>
             <el-col v-if="isServiceStatusStep && stepDraft.stepParams.privilegeMode !== 'NONE'" :span="12">
               <el-form-item label="提权密码">
-                <el-input v-model="stepDraft.target.secret" show-password :placeholder="stepDraft.stepParams.privilegeMode === 'SUDO' ? '可留空，默认使用巡检登录密码' : '请输入 root 或目标用户密码'" />
+                <el-input v-model="stepDraft.target.secret" :type="stepDraft.target._secretVisible ? 'text' : 'password'" :placeholder="stepDraft.stepParams.privilegeMode === 'SUDO' ? '可留空，默认使用巡检登录密码' : '请输入 root 或目标用户密码'">
+                  <template #suffix>
+                    <el-button class="inspection-password-eye" link type="primary" icon="View" :title="stepDraft.target._secretVisible ? '隐藏提权密码' : '显示提权密码'" :loading="isTargetSecretRevealLoading(stepDraft.target)" @click.stop="toggleStepTargetSecret(stepDraft.target, '提权密码')" />
+                  </template>
+                </el-input>
               </el-form-item>
             </el-col>
             <el-col v-if="isServiceStatusStep" :span="12">
@@ -2837,6 +2901,16 @@ function isServerPasswordRevealLoading(server) {
   return Boolean(key) && serverPasswordRevealLoadingKey.value === key
 }
 
+function getTargetSecretKey(target) {
+  const key = getServerPasswordKey(target)
+  return key ? `secret:${key}` : ''
+}
+
+function isTargetSecretRevealLoading(target) {
+  const key = getTargetSecretKey(target)
+  return Boolean(key) && serverPasswordRevealLoadingKey.value === key
+}
+
 function isMaskedPassword(value) {
   return String(value || '') === '******'
 }
@@ -2896,6 +2970,37 @@ async function toggleDatabaseTargetPassword(target) {
     }
   }
   target._passwordVisible = true
+}
+
+async function toggleStepTargetSecret(target, fieldLabel = '密钥') {
+  if (!target) return
+  if (target._secretVisible) {
+    target._secretVisible = false
+    return
+  }
+  if (!target.secret || isMaskedPassword(target.secret)) {
+    if (!target.targetId) {
+      proxy.$modal.msgWarning(`当前目标尚未保存，请先填写${fieldLabel}`)
+      return
+    }
+    const key = getTargetSecretKey(target)
+    serverPasswordRevealLoadingKey.value = key
+    try {
+      const res = await viewAutoInspectionTargetPlain(target.targetId)
+      const secret = res.secret || res.data?.secret || ''
+      if (!secret) {
+        proxy.$modal.msgWarning(`该目标未保存${fieldLabel}`)
+        return
+      }
+      target.secret = secret
+    } catch (error) {
+      proxy.$modal.msgWarning(error?.msg || error?.message || `读取${fieldLabel}失败，请确认当前账号具有敏感信息查看权限`)
+      return
+    } finally {
+      if (serverPasswordRevealLoadingKey.value === key) serverPasswordRevealLoadingKey.value = ''
+    }
+  }
+  target._secretVisible = true
 }
 
 async function loadStepServerPasswordPlain(server, toolOrType) {
@@ -3606,6 +3711,7 @@ function cleanTargetPayload(target) {
   }
   delete payload._credentialReason
   delete payload._passwordVisible
+  delete payload._secretVisible
   return payload
 }
 
@@ -5151,7 +5257,7 @@ function normalizeStepFromServer(step) {
 }
 
 function defaultTargetForm() {
-  return { targetName: '', targetType: 'KAFKA', serverId: undefined, host: '', port: undefined, path: '', url: '', httpMethod: 'POST', topic: '', consumerGroup: '', username: '', password: '', appKey: '', secret: '', resultPath: 'data.total', extraParams: '', apiConfig: defaultApiTestConfig(), databaseConfig: defaultDatabaseConfig(), status: '0', remark: '', _passwordVisible: false }
+  return { targetName: '', targetType: 'KAFKA', serverId: undefined, host: '', port: undefined, path: '', url: '', httpMethod: 'POST', topic: '', consumerGroup: '', username: '', password: '', appKey: '', secret: '', resultPath: 'data.total', extraParams: '', apiConfig: defaultApiTestConfig(), databaseConfig: defaultDatabaseConfig(), status: '0', remark: '', _passwordVisible: false, _secretVisible: false }
 }
 
 function defaultTemplateForm() {

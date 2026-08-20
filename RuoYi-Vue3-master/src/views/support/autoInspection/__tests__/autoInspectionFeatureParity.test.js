@@ -105,3 +105,21 @@ test('manual execution and database editing keep production-safe behavior', () =
   assert.ok(workspaceSource.includes('toggleDatabaseTargetPassword'))
   assert.ok(workspaceSource.includes('viewAutoInspectionTargetPlain(target.targetId)'))
 })
+
+test('saved template credentials use permission-backed reveal controls', () => {
+  const requiredMarkers = [
+    'toggleStepServerPassword(target, \'FTP_FILE_COUNT\')',
+    'toggleStepServerPassword(stepDraft.target, stepDraft.toolCode)',
+    'toggleStepTargetSecret(stepDraft.target, \'Secret\')',
+    'toggleStepTargetSecret(server, \'提权密码\')',
+    'isTargetSecretRevealLoading',
+    'delete payload._secretVisible'
+  ]
+  for (const marker of requiredMarkers) {
+    assert.ok(workspaceSource.includes(marker), `missing credential reveal marker: ${marker}`)
+  }
+  assert.ok(!workspaceSource.includes('v-model="target.password" show-password'))
+  assert.ok(!workspaceSource.includes('v-model="server.secret" show-password'))
+  assert.ok(!workspaceSource.includes('v-model="stepDraft.target.secret" show-password'))
+  assert.ok(workspaceSource.includes('handleRevealApiTestSecret'))
+})

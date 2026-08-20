@@ -1,5 +1,25 @@
 export const releaseNotes = [
   {
+    version: 'v3.11.2',
+    submitTime: '2026-08-20 16:43:16',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '巡检模板敏感凭据统一回显',
+    summary: '统一模板步骤和目标编辑页的密码、Secret与提权密码显示逻辑，修复部分工具保存后点击眼睛仍只能看到掩码的问题。',
+    changes: [
+      'FTP目录、普通服务器磁盘、服务器目录、大数据服务器等登录密码统一使用小眼睛按权限读取目标自身的已保存明文。',
+      'HTTP/海康接口Secret和服务器服务状态提权密码统一从secret_cipher读取，登录密码与提权密码保持独立，不再混用。',
+      '独立巡检目标编辑页同步使用相同凭据交互，避免模板编辑与目标编辑出现两套显示行为。',
+      '所有敏感字段默认保持密码态，隐藏时不清空当前值；保存请求会剔除纯前端显隐状态，不污染目标配置。',
+      '接口调用测试继续通过“显示已保存敏感值”一次恢复Token、Basic密码、敏感Header、Query和Cookie，保持结构化密文兼容。',
+      '补充模板凭据回显契约测试，确保简单密码和Secret不再退回Element Plus仅切换输入类型的旧实现。'
+    ],
+    scope: ['自动化巡检', '巡检模板', '巡检目标', 'FTP', '服务器', 'HTTP接口', '敏感凭据', '权限控制', '版本记录'],
+    database: '无数据库结构或业务数据修改；继续复用sup_auto_inspection_target.password_cipher和secret_cipher。',
+    scripts: []
+  },
+  {
     version: 'v3.11.1',
     submitTime: '2026-08-20 16:17:14',
     level: 'patch',
