@@ -1,5 +1,29 @@
 export const releaseNotes = [
   {
+    version: 'v3.10.2',
+    submitTime: '2026-08-20 10:17:59',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '全模块开发基线统一',
+    summary: '将现场融合、自动化巡检、文档管理、IP分配管控和交付工具的最新有效提交统一合并到主线，消除多窗口并行开发造成的分支基线差异。',
+    changes: [
+      '确认远端 main 已包含现场融合设备位置、文档共享范围、IPAM完整能力、服务器树解析和自动化巡检v3.10.0等模块提交。',
+      '合并本地交付工具与现场融合/自动化巡检版本菜单升级脚本，补齐脱敏初始化SQL、运行配置脱敏、交付文档生成能力及独立Python依赖清单。',
+      '合并自动化巡检v3.10.1数据库查询工具字符集修复，保留生产环境已验证的UTF-8防护和幂等修复脚本。',
+      '逐一审计全部Worktree和本地分支，确认所有有效分支提交均已成为新主线祖先，不再遗落独立模块版本。',
+      '将共享旧目录中的1480个候选受控文件与集成结果逐文件比对，内容完全一致；构建产物、交付包、图谱结果和旧版一次性脚本继续留在本地，不进入源码主线。'
+    ],
+    scope: ['全模块集成', '现场融合管理', '自动化巡检', '文档管理', 'IP分配管控', '交付工具', 'Git Worktree', '版本记录'],
+    database: '本版本不新增数据库结构；主线包含既有v3.7.5版本菜单脚本和v3.10.1数据库查询工具字符集修复脚本。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260626_support_auto_version_records_v3_7_5.sql',
+      'WDF100.0/sql/support_upgrade_20260820_auto_inspection_database_tool_charset_v3_10_1.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v3.10.1',
     submitTime: '2026-08-20 09:53:43',
     level: 'patch',
