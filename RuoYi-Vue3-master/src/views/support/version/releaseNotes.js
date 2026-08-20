@@ -1,5 +1,30 @@
 export const releaseNotes = [
   {
+    version: 'v3.11.0',
+    submitTime: '2026-08-20 11:43:07',
+    level: 'minor',
+    levelLabel: '小版本',
+    tagType: 'primary',
+    title: '巡检标签树与按日合并列表',
+    summary: '面向电脑端重新统一巡检记录、模板和计划的组织方式，使用Element Plus原生圆形进度、合并表格与树选择，并新增可持久化的模板/计划标签。',
+    changes: [
+      '本周结果改用Element Plus原生圆形进度组件，正常率文字由组件居中渲染，不再使用ECharts graphic手工定位。',
+      '巡检记录恢复为桌面端列表，在首列增加归属日期，并通过Element Plus表格span-method合并同一天的日期、记录数和异常数。',
+      '总览中的模板和计划筛选改为下拉树选择，按标签目录展开并使用模板ID、计划ID进行精确筛选。',
+      '模板和执行计划新增标签字段，编辑时可选择已有标签或直接新建标签，历史数据统一归入“未分类”。',
+      '配置列表增加标签展示和筛选；计划绑定模板等选择场景统一使用标签树，不再使用平铺下拉列表。',
+      '后端补齐标签读写、标签查询及巡检记录模板/计划ID筛选，新增Mapper契约和前端日期合并、标签树规则测试。',
+      '本版本仅以电脑端工作台为验收范围，不再以手机端布局作为自动化巡检页面设计约束。'
+    ],
+    scope: ['自动化巡检', '巡检总览', '巡检记录', '模板标签', '计划标签', '树形选择', 'Element Plus', '桌面端', '数据库脚本', '版本记录'],
+    database: 'sup_auto_inspection_template和sup_auto_inspection_plan新增可空label_name字段及标签/状态组合索引；历史数据不改写。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260820_auto_inspection_label_tree_v3_11_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v3.10.3',
     submitTime: '2026-08-20 10:41:32',
     level: 'patch',

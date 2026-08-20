@@ -1,7 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
+  buildInspectionRecordTableRows,
+  buildLabelTreeOptions,
   buildWeekResultDistribution,
+  collectLabelNames,
   formatInspectionClock,
   groupInspectionRecordsByDay
 } from '../overviewPresentation.js'
@@ -45,4 +48,34 @@ test('week distribution keeps normal abnormal and untested results', () => {
   ])
   assert.equal(buildWeekResultDistribution({})[0].empty, true)
   assert.equal(formatInspectionClock('2026-08-20T09:26:31'), '09:26')
+})
+
+test('table rows merge the ownership date for consecutive same-day records', () => {
+  const rows = buildInspectionRecordTableRows([
+    { recordId: 1, inspectionTime: '2026-08-20 10:20:00', resultStatus: '1' },
+    { recordId: 2, inspectionTime: '2026-08-20 08:30:00', resultStatus: '2' },
+    { recordId: 3, inspectionTime: '2026-08-19 09:10:00', resultStatus: '1' }
+  ], new Date(2026, 7, 20, 12, 0, 0))
+
+  assert.deepEqual(rows.map((item) => item.ownershipRowspan), [2, 0, 1])
+  assert.equal(rows[0].ownershipDateLabel, '今天')
+  assert.equal(rows[0].ownershipAbnormalCount, 1)
+  assert.equal(rows[2].ownershipDateLabel, '昨天')
+})
+
+test('label tree groups templates and plans into directory nodes', () => {
+  const tree = buildLabelTreeOptions([
+    { templateId: 2, templateName: '磁盘巡检', labelName: '服务器' },
+    { templateId: 1, templateName: '接口巡检', labelName: '平台接口' },
+    { templateId: 3, templateName: '未分类模板', labelName: '' }
+  ], { idKey: 'templateId', nameKey: 'templateName' })
+
+  assert.deepEqual(tree.map((item) => item.label), ['服务器', '平台接口', '未分类'])
+  assert.equal(tree[0].isDirectory, true)
+  assert.equal(tree[0].disabled, undefined)
+  assert.equal(tree[0].children[0].value, 2)
+  assert.deepEqual(collectLabelNames(
+    [{ labelName: '服务器' }, { labelName: '平台接口' }],
+    [{ labelName: '服务器' }, { labelName: '' }]
+  ), ['服务器', '平台接口'])
 })

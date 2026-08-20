@@ -85,9 +85,14 @@ test('etl-inspired workflow additions remain compatible with existing templates'
 })
 
 test('overview and configuration keep one clear presentation path', () => {
-  assert.ok(workspaceSource.includes('recordDayGroups'))
-  assert.ok(workspaceSource.includes('weekResultChartRef'))
-  assert.ok(workspaceSource.includes('record-day-group__list'))
+  assert.ok(workspaceSource.includes('recordTableRows'))
+  assert.ok(workspaceSource.includes('recordSpanMethod'))
+  assert.ok(workspaceSource.includes('type="circle"'))
+  assert.ok(workspaceSource.includes('templateTreeOptions'))
+  assert.ok(workspaceSource.includes('planTreeOptions'))
+  assert.ok(workspaceSource.includes('<el-tree-select'))
+  assert.ok(!workspaceSource.includes('weekResultChartRef'))
+  assert.ok(!workspaceSource.includes('record-day-group__list'))
   assert.ok(workspaceSource.includes('config-switcher__copy'))
   assert.ok(workspaceSource.includes('template-action--copy'))
   assert.ok(!workspaceSource.includes('class="config-sequence"'))

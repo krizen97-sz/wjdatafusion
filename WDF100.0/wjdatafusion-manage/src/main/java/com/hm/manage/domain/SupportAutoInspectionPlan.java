@@ -10,6 +10,7 @@ public class SupportAutoInspectionPlan extends BaseEntity
     private Long templateId;
     private String templateName;
     private String planName;
+    private String labelName;
     private String cronExpression;
     private String cronConfig;
     private Long jobId;
@@ -25,6 +26,8 @@ public class SupportAutoInspectionPlan extends BaseEntity
     public void setTemplateName(String templateName) { this.templateName = templateName; }
     public String getPlanName() { return planName; }
     public void setPlanName(String planName) { this.planName = planName; }
+    public String getLabelName() { return labelName; }
+    public void setLabelName(String labelName) { this.labelName = labelName; }
     public String getCronExpression() { return cronExpression; }
     public void setCronExpression(String cronExpression) { this.cronExpression = cronExpression; }
     public String getCronConfig() { return cronConfig; }

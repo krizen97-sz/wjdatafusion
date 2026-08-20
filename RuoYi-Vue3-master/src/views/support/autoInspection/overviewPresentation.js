@@ -92,6 +92,68 @@ export function groupInspectionRecordsByDay(rows = [], referenceDate = new Date(
     })
 }
 
+export function buildInspectionRecordTableRows(rows = [], referenceDate = new Date()) {
+  return groupInspectionRecordsByDay(rows, referenceDate).flatMap((group) => (
+    group.records.map((record, index) => ({
+      ...record,
+      ownershipDateKey: group.dateKey,
+      ownershipDateLabel: group.label,
+      ownershipWeekday: group.weekday,
+      ownershipRecordCount: group.records.length,
+      ownershipNormalCount: group.normalCount,
+      ownershipAbnormalCount: group.abnormalCount,
+      ownershipSuccessRate: group.successRate,
+      ownershipRowspan: index === 0 ? group.records.length : 0
+    }))
+  ))
+}
+
+export function buildLabelTreeOptions(items = [], options = {}) {
+  const {
+    idKey = 'id',
+    nameKey = 'name',
+    labelKey = 'labelName',
+    uncategorizedLabel = '未分类'
+  } = options
+  const groups = new Map()
+
+  ;(Array.isArray(items) ? items : []).forEach((item) => {
+    const value = item?.[idKey]
+    const name = String(item?.[nameKey] || '').trim()
+    if (value === undefined || value === null || !name) return
+    const labelName = String(item?.[labelKey] || '').trim() || uncategorizedLabel
+    if (!groups.has(labelName)) groups.set(labelName, [])
+    groups.get(labelName).push({
+      value,
+      label: name,
+      isLeaf: true,
+      source: item
+    })
+  })
+
+  return Array.from(groups.entries())
+    .sort(([left], [right]) => {
+      if (left === uncategorizedLabel) return 1
+      if (right === uncategorizedLabel) return -1
+      return left.localeCompare(right, 'zh-Hans-CN')
+    })
+    .map(([labelName, children], index) => ({
+      value: `label-directory-${index}`,
+      label: labelName,
+      isDirectory: true,
+      children: children.sort((left, right) => left.label.localeCompare(right.label, 'zh-Hans-CN'))
+    }))
+}
+
+export function collectLabelNames(...collections) {
+  const labels = new Set()
+  collections.flat().forEach((item) => {
+    const labelName = String(item?.labelName || '').trim()
+    if (labelName) labels.add(labelName)
+  })
+  return Array.from(labels).sort((left, right) => left.localeCompare(right, 'zh-Hans-CN'))
+}
+
 export function buildWeekResultDistribution(summary = {}) {
   const total = Number(summary.recordCount || 0)
   const normal = Math.max(Number(summary.normalCount || 0), 0)

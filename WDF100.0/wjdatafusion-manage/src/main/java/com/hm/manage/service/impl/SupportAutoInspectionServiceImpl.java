@@ -4167,6 +4167,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         }
         template.put("templateName", StringUtils.trimToEmpty(str(template, "templateName")));
         requireText(str(template, "templateName"), "巡检模板名称不能为空");
+        template.put("labelName", normalizeLabelName(template.get("labelName")));
         template.put("status", STATUS_DISABLED.equals(str(template, "status")) ? STATUS_DISABLED : STATUS_NORMAL);
         if (castList(template.get("steps")).isEmpty())
         {
@@ -4626,6 +4627,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         }
         plan.put("planName", StringUtils.trimToEmpty(str(plan, "planName")));
         requireText(str(plan, "planName"), "巡检计划名称不能为空");
+        plan.put("labelName", normalizeLabelName(plan.get("labelName")));
         Long templateId = toLong(plan.get("templateId"));
         if (templateId == null)
         {
@@ -5712,6 +5714,16 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private int resolveTimeout(Map<String, Object> step)
     {
         return Math.max(toInt(step.get("timeoutSeconds"), DEFAULT_TIMEOUT_SECONDS), 3);
+    }
+
+    private String normalizeLabelName(Object value)
+    {
+        String labelName = StringUtils.trimToEmpty(value == null ? "" : value.toString());
+        if (labelName.length() > 64)
+        {
+            throw new ServiceException("标签名称不能超过64个字符");
+        }
+        return labelName;
     }
 
     private void requireText(String value, String message)

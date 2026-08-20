@@ -1136,6 +1136,7 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_target (
 CREATE TABLE IF NOT EXISTS sup_auto_inspection_template (
   template_id    BIGINT       NOT NULL AUTO_INCREMENT COMMENT '模板ID',
   template_name  VARCHAR(120) NOT NULL COMMENT '模板名称',
+  label_name     VARCHAR(64)  DEFAULT NULL COMMENT '标签名称',
   template_desc  VARCHAR(500) DEFAULT NULL COMMENT '模板描述',
   status         CHAR(1)      DEFAULT '0' COMMENT '状态（0正常 1停用）',
   create_by      VARCHAR(64)  DEFAULT '' COMMENT '创建者',
@@ -1144,6 +1145,7 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_template (
   update_time    DATETIME     DEFAULT NULL COMMENT '更新时间',
   remark         VARCHAR(500) DEFAULT NULL COMMENT '备注',
   PRIMARY KEY (template_id),
+  KEY idx_sup_auto_template_label_status (label_name, status),
   KEY idx_sup_auto_template_status (status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='自动化巡检模板';
 
@@ -1189,6 +1191,7 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_plan (
   plan_id         BIGINT        NOT NULL AUTO_INCREMENT COMMENT '计划ID',
   template_id     BIGINT        NOT NULL COMMENT '模板ID',
   plan_name       VARCHAR(120)  NOT NULL COMMENT '计划名称',
+  label_name      VARCHAR(64)   DEFAULT NULL COMMENT '标签名称',
   cron_expression VARCHAR(255)  NOT NULL COMMENT '系统生成Cron表达式',
   cron_config     TEXT          COMMENT '可视化周期配置JSON',
   job_id          BIGINT        DEFAULT NULL COMMENT '若依定时任务ID',
@@ -1200,6 +1203,7 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_plan (
   update_time     DATETIME      DEFAULT NULL COMMENT '更新时间',
   remark          VARCHAR(500)  DEFAULT NULL COMMENT '备注',
   PRIMARY KEY (plan_id),
+  KEY idx_sup_auto_plan_label_status (label_name, status),
   KEY idx_sup_auto_plan_template (template_id),
   KEY idx_sup_auto_plan_status (status),
   KEY idx_sup_auto_plan_job (job_id)
@@ -1370,3 +1374,40 @@ WHERE r.role_key = 'datafusion'
   AND NOT EXISTS (
     SELECT 1 FROM sys_role_menu rm WHERE rm.role_id = r.role_id AND rm.menu_id = m.menu_id
   );
+
+-- v3.11.0 自动化巡检模板与计划标签
+SET @template_label_column = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_template' AND COLUMN_NAME = 'label_name'
+);
+SET @ddl = IF(@template_label_column = 0,
+  'ALTER TABLE sup_auto_inspection_template ADD COLUMN label_name VARCHAR(64) DEFAULT NULL COMMENT ''标签名称'' AFTER template_name',
+  'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @plan_label_column = (
+  SELECT COUNT(*) FROM information_schema.COLUMNS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_plan' AND COLUMN_NAME = 'label_name'
+);
+SET @ddl = IF(@plan_label_column = 0,
+  'ALTER TABLE sup_auto_inspection_plan ADD COLUMN label_name VARCHAR(64) DEFAULT NULL COMMENT ''标签名称'' AFTER plan_name',
+  'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @template_label_index = (
+  SELECT COUNT(*) FROM information_schema.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_template' AND INDEX_NAME = 'idx_sup_auto_template_label_status'
+);
+SET @ddl = IF(@template_label_index = 0,
+  'ALTER TABLE sup_auto_inspection_template ADD INDEX idx_sup_auto_template_label_status (label_name, status)',
+  'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @plan_label_index = (
+  SELECT COUNT(*) FROM information_schema.STATISTICS
+  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_plan' AND INDEX_NAME = 'idx_sup_auto_plan_label_status'
+);
+SET @ddl = IF(@plan_label_index = 0,
+  'ALTER TABLE sup_auto_inspection_plan ADD INDEX idx_sup_auto_plan_label_status (label_name, status)',
+  'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;

@@ -10,6 +10,7 @@ public class SupportAutoInspectionTemplate extends BaseEntity
 
     private Long templateId;
     private String templateName;
+    private String labelName;
     private String templateDesc;
     private String status;
     private Integer stepCount;
@@ -20,6 +21,8 @@ public class SupportAutoInspectionTemplate extends BaseEntity
     public void setTemplateId(Long templateId) { this.templateId = templateId; }
     public String getTemplateName() { return templateName; }
     public void setTemplateName(String templateName) { this.templateName = templateName; }
+    public String getLabelName() { return labelName; }
+    public void setLabelName(String labelName) { this.labelName = labelName; }
     public String getTemplateDesc() { return templateDesc; }
     public void setTemplateDesc(String templateDesc) { this.templateDesc = templateDesc; }
     public String getStatus() { return status; }

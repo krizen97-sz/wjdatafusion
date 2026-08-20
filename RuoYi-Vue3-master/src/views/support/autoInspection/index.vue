@@ -39,16 +39,55 @@
                 <span>本周结果</span>
                 <em>正常 / 异常</em>
               </div>
-              <div ref="weekResultChartRef" class="dashboard-brief-chart"></div>
+              <div class="dashboard-week-result">
+                <el-progress
+                  type="circle"
+                  :percentage="dashboardWeekSuccessPercent"
+                  :width="58"
+                  :stroke-width="7"
+                  color="#45ad6f"
+                />
+                <div class="dashboard-week-result__legend">
+                  <span
+                    v-for="item in dashboardWeekResultItems"
+                    :key="item.name"
+                    :class="{
+                      'is-normal': item.name === '正常',
+                      'is-abnormal': item.name === '异常',
+                      'is-unknown': item.name === '未检测' || item.empty
+                    }"
+                  ><i></i>{{ item.name }} {{ item.empty ? 0 : item.value }}</span>
+                </div>
+              </div>
             </article>
           </div>
         </section>
         <el-form :model="recordQuery" :inline="true" class="auto-query-bar">
             <el-form-item label="模板">
-              <el-input v-model="recordQuery.templateName" clearable placeholder="模板名称" @keyup.enter="getRecordList" />
+              <el-tree-select
+                v-model="recordQuery.templateId"
+                :data="templateTreeOptions"
+                node-key="value"
+                clearable
+                filterable
+                default-expand-all
+                :render-after-expand="false"
+                placeholder="全部模板"
+                style="width: 210px"
+              />
             </el-form-item>
             <el-form-item label="计划">
-              <el-input v-model="recordQuery.planName" clearable placeholder="计划名称" @keyup.enter="getRecordList" />
+              <el-tree-select
+                v-model="recordQuery.planId"
+                :data="planTreeOptions"
+                node-key="value"
+                clearable
+                filterable
+                default-expand-all
+                :render-after-expand="false"
+                placeholder="全部计划"
+                style="width: 210px"
+              />
             </el-form-item>
             <el-form-item label="来源">
               <el-select v-model="recordQuery.sourceType" clearable placeholder="全部来源" style="width: 130px">
@@ -73,53 +112,72 @@
           <el-button type="primary" plain icon="Document" @click="openReportExportDialog" v-hasPermi="['support:autoInspection:export']">导出周/月报</el-button>
         </div>
 
-        <section v-loading="recordLoading" class="record-day-groups" aria-live="polite">
-          <el-empty v-if="!recordDayGroups.length && !recordLoading" description="暂无巡检记录" :image-size="72" />
-          <article v-for="day in recordDayGroups" :key="day.key" class="record-day-group" :class="`record-day-group--${day.status}`">
-            <header class="record-day-group__head">
-              <div class="record-day-group__date">
-                <span class="status-dot" :class="`status-dot--${day.status}`"></span>
-                <div>
-                  <strong>{{ day.label }}</strong>
-                  <em>{{ day.dateKey || '-' }} {{ day.weekday }}</em>
-                </div>
+        <el-table
+          v-loading="recordLoading"
+          :data="recordTableRows"
+          :span-method="recordSpanMethod"
+          :row-class-name="recordRowClassName"
+          class="auto-table record-table record-table--daily"
+          empty-text="暂无巡检记录"
+        >
+          <el-table-column label="归属日期" width="132" align="center" fixed="left">
+            <template #default="scope">
+              <div class="record-date-cell">
+                <strong>{{ scope.row.ownershipDateLabel }}</strong>
+                <span>{{ scope.row.ownershipDateKey || '-' }} {{ scope.row.ownershipWeekday }}</span>
+                <em>共 {{ scope.row.ownershipRecordCount }} 条 · 异常 {{ scope.row.ownershipAbnormalCount }}</em>
               </div>
-              <div class="record-day-group__summary">
-                <span><strong>{{ day.records.length }}</strong><em>当日记录</em></span>
-                <span><strong>{{ day.normalCount }}</strong><em>正常</em></span>
-                <span :class="{ 'has-abnormal': day.abnormalCount > 0 }"><strong>{{ day.abnormalCount }}</strong><em>异常</em></span>
-                <span><strong>{{ day.successRate }}</strong><em>正常率</em></span>
+            </template>
+          </el-table-column>
+          <el-table-column label="时间" width="72" align="center">
+            <template #default="scope"><strong class="record-clock">{{ formatInspectionClock(scope.row.inspectionTime) }}</strong></template>
+          </el-table-column>
+          <el-table-column label="结果" width="70" align="center">
+            <template #default="scope"><el-tag class="soft-status-tag" size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
+          </el-table-column>
+          <el-table-column label="来源" width="72" align="center">
+            <template #default="scope"><el-tag size="small" :type="scope.row.sourceType === 'MANUAL' ? 'success' : 'info'">{{ scope.row.sourceType === 'MANUAL' ? '手动' : '自动' }}</el-tag></template>
+          </el-table-column>
+          <el-table-column label="模板" min-width="180" show-overflow-tooltip>
+            <template #default="scope">
+              <div class="record-name-cell">
+                <strong>{{ scope.row.templateName || '未命名模板' }}</strong>
+                <el-tag v-if="getTemplateLabelName(scope.row.templateId)" size="small" effect="plain">{{ getTemplateLabelName(scope.row.templateId) }}</el-tag>
               </div>
-            </header>
-
-            <div class="record-day-group__list">
-              <div v-for="row in day.records" :key="row.recordId" class="record-entry" :class="`record-entry--${row.resultStatus || '3'}`">
-                <time class="record-entry__time">
-                  <strong>{{ formatInspectionClock(row.inspectionTime) }}</strong>
-                  <span>{{ row.sourceType === 'MANUAL' ? '手动执行' : '计划执行' }}</span>
-                </time>
-                <el-tag class="soft-status-tag" size="small" :type="resultTagType(row.resultStatus)">{{ formatResult(row.resultStatus) }}</el-tag>
-                <div class="record-entry__identity">
-                  <strong>{{ row.templateName || '未命名模板' }}</strong>
-                  <span>{{ row.planName || '未绑定计划' }}</span>
-                </div>
-                <div class="record-entry__summary">
-                  <strong>{{ row.abnormalSummary || row.summary || '本次巡检未填写摘要' }}</strong>
-                  <span v-if="row.abnormalSummary && row.summary && row.abnormalSummary !== row.summary">{{ row.summary }}</span>
-                </div>
-                <div class="record-entry__metrics" aria-label="步骤、目标和异常数量">
-                  <span>步骤 {{ row.enabledStepCount || 0 }}</span>
-                  <span>目标 {{ row.targetCount || 0 }}</span>
-                  <span :class="{ 'has-abnormal': Number(row.abnormalCount || 0) > 0 }">异常 {{ row.abnormalCount || 0 }}</span>
-                </div>
-                <div class="record-entry__actions">
-                  <el-button link type="primary" icon="View" @click="handleRecordDetail(row)" v-hasPermi="['support:autoInspection:query']">详情</el-button>
-                  <el-button link type="success" icon="Document" @click="exportWord(row)" v-hasPermi="['support:autoInspection:export']">Word</el-button>
-                </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="执行计划" min-width="150" show-overflow-tooltip>
+            <template #default="scope">
+              <div class="record-name-cell">
+                <strong>{{ scope.row.planName || '手动执行' }}</strong>
+                <el-tag v-if="getPlanLabelName(scope.row.planId)" size="small" type="info" effect="plain">{{ getPlanLabelName(scope.row.planId) }}</el-tag>
               </div>
-            </div>
-          </article>
-        </section>
+            </template>
+          </el-table-column>
+          <el-table-column label="结果摘要" min-width="240">
+            <template #default="scope">
+              <div class="record-result-summary" :class="{ 'has-abnormal': scope.row.resultStatus === '2' }">
+                <strong>{{ scope.row.abnormalSummary || scope.row.summary || '本次巡检未填写摘要' }}</strong>
+                <span v-if="scope.row.abnormalSummary && scope.row.summary && scope.row.abnormalSummary !== scope.row.summary">{{ scope.row.summary }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="步骤 / 目标 / 异常" width="150" align="center">
+            <template #default="scope">
+              <div class="record-count-cell">
+                <span>{{ scope.row.enabledStepCount || 0 }}</span>
+                <span>{{ scope.row.targetCount || 0 }}</span>
+                <span :class="{ 'has-abnormal': Number(scope.row.abnormalCount || 0) > 0 }">{{ scope.row.abnormalCount || 0 }}</span>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="140" fixed="right" align="center">
+            <template #default="scope">
+              <el-button link type="primary" icon="View" @click="handleRecordDetail(scope.row)" v-hasPermi="['support:autoInspection:query']">详情</el-button>
+              <el-button link type="success" icon="Document" @click="exportWord(scope.row)" v-hasPermi="['support:autoInspection:export']">Word</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
 
         <pagination v-show="recordTotal > 0" :total="recordTotal" v-model:page="recordQuery.pageNum" v-model:limit="recordQuery.pageSize" @pagination="getRecordList" />
       </section>
@@ -422,6 +480,11 @@
           <el-form-item label="模板名称">
             <el-input v-model="templateQuery.templateName" clearable placeholder="搜索模板名称" @keyup.enter="getTemplateList" />
           </el-form-item>
+          <el-form-item label="标签">
+            <el-select v-model="templateQuery.labelName" clearable filterable placeholder="全部标签" style="width: 150px">
+              <el-option v-for="item in inspectionLabelOptions" :key="item" :label="item" :value="item" />
+            </el-select>
+          </el-form-item>
           <el-form-item label="状态">
             <el-select v-model="templateQuery.status" clearable placeholder="全部状态" style="width: 140px">
               <el-option label="正常" value="0" />
@@ -442,6 +505,9 @@
 
         <el-table v-loading="templateLoading" :data="templateList" class="auto-table">
           <el-table-column label="模板名称" prop="templateName" min-width="180" show-overflow-tooltip />
+          <el-table-column label="标签" width="130" align="center">
+            <template #default="scope"><el-tag size="small" effect="plain">{{ scope.row.labelName || '未分类' }}</el-tag></template>
+          </el-table-column>
           <el-table-column label="说明" prop="templateDesc" min-width="240" show-overflow-tooltip />
           <el-table-column label="步骤数" width="100" align="center">
             <template #default="scope">{{ scope.row.stepCount || 0 }}</template>
@@ -470,10 +536,23 @@
           <el-form-item label="计划名称">
             <el-input v-model="planQuery.planName" clearable placeholder="搜索计划名称" @keyup.enter="getPlanList" />
           </el-form-item>
-          <el-form-item label="模板">
-            <el-select v-model="planQuery.templateId" clearable filterable placeholder="全部模板" style="width: 180px">
-              <el-option v-for="item in templateOptions" :key="item.templateId" :label="item.templateName" :value="item.templateId" />
+          <el-form-item label="标签">
+            <el-select v-model="planQuery.labelName" clearable filterable placeholder="全部标签" style="width: 150px">
+              <el-option v-for="item in inspectionLabelOptions" :key="item" :label="item" :value="item" />
             </el-select>
+          </el-form-item>
+          <el-form-item label="模板">
+            <el-tree-select
+              v-model="planQuery.templateId"
+              :data="templateTreeOptions"
+              node-key="value"
+              clearable
+              filterable
+              default-expand-all
+              :render-after-expand="false"
+              placeholder="全部模板"
+              style="width: 210px"
+            />
           </el-form-item>
           <el-form-item label="状态">
             <el-select v-model="planQuery.status" clearable placeholder="全部状态" style="width: 140px">
@@ -495,6 +574,9 @@
 
         <el-table v-loading="planLoading" :data="planList" class="auto-table">
           <el-table-column label="计划名称" prop="planName" min-width="170" show-overflow-tooltip />
+          <el-table-column label="标签" width="130" align="center">
+            <template #default="scope"><el-tag size="small" type="info" effect="plain">{{ scope.row.labelName || '未分类' }}</el-tag></template>
+          </el-table-column>
           <el-table-column label="模板" prop="templateName" min-width="170" show-overflow-tooltip />
           <el-table-column label="执行周期" min-width="200" show-overflow-tooltip>
             <template #default="scope">{{ formatCronConfig(scope.row) }}</template>
@@ -662,8 +744,15 @@
       <template #header><div class="dialog-title"><span>{{ templateForm.templateId ? '编辑模板' : '新增模板' }}</span><strong>步骤式巡检模板</strong></div></template>
       <el-form ref="templateRef" :model="templateForm" :rules="templateRules" label-width="100px">
         <el-row :gutter="16">
-          <el-col :span="12"><el-form-item label="模板名称" prop="templateName"><el-input v-model="templateForm.templateName" placeholder="例如：TIM每日巡检" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="状态"><el-radio-group v-model="templateForm.status"><el-radio value="0">正常</el-radio><el-radio value="1">停用</el-radio></el-radio-group></el-form-item></el-col>
+          <el-col :span="10"><el-form-item label="模板名称" prop="templateName"><el-input v-model="templateForm.templateName" placeholder="例如：TIM每日巡检" /></el-form-item></el-col>
+          <el-col :span="8">
+            <el-form-item label="标签">
+              <el-select v-model="templateForm.labelName" filterable allow-create clearable default-first-option placeholder="选择或新增标签" style="width: 100%">
+                <el-option v-for="item in inspectionLabelOptions" :key="item" :label="item" :value="item" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="6"><el-form-item label="状态"><el-radio-group v-model="templateForm.status"><el-radio value="0">正常</el-radio><el-radio value="1">停用</el-radio></el-radio-group></el-form-item></el-col>
           <el-col :span="24"><el-form-item label="模板说明"><el-input v-model="templateForm.templateDesc" type="textarea" :rows="2" /></el-form-item></el-col>
         </el-row>
       </el-form>
@@ -1573,7 +1662,28 @@
       <el-form ref="planRef" :model="planForm" :rules="planRules" label-width="100px">
         <el-row :gutter="16">
           <el-col :span="12"><el-form-item label="计划名称" prop="planName"><el-input v-model="planForm.planName" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="巡检模板" prop="templateId"><el-select v-model="planForm.templateId" filterable style="width: 100%"><el-option v-for="item in templateOptions" :key="item.templateId" :label="item.templateName" :value="item.templateId" /></el-select></el-form-item></el-col>
+          <el-col :span="12">
+            <el-form-item label="标签">
+              <el-select v-model="planForm.labelName" filterable allow-create clearable default-first-option placeholder="选择或新增标签" style="width: 100%">
+                <el-option v-for="item in inspectionLabelOptions" :key="item" :label="item" :value="item" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="巡检模板" prop="templateId">
+              <el-tree-select
+                v-model="planForm.templateId"
+                :data="activeTemplateTreeOptions"
+                node-key="value"
+                filterable
+                default-expand-all
+                :render-after-expand="false"
+                placeholder="按标签选择模板"
+                style="width: 100%"
+                @change="handlePlanTemplateChange"
+              />
+            </el-form-item>
+          </el-col>
           <el-col :span="12"><el-form-item label="状态"><el-radio-group v-model="planForm.status"><el-radio value="0">启用</el-radio><el-radio value="1">暂停</el-radio></el-radio-group></el-form-item></el-col>
           <el-col :span="24">
             <el-form-item label="执行周期">
@@ -1723,9 +1833,11 @@ import {
 } from '@element-plus/icons-vue'
 import InspectionFlowCanvas from './components/InspectionFlowCanvas.vue'
 import {
+  buildInspectionRecordTableRows,
+  buildLabelTreeOptions,
   buildWeekResultDistribution,
-  formatInspectionClock,
-  groupInspectionRecordsByDay
+  collectLabelNames,
+  formatInspectionClock
 } from './overviewPresentation'
 import {
   addAutoInspectionPlan,
@@ -1783,6 +1895,7 @@ const serverAssetMap = ref({})
 const serverAssetNodeMap = ref({})
 const serverAssetNodeKeysMap = ref({})
 const allTemplateList = ref([])
+const allPlanList = ref([])
 const targetOptions = ref([])
 const calendarWeekdays = ['一', '二', '三', '四', '五', '六', '日']
 
@@ -1791,7 +1904,7 @@ const templateList = ref([])
 const templateTotal = ref(0)
 const templateRunId = ref(null)
 const templateCopyId = ref(null)
-const templateQuery = ref({ pageNum: 1, pageSize: 10, templateName: '', status: '' })
+const templateQuery = ref({ pageNum: 1, pageSize: 10, templateName: '', labelName: '', status: '' })
 
 const targetLoading = ref(false)
 const targetList = ref([])
@@ -1808,14 +1921,13 @@ const planLoading = ref(false)
 const planList = ref([])
 const planTotal = ref(0)
 const planRunId = ref(null)
-const planQuery = ref({ pageNum: 1, pageSize: 10, planName: '', templateId: undefined, status: '' })
+const planQuery = ref({ pageNum: 1, pageSize: 10, planName: '', labelName: '', templateId: undefined, status: '' })
 
 const dashboardLoading = ref(false)
 const dashboardData = ref(defaultDashboardData())
 const dashboardDrawerOpen = ref(false)
 const operationGuideOpen = ref(false)
 const weekBriefChartRef = ref(null)
-const weekResultChartRef = ref(null)
 const trendChartRef = ref(null)
 const resultPieChartRef = ref(null)
 const toolHealthChartRef = ref(null)
@@ -1823,7 +1935,7 @@ const abnormalChartRef = ref(null)
 const recordLoading = ref(false)
 const recordList = ref([])
 const recordTotal = ref(0)
-const recordQuery = ref({ pageNum: 1, pageSize: 20, templateName: '', planName: '', sourceType: '', resultStatus: '' })
+const recordQuery = ref({ pageNum: 1, pageSize: 20, templateId: undefined, planId: undefined, sourceType: '', resultStatus: '' })
 const reportExportOpen = ref(false)
 const reportExportLoading = ref(false)
 const reportExportForm = ref(defaultReportExportForm())
@@ -1894,7 +2006,7 @@ const operationGuideSteps = [
     place: '巡检配置 / 巡检模板',
     desc: '模板用于保存一组可重复执行的巡检步骤，适合按系统、平台或业务场景拆分。',
     manual: [
-      '进入“巡检配置”后，先维护巡检模板。模板名称建议按系统或场景命名，例如“TIM 平台每日巡检”。',
+      '进入“巡检配置”后，先维护巡检模板。先选择或新增标签，再按系统或场景命名模板，例如“日常巡检 / TIM 平台每日巡检”。',
       '模板支持一键复制，复制后名称追加“（复制）”，适合快速创建同类系统的巡检方案；步骤也支持复制、上移、下移和编辑。'
     ],
     actions: ['点击“新增模板”创建方案。', '使用“复制”快速生成同类模板。', '在模板弹窗中调整步骤顺序和查看步骤详情。'],
@@ -1969,7 +2081,8 @@ const operationGuideSteps = [
     place: '巡检配置 / 巡检计划',
     desc: '计划把模板交给若依定时任务调度，页面使用可视化周期配置生成 Cron。',
     manual: [
-      '巡检计划用于把一个已经验证过的模板交给若依定时任务调度。页面采用可视化周期配置，不要求用户手写 Cron。',
+      '巡检计划用于把一个已经验证过的模板交给若依定时任务调度。标签会作为计划目录，模板选择也会按标签树展开。',
+      '页面采用可视化周期配置，不要求用户手写 Cron。',
       '保存计划前要确认模板、任务编码、执行周期和状态。计划启用后，系统会按周期自动生成巡检记录。'
     ],
     actions: ['选择巡检模板和执行周期。', '检查生成的任务编码和 Cron 预览。', '启用计划后，系统会按配置自动生成巡检记录。'],
@@ -2207,6 +2320,21 @@ const toolPickerPreviewGuide = computed(() => getToolGuide(toolPickerPreviewTool
 const toolPickerDialogTitle = computed(() => toolPickerMode.value === 'new' ? '先选择工具，再进入对应配置页面' : '重新选择当前步骤的巡检工具')
 const toolPickerActionLabel = computed(() => toolPickerMode.value === 'new' ? '进入配置' : '使用这个工具')
 const templateOptions = computed(() => allTemplateList.value.filter((item) => item.status !== '1'))
+const templateTreeOptions = computed(() => buildLabelTreeOptions(allTemplateList.value, {
+  idKey: 'templateId',
+  nameKey: 'templateName'
+}))
+const activeTemplateTreeOptions = computed(() => buildLabelTreeOptions(templateOptions.value, {
+  idKey: 'templateId',
+  nameKey: 'templateName'
+}))
+const planTreeOptions = computed(() => buildLabelTreeOptions(allPlanList.value, {
+  idKey: 'planId',
+  nameKey: 'planName'
+}))
+const inspectionLabelOptions = computed(() => collectLabelNames(allTemplateList.value, allPlanList.value))
+const templateLabelMap = computed(() => new Map(allTemplateList.value.map((item) => [Number(item.templateId), item.labelName || ''])))
+const planLabelMap = computed(() => new Map(allPlanList.value.map((item) => [Number(item.planId), item.labelName || ''])))
 const bigDataStepTargets = computed(() => stepDraft.value?.stepParams?.serverTargets || [])
 const serverFileStepTargets = computed(() => stepDraft.value?.stepParams?.serverTargets || [])
 const serviceStatusStepTargets = computed(() => stepDraft.value?.stepParams?.serverTargets || [])
@@ -2301,8 +2429,9 @@ const dashboardCalendarOffset = computed(() => {
 const dashboardToolStats = computed(() => dashboardData.value?.toolStats || [])
 const dashboardAbnormalTargets = computed(() => dashboardData.value?.latestAbnormalTargets || [])
 const dashboardRecentRecords = computed(() => dashboardData.value?.recentRecords || [])
-const recordDayGroups = computed(() => groupInspectionRecordsByDay(recordList.value))
-const dashboardWeekResultPieData = computed(() => buildWeekResultDistribution(dashboardWeekSummary.value))
+const recordTableRows = computed(() => buildInspectionRecordTableRows(recordList.value))
+const dashboardWeekResultItems = computed(() => buildWeekResultDistribution(dashboardWeekSummary.value))
+const dashboardWeekSuccessPercent = computed(() => Math.max(0, Math.min(100, parsePercent(dashboardWeekSummary.value.successRate))))
 const dashboardResultPieData = computed(() => {
   const total = Number(dashboardSummary.value.recordCount || 0)
   const abnormal = Number(dashboardSummary.value.abnormalCount || 0)
@@ -2430,7 +2559,7 @@ onBeforeUnmount(() => {
 
 async function initPage() {
   await Promise.all([getTools(), getServerAssetTree()])
-  await Promise.all([getDashboard(), getTemplateList(), getTemplateOptions(), getPlanList(), getRecordList()])
+  await Promise.all([getDashboard(), getTemplateList(), getTemplateOptions(), getPlanList(), getPlanOptions(), getRecordList()])
 }
 
 function resolveRouteTab(tab, path = '') {
@@ -2757,7 +2886,7 @@ function getTemplateList() {
 }
 
 function getTemplateOptions() {
-  return listAutoInspectionTemplate({ pageNum: 1, pageSize: 1000, status: '0' }).then((res) => {
+  return listAutoInspectionTemplate({ pageNum: 1, pageSize: 1000 }).then((res) => {
     allTemplateList.value = res.rows || []
   })
 }
@@ -2782,6 +2911,12 @@ function getPlanList() {
     planList.value = res.rows || []
     planTotal.value = res.total || 0
   }).finally(() => { planLoading.value = false })
+}
+
+function getPlanOptions() {
+  return listAutoInspectionPlan({ pageNum: 1, pageSize: 1000 }).then((res) => {
+    allPlanList.value = res.rows || []
+  })
 }
 
 function getRecordList() {
@@ -2874,46 +3009,7 @@ function renderWeekBriefChart() {
       }, true)
       chart.resize()
     }
-    renderWeekResultChart()
   })
-}
-
-function renderWeekResultChart() {
-  const chart = getDashboardChart(weekResultChartRef, 'weekResult')
-  if (!chart) return
-  chart.setOption({
-    color: ['#45ad6f', '#eb6262', '#a8b5c5'],
-    tooltip: { trigger: 'item', appendToBody: true },
-    legend: {
-      orient: 'vertical',
-      right: 2,
-      top: 'center',
-      itemWidth: 8,
-      itemHeight: 8,
-      textStyle: { color: '#687f98', fontSize: 10 }
-    },
-    graphic: [{
-      type: 'text',
-      left: '28%',
-      top: '43%',
-      style: {
-        text: dashboardWeekSummary.value.successRate || '0%',
-        fill: '#1d3554',
-        font: '600 14px sans-serif',
-        textAlign: 'center'
-      }
-    }],
-    series: [{
-      type: 'pie',
-      radius: ['54%', '76%'],
-      center: ['30%', '50%'],
-      silent: false,
-      avoidLabelOverlap: true,
-      label: { show: false },
-      data: dashboardWeekResultPieData.value
-    }]
-  }, true)
-  chart.resize()
 }
 
 function renderDashboardCharts() {
@@ -3023,8 +3119,31 @@ function formatCalendarDayResult(day) {
   return '正常'
 }
 
+function recordSpanMethod({ row, columnIndex }) {
+  if (columnIndex !== 0) return [1, 1]
+  return row.ownershipRowspan > 0 ? [row.ownershipRowspan, 1] : [0, 0]
+}
+
+function recordRowClassName({ row }) {
+  return row.resultStatus === '2' ? 'record-table-row--abnormal' : ''
+}
+
+function getTemplateLabelName(templateId) {
+  return templateId == null ? '' : (templateLabelMap.value.get(Number(templateId)) || '')
+}
+
+function getPlanLabelName(planId) {
+  return planId == null ? '' : (planLabelMap.value.get(Number(planId)) || '')
+}
+
+function handlePlanTemplateChange(templateId) {
+  if (!templateId || String(planForm.value.labelName || '').trim()) return
+  const template = allTemplateList.value.find((item) => Number(item.templateId) === Number(templateId))
+  if (template?.labelName) planForm.value.labelName = template.labelName
+}
+
 function resetTemplateQuery() {
-  templateQuery.value = { pageNum: 1, pageSize: 10, templateName: '', status: '' }
+  templateQuery.value = { pageNum: 1, pageSize: 10, templateName: '', labelName: '', status: '' }
   getTemplateList()
 }
 
@@ -3034,12 +3153,12 @@ function resetTargetQuery() {
 }
 
 function resetPlanQuery() {
-  planQuery.value = { pageNum: 1, pageSize: 10, planName: '', templateId: undefined, status: '' }
+  planQuery.value = { pageNum: 1, pageSize: 10, planName: '', labelName: '', templateId: undefined, status: '' }
   getPlanList()
 }
 
 function resetRecordQuery() {
-  recordQuery.value = { pageNum: 1, pageSize: 20, templateName: '', planName: '', sourceType: '', resultStatus: '' }
+  recordQuery.value = { pageNum: 1, pageSize: 20, templateId: undefined, planId: undefined, sourceType: '', resultStatus: '' }
   getRecordList()
 }
 
@@ -4797,6 +4916,7 @@ function submitPlan() {
       proxy.$modal.msgSuccess('保存成功')
       planDialogOpen.value = false
       getPlanList()
+      getPlanOptions()
     }).finally(() => { planSubmitLoading.value = false })
   })
 }
@@ -4824,6 +4944,7 @@ function handleDeletePlan(row) {
   proxy.$modal.confirm(`确认删除计划“${row.planName}”吗？`).then(() => delAutoInspectionPlan(row.planId)).then(() => {
     proxy.$modal.msgSuccess('删除成功')
     getPlanList()
+    getPlanOptions()
   })
 }
 
@@ -4978,11 +5099,11 @@ function defaultTargetForm() {
 }
 
 function defaultTemplateForm() {
-  return { templateName: '', templateDesc: '', status: '0', steps: [] }
+  return { templateName: '', labelName: '', templateDesc: '', status: '0', steps: [] }
 }
 
 function defaultPlanForm() {
-  return { planName: '', templateId: undefined, reportStyle: 'STANDARD', status: '0', cronExpression: '', cronConfig: { type: 'daily', time: '08:00:00', weekDays: ['MON'], monthDays: [1], interval: 10, intervalUnit: 'minute' }, remark: '' }
+  return { planName: '', labelName: '', templateId: undefined, reportStyle: 'STANDARD', status: '0', cronExpression: '', cronConfig: { type: 'daily', time: '08:00:00', weekDays: ['MON'], monthDays: [1], interval: 10, intervalUnit: 'minute' }, remark: '' }
 }
 
 function defaultDashboardData() {
@@ -5591,6 +5712,49 @@ function resultTagType(value) {
   height: 58px;
 }
 
+.dashboard-week-result {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 58px;
+}
+
+:deep(.dashboard-week-result .el-progress__text) {
+  color: #1d3554;
+  font-size: 13px !important;
+  font-weight: 700;
+}
+
+.dashboard-week-result__legend {
+  display: grid;
+  gap: 3px;
+
+  span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #6f8299;
+    font-size: 10px;
+    white-space: nowrap;
+  }
+
+  i {
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: #a8b5c5;
+  }
+
+  .is-normal i {
+    background: #45ad6f;
+  }
+
+  .is-abnormal i {
+    background: #eb6262;
+  }
+}
+
 .record-board {
   display: grid;
   gap: 14px;
@@ -5629,156 +5793,67 @@ function resultTagType(value) {
   gap: 8px;
 }
 
-.record-day-groups {
-  display: grid;
-  gap: 14px;
-  min-height: 120px;
-}
-
-.record-day-group {
-  min-width: 0;
-  overflow: hidden;
-  border: 1px solid #dfe8f3;
-  border-radius: 8px;
-  background: #fff;
-}
-
-.record-day-group--1 {
-  border-color: #d5e9de;
-}
-
-.record-day-group--2 {
-  border-color: #f1d4d4;
-}
-
-.record-day-group__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  min-height: 58px;
-  padding: 9px 14px;
-  border-bottom: 1px solid #e7eef7;
-  background: #f8fafc;
-}
-
-.record-day-group--1 .record-day-group__head {
-  background: #f6faf8;
-}
-
-.record-day-group--2 .record-day-group__head {
-  background: #fff8f8;
-}
-
-.record-day-group__date {
-  display: grid;
-  grid-template-columns: 9px minmax(0, 1fr);
-  gap: 10px;
-  align-items: center;
-  min-width: 0;
-
-  strong,
-  em {
-    display: block;
+.record-table--daily {
+  :deep(.el-table__cell) {
+    padding: 8px 0;
   }
+
+  :deep(.record-table-row--abnormal > td.el-table__cell) {
+    background: #fff8f8;
+  }
+}
+
+.record-date-cell {
+  display: grid;
+  gap: 2px;
+  justify-items: center;
+  line-height: 1.3;
 
   strong {
     color: #1d3554;
-    font-size: 16px;
-    line-height: 1.2;
+    font-size: 15px;
+  }
+
+  span,
+  em {
+    color: #7b8ea4;
+    font-size: 10px;
+    font-style: normal;
   }
 
   em {
-    margin-top: 2px;
-    color: #74889f;
-    font-size: 11px;
-    font-style: normal;
+    margin-top: 3px;
+    color: #526d88;
   }
 }
 
-.record-day-group__summary {
+.record-clock {
+  color: #294766;
+  font-size: 14px;
+}
+
+.record-name-cell {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-
-  span {
-    display: grid;
-    min-width: 72px;
-    padding: 0 12px;
-    border-left: 1px solid #dbe5f0;
-    text-align: center;
-  }
+  gap: 7px;
+  min-width: 0;
 
   strong {
+    overflow: hidden;
     color: #294766;
-    font-size: 14px;
-    line-height: 1.2;
+    font-size: 13px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  em {
-    margin-top: 2px;
-    color: #8192a5;
-    font-size: 10px;
-    font-style: normal;
-  }
-
-  .has-abnormal strong {
-    color: #c45656;
+  .el-tag {
+    flex: 0 0 auto;
   }
 }
 
-.record-day-group__list {
-  display: grid;
-}
-
-.record-entry {
-  display: grid;
-  grid-template-columns: 72px 66px minmax(150px, .8fr) minmax(240px, 1.35fr) 208px 126px;
-  gap: 12px;
-  align-items: center;
-  min-width: 0;
-  min-height: 62px;
-  padding: 9px 14px;
-  border-bottom: 1px solid #edf2f7;
-  transition: background-color 160ms ease-out;
-
-  &:last-child {
-    border-bottom: 0;
-  }
-
-  &:hover {
-    background: #f8fbff;
-  }
-}
-
-.record-entry--2 {
-  background: #fffafa;
-
-  &:hover {
-    background: #fff5f5;
-  }
-}
-
-.record-entry__time {
+.record-result-summary {
   display: grid;
   gap: 2px;
-
-  strong {
-    color: #244361;
-    font-size: 15px;
-    line-height: 1.2;
-  }
-
-  span {
-    color: #8192a5;
-    font-size: 10px;
-  }
-}
-
-.record-entry__identity,
-.record-entry__summary {
-  display: grid;
-  gap: 3px;
   min-width: 0;
 
   strong,
@@ -5797,37 +5872,29 @@ function resultTagType(value) {
     color: #7b8ea4;
     font-size: 11px;
   }
+
+  &.has-abnormal strong {
+    color: #c45656;
+  }
 }
 
-.record-entry--2 .record-entry__summary strong {
-  color: #b94d4d;
-}
-
-.record-entry__metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
+.record-count-cell {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
 
   span {
-    padding: 3px 7px;
+    padding: 3px 5px;
     border-radius: 4px;
     background: #f0f4f8;
     color: #60758d;
-    font-size: 10px;
-    white-space: nowrap;
+    font-size: 11px;
   }
 
   .has-abnormal {
     background: #fff0f0;
     color: #c45656;
   }
-}
-
-.record-entry__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 2px;
-  white-space: nowrap;
 }
 
 .dashboard-status {
@@ -9041,33 +9108,6 @@ function resultTagType(value) {
     flex-direction: column;
   }
 
-  .record-entry {
-    grid-template-columns: 72px 66px minmax(160px, .8fr) minmax(220px, 1.2fr);
-    align-items: start;
-  }
-
-  .record-entry__time,
-  .record-entry > .soft-status-tag {
-    grid-row: 1 / 3;
-  }
-
-  .record-entry__identity {
-    grid-column: 3;
-  }
-
-  .record-entry__summary {
-    grid-column: 4;
-  }
-
-  .record-entry__metrics {
-    grid-column: 3;
-  }
-
-  .record-entry__actions {
-    grid-column: 4;
-    justify-content: flex-start;
-  }
-
   .trend-days {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -9166,8 +9206,7 @@ function resultTagType(value) {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-brief__metrics,
-  .record-day-group__summary {
+  .dashboard-brief__metrics {
     width: 100%;
     justify-content: flex-start;
     overflow-x: auto;
@@ -9176,57 +9215,6 @@ function resultTagType(value) {
   .record-board__actions {
     flex-wrap: wrap;
     width: 100%;
-  }
-
-  .record-day-group__head {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .record-entry {
-    grid-template-columns: 74px minmax(0, 1fr) auto;
-  }
-
-  .record-entry__time,
-  .record-entry > .soft-status-tag,
-  .record-entry__identity,
-  .record-entry__summary,
-  .record-entry__metrics,
-  .record-entry__actions {
-    grid-row: auto;
-    grid-column: auto;
-  }
-
-  .record-entry__time {
-    grid-row: 1;
-    grid-column: 1;
-  }
-
-  .record-entry > .soft-status-tag {
-    grid-row: 1;
-    grid-column: 3;
-    justify-self: end;
-    width: auto;
-  }
-
-  .record-entry__identity {
-    grid-row: 1;
-    grid-column: 2;
-  }
-
-  .record-entry__summary {
-    grid-row: 2;
-    grid-column: 1 / -1;
-  }
-
-  .record-entry__metrics {
-    grid-row: 3;
-    grid-column: 1 / 3;
-  }
-
-  .record-entry__actions {
-    grid-row: 3;
-    grid-column: 3;
   }
 
   .config-commandbar {
@@ -9287,7 +9275,6 @@ function resultTagType(value) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .record-entry,
   .primary-create-action,
   .template-action,
   :deep(.template-action .el-icon) {
