@@ -2,6 +2,8 @@
 -- 生成来源：support_v1.sql + support_upgrade_*.sql
 -- 说明：可用于新库初始化，也可用于已有库补齐升级项。建议部署前先备份数据库。
 
+SET NAMES utf8mb4;
+
 -- ============================================================================
 -- support_v1.sql
 -- ============================================================================
@@ -1318,6 +1320,12 @@ WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'SERV
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
 SELECT 'DATABASE_QUERY', '数据库查询检查', 'DATABASE_QUERY', '条', 'MIN', 1, 15, 0, '{"fields":["databaseType","host","port","databaseName","query","resultMode","resultColumn"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置只读数据库取数工具'
 WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'DATABASE_QUERY');
+
+UPDATE sup_auto_inspection_tool
+SET tool_name = CONVERT(0xe695b0e68daee5ba93e69fa5e8afa2e6a380e69fa5 USING utf8mb4),
+    value_unit = CONVERT(0xe69da1 USING utf8mb4),
+    remark = CONVERT(0xe887aae58aa8e58c96e5b7a1e6a380e58685e7bdaee58faae8afbbe695b0e68daee5ba93e58f96e695b0e5b7a5e585b7 USING utf8mb4)
+WHERE tool_code = 'DATABASE_QUERY';
 
 UPDATE sys_menu SET visible = '1', update_time = NOW(), remark = '已由自动化巡检模块替代，保留旧数据入口隐藏'
 WHERE menu_id = 2206;
