@@ -1,6 +1,8 @@
 -- v3.10.0 自动化巡检 ETL 化编排与数据库查询检查工具
 -- 兼容说明：不修改现有业务表，步骤复检和失败策略继续存入 step_params JSON。
 
+SET NAMES utf8mb4;
+
 START TRANSACTION;
 
 INSERT INTO sup_auto_inspection_tool(

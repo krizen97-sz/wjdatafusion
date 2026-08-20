@@ -1,5 +1,28 @@
 export const releaseNotes = [
   {
+    version: 'v3.10.1',
+    submitTime: '2026-08-20 09:53:43',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '数据库查询工具中文乱码修复',
+    summary: '修复生产环境执行自动化巡检升级脚本时，MySQL 客户端使用 latin1 会话导致数据库查询工具名称、单位和备注被二次编码的问题。',
+    changes: [
+      '确认业务表和字段均为 utf8mb4，乱码仅发生在 DATABASE_QUERY 内置工具的中文展示字段，不影响工具编码、参数配置或巡检执行数据。',
+      '新增可重复执行的数据修复脚本，使用 UTF-8 十六进制写入工具名称、单位和备注，避免依赖终端及 MySQL 客户端默认字符集。',
+      '在初始化脚本、整合部署脚本和 v3.10.0 专项升级脚本入口增加 utf8mb4 会话声明，防止后续环境再次写入乱码。',
+      '生产修复前单独备份目标记录，事务仅更新 DATABASE_QUERY 一条内置工具数据，不修改表结构、模板、目标、计划和巡检历史。'
+    ],
+    scope: ['自动化巡检', '数据库查询检查', 'MySQL字符集', '部署脚本', '版本记录'],
+    database: '不修改数据库结构；仅修复 sup_auto_inspection_tool 中 DATABASE_QUERY 的 tool_name、value_unit 和 remark 中文字段。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260820_auto_inspection_database_tool_charset_v3_10_1.sql',
+      'WDF100.0/sql/support_upgrade_20260819_auto_inspection_etl_workflow_v3_10_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v3.10.0',
     submitTime: '2026-08-19 23:40:25',
     level: 'minor',
