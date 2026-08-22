@@ -17,8 +17,8 @@
           <div class="dashboard-brief__status">
             <span class="status-dot" :class="`status-dot--${dashboardWeekSummary.status || '3'}`"></span>
             <div>
-              <strong>本周巡检情况</strong>
-              <em>共运行 {{ dashboardWeekSummary.recordCount || 0 }} 次，正常率 {{ dashboardWeekSummary.successRate || '0%' }}</em>
+              <strong>{{ dashboardWeekInsight.title }}</strong>
+              <em>{{ dashboardWeekInsight.detail }}</em>
             </div>
           </div>
           <div class="dashboard-brief__metrics" aria-label="本周巡检关键指标">
@@ -30,14 +30,14 @@
             <article class="dashboard-brief__chart">
               <div class="dashboard-brief__chart-head">
                 <span>每日运行趋势</span>
-                <em>巡检 / 异常</em>
+                <em>{{ dashboardWeekPeakLabel }}</em>
               </div>
               <div ref="weekBriefChartRef" class="dashboard-brief-chart"></div>
             </article>
             <article class="dashboard-brief__chart dashboard-brief__chart--result">
               <div class="dashboard-brief__chart-head">
-                <span>本周结果</span>
-                <em>正常 / 异常</em>
+                <span>本周结果构成</span>
+                <em>正常率 {{ dashboardWeekSummary.successRate || '0%' }}</em>
               </div>
               <div class="dashboard-week-result">
                 <el-progress
@@ -185,30 +185,28 @@
 
     <el-drawer v-model="dashboardDrawerOpen" title="巡检看板" direction="rtl" size="820px" append-to-body class="dashboard-drawer" @opened="renderDashboardCharts">
       <div v-loading="dashboardLoading" class="dashboard-drawer__body">
-        <section class="dashboard-drawer__summary" :class="`dashboard-drawer__summary--${dashboardSummary.status || '3'}`">
-          <div>
-            <span>今日运行状态</span>
-            <strong>{{ formatResult(dashboardSummary.status) }}</strong>
+        <section class="dashboard-decision-strip" :class="`dashboard-decision-strip--${dashboardTodayInsight.status}`">
+          <div class="dashboard-decision-strip__conclusion">
+            <span class="status-dot" :class="`status-dot--${dashboardTodayInsight.status}`"></span>
+            <div>
+              <em>今日运行判断</em>
+              <strong>{{ dashboardTodayInsight.title }}</strong>
+              <p>{{ dashboardTodayInsight.detail }}</p>
+            </div>
           </div>
-          <div>
-            <span>今日巡检</span>
-            <strong>{{ dashboardSummary.recordCount || 0 }}</strong>
-          </div>
-          <div>
-            <span>异常子项</span>
-            <strong>{{ dashboardSummary.abnormalTargetCount || 0 }}</strong>
-          </div>
-          <div>
-            <span>正常率</span>
-            <strong>{{ dashboardSummary.successRate || '0%' }}</strong>
-          </div>
+          <dl class="dashboard-decision-strip__metrics">
+            <div><dt>今日巡检</dt><dd>{{ dashboardSummary.recordCount || 0 }}<small>次</small></dd></div>
+            <div><dt>异常子项</dt><dd>{{ dashboardSummary.abnormalTargetCount || 0 }}<small>个</small></dd></div>
+            <div><dt>执行步骤</dt><dd>{{ dashboardSummary.stepCount || 0 }}<small>项</small></dd></div>
+            <div><dt>目标检查</dt><dd>{{ dashboardSummary.targetCount || 0 }}<small>个</small></dd></div>
+          </dl>
         </section>
 
         <section class="dashboard-calendar-panel">
           <header>
             <div>
               <strong>当月巡检日历</strong>
-              <span>{{ dashboardCalendar.monthLabel || '-' }}，按天查看巡检次数和结果</span>
+              <span>{{ dashboardCalendar.monthLabel || '-' }} · {{ dashboardCalendarHeadline }}</span>
             </div>
             <div class="dashboard-calendar-legend">
               <span><i class="calendar-legend-dot calendar-legend-dot--1"></i>正常</span>
@@ -216,44 +214,24 @@
               <span><i class="calendar-legend-dot calendar-legend-dot--3"></i>无记录</span>
             </div>
           </header>
-          <div class="dashboard-calendar-weekdays">
-            <span v-for="item in calendarWeekdays" :key="item">{{ item }}</span>
-          </div>
-          <div class="dashboard-calendar-grid">
-            <span v-for="item in dashboardCalendarOffset" :key="`empty-${item}`" class="dashboard-calendar-empty"></span>
-            <button
-              v-for="day in dashboardCalendarDays"
-              :key="day.date"
-              class="dashboard-calendar-day"
-              :class="[
-                `dashboard-calendar-day--${day.status || '3'}`,
-                { 'is-today': day.today, 'is-future': day.future }
-              ]"
-              type="button"
-              :disabled="day.future"
-            >
-              <strong>{{ day.day }}</strong>
-              <em>{{ day.total || 0 }} 次</em>
-              <small>{{ formatCalendarDayResult(day) }}</small>
-            </button>
-          </div>
+          <div ref="calendarHeatChartRef" class="dashboard-calendar-chart" aria-label="当月巡检日历热力图"></div>
         </section>
 
         <section class="dashboard-chart-grid">
           <article class="dashboard-chart-panel dashboard-chart-panel--wide">
-            <header><strong>近 7 天巡检趋势</strong><span>巡检总量 / 异常数</span></header>
+            <header><strong>近 7 天巡检趋势</strong><span>{{ dashboardTrendHeadline }}</span></header>
             <div ref="trendChartRef" class="dashboard-chart"></div>
           </article>
           <article class="dashboard-chart-panel">
-            <header><strong>今日结果占比</strong><span>正常 / 异常</span></header>
-            <div ref="resultPieChartRef" class="dashboard-chart"></div>
+            <header><strong>今日结果构成</strong><span>{{ dashboardResultHeadline }}</span></header>
+            <div ref="resultCompositionChartRef" class="dashboard-chart dashboard-chart--compact"></div>
           </article>
           <article class="dashboard-chart-panel dashboard-chart-panel--wide">
-            <header><strong>工具健康度</strong><span>按工具聚合正常率</span></header>
+            <header><strong>工具健康度</strong><span>{{ dashboardToolHealthHeadline }}</span></header>
             <div ref="toolHealthChartRef" class="dashboard-chart"></div>
           </article>
           <article class="dashboard-chart-panel">
-            <header><strong>异常分布</strong><span>按步骤聚合</span></header>
+            <header><strong>异常 TopN</strong><span>{{ dashboardAbnormalHeadline }}</span></header>
             <div ref="abnormalChartRef" class="dashboard-chart"></div>
           </article>
         </section>
@@ -1926,6 +1904,16 @@ import {
 import InspectionFlowCanvas from './components/InspectionFlowCanvas.vue'
 import { hydrateDatabaseTarget, normalizeDatabaseTargetConfig } from './databaseTargetConfig'
 import {
+  buildAbnormalTopOption,
+  buildAbnormalTopRows,
+  buildCalendarHeatOption,
+  buildInspectionInsight,
+  buildResultCompositionOption,
+  buildToolHealthOption,
+  buildWeekTrendOption,
+  normalizeToolHealthRows
+} from './inspectionChartSystem'
+import {
   buildInspectionRecordTableRows,
   buildLabelTreeOptions,
   buildWeekResultDistribution,
@@ -1990,7 +1978,6 @@ const serverAssetNodeKeysMap = ref({})
 const allTemplateList = ref([])
 const allPlanList = ref([])
 const targetOptions = ref([])
-const calendarWeekdays = ['一', '二', '三', '四', '五', '六', '日']
 
 const templateLoading = ref(false)
 const templateList = ref([])
@@ -2022,9 +2009,10 @@ const dashboardDrawerOpen = ref(false)
 const operationGuideOpen = ref(false)
 const weekBriefChartRef = ref(null)
 const trendChartRef = ref(null)
-const resultPieChartRef = ref(null)
+const resultCompositionChartRef = ref(null)
 const toolHealthChartRef = ref(null)
 const abnormalChartRef = ref(null)
+const calendarHeatChartRef = ref(null)
 const recordLoading = ref(false)
 const recordList = ref([])
 const recordTotal = ref(0)
@@ -2514,37 +2502,42 @@ const dashboardWeekTrend = computed(() => {
   return buildCurrentWeekTrendRows(trend)
 })
 const dashboardCalendar = computed(() => dashboardData.value?.calendar || {})
-const dashboardCalendarDays = computed(() => dashboardCalendar.value?.days || [])
-const dashboardCalendarOffset = computed(() => {
-  const offset = Number(dashboardCalendar.value?.weekStartOffset || 0)
-  return Array.from({ length: Math.max(0, Math.min(offset, 6)) }, (_, index) => index + 1)
-})
 const dashboardToolStats = computed(() => dashboardData.value?.toolStats || [])
 const dashboardAbnormalTargets = computed(() => dashboardData.value?.latestAbnormalTargets || [])
 const dashboardRecentRecords = computed(() => dashboardData.value?.recentRecords || [])
 const recordTableRows = computed(() => buildInspectionRecordTableRows(recordList.value))
 const dashboardWeekResultItems = computed(() => buildWeekResultDistribution(dashboardWeekSummary.value))
 const dashboardWeekSuccessPercent = computed(() => Math.max(0, Math.min(100, parsePercent(dashboardWeekSummary.value.successRate))))
-const dashboardResultPieData = computed(() => {
-  const total = Number(dashboardSummary.value.recordCount || 0)
-  const abnormal = Number(dashboardSummary.value.abnormalCount || 0)
-  const normal = Math.max(total - abnormal, 0)
-  if (!total) return [{ name: '暂无记录', value: 1 }]
-  return [
-    { name: '正常', value: normal },
-    { name: '异常', value: abnormal }
-  ].filter((item) => item.value > 0)
+const dashboardWeekInsight = computed(() => buildInspectionInsight(dashboardWeekSummary.value, '本周'))
+const dashboardTodayInsight = computed(() => buildInspectionInsight(dashboardSummary.value, '今日'))
+const dashboardWeekPeakLabel = computed(() => {
+  const peak = dashboardWeekTrend.value.reduce((current, row) => Number(row.abnormal || 0) > Number(current?.abnormal || 0) ? row : current, null)
+  return Number(peak?.abnormal || 0) > 0 ? `${formatTrendDate(peak.date)} 异常 ${peak.abnormal}` : '暂无异常峰值'
 })
-const dashboardAbnormalStepData = computed(() => {
-  const grouped = new Map()
-  dashboardAbnormalTargets.value.forEach((item) => {
-    const name = item.stepName || item.toolName || item.targetName || '未命名子项'
-    grouped.set(name, (grouped.get(name) || 0) + 1)
-  })
-  return Array.from(grouped.entries())
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, 8)
+const dashboardTrendHeadline = computed(() => {
+  const total = dashboardTrend.value.reduce((sum, item) => sum + Number(item.total || 0), 0)
+  const abnormal = dashboardTrend.value.reduce((sum, item) => sum + Number(item.abnormal || 0), 0)
+  return total ? `近 7 天 ${total} 次，异常 ${abnormal} 次` : '近 7 天暂无巡检'
+})
+const dashboardResultHeadline = computed(() => {
+  const total = Number(dashboardSummary.value.recordCount || 0)
+  return total ? `正常率 ${dashboardSummary.value.successRate || '0%'}` : '今日暂无巡检'
+})
+const dashboardToolHealthRows = computed(() => normalizeToolHealthRows(dashboardToolStats.value))
+const dashboardToolHealthHeadline = computed(() => {
+  const weakest = dashboardToolHealthRows.value[0]
+  return weakest ? `最低：${weakest.name} ${weakest.value}%` : '暂无工具数据'
+})
+const dashboardAbnormalTopRows = computed(() => buildAbnormalTopRows(dashboardAbnormalTargets.value))
+const dashboardAbnormalHeadline = computed(() => {
+  const top = dashboardAbnormalTopRows.value[0]
+  return top ? `集中于：${top.name} ${top.value} 次` : '今日暂无异常'
+})
+const dashboardCalendarHeadline = computed(() => {
+  const days = dashboardCalendar.value?.days || []
+  const activeDays = days.filter((item) => Number(item.total || 0) > 0).length
+  const abnormalDays = days.filter((item) => Number(item.abnormal || 0) > 0).length
+  return activeDays ? `${activeDays} 个运行日，${abnormalDays} 个异常日` : '当月暂无巡检'
 })
 const reportExportPreview = computed(() => {
   if (reportExportForm.value.mode === 'MONTH') {
@@ -3124,54 +3117,7 @@ function renderWeekBriefChart() {
     if (activeTab.value !== 'dashboard') return
     const chart = getDashboardChart(weekBriefChartRef, 'weekBrief')
     if (chart) {
-      const rows = dashboardWeekTrend.value
-      const totalData = rows.map((item) => Number(item.total || 0))
-      const abnormalData = rows.map((item) => Number(item.abnormal || 0))
-      chart.setOption({
-        color: ['#2f80ed', '#f56c6c'],
-        grid: { top: 10, right: 8, bottom: 18, left: 24 },
-        tooltip: {
-          trigger: 'axis',
-          appendToBody: true,
-          axisPointer: { type: 'shadow' },
-          formatter(params = []) {
-            const title = params[0]?.axisValue || ''
-            const total = params.find((item) => item.seriesName === '巡检次数')?.value || 0
-            const abnormal = params.find((item) => item.seriesName === '异常次数')?.value || 0
-            return `${title}<br/>巡检次数：${total}<br/>异常次数：${abnormal}`
-          }
-        },
-        xAxis: {
-          type: 'category',
-          data: rows.map((item) => formatTrendDate(item.date)),
-          axisTick: { show: false },
-          axisLine: { lineStyle: { color: '#dce7f4' } },
-          axisLabel: { color: '#7890aa', fontSize: 10 }
-        },
-        yAxis: {
-          type: 'value',
-          minInterval: 1,
-          axisLabel: { color: '#9aa9ba', fontSize: 10 },
-          splitLine: { lineStyle: { color: '#edf3f8' } }
-        },
-        series: [
-          {
-            name: '巡检次数',
-            type: 'bar',
-            barWidth: 10,
-            itemStyle: { borderRadius: [6, 6, 0, 0] },
-            data: totalData
-          },
-          {
-            name: '异常次数',
-            type: 'line',
-            smooth: true,
-            symbolSize: 5,
-            lineStyle: { width: 2 },
-            data: abnormalData
-          }
-        ]
-      }, true)
+      chart.setOption(buildWeekTrendOption(dashboardWeekTrend.value, { compact: true }), true)
       chart.resize()
     }
   })
@@ -3181,84 +3127,41 @@ function renderDashboardCharts() {
   nextTick(() => {
     if (!dashboardDrawerOpen.value) return
     renderTrendChart()
-    renderResultPieChart()
+    renderResultCompositionChart()
     renderToolHealthChart()
     renderAbnormalChart()
+    renderCalendarHeatChart()
   })
 }
 
 function renderTrendChart() {
   const chart = getDashboardChart(trendChartRef, 'trend')
   if (!chart) return
-  const dates = dashboardTrend.value.map((item) => formatTrendDate(item.date))
-  chart.setOption({
-    color: ['#2f80ed', '#f56c6c'],
-    grid: { top: 30, right: 18, bottom: 30, left: 36 },
-    tooltip: { trigger: 'axis' },
-    legend: { top: 0, right: 0, itemWidth: 10, itemHeight: 10 },
-    xAxis: { type: 'category', data: dates, axisTick: { show: false } },
-    yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: '#edf2f7' } } },
-    series: [
-      { name: '巡检总量', type: 'line', smooth: true, symbolSize: 7, areaStyle: { opacity: 0.08 }, data: dashboardTrend.value.map((item) => Number(item.total || 0)) },
-      { name: '异常数', type: 'line', smooth: true, symbolSize: 7, data: dashboardTrend.value.map((item) => Number(item.abnormal || 0)) }
-    ]
-  })
+  chart.setOption(buildWeekTrendOption(dashboardTrend.value), true)
 }
 
-function renderResultPieChart() {
-  const chart = getDashboardChart(resultPieChartRef, 'resultPie')
+function renderResultCompositionChart() {
+  const chart = getDashboardChart(resultCompositionChartRef, 'resultComposition')
   if (!chart) return
-  chart.setOption({
-    color: ['#67c23a', '#f56c6c', '#c0c4cc'],
-    tooltip: { trigger: 'item' },
-    legend: { bottom: 0, left: 'center', itemWidth: 10, itemHeight: 10 },
-    series: [{
-      type: 'pie',
-      radius: ['56%', '78%'],
-      center: ['50%', '45%'],
-      avoidLabelOverlap: true,
-      label: { formatter: '{b}\n{d}%' },
-      data: dashboardResultPieData.value
-    }]
-  })
+  chart.setOption(buildResultCompositionOption(dashboardSummary.value), true)
 }
 
 function renderToolHealthChart() {
   const chart = getDashboardChart(toolHealthChartRef, 'toolHealth')
   if (!chart) return
-  const rows = dashboardToolStats.value.slice(0, 8)
-  chart.setOption({
-    color: ['#2f80ed'],
-    grid: { top: 18, right: 42, bottom: 24, left: 120 },
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    xAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' }, splitLine: { lineStyle: { color: '#edf2f7' } } },
-    yAxis: { type: 'category', data: rows.map((item) => item.toolName || item.toolCode || '-'), axisTick: { show: false } },
-    series: [{
-      name: '正常率',
-      type: 'bar',
-      barWidth: 12,
-      itemStyle: { borderRadius: [0, 8, 8, 0] },
-      label: { show: true, position: 'right', formatter: '{c}%' },
-      data: rows.map((item) => parsePercent(item.healthRate))
-    }]
-  })
+  chart.setOption(buildToolHealthOption(dashboardToolStats.value), true)
 }
 
 function renderAbnormalChart() {
   const chart = getDashboardChart(abnormalChartRef, 'abnormal')
   if (!chart) return
-  const rows = dashboardAbnormalStepData.value.length ? dashboardAbnormalStepData.value : [{ name: '暂无异常', value: 1 }]
-  chart.setOption({
-    color: ['#f56c6c', '#e6a23c', '#909399', '#2f80ed', '#67c23a'],
-    tooltip: { trigger: 'item' },
-    series: [{
-      type: 'pie',
-      radius: ['42%', '72%'],
-      center: ['50%', '48%'],
-      label: { formatter: '{b}\n{c}' },
-      data: rows
-    }]
-  })
+  chart.setOption(buildAbnormalTopOption(dashboardAbnormalTargets.value), true)
+}
+
+function renderCalendarHeatChart() {
+  const chart = getDashboardChart(calendarHeatChartRef, 'calendarHeat')
+  if (!chart) return
+  chart.setOption(buildCalendarHeatOption(dashboardCalendar.value), true)
 }
 
 function resizeDashboardCharts() {
@@ -3275,13 +3178,6 @@ function disposeDashboardCharts() {
 function parsePercent(value) {
   const parsed = Number(String(value || '0').replace('%', ''))
   return Number.isFinite(parsed) ? parsed : 0
-}
-
-function formatCalendarDayResult(day) {
-  if (!day || day.future) return '待巡检'
-  if (!Number(day.total || 0)) return '无记录'
-  if (Number(day.abnormal || 0) > 0) return `${day.abnormal} 异常`
-  return '正常'
 }
 
 function recordSpanMethod({ row, columnIndex }) {
@@ -6278,47 +6174,100 @@ function resultTagType(value) {
   background: #f5f8fc;
 }
 
-.dashboard-drawer__summary {
+.dashboard-decision-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(300px, 1fr) auto;
+  gap: 20px;
+  align-items: center;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid #dce6ef;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.dashboard-decision-strip--1 {
+  border-color: #cfe5d8;
+  background: #f7fbf8;
+}
+
+.dashboard-decision-strip--2 {
+  border-color: #efd1d1;
+  background: #fff8f8;
+}
+
+.dashboard-decision-strip__conclusion {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
   gap: 10px;
+  align-items: center;
+  min-width: 0;
 
-  div {
-    display: grid;
-    gap: 5px;
-    min-height: 70px;
-    padding: 12px;
-    border: 1px solid #e1ebf7;
-    border-radius: 8px;
-    background: #fff;
-  }
-
-  span {
-    color: #7890aa;
-    font-size: 12px;
-  }
-
-  strong {
+  em,
+  strong,
+  p {
+    display: block;
     overflow: hidden;
-    color: #1d3554;
-    font-size: 22px;
-    line-height: 1.15;
+    margin: 0;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-}
 
-.dashboard-drawer__summary--1 div:first-child {
-  border-color: #cfeadc;
-  background: #f6fbf8;
-}
-
-.dashboard-drawer__summary--2 div:first-child {
-  border-color: #ffd6d6;
-  background: #fff8f8;
+  em {
+    color: #6f8499;
+    font-size: 11px;
+    font-style: normal;
+  }
 
   strong {
-    color: #c45656;
+    margin-top: 2px;
+    color: #17324d;
+    font-size: 17px;
+    line-height: 1.25;
+  }
+
+  p {
+    margin-top: 3px;
+    color: #526d87;
+    font-size: 12px;
+  }
+}
+
+.dashboard-decision-strip--2 .dashboard-decision-strip__conclusion strong {
+  color: #bc4b4b;
+}
+
+.dashboard-decision-strip__metrics {
+  display: flex;
+  align-items: stretch;
+  margin: 0;
+
+  div {
+    display: grid;
+    gap: 2px;
+    min-width: 76px;
+    padding: 2px 13px;
+    border-left: 1px solid #dce6ef;
+  }
+
+  dt {
+    color: #6f8499;
+    font-size: 10px;
+  }
+
+  dd {
+    margin: 0;
+    color: #245f98;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  small {
+    margin-left: 2px;
+    color: #7f91a3;
+    font-size: 10px;
+    font-weight: 400;
   }
 }
 
@@ -6381,99 +6330,9 @@ function resultTagType(value) {
   background: #a8b5c5;
 }
 
-.dashboard-calendar-weekdays,
-.dashboard-calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
-}
-
-.dashboard-calendar-weekdays {
-  margin-bottom: 6px;
-
-  span {
-    color: #7890aa;
-    font-size: 12px;
-    text-align: center;
-  }
-}
-
-.dashboard-calendar-empty,
-.dashboard-calendar-day {
-  min-height: 66px;
-  border-radius: 7px;
-}
-
-.dashboard-calendar-empty {
-  background: #f7f9fc;
-}
-
-.dashboard-calendar-day {
-  display: grid;
-  gap: 2px;
-  align-content: center;
-  min-width: 0;
-  padding: 7px;
-  border: 1px solid #e4edf8;
-  background: #fbfdff;
-  text-align: left;
-  cursor: default;
-
-  strong,
-  em,
-  small {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  strong {
-    color: #1d3554;
-    font-size: 15px;
-    line-height: 1.1;
-  }
-
-  em {
-    color: #60758d;
-    font-size: 12px;
-    font-style: normal;
-  }
-
-  small {
-    color: #7890aa;
-    font-size: 11px;
-  }
-}
-
-.dashboard-calendar-day--1 {
-  border-color: #cfebdc;
-  background: #f5fbf7;
-
-  small {
-    color: #3b9d61;
-  }
-}
-
-.dashboard-calendar-day--2 {
-  border-color: #ffd6d6;
-  background: #fff7f7;
-
-  strong,
-  small {
-    color: #c45656;
-  }
-}
-
-.dashboard-calendar-day--3 {
-  background: #f8fbff;
-}
-
-.dashboard-calendar-day.is-today {
-  box-shadow: inset 0 0 0 2px rgba(47, 128, 237, 0.22);
-}
-
-.dashboard-calendar-day.is-future {
-  opacity: 0.52;
+.dashboard-calendar-chart {
+  width: 100%;
+  height: 220px;
 }
 
 .dashboard-chart-grid {
@@ -6494,16 +6353,22 @@ function resultTagType(value) {
     justify-content: space-between;
     gap: 10px;
     margin-bottom: 6px;
+    min-width: 0;
   }
 
   strong {
+    flex: 0 0 auto;
     color: #1d3554;
     font-size: 14px;
   }
 
   span {
+    overflow: hidden;
     color: #7890aa;
     font-size: 12px;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
@@ -6514,6 +6379,10 @@ function resultTagType(value) {
 .dashboard-chart {
   width: 100%;
   height: 250px;
+}
+
+.dashboard-chart--compact {
+  height: 190px;
 }
 
 .dashboard-drawer__lists {
@@ -9247,8 +9116,17 @@ function resultTagType(value) {
     height: 76px;
   }
 
-  .dashboard-drawer__summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .dashboard-decision-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-decision-strip__metrics {
+    width: 100%;
+
+    div:first-child {
+      border-left: 0;
+      padding-left: 0;
+    }
   }
 
   .dashboard-calendar-panel header {
@@ -9260,9 +9138,8 @@ function resultTagType(value) {
     justify-content: flex-start;
   }
 
-  .dashboard-calendar-empty,
-  .dashboard-calendar-day {
-    min-height: 58px;
+  .dashboard-calendar-chart {
+    height: 190px;
   }
 
   .record-board__head {

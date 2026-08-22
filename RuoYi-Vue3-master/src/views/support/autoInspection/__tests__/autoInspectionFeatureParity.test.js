@@ -123,3 +123,21 @@ test('saved template credentials use permission-backed reveal controls', () => {
   assert.ok(!workspaceSource.includes('v-model="stepDraft.target.secret" show-password'))
   assert.ok(workspaceSource.includes('handleRevealApiTestSecret'))
 })
+
+test('dashboard uses the localized chart contract instead of generic pie charts', () => {
+  const requiredMarkers = [
+    'buildWeekTrendOption',
+    'buildResultCompositionOption',
+    'buildToolHealthOption',
+    'buildAbnormalTopOption',
+    'buildCalendarHeatOption',
+    'dashboard-decision-strip',
+    '异常 TopN',
+    'dashboard-calendar-chart'
+  ]
+  for (const marker of requiredMarkers) {
+    assert.ok(workspaceSource.includes(marker), `missing localized chart marker: ${marker}`)
+  }
+  assert.ok(!workspaceSource.includes('renderResultPieChart'))
+  assert.ok(!workspaceSource.includes('dashboardResultPieData'))
+})
