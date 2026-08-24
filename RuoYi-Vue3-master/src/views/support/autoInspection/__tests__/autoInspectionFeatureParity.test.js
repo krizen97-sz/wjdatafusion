@@ -108,7 +108,11 @@ test('step editor uses one compact desktop workspace instead of stacked sections
     "stepActiveSection === 'rule'",
     "stepActiveSection === 'policy'",
     'class="api-test-section api-condition-section"',
-    'height: min(650px, calc(100vh - 56px))'
+    'height: min(650px, calc(100vh - 56px))',
+    'class="step-rule-field step-rule-field--threshold"',
+    'grid-template-columns: repeat(12, minmax(0, 1fr))',
+    'min-height: 32px;',
+    'height: 32px;'
   ]
   for (const marker of requiredMarkers) {
     assert.ok(workspaceSource.includes(marker), `missing compact step workspace marker: ${marker}`)

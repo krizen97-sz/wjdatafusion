@@ -1035,23 +1035,23 @@
             <label><span>恢复确认</span><el-input-number v-model="stepDraft.stepParams.activityRule.recoverySuccesses" :min="1" :max="20" controls-position="right" /><em>次连续有数据</em></label>
           </div>
           <div class="step-rule-grid" :class="{ 'step-rule-grid--compact': !useGenericNumericRule }">
-            <el-form-item v-if="useGenericNumericRule" label="比较规则">
+            <el-form-item v-if="useGenericNumericRule" label="比较规则" class="step-rule-field step-rule-field--compare">
               <el-select v-model="stepDraft.compareRule" style="width: 100%">
                 <el-option label="实际值不得低于阈值" value="MIN" />
                 <el-option label="实际值不得高于阈值" value="MAX" />
               </el-select>
             </el-form-item>
-            <el-form-item v-if="useGenericNumericRule" label="告警阈值">
+            <el-form-item v-if="useGenericNumericRule" label="告警阈值" class="step-rule-field step-rule-field--threshold">
               <el-input-number v-model="stepDraft.thresholdValue" :min="0" controls-position="right" style="width: 100%" />
             </el-form-item>
-            <el-form-item v-if="useGenericNumericRule" label="阈值单位">
+            <el-form-item v-if="useGenericNumericRule" label="阈值单位" class="step-rule-field step-rule-field--unit">
               <el-input v-model="stepDraft.thresholdUnit" placeholder="条 / 个 / %" />
             </el-form-item>
-            <el-form-item v-if="useGenericNumericRule" label="统计窗口">
+            <el-form-item v-if="useGenericNumericRule" label="统计窗口" class="step-rule-field step-rule-field--window">
               <el-input-number v-model="stepDraft.timeWindowMinutes" :min="0" controls-position="right" style="width: 100%" />
               <small>分钟，0 表示按当前目标实时取值。</small>
             </el-form-item>
-            <el-form-item label="超时秒数">
+            <el-form-item label="超时秒数" class="step-rule-field step-rule-field--timeout">
               <el-input-number v-model="stepDraft.timeoutSeconds" :min="3" :max="120" controls-position="right" style="width: 100%" />
             </el-form-item>
           </div>
@@ -8187,8 +8187,8 @@ function resultTagType(value) {
 
 .step-rule-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
   align-items: start;
 
   :deep(.el-form-item) {
@@ -8217,9 +8217,27 @@ function resultTagType(value) {
   }
 }
 
+.step-rule-field--compare {
+  grid-column: span 3;
+}
+
+.step-rule-field--threshold,
+.step-rule-field--unit,
+.step-rule-field--timeout {
+  grid-column: span 2;
+}
+
+.step-rule-field--window {
+  grid-column: span 3;
+}
+
 .step-rule-grid--compact {
   grid-template-columns: minmax(180px, 240px);
   gap: 8px;
+
+  .step-rule-field {
+    grid-column: auto;
+  }
 }
 
 .activity-rule-grid {
@@ -9090,13 +9108,14 @@ function resultTagType(value) {
   display: grid;
   grid-template-columns: minmax(230px, .9fr) minmax(360px, 1.35fr) 220px;
   gap: 14px;
-  align-items: end;
+  align-items: start;
   padding: 12px 14px;
   border: 1px solid #dde8f4;
   border-radius: 8px;
   background: #f8fbff;
 
   :deep(.el-form-item) {
+    display: block;
     min-width: 0;
     margin-bottom: 0;
   }
@@ -9112,7 +9131,23 @@ function resultTagType(value) {
   }
 
   :deep(.el-form-item__content) {
+    align-items: center;
+    min-height: 32px;
     margin-left: 0 !important;
+  }
+
+  .tool-select-trigger {
+    min-height: 32px;
+    height: 32px;
+    padding: 0 10px;
+
+    span {
+      display: block;
+    }
+
+    em {
+      display: none;
+    }
   }
 }
 
@@ -9120,7 +9155,7 @@ function resultTagType(value) {
   display: grid;
   grid-template-columns: minmax(90px, .9fr) minmax(104px, 1.1fr);
   gap: 10px;
-  align-items: end;
+  align-items: start;
 
   :deep(.el-input-number) {
     width: 100%;
