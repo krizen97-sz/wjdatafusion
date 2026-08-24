@@ -98,6 +98,26 @@ test('overview and configuration keep one clear presentation path', () => {
   assert.ok(!workspaceSource.includes('class="config-sequence"'))
 })
 
+test('step editor uses one compact desktop workspace instead of stacked sections', () => {
+  const requiredMarkers = [
+    'class="step-workspace-form"',
+    'class="step-identity-bar"',
+    'class="step-workspace-nav"',
+    'class="step-workspace-panel"',
+    "stepActiveSection === 'source'",
+    "stepActiveSection === 'rule'",
+    "stepActiveSection === 'policy'",
+    'class="api-test-section api-condition-section"',
+    'height: min(650px, calc(100vh - 56px))'
+  ]
+  for (const marker of requiredMarkers) {
+    assert.ok(workspaceSource.includes(marker), `missing compact step workspace marker: ${marker}`)
+  }
+  assert.ok(!workspaceSource.includes('class="step-stage-nav"'))
+  assert.ok(!workspaceSource.includes('function scrollStepStage'))
+  assert.ok(!workspaceSource.includes('name="conditions"'))
+})
+
 test('manual execution and database editing keep production-safe behavior', () => {
   assert.ok(apiSource.includes('MANUAL_INSPECTION_TIMEOUT = 10 * 60 * 1000'))
   assert.ok(apiSource.includes('timeout: MANUAL_INSPECTION_TIMEOUT'))

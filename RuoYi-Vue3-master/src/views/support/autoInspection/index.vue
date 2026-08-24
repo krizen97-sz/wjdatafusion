@@ -892,39 +892,58 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="stepDialogOpen" width="1240px" append-to-body class="template-dialog step-dialog">
+    <el-dialog v-model="stepDialogOpen" width="1160px" append-to-body class="template-dialog step-dialog">
       <template #header><div class="dialog-title"><span>{{ stepEditingIndex === null ? '新增步骤配置' : '编辑步骤配置' }}</span><strong>{{ currentStepTool?.toolName || '巡检步骤' }}</strong></div></template>
-      <el-form ref="stepRef" :model="stepDraft" label-width="110px">
-        <section class="target-section step-stage step-stage--setup">
-          <header>
-            <strong>巡检工具</strong>
-            <span>当前步骤已选择工具，如需调整可重新选择，切换工具会重置当前步骤配置。</span>
-          </header>
-          <el-row :gutter="16">
-            <el-col :span="12"><el-form-item label="步骤名称" required><el-input v-model="stepDraft.stepName" placeholder="例如：原始Kafka积压" /></el-form-item></el-col>
-            <el-col :span="12">
-              <el-form-item label="巡检工具" required>
-                <button type="button" class="tool-select-trigger" @click="openToolPicker">
-                  <span>
-                    <strong>{{ currentStepTool?.toolName || '选择巡检工具' }}</strong>
-                    <em>{{ currentStepToolGuide.brief }}</em>
-                  </span>
-                  <i>选择</i>
-                </button>
-              </el-form-item>
-            </el-col>
-            <el-col :span="12"><el-form-item label="启用状态"><el-switch v-model="stepDraft.enabledFlag" active-value="Y" inactive-value="N" active-text="启用" inactive-text="停用" inline-prompt /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="步骤排序"><el-input-number v-model="stepDraft.sortOrder" :min="1" controls-position="right" style="width: 100%" /></el-form-item></el-col>
-          </el-row>
+      <el-form ref="stepRef" :model="stepDraft" label-width="110px" class="step-workspace-form">
+        <section class="step-identity-bar">
+          <el-form-item label="步骤名称" required class="step-identity-bar__name">
+            <el-input v-model="stepDraft.stepName" placeholder="例如：原始Kafka积压" />
+          </el-form-item>
+          <el-form-item label="巡检工具" required class="step-identity-bar__tool">
+            <button type="button" class="tool-select-trigger" @click="openToolPicker">
+              <span>
+                <strong>{{ currentStepTool?.toolName || '选择巡检工具' }}</strong>
+                <em>{{ currentStepToolGuide.brief }}</em>
+              </span>
+              <i>重新选择</i>
+            </button>
+          </el-form-item>
+          <div class="step-identity-bar__meta">
+            <el-form-item label="状态">
+              <el-switch v-model="stepDraft.enabledFlag" active-value="Y" inactive-value="N" active-text="启用" inactive-text="停用" inline-prompt />
+            </el-form-item>
+            <el-form-item label="排序">
+              <el-input-number v-model="stepDraft.sortOrder" :min="1" controls-position="right" />
+            </el-form-item>
+          </div>
         </section>
 
-        <nav class="step-stage-nav" aria-label="步骤配置导航">
-          <button type="button" @click="scrollStepStage('step-stage-source')"><span>1</span>数据来源</button>
-          <button type="button" @click="scrollStepStage('step-stage-rule')"><span>2</span>结果判断</button>
-          <button type="button" @click="scrollStepStage('step-stage-policy')"><span>3</span>执行策略</button>
-        </nav>
+        <div class="step-workspace">
+          <nav class="step-workspace-nav" aria-label="步骤配置导航">
+            <div class="step-workspace-nav__title">
+              <strong>配置步骤</strong>
+              <span>按顺序完成三项设置</span>
+            </div>
+            <button type="button" :class="{ active: stepActiveSection === 'source' }" :aria-current="stepActiveSection === 'source' ? 'step' : undefined" @click="activateStepSection('source')">
+              <el-icon><Connection /></el-icon>
+              <span><strong>数据来源</strong><em>{{ stepSourceNavSummary }}</em></span>
+              <el-icon class="step-workspace-nav__arrow"><ArrowRight /></el-icon>
+            </button>
+            <button type="button" :class="{ active: stepActiveSection === 'rule' }" :aria-current="stepActiveSection === 'rule' ? 'step' : undefined" @click="activateStepSection('rule')">
+              <el-icon><DataAnalysis /></el-icon>
+              <span><strong>结果判断</strong><em>{{ stepRuleNavSummary }}</em></span>
+              <el-icon class="step-workspace-nav__arrow"><ArrowRight /></el-icon>
+            </button>
+            <button type="button" :class="{ active: stepActiveSection === 'policy' }" :aria-current="stepActiveSection === 'policy' ? 'step' : undefined" @click="activateStepSection('policy')">
+              <el-icon><Setting /></el-icon>
+              <span><strong>执行策略</strong><em>{{ stepPolicyNavSummary }}</em></span>
+              <el-icon class="step-workspace-nav__arrow"><ArrowRight /></el-icon>
+            </button>
+          </nav>
 
-        <section id="step-stage-rule" class="target-section step-stage step-stage--rule" :class="{ 'target-section--rule-compact': isHttpApiTestStep }">
+          <main class="step-workspace-panel">
+
+        <section v-show="stepActiveSection === 'rule'" id="step-stage-rule" class="target-section step-stage step-stage--rule" :class="{ 'target-section--rule-compact': isHttpApiTestStep }">
           <header>
             <strong>判定规则</strong>
             <span>{{ isServiceStatusStep ? '服务状态按 systemctl 返回值判定。' : (isHttpApiTestStep ? '返回条件全部满足才正常；请求失败或任一条件不满足即告警。' : (isActivityStep ? '按最后活跃时间判断关注、异常和恢复状态。' : '设置异常阈值、统计窗口和超时。')) }}</span>
@@ -941,15 +960,74 @@
               <em>服务不是 active 时判定异常；开启自动拉起后会 restart 并复查。</em>
             </span>
           </div>
-          <div v-else-if="isHttpApiTestStep" class="api-rule-strip">
-            <span>
-              <label>正常</label>
-              <strong>全部条件满足</strong>
-            </span>
-            <span>
-              <label>异常</label>
-              <strong>请求失败 / 条件不满足</strong>
-            </span>
+          <div v-else-if="isHttpApiTestStep" class="api-rule-workspace">
+            <div class="api-rule-strip">
+              <span>
+                <label>正常</label>
+                <strong>全部条件满足</strong>
+              </span>
+              <span>
+                <label>异常</label>
+                <strong>请求失败 / 条件不满足</strong>
+              </span>
+            </div>
+            <section class="api-test-section api-condition-section">
+              <header>
+                <strong>返回结果判断条件</strong>
+                <span>条件全部满足时，本次接口巡检才判定为正常。</span>
+              </header>
+              <div class="assertion-toolbar">
+                <div class="assertion-toolbar__title">
+                  <strong>快速添加</strong>
+                  <span>支持 JSON 字段、原始返回文本和正则。</span>
+                </div>
+                <div class="assertion-toolbar__actions">
+                  <el-button plain size="small" @click="addApiAssertionTemplate('status2xx')">状态码 2xx</el-button>
+                  <el-button plain size="small" @click="addApiAssertionTemplate('bodyContainsOk')">原文包含 ok</el-button>
+                  <el-button plain size="small" @click="addApiAssertionTemplate('bodyRegex')">原文正则</el-button>
+                  <el-button plain size="small" @click="addApiAssertionTemplate('fieldExists')">字段存在</el-button>
+                  <el-button plain size="small" @click="addApiAssertionTemplate('latency3000')">耗时 &lt;= 3000ms</el-button>
+                  <el-button type="primary" plain size="small" icon="Plus" @click="addApiAssertion()">添加条件</el-button>
+                </div>
+              </div>
+              <div class="api-assertion-list">
+                <div v-for="(item, index) in stepDraft.target.apiConfig.assertions" :key="`assertion-${index}`" class="api-assertion-row">
+                  <div class="api-assertion-main">
+                    <span class="api-row-index">{{ index + 1 }}</span>
+                    <el-select v-model="item.type" placeholder="取值来源" @change="onApiAssertionTypeChange(item)">
+                      <el-option label="状态码" value="STATUS" />
+                      <el-option label="接口耗时" value="LATENCY" />
+                      <el-option label="JSON数字" value="JSON_NUMBER" />
+                      <el-option label="JSON文本" value="JSON_STRING" />
+                      <el-option label="JSON真假" value="JSON_BOOLEAN" />
+                      <el-option label="字段状态" value="JSON_EXISTS" />
+                      <el-option label="列表长度" value="ARRAY_LENGTH" />
+                      <el-option label="响应原文" value="BODY_TEXT" />
+                      <el-option label="原文正则" value="BODY_REGEX" />
+                      <el-option label="响应Header" value="HEADER" />
+                    </el-select>
+                    <el-select v-model="item.operator" placeholder="判断方式">
+                      <el-option v-for="option in getApiAssertionOperators(item.type)" :key="option.value" :label="option.label" :value="option.value" />
+                    </el-select>
+                    <el-button class="api-assertion-delete" link type="danger" icon="Delete" :disabled="stepDraft.target.apiConfig.assertions.length <= 1" @click="removeApiAssertion(index)" />
+                  </div>
+                  <div
+                    class="api-assertion-fields"
+                    :class="{ 'api-assertion-fields--single': !apiAssertionNeedsPath(item.type) || !apiAssertionNeedsExpected(item.operator) }"
+                  >
+                    <div v-if="apiAssertionNeedsPath(item.type)" class="api-field api-field--condition">
+                      <label>{{ getApiAssertionPathLabel(item.type) }}</label>
+                      <el-input v-model="item.path" :placeholder="getApiAssertionPathPlaceholder(item.type)" />
+                    </div>
+                    <div v-if="apiAssertionNeedsExpected(item.operator)" class="api-field api-field--condition">
+                      <label>{{ getApiAssertionExpectedLabel(item.type, item.operator) }}</label>
+                      <el-input v-model="item.expected" :placeholder="getApiAssertionExpectedPlaceholder(item.type, item.operator)" />
+                    </div>
+                    <span v-if="!apiAssertionNeedsPath(item.type) && !apiAssertionNeedsExpected(item.operator)" class="api-assertion-empty">当前条件无需填写字段或期望值</span>
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
           <div v-else-if="isActivityStep" class="activity-rule-grid">
             <label><span>进入关注</span><el-input-number v-model="stepDraft.stepParams.activityRule.warningMinutes" :min="1" :max="1440" controls-position="right" /><em>分钟无新增</em></label>
@@ -979,7 +1057,7 @@
           </div>
         </section>
 
-        <section id="step-stage-source" class="target-section step-stage step-stage--source">
+        <section v-show="stepActiveSection === 'source'" id="step-stage-source" class="target-section step-stage step-stage--source">
           <header>
             <strong>{{ stepTargetSectionTitle }}</strong>
             <span>{{ stepTargetSectionHint }}</span>
@@ -1227,65 +1305,6 @@
                 </div>
               </el-tab-pane>
 
-              <el-tab-pane :label="`返回条件(${stepDraft.target.apiConfig.assertions.length})`" name="conditions">
-                <section class="api-test-section">
-                  <header>
-                    <strong>返回结果判断条件</strong>
-                    <span>全部满足才正常。</span>
-                  </header>
-                  <div class="assertion-toolbar">
-                    <div class="assertion-toolbar__title">
-                      <strong>快速添加</strong>
-                      <span>支持标准 JSON，也支持原始返回文本和正则。</span>
-                    </div>
-                    <div class="assertion-toolbar__actions">
-                      <el-button plain size="small" @click="addApiAssertionTemplate('status2xx')">状态码 2xx</el-button>
-                      <el-button plain size="small" @click="addApiAssertionTemplate('bodyContainsOk')">原文包含 ok</el-button>
-                      <el-button plain size="small" @click="addApiAssertionTemplate('bodyRegex')">原文正则</el-button>
-                      <el-button plain size="small" @click="addApiAssertionTemplate('fieldExists')">字段存在</el-button>
-                      <el-button plain size="small" @click="addApiAssertionTemplate('latency3000')">耗时 <= 3000ms</el-button>
-                      <el-button type="primary" plain size="small" icon="Plus" @click="addApiAssertion()">添加条件</el-button>
-                    </div>
-                  </div>
-                  <div class="api-assertion-list">
-                    <div v-for="(item, index) in stepDraft.target.apiConfig.assertions" :key="`assertion-${index}`" class="api-assertion-row">
-                      <div class="api-assertion-main">
-                        <span class="api-row-index">{{ index + 1 }}</span>
-                        <el-select v-model="item.type" placeholder="取值来源" @change="onApiAssertionTypeChange(item)">
-                          <el-option label="状态码" value="STATUS" />
-                          <el-option label="接口耗时" value="LATENCY" />
-                          <el-option label="JSON数字" value="JSON_NUMBER" />
-                          <el-option label="JSON文本" value="JSON_STRING" />
-                          <el-option label="JSON真假" value="JSON_BOOLEAN" />
-                          <el-option label="字段状态" value="JSON_EXISTS" />
-                          <el-option label="列表长度" value="ARRAY_LENGTH" />
-                          <el-option label="响应原文" value="BODY_TEXT" />
-                          <el-option label="原文正则" value="BODY_REGEX" />
-                          <el-option label="响应Header" value="HEADER" />
-                        </el-select>
-                        <el-select v-model="item.operator" placeholder="判断方式">
-                          <el-option v-for="option in getApiAssertionOperators(item.type)" :key="option.value" :label="option.label" :value="option.value" />
-                        </el-select>
-                        <el-button class="api-assertion-delete" link type="danger" icon="Delete" :disabled="stepDraft.target.apiConfig.assertions.length <= 1" @click="removeApiAssertion(index)" />
-                      </div>
-                      <div
-                        class="api-assertion-fields"
-                        :class="{ 'api-assertion-fields--single': !apiAssertionNeedsPath(item.type) || !apiAssertionNeedsExpected(item.operator) }"
-                      >
-                        <div v-if="apiAssertionNeedsPath(item.type)" class="api-field api-field--condition">
-                          <label>{{ getApiAssertionPathLabel(item.type) }}</label>
-                          <el-input v-model="item.path" :placeholder="getApiAssertionPathPlaceholder(item.type)" />
-                        </div>
-                        <div v-if="apiAssertionNeedsExpected(item.operator)" class="api-field api-field--condition">
-                          <label>{{ getApiAssertionExpectedLabel(item.type, item.operator) }}</label>
-                          <el-input v-model="item.expected" :placeholder="getApiAssertionExpectedPlaceholder(item.type, item.operator)" />
-                        </div>
-                        <span v-if="!apiAssertionNeedsPath(item.type) && !apiAssertionNeedsExpected(item.operator)" class="api-assertion-empty">当前条件无需填写字段或期望值</span>
-                      </div>
-                    </div>
-                  </div>
-                </section>
-              </el-tab-pane>
             </el-tabs>
           </div>
           <div v-if="stepTargetType === 'DATABASE'" class="database-target-config">
@@ -1629,7 +1648,7 @@
           </div>
         </section>
 
-        <section id="step-stage-policy" class="target-section step-stage execution-policy-section">
+        <section v-show="stepActiveSection === 'policy'" id="step-stage-policy" class="target-section step-stage execution-policy-section">
           <header>
             <strong>执行策略</strong>
             <span>用于处理短暂网络抖动，并决定异常后是否继续执行后续步骤。</span>
@@ -1655,11 +1674,18 @@
             </div>
           </div>
         </section>
+          </main>
+        </div>
       </el-form>
       <template #footer>
-        <el-button @click="stepDialogOpen = false">取消</el-button>
-        <el-button :loading="targetTesting || targetPreviewLoading" @click="handlePreviewStepTarget">测试并预览</el-button>
-        <el-button type="primary" @click="submitStepDraft">保存步骤</el-button>
+        <div class="step-dialog-footer">
+          <span>正在配置：<strong>{{ stepActiveSectionLabel }}</strong></span>
+          <div>
+            <el-button @click="stepDialogOpen = false">取消</el-button>
+            <el-button :loading="targetTesting || targetPreviewLoading" @click="handlePreviewStepTarget">测试并预览</el-button>
+            <el-button type="primary" @click="submitStepDraft">保存步骤</el-button>
+          </div>
+        </div>
       </template>
     </el-dialog>
 
@@ -2039,10 +2065,13 @@ import { saveAs } from 'file-saver'
 import {
   ArrowRight,
   Calendar as CalendarIcon,
+  Connection,
   CopyDocument,
+  DataAnalysis,
   Delete as DeleteIcon,
   EditPen,
   Files,
+  Setting,
   VideoPlay
 } from '@element-plus/icons-vue'
 import InspectionFlowCanvas from './components/InspectionFlowCanvas.vue'
@@ -2191,6 +2220,7 @@ const activeStepIndex = ref(0)
 const stepDialogOpen = ref(false)
 const stepEditingIndex = ref(null)
 const stepDraft = ref(defaultStepForm())
+const stepActiveSection = ref('source')
 const apiConfigActiveTab = ref('request')
 const toolPickerOpen = ref(false)
 const toolPickerKeyword = ref('')
@@ -2691,6 +2721,32 @@ const stepTargetSectionHint = computed(() => {
   if (isTcpPortStep.value) return '端口连通性检测只需要服务器或主机 IP 和端口，不需要 SSH 账号密码。'
   if (isServiceStatusStep.value) return '通过 SSH 执行 systemctl 检查服务状态，异常时可按配置自动 restart 并复查。'
   return '服务器目录或磁盘检测复用服务器资产，并配置检测路径。'
+})
+const stepActiveSectionLabel = computed(() => ({
+  source: '数据来源',
+  rule: '结果判断',
+  policy: '执行策略'
+})[stepActiveSection.value] || '数据来源')
+const stepSourceNavSummary = computed(() => stepToolContractIssue.value ? '工具配置不可用' : stepTargetSectionTitle.value)
+const stepRuleNavSummary = computed(() => {
+  if (isServiceStatusStep.value) return '按服务运行状态判定'
+  if (isHttpApiTestStep.value) {
+    const count = normalizeApiTestConfig(stepDraft.value.target).assertions.length
+    return `${count} 条返回条件`
+  }
+  if (isActivityStep.value) {
+    const rule = stepDraft.value.stepParams?.activityRule || {}
+    return `${rule.warningMinutes || 3}/${rule.abnormalMinutes || 5} 分钟`
+  }
+  const symbol = stepDraft.value.compareRule === 'MIN' ? '≥' : '≤'
+  return `${symbol} ${stepDraft.value.thresholdValue ?? 0}${stepDraft.value.thresholdUnit || ''}`
+})
+const stepPolicyNavSummary = computed(() => {
+  const policy = stepDraft.value.stepParams?.executionPolicy || {}
+  const retryCount = Number(policy.retryCount || 0)
+  const retryLabel = retryCount ? `复检 ${retryCount} 次` : '不复检'
+  const actionLabel = policy.failureAction === 'STOP' ? '异常后停止' : '继续后续'
+  return `${retryLabel} · ${actionLabel}`
 })
 const dashboardSummary = computed(() => dashboardData.value?.summary || {})
 const dashboardWeekSummary = computed(() => dashboardData.value?.weekSummary || {})
@@ -3766,7 +3822,7 @@ function useDetectedFieldAsCondition(field) {
   }
   const condition = typeMap[field.type] || typeMap.string
   addApiAssertion({ ...condition, path: field.path })
-  apiConfigActiveTab.value = 'conditions'
+  activateStepSection('rule')
   targetPreviewOpen.value = false
   proxy.$modal.msgSuccess(`已把 ${field.path} 添加为返回条件`)
 }
@@ -4457,6 +4513,7 @@ function handleUpdateTemplate(row) {
 function openStepDialog(index = null) {
   stepEditingIndex.value = index
   stepDraft.value = index === null ? defaultStepForm(templateForm.value.steps.length + 1) : cloneStep(templateForm.value.steps[index])
+  stepActiveSection.value = 'source'
   ensureExecutionPolicy(stepDraft.value)
   apiConfigActiveTab.value = 'request'
   if (!stepDraft.value.toolCode && toolList.value.length) handleStepToolChange(toolList.value[0].toolCode)
@@ -4481,9 +4538,11 @@ function openStepDialog(index = null) {
   stepDialogOpen.value = true
 }
 
-function scrollStepStage(id) {
+function activateStepSection(section) {
+  if (!['source', 'rule', 'policy'].includes(section)) return
+  stepActiveSection.value = section
   nextTick(() => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    document.querySelector('.step-workspace-panel')?.scrollTo({ top: 0, behavior: 'smooth' })
   })
 }
 
@@ -4542,6 +4601,7 @@ function confirmToolPicker(toolCode) {
   if (toolPickerMode.value === 'new') {
     stepEditingIndex.value = null
     stepDraft.value = defaultStepForm(templateForm.value.steps.length + 1, nextToolCode)
+    stepActiveSection.value = 'source'
     apiConfigActiveTab.value = 'request'
     toolPickerOpen.value = false
     stepDialogOpen.value = true
@@ -4562,6 +4622,7 @@ function handleStepToolChange(toolCode) {
   }
   const draft = stepDraft.value
   draft.toolCode = toolCode
+  stepActiveSection.value = 'source'
   applyToolDefaults(draft, true)
   draft.target = normalizeStepTarget({}, toolCode, draft.stepName)
   if (getTargetTypeByTool(toolCode) === 'FTP') {
@@ -8126,8 +8187,8 @@ function resultTagType(value) {
 
 .step-rule-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
   align-items: start;
 
   :deep(.el-form-item) {
@@ -8256,6 +8317,16 @@ function resultTagType(value) {
   }
 }
 
+.api-rule-workspace {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.api-condition-section {
+  background: #fbfdff;
+}
+
 .api-test-config {
   display: grid;
   gap: 6px;
@@ -8311,7 +8382,7 @@ function resultTagType(value) {
 
 .api-request-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) 168px minmax(420px, .9fr);
+  grid-template-columns: minmax(260px, 1.2fr) 156px minmax(300px, 1fr);
   gap: 10px 12px;
   align-items: end;
   min-width: 0;
@@ -9006,26 +9077,239 @@ function resultTagType(value) {
   word-break: break-word;
 }
 
-.step-dialog {
-  :deep(.el-dialog) {
-    max-width: 96vw;
+.step-workspace-form {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.step-identity-bar {
+  display: grid;
+  grid-template-columns: minmax(230px, .9fr) minmax(360px, 1.35fr) 220px;
+  gap: 14px;
+  align-items: end;
+  padding: 12px 14px;
+  border: 1px solid #dde8f4;
+  border-radius: 8px;
+  background: #f8fbff;
+
+  :deep(.el-form-item) {
+    min-width: 0;
+    margin-bottom: 0;
   }
 
-  :deep(.el-dialog__body) {
-    max-height: 72vh;
-    overflow-y: auto;
-    scroll-behavior: smooth;
+  :deep(.el-form-item__label) {
+    justify-content: flex-start;
+    width: auto !important;
+    margin-bottom: 5px;
+    color: #526a84;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 18px;
   }
 
-  :deep(.el-form) {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
+  :deep(.el-form-item__content) {
+    margin-left: 0 !important;
   }
 }
 
-:global(.template-flow-dialog.el-dialog),
-:global(.step-dialog.el-dialog) {
+.step-identity-bar__meta {
+  display: grid;
+  grid-template-columns: minmax(90px, .9fr) minmax(104px, 1.1fr);
+  gap: 10px;
+  align-items: end;
+
+  :deep(.el-input-number) {
+    width: 100%;
+  }
+}
+
+.step-workspace {
+  display: grid;
+  grid-template-columns: 226px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #dce7f3;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.step-workspace-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  padding: 14px 10px;
+  border-right: 1px solid #e1eaf4;
+  background: #f6f9fc;
+
+  > button {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) 16px;
+    gap: 9px;
+    align-items: center;
+    min-height: 60px;
+    padding: 9px 10px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: #5c7189;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
+
+    > .el-icon:first-child {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: #e8eef5;
+      color: #56718d;
+      font-size: 16px;
+    }
+
+    > span {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    strong,
+    em {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    strong {
+      color: inherit;
+      font-size: 13px;
+    }
+
+    em {
+      color: #8294a8;
+      font-size: 11px;
+      font-style: normal;
+    }
+
+    &:hover,
+    &:focus-visible {
+      border-color: #d4e4f6;
+      background: #fff;
+      color: #2c6eaf;
+      outline: none;
+    }
+
+    &.active {
+      border-color: #bcd8f7;
+      background: #edf6ff;
+      color: #1f6fbd;
+
+      > .el-icon:first-child {
+        background: #d8ebff;
+        color: #1f6fbd;
+      }
+
+      .step-workspace-nav__arrow {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+  }
+}
+
+.step-workspace-nav__title {
+  display: grid;
+  gap: 2px;
+  padding: 2px 8px 9px;
+
+  strong {
+    color: #243f5e;
+    font-size: 14px;
+  }
+
+  span {
+    color: #8496aa;
+    font-size: 11px;
+  }
+}
+
+.step-workspace-nav__arrow {
+  opacity: 0;
+  color: #3d83c9;
+  font-size: 13px;
+  transform: translateX(-4px);
+  transition: opacity 160ms ease-out, transform 160ms ease-out;
+}
+
+.step-workspace-panel {
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
+
+  > .target-section {
+    min-height: 100%;
+    padding: 18px 20px 22px;
+    border: 0;
+    border-radius: 0;
+    background: #fff;
+  }
+
+  > .target-section > header {
+    position: sticky;
+    top: -18px;
+    z-index: 3;
+    min-height: 52px;
+    margin: -18px 0 16px;
+    padding: 17px 0 10px;
+    border-bottom: 1px solid #e8eef5;
+    background: #fff;
+  }
+
+  .api-config-tabs :deep(.el-tabs__content) {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .api-cert-inline {
+    grid-template-columns: 1fr;
+    gap: 4px;
+
+    small {
+      white-space: normal;
+    }
+  }
+}
+
+.step-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+
+  > span {
+    color: #7a8da3;
+    font-size: 12px;
+  }
+
+  > span strong {
+    color: #2b6fad;
+  }
+
+  > div {
+    display: flex;
+    gap: 8px;
+  }
+}
+
+:global(.template-flow-dialog.el-dialog) {
   display: flex;
   flex-direction: column;
   max-width: 96vw;
@@ -9033,98 +9317,62 @@ function resultTagType(value) {
   margin-top: 4vh !important;
 }
 
-:global(.template-flow-dialog.el-dialog .el-dialog__body),
-:global(.step-dialog.el-dialog .el-dialog__body) {
+:global(.template-flow-dialog.el-dialog .el-dialog__body) {
   min-height: 0;
   max-height: none;
   overflow-y: auto;
 }
 
 :global(.template-flow-dialog.el-dialog .el-dialog__header),
-:global(.template-flow-dialog.el-dialog .el-dialog__footer),
-:global(.step-dialog.el-dialog .el-dialog__header),
-:global(.step-dialog.el-dialog .el-dialog__footer) {
+:global(.template-flow-dialog.el-dialog .el-dialog__footer) {
   flex: 0 0 auto;
 }
 
-.step-stage {
-  scroll-margin-top: 64px;
-}
-
-.step-stage--setup {
-  order: 1;
-}
-
-.step-stage-nav {
-  position: sticky;
-  top: -1px;
-  z-index: 4;
-  order: 2;
+:global(.step-dialog.el-dialog) {
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px;
-  border: 1px solid #dce6f2;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, .96);
-  box-shadow: 0 5px 14px rgba(36, 67, 101, .08);
-
-  button {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-height: 32px;
-    padding: 0 11px;
-    border: 0;
-    border-radius: 6px;
-    background: transparent;
-    color: #4f6680;
-    cursor: pointer;
-    font: inherit;
-
-    &:hover,
-    &:focus-visible {
-      background: #eef6ff;
-      color: #276fb9;
-      outline: none;
-    }
-
-    span {
-      display: grid;
-      place-items: center;
-      width: 20px;
-      height: 20px;
-      border-radius: 50%;
-      background: #e8f2fe;
-      color: #2c78c5;
-      font-size: 11px;
-      font-weight: 700;
-    }
-  }
+  flex-direction: column;
+  width: min(1160px, calc(100vw - 64px)) !important;
+  height: min(650px, calc(100vh - 56px));
+  max-width: none;
+  max-height: none;
+  margin: 28px auto 0 !important;
+  overflow: hidden;
 }
 
-.step-stage--source {
-  order: 3;
+:global(.step-dialog.el-dialog .el-dialog__header) {
+  flex: 0 0 auto;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid #edf1f6;
 }
 
-.step-stage--rule {
-  order: 4;
+:global(.step-dialog.el-dialog .el-dialog__body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 14px 20px;
+  overflow: hidden;
 }
 
-.execution-policy-section {
-  order: 5;
+:global(.step-dialog.el-dialog .el-dialog__footer) {
+  flex: 0 0 auto;
+  padding: 11px 20px 14px;
+  border-top: 1px solid #edf1f6;
 }
 
 .execution-policy-grid {
   display: grid;
-  grid-template-columns: minmax(180px, .7fr) minmax(180px, .7fr) minmax(360px, 1.6fr);
-  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
   align-items: start;
 
   :deep(.el-input-number),
   :deep(.el-radio-group) {
     width: 100%;
   }
+}
+
+.execution-policy-grid__action {
+  grid-column: 1 / -1;
+  max-width: 560px;
 }
 
 .database-target-config {
