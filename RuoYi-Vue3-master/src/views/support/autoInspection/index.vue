@@ -984,6 +984,14 @@
             <strong>{{ stepTargetSectionTitle }}</strong>
             <span>{{ stepTargetSectionHint }}</span>
           </header>
+          <el-alert
+            v-if="stepToolContractIssue"
+            :title="`${stepToolContractIssue}，系统已阻止套用错误的服务器配置表单。`"
+            description="请刷新页面并确认前后端使用同一版本；仍有问题时重新打开巡检工具列表。"
+            type="error"
+            show-icon
+            :closable="false"
+          />
           <el-row v-if="stepTargetType === 'KAFKA'" :gutter="16">
             <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：原始Kafka消费组" /></el-form-item></el-col>
             <el-col :span="12"><el-form-item label="Bootstrap" required><el-input v-model="stepDraft.target.host" placeholder="10.0.0.1:9092,10.0.0.2:9092" /></el-form-item></el-col>
@@ -2048,6 +2056,10 @@ import {
   formatInspectionClock
 } from './overviewPresentation'
 import {
+  getInspectionToolContractIssue,
+  resolveInspectionToolTargetType
+} from './toolTargetContract'
+import {
   addAutoInspectionPlan,
   addAutoInspectionTarget,
   addAutoInspectionTemplate,
@@ -2644,6 +2656,7 @@ const serverAssetPickerHint = computed(() => {
   return '可按现场、平台、服务器名称或 IP 搜索，多选后会自动带出服务器 IP、SSH 端口、root账号和root密码；后续仍可在步骤里单独调整登录信息。'
 })
 const stepTargetType = computed(() => getTargetTypeByTool(stepDraft.value.toolCode))
+const stepToolContractIssue = computed(() => getToolContractIssue(stepDraft.value.toolCode))
 const isHttpHealthStep = computed(() => stepDraft.value.toolCode === TOOL_HTTP_HEALTH)
 const isHttpApiTestStep = computed(() => stepDraft.value.toolCode === TOOL_HTTP_API_TEST)
 const isTcpPortStep = computed(() => stepDraft.value.toolCode === TOOL_TCP_PORT_CHECK)
@@ -2651,6 +2664,7 @@ const isServiceStatusStep = computed(() => stepDraft.value.toolCode === TOOL_SER
 const isActivityStep = computed(() => isActivityTool(stepDraft.value.toolCode))
 const useGenericNumericRule = computed(() => !isServiceStatusStep.value && !isHttpApiTestStep.value && !isActivityStep.value)
 const stepTargetSectionTitle = computed(() => {
+  if (stepToolContractIssue.value) return '工具配置不可用'
   if (stepTargetType.value === 'KAFKA') return stepDraft.value.toolCode === TOOL_KAFKA_TOPIC_ACTIVITY ? 'Kafka Topic 活跃目标' : 'Kafka 消费目标'
   if (stepTargetType.value === 'MQTT') return 'MQTT 监听目标'
   if (isHttpHealthStep.value) return 'HTTP 健康目标'
@@ -2664,6 +2678,7 @@ const stepTargetSectionTitle = computed(() => {
   return '服务器资产目标'
 })
 const stepTargetSectionHint = computed(() => {
+  if (stepToolContractIssue.value) return '当前工具没有可确认的数据来源契约，不会自动套用其他工具的配置项。'
   if (stepDraft.value.toolCode === TOOL_KAFKA_TOPIC_ACTIVITY) return '只读取 Topic 各分区末端 Offset，不加入业务消费组，也不消费消息内容。'
   if (stepTargetType.value === 'KAFKA') return '填写 bootstrap、topic 和消费组，系统对比生产与消费位点。'
   if (stepTargetType.value === 'MQTT') return '后台保持持续订阅，计划周期只负责读取最后消息时间并判断健康状态。'
@@ -4519,6 +4534,11 @@ function confirmToolPicker(toolCode) {
     proxy.$modal.msgWarning('请选择巡检工具')
     return
   }
+  const contractIssue = getToolContractIssue(nextToolCode)
+  if (contractIssue) {
+    proxy.$modal.msgError(`${contractIssue}，请刷新前后端版本后重试`)
+    return
+  }
   if (toolPickerMode.value === 'new') {
     stepEditingIndex.value = null
     stepDraft.value = defaultStepForm(templateForm.value.steps.length + 1, nextToolCode)
@@ -4535,6 +4555,11 @@ function confirmToolPicker(toolCode) {
 }
 
 function handleStepToolChange(toolCode) {
+  const contractIssue = getToolContractIssue(toolCode)
+  if (contractIssue) {
+    proxy.$modal.msgError(`${contractIssue}，已阻止使用错误的目标表单`)
+    return
+  }
   const draft = stepDraft.value
   draft.toolCode = toolCode
   applyToolDefaults(draft, true)
@@ -4891,6 +4916,8 @@ function normalizeStepForSave(step) {
 function validateStepDraft(step) {
   if (!String(step?.stepName || '').trim()) return '请填写步骤名称'
   if (!step?.toolCode) return '请选择巡检工具'
+  const contractIssue = getToolContractIssue(step.toolCode)
+  if (contractIssue) return `${contractIssue}，请刷新前后端版本后重新选择工具`
   if (step.toolCode === 'BIG_DATA_SERVER_DISK') {
     return validateBigDataServerTargets(step.stepParams?.serverTargets || [])
   }
@@ -4910,14 +4937,13 @@ function validateStepDraft(step) {
 }
 
 function getTargetTypeByTool(toolCode) {
-  if (['KAFKA_LAG', TOOL_KAFKA_TOPIC_ACTIVITY, TOOL_KAFKA_CONSUMER_PROGRESS].includes(toolCode)) return 'KAFKA'
-  if (toolCode === TOOL_MQTT_TOPIC_ACTIVITY) return 'MQTT'
-  if (toolCode === 'HTTP_COUNT' || toolCode === TOOL_HTTP_HEALTH || toolCode === TOOL_HTTP_API_TEST) return 'HTTP'
-  if (toolCode === TOOL_DATABASE_QUERY) return 'DATABASE'
-  if (toolCode === 'FTP_FILE_COUNT') return 'FTP'
-  if (toolCode === 'BIG_DATA_SERVER_DISK') return 'BIG_DATA_SERVER'
-  if ([TOOL_TCP_PORT_CHECK, TOOL_SERVER_SERVICE_STATUS].includes(toolCode)) return 'SERVER'
-  return 'SERVER'
+  const tool = toolList.value.find((item) => item.toolCode === toolCode)
+  return resolveInspectionToolTargetType(toolCode, tool?.targetType)
+}
+
+function getToolContractIssue(toolCode) {
+  const tool = toolList.value.find((item) => item.toolCode === toolCode)
+  return getInspectionToolContractIssue(toolCode, tool?.targetType)
 }
 
 function formatStepTarget(step) {

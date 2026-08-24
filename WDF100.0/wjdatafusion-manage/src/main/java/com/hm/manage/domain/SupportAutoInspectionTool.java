@@ -10,6 +10,7 @@ public class SupportAutoInspectionTool extends BaseEntity
     private String toolCode;
     private String toolName;
     private String toolType;
+    private String targetType;
     private String valueUnit;
     private String defaultCompareRule;
     private BigDecimal defaultThresholdValue;
@@ -25,6 +26,8 @@ public class SupportAutoInspectionTool extends BaseEntity
     public void setToolName(String toolName) { this.toolName = toolName; }
     public String getToolType() { return toolType; }
     public void setToolType(String toolType) { this.toolType = toolType; }
+    public String getTargetType() { return targetType; }
+    public void setTargetType(String targetType) { this.targetType = targetType; }
     public String getValueUnit() { return valueUnit; }
     public void setValueUnit(String valueUnit) { this.valueUnit = valueUnit; }
     public String getDefaultCompareRule() { return defaultCompareRule; }

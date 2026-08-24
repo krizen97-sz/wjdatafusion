@@ -198,7 +198,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     @Override
     public List<SupportAutoInspectionTool> selectToolList(SupportAutoInspectionTool query)
     {
-        return toBeanList(selectToolMapList(toMap(query)), SupportAutoInspectionTool.class);
+        List<SupportAutoInspectionTool> tools = toBeanList(selectToolMapList(toMap(query)), SupportAutoInspectionTool.class);
+        for (SupportAutoInspectionTool tool : tools)
+        {
+            tool.setTargetType(AutoInspectionToolContract.findTargetType(tool.getToolCode()));
+        }
+        return tools;
     }
 
     private List<Map<String, Object>> selectToolMapList(Map<String, Object> params)
@@ -5193,37 +5198,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private String resolveTargetTypeByTool(String toolCode)
     {
-        if (TOOL_KAFKA_LAG.equals(toolCode) || TOOL_KAFKA_TOPIC_ACTIVITY.equals(toolCode)
-                || TOOL_KAFKA_CONSUMER_PROGRESS.equals(toolCode))
-        {
-            return "KAFKA";
-        }
-        if (TOOL_MQTT_TOPIC_ACTIVITY.equals(toolCode))
-        {
-            return "MQTT";
-        }
-        if (TOOL_HTTP_COUNT.equals(toolCode) || TOOL_HTTP_HEALTH.equals(toolCode) || TOOL_HTTP_API_TEST.equals(toolCode))
-        {
-            return "HTTP";
-        }
-        if (TOOL_FTP_FILE_COUNT.equals(toolCode))
-        {
-            return "FTP";
-        }
-        if (TOOL_BIG_DATA_SERVER_DISK.equals(toolCode))
-        {
-            return TARGET_BIG_DATA_SERVER;
-        }
-        if (TOOL_SERVER_FILE_COUNT.equals(toolCode) || TOOL_SERVER_DISK.equals(toolCode)
-                || TOOL_TCP_PORT_CHECK.equals(toolCode) || TOOL_SERVER_SERVICE_STATUS.equals(toolCode))
-        {
-            return "SERVER";
-        }
-        if (TOOL_DATABASE_QUERY.equals(toolCode))
-        {
-            return TARGET_DATABASE;
-        }
-        throw new ServiceException("不支持的巡检工具：" + toolCode);
+        return AutoInspectionToolContract.requireTargetType(toolCode);
     }
 
     private void normalizePlan(Map<String, Object> plan)
