@@ -46,6 +46,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
@@ -89,6 +90,7 @@ import com.hm.common.utils.StringUtils;
 import com.hm.common.utils.file.FileUtils;
 import com.hm.common.utils.poi.ExcelUtil;
 import com.hm.manage.domain.SupportAutoInspectionPlan;
+import com.hm.manage.domain.SupportAutoInspectionHealthDaily;
 import com.hm.manage.domain.SupportAutoInspectionRecord;
 import com.hm.manage.domain.SupportAutoInspectionTarget;
 import com.hm.manage.domain.SupportAutoInspectionTemplate;
@@ -96,6 +98,7 @@ import com.hm.manage.domain.SupportAutoInspectionTool;
 import com.hm.manage.domain.SupportServer;
 import com.hm.manage.domain.SupportServerCredential;
 import com.hm.manage.domain.bo.AutoInspectionDashboardQuery;
+import com.hm.manage.domain.bo.AutoInspectionHealthQuery;
 import com.hm.manage.domain.bo.AutoInspectionPlanQuery;
 import com.hm.manage.domain.bo.AutoInspectionPlanSaveBo;
 import com.hm.manage.domain.bo.AutoInspectionRecordQuery;
@@ -135,6 +138,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final String RESULT_NORMAL = "1";
     private static final String RESULT_ABNORMAL = "2";
     private static final String RESULT_SKIP = "3";
+    private static final String RESULT_WARNING = "4";
     private static final String ENABLED = "Y";
     private static final String STATUS_NORMAL = "0";
     private static final String STATUS_DISABLED = "1";
@@ -147,6 +151,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final DateTimeFormatter DATE_CN_FORMATTER = DateTimeFormatter.ofPattern("yyyy年MM月dd日");
 
     private static final String TOOL_KAFKA_LAG = "KAFKA_LAG";
+    private static final String TOOL_KAFKA_TOPIC_ACTIVITY = "KAFKA_TOPIC_ACTIVITY";
+    private static final String TOOL_KAFKA_CONSUMER_PROGRESS = "KAFKA_CONSUMER_PROGRESS";
+    private static final String TOOL_MQTT_TOPIC_ACTIVITY = "MQTT_TOPIC_ACTIVITY";
     private static final String TOOL_HTTP_COUNT = "HTTP_COUNT";
     private static final String TOOL_HTTP_HEALTH = "HTTP_HEALTH";
     private static final String TOOL_HTTP_API_TEST = "HTTP_API_TEST";
@@ -169,6 +176,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final int TARGET_RESULT_TEXT_MAX_LENGTH = 30000;
     private static final int DATABASE_PREVIEW_ROW_LIMIT = 10;
     private static final int DATABASE_QUERY_MAX_ROWS = 500;
+    private static final AtomicLong LAST_FREQUENT_CLEANUP_DAY = new AtomicLong(Long.MIN_VALUE);
 
     private final Map<String, InspectionToolHandler> inspectionHandlers = buildInspectionHandlers();
 
@@ -183,6 +191,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     @Autowired
     private CredentialCryptoService cryptoService;
+
+    @Autowired
+    private AutoInspectionMqttMonitor mqttMonitor;
 
     @Override
     public List<SupportAutoInspectionTool> selectToolList(SupportAutoInspectionTool query)
@@ -419,12 +430,18 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         }
         target.put("updateBy", getCurrentUsername());
         target.put("updateTime", DateUtils.getNowDate());
-        return autoInspectionMapper.updateTarget(target);
+        int rows = autoInspectionMapper.updateTarget(target);
+        if (rows > 0)
+        {
+            mqttMonitor.evict(toLong(target.get("targetId")));
+        }
+        return rows;
     }
 
     @Override
     public int deleteTargetById(Long targetId)
     {
+        mqttMonitor.evict(targetId);
         return autoInspectionMapper.deleteTargetById(targetId);
     }
 
@@ -479,6 +496,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             case "KAFKA":
                 result = testKafkaTarget(effective);
+                break;
+            case "MQTT":
+                result = testMqttTarget(effective);
                 break;
             case "HTTP":
                 result = testHttpTarget(effective);
@@ -585,6 +605,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             template.put("updateBy", getCurrentUsername());
             template.put("updateTime", now);
             autoInspectionMapper.updateTemplate(template);
+            autoInspectionMapper.deleteProbeStatesByTemplateId(templateId);
             autoInspectionMapper.deleteStepTargetsByTemplateId(templateId);
             autoInspectionMapper.deleteStepsByTemplateId(templateId);
         }
@@ -616,6 +637,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             throw new ServiceException("该模板已被巡检计划引用，不能删除");
         }
+        autoInspectionMapper.deleteProbeStatesByTemplateId(templateId);
         autoInspectionMapper.deleteStepTargetsByTemplateId(templateId);
         autoInspectionMapper.deleteStepsByTemplateId(templateId);
         return autoInspectionMapper.deleteTemplateById(templateId);
@@ -656,8 +678,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private Long savePlanMap(Map<String, Object> plan)
     {
+        Long incomingPlanId = toLong(plan == null ? null : plan.get("planId"));
+        Map<String, Object> originalPlan = incomingPlanId == null ? null
+                : autoInspectionMapper.selectPlanById(incomingPlanId);
         normalizePlan(plan);
         Date now = DateUtils.getNowDate();
+        preserveFrequentMonitorStart(plan, originalPlan, now);
         if (toLong(plan.get("planId")) == null)
         {
             plan.put("createBy", getCurrentUsername());
@@ -676,6 +702,50 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return toLong(plan.get("planId"));
     }
 
+    @SuppressWarnings("unchecked")
+    private void preserveFrequentMonitorStart(Map<String, Object> plan, Map<String, Object> originalPlan,
+                                              Date now)
+    {
+        if (!AutoInspectionPlanHealthConfig.MODE_FREQUENT.equals(str(plan, "planMode")))
+        {
+            return;
+        }
+        Map<String, Object> healthConfig;
+        try
+        {
+            healthConfig = JSON.parseObject(str(plan, "healthConfig"), Map.class);
+        }
+        catch (Exception ignored)
+        {
+            healthConfig = new LinkedHashMap<>();
+        }
+        String monitorStart = "";
+        if (originalPlan != null && AutoInspectionPlanHealthConfig.MODE_FREQUENT.equals(
+                AutoInspectionPlanHealthConfig.normalizeMode(originalPlan.get("planMode"))))
+        {
+            try
+            {
+                Map<String, Object> originalHealth = JSON.parseObject(str(originalPlan, "healthConfig"), Map.class);
+                monitorStart = originalHealth == null ? "" : StringUtils.trimToEmpty(
+                        String.valueOf(originalHealth.get("monitorStartTime")));
+                if ("null".equalsIgnoreCase(monitorStart))
+                {
+                    monitorStart = "";
+                }
+            }
+            catch (Exception ignored)
+            {
+                monitorStart = "";
+            }
+        }
+        if (StringUtils.isBlank(monitorStart))
+        {
+            monitorStart = DATE_TIME_FORMATTER.format(now.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime());
+        }
+        healthConfig.put("monitorStartTime", monitorStart);
+        plan.put("healthConfig", JSON.toJSONString(healthConfig));
+    }
+
     @Override
     public int updatePlanJobId(Long planId, Long jobId)
     {
@@ -691,6 +761,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     @Override
     public int deletePlanById(Long planId)
     {
+        autoInspectionMapper.deleteProbeStatesByPlanId(planId);
+        autoInspectionMapper.deleteDailyHealthByPlanId(planId);
         return autoInspectionMapper.deletePlanById(planId);
     }
 
@@ -739,6 +811,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         Map<String, Object> query = new HashMap<>();
         query.put("beginTime", toDate(queryBegin.atStartOfDay()));
         query.put("endTime", toDate(today.plusDays(1).atStartOfDay()));
+        query.put("runMode", AutoInspectionPlanHealthConfig.MODE_ROUTINE);
         List<Map<String, Object>> records = autoInspectionMapper.selectRecordList(query);
         List<Long> todayRecordIds = records.stream()
                 .filter(record -> isSameDate(record.get("inspectionTime"), today))
@@ -758,6 +831,91 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         dashboard.put("recentRecords", buildDashboardRecentRecords(today, records));
         dashboard.put("generatedTime", formatDate(new Date()));
         return dashboard;
+    }
+
+    @Override
+    public List<SupportAutoInspectionHealthDaily> selectDailyHealth(AutoInspectionHealthQuery query)
+    {
+        Map<String, Object> params = toMap(query);
+        List<Map<String, Object>> rows = new ArrayList<>(autoInspectionMapper.selectDailyHealthList(params));
+        LocalDate today = LocalDate.now();
+        LocalDate begin = toLocalDate(params.get("beginDate"));
+        LocalDate end = toLocalDate(params.get("endDate"));
+        if ((begin == null || !today.isBefore(begin)) && (end == null || !today.isAfter(end)))
+        {
+            Map<String, Object> planQuery = new HashMap<>();
+            planQuery.put("planMode", AutoInspectionPlanHealthConfig.MODE_FREQUENT);
+            planQuery.put("status", STATUS_NORMAL);
+            Long planId = toLong(params.get("planId"));
+            if (planId != null)
+            {
+                planQuery.put("planId", planId);
+            }
+            Map<Long, Map<String, Object>> todayRows = rows.stream()
+                    .filter(row -> today.equals(toLocalDate(row.get("healthDate"))))
+                    .filter(row -> toLong(row.get("planId")) != null)
+                    .collect(Collectors.toMap(row -> toLong(row.get("planId")), row -> row, (left, right) -> left));
+            for (Map<String, Object> plan : autoInspectionMapper.selectPlanList(planQuery))
+            {
+                Long currentPlanId = toLong(plan.get("planId"));
+                Map<String, Object> row = todayRows.get(currentPlanId);
+                boolean synthetic = row == null;
+                if (row == null)
+                {
+                    row = emptyDailyHealthRow(plan, today);
+                }
+                refreshCurrentExpectedHealth(row, plan, today, LocalDateTime.now());
+                if (synthetic && toInt(row.get("expectedCount"), 0) > 0)
+                {
+                    rows.add(row);
+                }
+            }
+        }
+        rows.sort(Comparator.<Map<String, Object>, LocalDate>comparing(row -> toLocalDate(row.get("healthDate")),
+                Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(row -> str(row, "planName")));
+        return toBeanList(rows, SupportAutoInspectionHealthDaily.class);
+    }
+
+    private Map<String, Object> emptyDailyHealthRow(Map<String, Object> plan, LocalDate date)
+    {
+        Map<String, Object> row = new HashMap<>();
+        row.put("healthDate", java.sql.Date.valueOf(date));
+        row.put("planId", plan.get("planId"));
+        row.put("planName", plan.get("planName"));
+        row.put("templateId", plan.get("templateId"));
+        row.put("templateName", plan.get("templateName"));
+        row.put("completedCount", 0);
+        row.put("normalCount", 0);
+        row.put("warningCount", 0);
+        row.put("abnormalCount", 0);
+        row.put("skippedCount", 0);
+        row.put("lastResultStatus", RESULT_SKIP);
+        return row;
+    }
+
+    private void refreshCurrentExpectedHealth(Map<String, Object> row, Map<String, Object> plan,
+                                              LocalDate date, LocalDateTime now)
+    {
+        AutoInspectionPlanHealthConfig config = AutoInspectionPlanHealthConfig.from(plan.get("cronConfig"),
+                plan.get("healthConfig"));
+        int completed = toInt(row.get("completedCount"), 0);
+        LocalDateTime monitorStart = config.getMonitorStartTime() == null
+                ? toLocalDateTime(plan.get("createTime")) : config.getMonitorStartTime();
+        int expected = Math.max(completed, config.expectedSlots(date, now, monitorStart));
+        int normal = toInt(row.get("normalCount"), 0);
+        int warning = toInt(row.get("warningCount"), 0);
+        int abnormal = toInt(row.get("abnormalCount"), 0);
+        int missing = Math.max(0, expected - completed);
+        row.put("expectedCount", expected);
+        row.put("missingCount", missing);
+        row.put("healthTarget", config.getHealthTarget());
+        row.put("healthScore", expected <= 0 ? BigDecimal.ZERO
+                : new BigDecimal(normal).multiply(new BigDecimal("100"))
+                        .divide(new BigDecimal(expected), 2, RoundingMode.HALF_UP));
+        row.put("dayStatus", abnormal > 0 ? RESULT_ABNORMAL
+                : warning > 0 || missing > 0 ? RESULT_WARNING
+                : completed > 0 ? RESULT_NORMAL : RESULT_SKIP);
     }
 
     private Map<String, Object> buildDashboardSummary(LocalDate today, List<Map<String, Object>> records,
@@ -1188,6 +1346,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         Map<String, Object> query = new HashMap<>();
         query.put("beginTime", toDate(range.begin.atStartOfDay()));
         query.put("endTime", toDate(range.end.atStartOfDay()));
+        query.put("runMode", AutoInspectionPlanHealthConfig.MODE_ROUTINE);
         List<Map<String, Object>> records = selectRecordMapList(query);
         records.sort(Comparator.<Map<String, Object>, LocalDate>comparing(item -> {
             LocalDate date = toLocalDate(item.get("inspectionTime"));
@@ -1485,6 +1644,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private Map<String, Object> normalizeRecordExportParams(Map<String, Object> record)
     {
         Map<String, Object> params = new HashMap<>(record == null ? new HashMap<>() : record);
+        params.putIfAbsent("runMode", AutoInspectionPlanHealthConfig.MODE_ROUTINE);
         List<Long> recordIds = toLongList(params.get("recordIds"));
         if (!recordIds.isEmpty())
         {
@@ -1762,6 +1922,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private Map<String, Object> runInspection(Long templateId, Map<String, Object> plan, String sourceType, String executorName)
     {
+        long startedAt = System.currentTimeMillis();
         Map<String, Object> template = selectTemplateMapById(templateId);
         if (!STATUS_NORMAL.equals(str(template, "status")))
         {
@@ -1773,10 +1934,35 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             throw new ServiceException("巡检模板未配置步骤");
         }
 
-        Date now = DateUtils.getNowDate();
+        LocalDateTime executionTime = LocalDateTime.now();
+        String configuredMode = plan == null ? AutoInspectionPlanHealthConfig.MODE_ROUTINE
+                : AutoInspectionPlanHealthConfig.normalizeMode(plan.get("planMode"));
+        boolean frequentAuto = SOURCE_AUTO.equals(sourceType)
+                && AutoInspectionPlanHealthConfig.MODE_FREQUENT.equals(configuredMode);
+        String runMode = frequentAuto ? AutoInspectionPlanHealthConfig.MODE_FREQUENT
+                : AutoInspectionPlanHealthConfig.MODE_ROUTINE;
+        AutoInspectionPlanHealthConfig healthConfig = AutoInspectionPlanHealthConfig.from(
+                plan == null ? null : plan.get("cronConfig"), plan == null ? null : plan.get("healthConfig"));
+        if (frequentAuto && !healthConfig.isActive(executionTime))
+        {
+            return buildInactiveFrequentResult(template, plan, executionTime);
+        }
+        Date now = toDate(executionTime);
+        Date scheduleSlotTime = frequentAuto ? toDate(healthConfig.alignSlot(executionTime)) : null;
+        if (frequentAuto)
+        {
+            Map<String, Object> existing = autoInspectionMapper.selectRecordByPlanSlot(toLong(plan.get("planId")), scheduleSlotTime);
+            if (existing != null)
+            {
+                return selectRecordDetailMap(toLong(existing.get("recordId")));
+            }
+        }
         Map<String, Object> record = new HashMap<>();
         record.put("inspectionTime", now);
         record.put("sourceType", sourceType);
+        record.put("runMode", runMode);
+        record.put("scheduleSlotTime", scheduleSlotTime);
+        record.put("durationMs", 0L);
         record.put("resultStatus", RESULT_SKIP);
         record.put("executorName", executorName);
         record.put("templateId", templateId);
@@ -1788,22 +1974,41 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         record.put("skippedStepCount", 0);
         record.put("targetCount", 0);
         record.put("abnormalCount", 0);
+        record.put("warningCount", 0);
         record.put("summary", "巡检执行中");
         record.put("abnormalSummary", "");
         record.put("createBy", getCurrentUsername());
         record.put("createTime", now);
         record.put("updateBy", getCurrentUsername());
         record.put("updateTime", now);
-        autoInspectionMapper.insertRecord(record);
+        int inserted = frequentAuto ? autoInspectionMapper.insertFrequentRecord(record)
+                : autoInspectionMapper.insertRecord(record);
+        if (frequentAuto && inserted == 0)
+        {
+            Map<String, Object> existing = autoInspectionMapper.selectRecordByPlanSlot(
+                    toLong(plan.get("planId")), scheduleSlotTime);
+            if (existing != null)
+            {
+                return selectRecordDetailMap(toLong(existing.get("recordId")));
+            }
+            throw new ServiceException("高频巡检采样时隙保存失败，请稍后重试");
+        }
 
         int enabledCount = 0;
         int skippedCount = 0;
         int targetCount = 0;
         int abnormalCount = 0;
+        int warningCount = 0;
+        int normalStepCount = 0;
+        int baselineStepCount = 0;
         boolean flowStopped = false;
         List<String> abnormalSummaries = new ArrayList<>();
-        for (Map<String, Object> step : steps)
+        FrequentExecutionContext frequentContext = frequentAuto
+                ? new FrequentExecutionContext(toLong(plan.get("planId")), executionTime) : null;
+        for (Map<String, Object> sourceStep : steps)
         {
+            Map<String, Object> step = new HashMap<>(sourceStep);
+            step.put("_windowEnd", healthConfig.resolveWindowEnd(executionTime));
             Map<String, Object> tool = requireTool(str(step, "toolCode"));
             Map<String, Object> stepResult = copyStepToResult(record, step, tool, now);
             if (!ENABLED.equals(str(step, "enabledFlag")))
@@ -1841,20 +2046,33 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             targetCount += targets.size();
             List<TargetCheckResult> results = new ArrayList<>();
             boolean hasAbnormal = false;
+            boolean hasWarning = false;
+            boolean hasNormal = false;
             for (Map<String, Object> target : targets)
             {
-                TargetCheckResult result = runTargetWithPolicy(step, tool, withPlainSecret(target), executionPolicy);
+                TargetCheckResult result = runTargetWithPolicy(step, tool, withPlainSecret(target), executionPolicy,
+                        frequentContext);
                 results.add(result);
                 if (RESULT_ABNORMAL.equals(result.status))
                 {
                     hasAbnormal = true;
                 }
+                else if (RESULT_WARNING.equals(result.status))
+                {
+                    hasWarning = true;
+                }
+                else if (RESULT_NORMAL.equals(result.status))
+                {
+                    hasNormal = true;
+                }
             }
 
-            stepResult.put("resultStatus", hasAbnormal ? RESULT_ABNORMAL : RESULT_NORMAL);
+            String stepStatus = hasAbnormal ? RESULT_ABNORMAL
+                    : hasWarning ? RESULT_WARNING : hasNormal ? RESULT_NORMAL : RESULT_SKIP;
+            stepResult.put("resultStatus", stepStatus);
             stepResult.put("actualValue", resolveStepActualValue(step, results));
             stepResult.put("actualUnit", StringUtils.defaultIfBlank(str(step, "thresholdUnit"), str(tool, "valueUnit")));
-            stepResult.put("resultSummary", buildStepSummary(step, results, hasAbnormal));
+            stepResult.put("resultSummary", buildStepSummary(step, results, hasAbnormal, hasWarning));
             if (hasAbnormal)
             {
                 if (executionPolicy.shouldStopAfterFailure())
@@ -1864,6 +2082,19 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 }
                 abnormalCount++;
                 abnormalSummaries.add(str(step, "stepName") + "：" + str(stepResult, "resultSummary"));
+            }
+            else if (hasWarning)
+            {
+                warningCount++;
+                abnormalSummaries.add(str(step, "stepName") + "：" + str(stepResult, "resultSummary"));
+            }
+            else if (hasNormal)
+            {
+                normalStepCount++;
+            }
+            else
+            {
+                baselineStepCount++;
             }
             autoInspectionMapper.insertStepResult(stepResult);
             for (TargetCheckResult result : results)
@@ -1877,23 +2108,222 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         record.put("skippedStepCount", skippedCount);
         record.put("targetCount", targetCount);
         record.put("abnormalCount", abnormalCount);
-        record.put("resultStatus", resolveInspectionStatus(enabledCount, abnormalCount));
-        record.put("summary", "启用" + enabledCount + "步，跳过" + skippedCount + "步，检测目标" + targetCount + "个，异常" + abnormalCount + "步");
+        record.put("warningCount", warningCount);
+        record.put("resultStatus", resolveInspectionStatus(enabledCount, abnormalCount, warningCount,
+                normalStepCount, baselineStepCount));
+        record.put("summary", "启用" + enabledCount + "步，跳过" + skippedCount + "步，检测目标" + targetCount
+                + "个，异常" + abnormalCount + "步，关注" + warningCount + "步，基线" + baselineStepCount + "步");
         record.put("abnormalSummary", abnormalSummaries.isEmpty() ? "无异常" : StringUtils.join(abnormalSummaries, "；"));
+        record.put("durationMs", System.currentTimeMillis() - startedAt);
         record.put("updateBy", getCurrentUsername());
         record.put("updateTime", DateUtils.getNowDate());
         autoInspectionMapper.updateRecord(record);
+        if (frequentAuto)
+        {
+            refreshDailyHealth(plan, executionTime.toLocalDate(), executionTime);
+            cleanupExpiredFrequentRecords(healthConfig, executionTime);
+        }
         return selectRecordDetailMap(toLong(record.get("recordId")));
     }
 
-    private TargetCheckResult runTargetWithPolicy(Map<String, Object> step, Map<String, Object> tool,
-                                                   Map<String, Object> target, AutoInspectionExecutionPolicy policy)
+    private Map<String, Object> buildInactiveFrequentResult(Map<String, Object> template,
+                                                             Map<String, Object> plan,
+                                                             LocalDateTime executionTime)
     {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("inspectionTime", toDate(executionTime));
+        result.put("sourceType", SOURCE_AUTO);
+        result.put("runMode", AutoInspectionPlanHealthConfig.MODE_FREQUENT);
+        result.put("resultStatus", RESULT_SKIP);
+        result.put("templateId", template.get("templateId"));
+        result.put("templateName", template.get("templateName"));
+        result.put("planId", plan.get("planId"));
+        result.put("planName", plan.get("planName"));
+        result.put("summary", "当前不在高频计划生效时段，本次不执行也不计入健康度");
+        result.put("steps", new ArrayList<>());
+        result.put("targetResults", new ArrayList<>());
+        return result;
+    }
+
+    private boolean isActivityTool(String toolCode)
+    {
+        return TOOL_KAFKA_TOPIC_ACTIVITY.equals(toolCode)
+                || TOOL_KAFKA_CONSUMER_PROGRESS.equals(toolCode)
+                || TOOL_MQTT_TOPIC_ACTIVITY.equals(toolCode);
+    }
+
+    private void applyActivityState(FrequentExecutionContext context, Map<String, Object> step,
+                                    TargetCheckResult result)
+    {
+        Long stepId = toLong(step.get("stepId"));
+        Long targetId = result.targetId;
+        String toolCode = str(step, "toolCode");
+        if (context.planId == null || stepId == null || targetId == null)
+        {
+            result.status = RESULT_SKIP;
+            result.appendDetail("当前目标尚未形成稳定的计划、步骤和目标标识，本次仅完成采样");
+            return;
+        }
+
+        Map<String, Object> previousRow = autoInspectionMapper.selectProbeState(context.planId, stepId,
+                targetId, toolCode);
+        AutoInspectionActivityStateMachine.State previous = previousRow == null ? null
+                : new AutoInspectionActivityStateMachine.State(
+                        toBigDecimal(previousRow.get("primaryValue")),
+                        toBigDecimal(previousRow.get("secondaryValue")),
+                        toLocalDateTime(previousRow.get("observedAt")),
+                        toLocalDateTime(previousRow.get("lastActivityAt")),
+                        toInt(previousRow.get("abnormalStreak"), 0),
+                        toInt(previousRow.get("normalStreak"), 0),
+                        str(previousRow, "stateStatus"));
+        BigDecimal primary = toBigDecimal(result.preview.get("primaryValue"));
+        if (primary == null)
+        {
+            primary = result.actualValue;
+        }
+        BigDecimal secondary = toBigDecimal(result.preview.get("secondaryValue"));
+        LocalDateTime externalActivity = toLocalDateTime(result.preview.get("lastActivityAt"));
+        AutoInspectionActivityStateMachine.Observation observation =
+                new AutoInspectionActivityStateMachine.Observation(primary, secondary,
+                        context.observedAt, externalActivity);
+        AutoInspectionActivityStateMachine.Rule rule =
+                AutoInspectionActivityStateMachine.ruleFromStepParams(step.get("stepParams"));
+        AutoInspectionActivityStateMachine.Evaluation evaluation = AutoInspectionActivityStateMachine.evaluate(
+                resolveActivityMode(toolCode), rule, previous, observation);
+
+        Date now = DateUtils.getNowDate();
+        Map<String, Object> state = new HashMap<>();
+        state.put("planId", context.planId);
+        state.put("stepId", stepId);
+        state.put("targetId", targetId);
+        state.put("toolCode", toolCode);
+        state.put("primaryValue", evaluation.primaryValue);
+        state.put("secondaryValue", evaluation.secondaryValue);
+        state.put("observedAt", toDate(evaluation.observedAt));
+        state.put("lastActivityAt", evaluation.lastActivityAt == null ? null : toDate(evaluation.lastActivityAt));
+        state.put("abnormalStreak", evaluation.abnormalStreak);
+        state.put("normalStreak", evaluation.normalStreak);
+        state.put("stateStatus", evaluation.status);
+        state.put("stateDetail", evaluation.detail);
+        state.put("createBy", "system");
+        state.put("createTime", now);
+        state.put("updateBy", "system");
+        state.put("updateTime", now);
+        autoInspectionMapper.upsertProbeState(state);
+
+        result.status = evaluation.status;
+        result.appendDetail("活性判定：" + evaluation.detail
+                + "；关注" + rule.warningMinutes + "分钟，异常" + rule.abnormalMinutes
+                + "分钟，恢复确认" + rule.recoverySuccesses + "次");
+        if (RESULT_ABNORMAL.equals(result.status))
+        {
+            result.errorMessage = evaluation.detail;
+        }
+    }
+
+    private AutoInspectionActivityStateMachine.Mode resolveActivityMode(String toolCode)
+    {
+        if (TOOL_KAFKA_CONSUMER_PROGRESS.equals(toolCode))
+        {
+            return AutoInspectionActivityStateMachine.Mode.CONSUMER_PROGRESS;
+        }
+        if (TOOL_MQTT_TOPIC_ACTIVITY.equals(toolCode))
+        {
+            return AutoInspectionActivityStateMachine.Mode.MQTT_ACTIVITY;
+        }
+        return AutoInspectionActivityStateMachine.Mode.TOPIC_ACTIVITY;
+    }
+
+    private void refreshDailyHealth(Map<String, Object> plan, LocalDate date, LocalDateTime now)
+    {
+        if (plan == null || date == null || !AutoInspectionPlanHealthConfig.MODE_FREQUENT.equals(
+                AutoInspectionPlanHealthConfig.normalizeMode(plan.get("planMode"))))
+        {
+            return;
+        }
+        AutoInspectionPlanHealthConfig config = AutoInspectionPlanHealthConfig.from(plan.get("cronConfig"),
+                plan.get("healthConfig"));
+        Map<String, Object> query = new HashMap<>();
+        query.put("planId", plan.get("planId"));
+        query.put("beginTime", toDate(date.atStartOfDay()));
+        query.put("endTime", toDate(date.plusDays(1).atStartOfDay()));
+        Map<String, Object> stats = autoInspectionMapper.selectDailyHealthStats(query);
+        int completed = toInt(stats == null ? null : stats.get("completedCount"), 0);
+        int normal = toInt(stats == null ? null : stats.get("normalCount"), 0);
+        int warning = toInt(stats == null ? null : stats.get("warningCount"), 0);
+        int abnormal = toInt(stats == null ? null : stats.get("abnormalCount"), 0);
+        int skipped = toInt(stats == null ? null : stats.get("skippedCount"), 0);
+        LocalDateTime monitorStart = config.getMonitorStartTime() == null
+                ? toLocalDateTime(plan.get("createTime")) : config.getMonitorStartTime();
+        int expected = Math.max(completed, config.expectedSlots(date, now, monitorStart));
+        int missing = Math.max(0, expected - completed);
+        BigDecimal score = expected <= 0 ? BigDecimal.ZERO
+                : new BigDecimal(normal).multiply(new BigDecimal("100"))
+                        .divide(new BigDecimal(expected), 2, RoundingMode.HALF_UP);
+        String dayStatus = abnormal > 0 ? RESULT_ABNORMAL
+                : warning > 0 || missing > 0 ? RESULT_WARNING
+                : completed > 0 ? RESULT_NORMAL : RESULT_SKIP;
+        Date updateTime = DateUtils.getNowDate();
+        Map<String, Object> summary = new HashMap<>();
+        summary.put("healthDate", java.sql.Date.valueOf(date));
+        summary.put("planId", plan.get("planId"));
+        summary.put("planName", plan.get("planName"));
+        summary.put("templateId", plan.get("templateId"));
+        summary.put("templateName", plan.get("templateName"));
+        summary.put("expectedCount", expected);
+        summary.put("completedCount", completed);
+        summary.put("normalCount", normal);
+        summary.put("warningCount", warning);
+        summary.put("abnormalCount", abnormal);
+        summary.put("skippedCount", skipped);
+        summary.put("missingCount", missing);
+        summary.put("healthScore", score);
+        summary.put("healthTarget", config.getHealthTarget());
+        summary.put("dayStatus", dayStatus);
+        summary.put("firstAbnormalTime", stats == null ? null : stats.get("firstAbnormalTime"));
+        summary.put("lastAbnormalTime", stats == null ? null : stats.get("lastAbnormalTime"));
+        summary.put("lastRunTime", stats == null ? null : stats.get("lastRunTime"));
+        summary.put("lastResultStatus", stats == null ? null : stats.get("lastResultStatus"));
+        summary.put("abnormalSummary", stats == null ? null : stats.get("abnormalSummary"));
+        summary.put("createBy", "system");
+        summary.put("createTime", updateTime);
+        summary.put("updateBy", "system");
+        summary.put("updateTime", updateTime);
+        autoInspectionMapper.upsertDailyHealth(summary);
+    }
+
+    private void cleanupExpiredFrequentRecords(AutoInspectionPlanHealthConfig config, LocalDateTime now)
+    {
+        long today = now.toLocalDate().toEpochDay();
+        if (LAST_FREQUENT_CLEANUP_DAY.getAndSet(today) == today)
+        {
+            return;
+        }
+        List<Long> recordIds = autoInspectionMapper.selectExpiredFrequentRecordIds(
+                toDate(now.minusDays(config.getRetentionDays())),
+                toDate(now.minusDays(config.getAbnormalRetentionDays())));
+        if (recordIds == null || recordIds.isEmpty())
+        {
+            return;
+        }
+        autoInspectionMapper.deleteTargetResultsByRecordIds(recordIds);
+        autoInspectionMapper.deleteStepResultsByRecordIds(recordIds);
+        autoInspectionMapper.deleteRecordsByIds(recordIds);
+    }
+
+    private TargetCheckResult runTargetWithPolicy(Map<String, Object> step, Map<String, Object> tool,
+                                                   Map<String, Object> target, AutoInspectionExecutionPolicy policy,
+                                                   FrequentExecutionContext frequentContext)
+    {
+        if (isActivityTool(str(step, "toolCode")))
+        {
+            return runActivityTargetWithPolicy(step, tool, target, policy, frequentContext);
+        }
         TargetCheckResult result = null;
         int attempts = policy.getRetryCount() + 1;
         for (int attempt = 1; attempt <= attempts; attempt++)
         {
-            result = runSingleTarget(step, tool, target, true);
+            result = runSingleTarget(step, tool, target, true, frequentContext);
             if (RESULT_NORMAL.equals(result.status) || attempt >= attempts)
             {
                 if (attempt > 1)
@@ -1916,7 +2346,52 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return result;
     }
 
+    private TargetCheckResult runActivityTargetWithPolicy(Map<String, Object> step, Map<String, Object> tool,
+                                                           Map<String, Object> target,
+                                                           AutoInspectionExecutionPolicy policy,
+                                                           FrequentExecutionContext frequentContext)
+    {
+        TargetCheckResult result = null;
+        int attempts = policy.getRetryCount() + 1;
+        for (int attempt = 1; attempt <= attempts; attempt++)
+        {
+            result = runSingleTarget(step, tool, target, true, null);
+            if (RESULT_NORMAL.equals(result.status) || attempt >= attempts)
+            {
+                boolean sampled = RESULT_NORMAL.equals(result.status);
+                if (sampled && frequentContext != null)
+                {
+                    applyActivityState(frequentContext, step, result);
+                }
+                if (attempt > 1)
+                {
+                    result.appendDetail("连接复检：共执行" + attempt + "次，最终"
+                            + (sampled ? "采样成功" : "仍连接失败"));
+                }
+                return result;
+            }
+            try
+            {
+                Thread.sleep(policy.getRetryIntervalSeconds() * 1000L);
+            }
+            catch (InterruptedException e)
+            {
+                Thread.currentThread().interrupt();
+                result.appendDetail("连接复检被中断");
+                return result;
+            }
+        }
+        return result;
+    }
+
     private TargetCheckResult runSingleTarget(Map<String, Object> step, Map<String, Object> tool, Map<String, Object> target, boolean thresholdEnabled)
+    {
+        return runSingleTarget(step, tool, target, thresholdEnabled, null);
+    }
+
+    private TargetCheckResult runSingleTarget(Map<String, Object> step, Map<String, Object> tool,
+                                              Map<String, Object> target, boolean thresholdEnabled,
+                                              FrequentExecutionContext frequentContext)
     {
         try
         {
@@ -1927,7 +2402,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 throw new ServiceException("不支持的巡检工具类型：" + str(tool, "toolType"));
             }
             TargetCheckResult result = handler.handle(context);
-            if (context.thresholdEnabled && !TOOL_HTTP_API_TEST.equals(str(step, "toolCode")))
+            if (frequentContext != null && isActivityTool(str(step, "toolCode")))
+            {
+                applyActivityState(frequentContext, step, result);
+            }
+            else if (context.thresholdEnabled && !TOOL_HTTP_API_TEST.equals(str(step, "toolCode"))
+                    && !isActivityTool(str(step, "toolCode")))
             {
                 applyThreshold(step, tool, result);
             }
@@ -1947,6 +2427,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     {
         Map<String, InspectionToolHandler> handlers = new LinkedHashMap<>();
         handlers.put(TOOL_KAFKA_LAG, context -> checkKafkaLag(context.step, context.target));
+        handlers.put(TOOL_KAFKA_TOPIC_ACTIVITY, context -> checkKafkaTopicActivity(context.step, context.target));
+        handlers.put(TOOL_KAFKA_CONSUMER_PROGRESS, context -> checkKafkaConsumerProgress(context.step, context.target));
+        handlers.put(TOOL_MQTT_TOPIC_ACTIVITY, context -> checkMqttTopicActivity(context.step, context.target));
         handlers.put(TOOL_FTP_FILE_COUNT, context -> checkFtpFileCount(context.step, context.target));
         handlers.put(TOOL_SERVER_FILE_COUNT, context -> checkServerFileCount(context.step, context.target));
         handlers.put(TOOL_SERVER_DISK, context -> checkServerDisk(context.step, context.target));
@@ -1964,7 +2447,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     {
         requireText(str(target, "url"), "HTTP目标URL不能为空");
         int timeout = resolveTimeout(step);
-        LocalDateTime end = LocalDateTime.now();
+        LocalDateTime end = resolveWindowEnd(step);
         LocalDateTime begin = end.minusMinutes(toInt(step.get("timeWindowMinutes"), 0));
         String url = replaceTimePlaceholders(str(target, "url"), begin, end);
         String body = replaceTimePlaceholders(StringUtils.defaultString(str(target, "extraParams")), begin, end);
@@ -2126,7 +2609,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     {
         requireText(str(target, "url"), "HTTP目标URL不能为空");
         int timeout = resolveTimeout(step);
-        LocalDateTime end = LocalDateTime.now();
+        LocalDateTime end = resolveWindowEnd(step);
         LocalDateTime begin = end.minusMinutes(toInt(step.get("timeWindowMinutes"), 0));
         String url = replaceTimePlaceholders(str(target, "url"), begin, end);
         String body = replaceTimePlaceholders(StringUtils.defaultString(str(target, "extraParams")), begin, end);
@@ -2191,7 +2674,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     {
         requireText(str(target, "url"), "HTTP目标URL不能为空");
         int timeout = resolveTimeout(step);
-        LocalDateTime end = LocalDateTime.now();
+        LocalDateTime end = resolveWindowEnd(step);
         LocalDateTime begin = end.minusMinutes(toInt(step.get("timeWindowMinutes"), 0));
         Map<String, Object> options = parseExtraParamsMap(target);
         Map<String, Object> secretBucket = parseSecretBucket(str(target, "secret"));
@@ -3633,6 +4116,75 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         requireText(str(target, "host"), "Kafka bootstrap不能为空");
         requireText(topic, "Kafka topic不能为空");
         requireText(group, "Kafka消费组不能为空");
+        KafkaOffsetSnapshot snapshot = readKafkaOffsets(step, target, topic, group, true);
+        BigDecimal average = snapshot.partitionCount == 0 ? BigDecimal.ZERO
+                : new BigDecimal(snapshot.sumLag).divide(new BigDecimal(snapshot.partitionCount), 2, RoundingMode.HALF_UP);
+        return TargetCheckResult.normal(target, new BigDecimal(snapshot.maxLag), "条",
+                "调用方式：Kafka消费积压；Bootstrap：" + str(target, "host")
+                        + "；Topic：" + topic
+                        + "；消费组：" + group
+                        + "；分区数：" + snapshot.partitionCount
+                        + "；最大积压：" + snapshot.maxLag
+                        + "；平均积压：" + average);
+    }
+
+    private TargetCheckResult checkKafkaTopicActivity(Map<String, Object> step, Map<String, Object> target)
+    {
+        String topic = StringUtils.defaultIfBlank(str(readParams(step), "topic"), str(target, "topic"));
+        requireText(str(target, "host"), "Kafka bootstrap不能为空");
+        requireText(topic, "Kafka topic不能为空");
+        KafkaOffsetSnapshot snapshot = readKafkaOffsets(step, target, topic, "auto-inspection-topic-activity", false);
+        TargetCheckResult result = TargetCheckResult.normal(target, new BigDecimal(snapshot.endOffsetTotal), "条",
+                "调用方式：Kafka Topic Offset采样；Bootstrap：" + str(target, "host")
+                        + "；Topic：" + topic + "；分区数：" + snapshot.partitionCount
+                        + "；当前总Offset：" + snapshot.endOffsetTotal);
+        result.preview.put("primaryValue", new BigDecimal(snapshot.endOffsetTotal));
+        result.preview.put("partitionCount", snapshot.partitionCount);
+        return result;
+    }
+
+    private TargetCheckResult checkKafkaConsumerProgress(Map<String, Object> step, Map<String, Object> target)
+    {
+        String topic = StringUtils.defaultIfBlank(str(readParams(step), "topic"), str(target, "topic"));
+        String group = StringUtils.defaultIfBlank(str(readParams(step), "consumerGroup"), str(target, "consumerGroup"));
+        requireText(str(target, "host"), "Kafka bootstrap不能为空");
+        requireText(topic, "Kafka topic不能为空");
+        requireText(group, "Kafka消费组不能为空");
+        KafkaOffsetSnapshot snapshot = readKafkaOffsets(step, target, topic, group, true);
+        TargetCheckResult result = TargetCheckResult.normal(target, new BigDecimal(snapshot.committedOffsetTotal), "条",
+                "调用方式：Kafka消费推进采样；Bootstrap：" + str(target, "host")
+                        + "；Topic：" + topic + "；消费组：" + group
+                        + "；生产总Offset：" + snapshot.endOffsetTotal
+                        + "；消费总Offset：" + snapshot.committedOffsetTotal
+                        + "；当前总积压：" + snapshot.sumLag);
+        result.preview.put("primaryValue", new BigDecimal(snapshot.committedOffsetTotal));
+        result.preview.put("secondaryValue", new BigDecimal(snapshot.endOffsetTotal));
+        result.preview.put("lag", new BigDecimal(snapshot.sumLag));
+        result.preview.put("partitionCount", snapshot.partitionCount);
+        return result;
+    }
+
+    private TargetCheckResult checkMqttTopicActivity(Map<String, Object> step, Map<String, Object> target)
+    {
+        AutoInspectionMqttMonitor.Snapshot snapshot = mqttMonitor.observe(target, resolveTimeout(step));
+        if (!snapshot.connected)
+        {
+            throw new ServiceException(StringUtils.defaultIfBlank(snapshot.lastError, "MQTT监听连接已断开"));
+        }
+        TargetCheckResult result = TargetCheckResult.normal(target, new BigDecimal(snapshot.messageCount), "条",
+                "调用方式：MQTT持续订阅；Broker：" + snapshot.brokerUri
+                        + "；Topic Filter：" + snapshot.topicFilter + "；QoS：" + snapshot.qos
+                        + "；监听后收到：" + snapshot.messageCount + "条"
+                        + "；最后消息：" + (snapshot.lastMessageAt == null ? "尚未收到" : DATE_TIME_FORMATTER.format(snapshot.lastMessageAt)));
+        result.preview.put("primaryValue", new BigDecimal(snapshot.messageCount));
+        result.preview.put("lastActivityAt", snapshot.lastMessageAt);
+        result.preview.put("monitorStartedAt", snapshot.startedAt);
+        return result;
+    }
+
+    private KafkaOffsetSnapshot readKafkaOffsets(Map<String, Object> step, Map<String, Object> target,
+                                                 String topic, String group, boolean includeCommitted)
+    {
         Properties props = new Properties();
         props.put("bootstrap.servers", str(target, "host"));
         props.put("group.id", group);
@@ -3641,9 +4193,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         props.put("enable.auto.commit", "false");
         props.put("request.timeout.ms", String.valueOf(resolveTimeout(step) * 1000));
         props.put("default.api.timeout.ms", String.valueOf(resolveTimeout(step) * 1000));
-        long maxLag = 0L;
-        long sumLag = 0L;
-        int partitionCount = 0;
+        KafkaOffsetSnapshot snapshot = new KafkaOffsetSnapshot();
         try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props))
         {
             List<PartitionInfo> partitions = consumer.partitionsFor(topic);
@@ -3656,7 +4206,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             {
                 topicPartitions.add(new TopicPartition(topic, partition.partition()));
             }
-            Map<TopicPartition, OffsetAndMetadata> committedOffsets = consumer.committed(new HashSet<>(topicPartitions));
+            Map<TopicPartition, OffsetAndMetadata> committedOffsets = includeCommitted
+                    ? consumer.committed(new HashSet<>(topicPartitions)) : Collections.emptyMap();
             Map<TopicPartition, Long> endOffsets = consumer.endOffsets(topicPartitions);
             for (TopicPartition partition : topicPartitions)
             {
@@ -3664,26 +4215,21 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 OffsetAndMetadata committed = committedOffsets.get(partition);
                 long committedOffset = committed == null ? 0L : committed.offset();
                 long lag = Math.max(endOffset - committedOffset, 0L);
-                maxLag = Math.max(maxLag, lag);
-                sumLag += lag;
-                partitionCount++;
+                snapshot.endOffsetTotal += endOffset;
+                snapshot.committedOffsetTotal += committedOffset;
+                snapshot.maxLag = Math.max(snapshot.maxLag, lag);
+                snapshot.sumLag += lag;
+                snapshot.partitionCount++;
             }
         }
-        BigDecimal average = partitionCount == 0 ? BigDecimal.ZERO : new BigDecimal(sumLag).divide(new BigDecimal(partitionCount), 2, RoundingMode.HALF_UP);
-        return TargetCheckResult.normal(target, new BigDecimal(maxLag), "条",
-                "调用方式：Kafka消费积压；Bootstrap：" + str(target, "host")
-                        + "；Topic：" + topic
-                        + "；消费组：" + group
-                        + "；分区数：" + partitionCount
-                        + "；最大积压：" + maxLag
-                        + "；平均积压：" + average);
+        return snapshot;
     }
 
     private TargetCheckResult checkDatabaseQuery(Map<String, Object> step, Map<String, Object> target) throws Exception
     {
         Map<String, Object> options = parseExtraParamsMap(target);
         String databaseType = normalizeDatabaseType(str(options, "databaseType"));
-        LocalDateTime end = LocalDateTime.now();
+        LocalDateTime end = resolveWindowEnd(step);
         LocalDateTime begin = end.minusMinutes(toInt(step.get("timeWindowMinutes"), 0));
         String query = normalizeReadOnlyQuery(replaceTimePlaceholders(str(options, "query"), begin, end));
         String resultMode = StringUtils.defaultIfBlank(str(options, "resultMode"), "FIRST_VALUE").toUpperCase(Locale.ROOT);
@@ -3870,6 +4416,18 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         }
     }
 
+    private TargetCheckResult testMqttTarget(Map<String, Object> target)
+    {
+        AutoInspectionMqttMonitor.Snapshot snapshot = mqttMonitor.observe(target, DEFAULT_TIMEOUT_SECONDS);
+        if (!snapshot.connected)
+        {
+            throw new ServiceException(StringUtils.defaultIfBlank(snapshot.lastError, "MQTT监听连接未建立"));
+        }
+        return TargetCheckResult.normal(target, new BigDecimal(snapshot.messageCount), "条",
+                "MQTT连接与订阅正常；Broker：" + snapshot.brokerUri
+                        + "；Topic Filter：" + snapshot.topicFilter + "；QoS：" + snapshot.qos);
+    }
+
     private TargetCheckResult testHttpTarget(Map<String, Object> target)
     {
         String requestedToolCode = str(target, "toolCode");
@@ -3985,9 +4543,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return RULE_MIN.equals(str(step, "compareRule")) ? Collections.min(values) : Collections.max(values);
     }
 
-    private String buildStepSummary(Map<String, Object> step, List<TargetCheckResult> results, boolean hasAbnormal)
+    private String buildStepSummary(Map<String, Object> step, List<TargetCheckResult> results,
+                                    boolean hasAbnormal, boolean hasWarning)
     {
         int abnormal = 0;
+        int warning = 0;
+        int baseline = 0;
         List<String> details = new ArrayList<>();
         for (TargetCheckResult result : results)
         {
@@ -3996,10 +4557,28 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 abnormal++;
                 details.add(result.targetName + " " + StringUtils.defaultIfBlank(result.errorMessage, result.detail));
             }
+            else if (RESULT_WARNING.equals(result.status))
+            {
+                warning++;
+                details.add(result.targetName + " " + result.detail);
+            }
+            else if (RESULT_SKIP.equals(result.status))
+            {
+                baseline++;
+                details.add(result.targetName + " " + result.detail);
+            }
         }
         if (hasAbnormal)
         {
             return "共" + results.size() + "个目标，异常" + abnormal + "个：" + StringUtils.join(details, "；");
+        }
+        if (hasWarning)
+        {
+            return "共" + results.size() + "个目标，关注" + warning + "个：" + StringUtils.join(details, "；");
+        }
+        if (baseline == results.size() && baseline > 0)
+        {
+            return "共" + results.size() + "个目标正在建立活性基线：" + StringUtils.join(details, "；");
         }
         if (TOOL_SERVER_SERVICE_STATUS.equals(str(step, "toolCode")))
         {
@@ -4009,13 +4588,26 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return "共" + results.size() + "个目标，检测正常，代表值" + formatDecimal(actual) + StringUtils.defaultString(str(step, "thresholdUnit"));
     }
 
-    private String resolveInspectionStatus(int enabledCount, int abnormalCount)
+    private String resolveInspectionStatus(int enabledCount, int abnormalCount, int warningCount,
+                                           int normalStepCount, int baselineStepCount)
     {
         if (enabledCount == 0)
         {
             return RESULT_SKIP;
         }
-        return abnormalCount > 0 ? RESULT_ABNORMAL : RESULT_NORMAL;
+        if (abnormalCount > 0)
+        {
+            return RESULT_ABNORMAL;
+        }
+        if (warningCount > 0)
+        {
+            return RESULT_WARNING;
+        }
+        if (baselineStepCount > 0)
+        {
+            return RESULT_SKIP;
+        }
+        return normalStepCount > 0 ? RESULT_NORMAL : RESULT_SKIP;
     }
 
     private Map<String, Object> copyStepToResult(Map<String, Object> record, Map<String, Object> step, Map<String, Object> tool, Date now)
@@ -4067,7 +4659,15 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             case "KAFKA":
                 requireText(str(target, "host"), "Kafka bootstrap不能为空");
                 requireText(str(target, "topic"), "Kafka topic不能为空");
-                requireText(str(target, "consumerGroup"), "Kafka消费组不能为空");
+                if (!TOOL_KAFKA_TOPIC_ACTIVITY.equals(toolCode))
+                {
+                    requireText(str(target, "consumerGroup"), "Kafka消费组不能为空");
+                }
+                break;
+            case "MQTT":
+                requireText(str(target, "host"), "MQTT Broker地址不能为空");
+                requireText(str(target, "topic"), "MQTT Topic Filter不能为空");
+                target.put("port", toInt(target.get("port"), 1883));
                 break;
             case "HTTP":
                 requireText(str(target, "url"), "HTTP接口地址不能为空");
@@ -4526,7 +5126,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private void mergeStepParamsToTarget(Map<String, Object> step, Map<String, Object> target)
     {
         Map<String, Object> params = readParams(step);
-        if (TOOL_KAFKA_LAG.equals(str(step, "toolCode")))
+        if (TOOL_KAFKA_LAG.equals(str(step, "toolCode"))
+                || TOOL_KAFKA_TOPIC_ACTIVITY.equals(str(step, "toolCode"))
+                || TOOL_KAFKA_CONSUMER_PROGRESS.equals(str(step, "toolCode")))
         {
             if (StringUtils.isBlank(str(target, "topic")) && StringUtils.isNotBlank(str(params, "topic")))
             {
@@ -4591,9 +5193,14 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private String resolveTargetTypeByTool(String toolCode)
     {
-        if (TOOL_KAFKA_LAG.equals(toolCode))
+        if (TOOL_KAFKA_LAG.equals(toolCode) || TOOL_KAFKA_TOPIC_ACTIVITY.equals(toolCode)
+                || TOOL_KAFKA_CONSUMER_PROGRESS.equals(toolCode))
         {
             return "KAFKA";
+        }
+        if (TOOL_MQTT_TOPIC_ACTIVITY.equals(toolCode))
+        {
+            return "MQTT";
         }
         if (TOOL_HTTP_COUNT.equals(toolCode) || TOOL_HTTP_HEALTH.equals(toolCode) || TOOL_HTTP_API_TEST.equals(toolCode))
         {
@@ -4638,6 +5245,15 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         plan.put("status", STATUS_DISABLED.equals(str(plan, "status")) ? STATUS_DISABLED : STATUS_NORMAL);
         plan.put("reportStyle", StringUtils.defaultIfBlank(str(plan, "reportStyle"), REPORT_STANDARD));
         Object cronConfig = plan.get("cronConfig");
+        String planMode = AutoInspectionPlanHealthConfig.normalizeMode(plan.get("planMode"));
+        plan.put("planMode", planMode);
+        if (AutoInspectionPlanHealthConfig.MODE_FREQUENT.equals(planMode))
+        {
+            AutoInspectionPlanHealthConfig.validateFrequentCron(cronConfig);
+        }
+        AutoInspectionPlanHealthConfig healthConfig = AutoInspectionPlanHealthConfig.from(cronConfig,
+                plan.get("healthConfig"));
+        plan.put("healthConfig", JSON.toJSONString(healthConfig.toMap()));
         if (cronConfig != null && !(cronConfig instanceof String))
         {
             plan.put("cronConfig", JSON.toJSONString(cronConfig));
@@ -4825,6 +5441,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     {
         insertBuiltinTool(TOOL_KAFKA_LAG, "Kafka消费积压检测", TOOL_KAFKA_LAG, "条", RULE_MAX, new BigDecimal("2000"), 10, 0,
                 "{\"fields\":[\"topic\",\"consumerGroup\"]}");
+        insertBuiltinTool(TOOL_KAFKA_TOPIC_ACTIVITY, "Kafka主题写入中断检测", TOOL_KAFKA_TOPIC_ACTIVITY, "条", RULE_MIN, BigDecimal.ZERO, 10, 0,
+                "{\"fields\":[\"topic\",\"activityRule\"]}");
+        insertBuiltinTool(TOOL_KAFKA_CONSUMER_PROGRESS, "Kafka消费停滞检测", TOOL_KAFKA_CONSUMER_PROGRESS, "条", RULE_MIN, BigDecimal.ZERO, 10, 0,
+                "{\"fields\":[\"topic\",\"consumerGroup\",\"activityRule\"]}");
+        insertBuiltinTool(TOOL_MQTT_TOPIC_ACTIVITY, "MQTT主题活跃度检测", TOOL_MQTT_TOPIC_ACTIVITY, "条", RULE_MIN, BigDecimal.ZERO, 10, 0,
+                "{\"fields\":[\"broker\",\"topicFilter\",\"qos\",\"ignoreRetained\",\"activityRule\"]}");
         insertBuiltinTool(TOOL_HTTP_COUNT, "海康接口数量检测", TOOL_HTTP_COUNT, "条", RULE_MIN, new BigDecimal("0"), 10, 480,
                 "{\"fields\":[\"resultPath\",\"extraParams\",\"timeWindowMinutes\"]}");
         insertBuiltinTool(TOOL_HTTP_HEALTH, "HTTP接口健康检测", TOOL_HTTP_HEALTH, "ms", RULE_MAX, new BigDecimal("3000"), 10, 0,
@@ -5585,6 +6207,31 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return null;
     }
 
+    private LocalDateTime toLocalDateTime(Object value)
+    {
+        if (value instanceof LocalDateTime)
+        {
+            return (LocalDateTime) value;
+        }
+        if (value instanceof Date)
+        {
+            return ((Date) value).toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
+        }
+        if (value == null || StringUtils.isBlank(value.toString()))
+        {
+            return null;
+        }
+        String text = value.toString().trim().replace('T', ' ');
+        try
+        {
+            return LocalDateTime.parse(text.substring(0, Math.min(19, text.length())), DATE_TIME_FORMATTER);
+        }
+        catch (Exception ignored)
+        {
+            return null;
+        }
+    }
+
     private void increaseLong(Map<String, Object> map, String key, long delta)
     {
         map.put(key, toLongValue(map.get(key)) + delta);
@@ -5613,6 +6260,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         if ("KAFKA".equals(targetType))
         {
             return "Kafka";
+        }
+        if ("MQTT".equals(targetType))
+        {
+            return "MQTT";
         }
         if ("HTTP".equals(targetType))
         {
@@ -5664,6 +6315,13 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             return "期望 active (running)，非 active 告警";
         }
+        if (isActivityTool(str(row, "toolCode")))
+        {
+            AutoInspectionActivityStateMachine.Rule rule =
+                    AutoInspectionActivityStateMachine.ruleFromStepParams(row.get("stepParams"));
+            return rule.warningMinutes + "分钟关注，" + rule.abnormalMinutes + "分钟异常，连续"
+                    + rule.recoverySuccesses + "次恢复";
+        }
         String threshold = str(row, "thresholdValue");
         if (StringUtils.isBlank(threshold))
         {
@@ -5702,6 +6360,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             return "异常";
         }
+        if (RESULT_WARNING.equals(resultStatus))
+        {
+            return "关注";
+        }
         return "未检测";
     }
 
@@ -5714,6 +6376,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private int resolveTimeout(Map<String, Object> step)
     {
         return Math.max(toInt(step.get("timeoutSeconds"), DEFAULT_TIMEOUT_SECONDS), 3);
+    }
+
+    private LocalDateTime resolveWindowEnd(Map<String, Object> step)
+    {
+        Object value = step == null ? null : step.get("_windowEnd");
+        return value instanceof LocalDateTime ? (LocalDateTime) value : LocalDateTime.now();
     }
 
     private String normalizeLabelName(Object value)
@@ -6047,6 +6715,27 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         private ApiAssertionSummary(int totalCount)
         {
             this.totalCount = totalCount;
+        }
+    }
+
+    private static class KafkaOffsetSnapshot
+    {
+        private long endOffsetTotal;
+        private long committedOffsetTotal;
+        private long maxLag;
+        private long sumLag;
+        private int partitionCount;
+    }
+
+    private static class FrequentExecutionContext
+    {
+        private final Long planId;
+        private final LocalDateTime observedAt;
+
+        private FrequentExecutionContext(Long planId, LocalDateTime observedAt)
+        {
+            this.planId = planId;
+            this.observedAt = observedAt;
         }
     }
 

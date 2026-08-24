@@ -4,15 +4,17 @@
       <section class="record-board record-board--primary">
         <header class="record-board__head">
           <div>
-            <strong>巡检记录</strong>
-            <span>按日期归集当天结果，异常记录优先显示，便于值守人员逐日回看。</span>
+            <strong>{{ recordViewMode === PLAN_MODE_FREQUENT ? '高频健康监测' : '巡检记录' }}</strong>
+            <span>{{ recordViewMode === PLAN_MODE_FREQUENT ? '按天汇总分钟级采样，异常日期优先保留并支持下钻。' : '按日期归集当天结果，异常记录优先显示，便于值守人员逐日回看。' }}</span>
           </div>
           <div class="record-board__actions">
-            <el-button type="primary" plain icon="DataAnalysis" @click="openDashboardDrawer">展开看板</el-button>
-            <el-button icon="Refresh" @click="getRecordList">刷新记录</el-button>
+            <el-segmented v-model="recordViewMode" :options="recordViewOptions" />
+            <el-button v-if="recordViewMode === PLAN_MODE_ROUTINE" type="primary" plain icon="DataAnalysis" @click="openDashboardDrawer">展开看板</el-button>
+            <el-button icon="Refresh" @click="refreshCurrentRecordView">刷新</el-button>
           </div>
         </header>
 
+        <template v-if="recordViewMode === PLAN_MODE_ROUTINE">
         <section class="dashboard-brief" :class="`dashboard-brief--${dashboardWeekSummary.status || '3'}`">
           <div class="dashboard-brief__status">
             <span class="status-dot" :class="`status-dot--${dashboardWeekSummary.status || '3'}`"></span>
@@ -180,6 +182,18 @@
         </el-table>
 
         <pagination v-show="recordTotal > 0" :total="recordTotal" v-model:page="recordQuery.pageNum" v-model:limit="recordQuery.pageSize" @pagination="getRecordList" />
+        </template>
+        <ContinuousHealthPanel
+          v-else
+          :loading="dailyHealthLoading"
+          :rows="dailyHealthRows"
+          :month="dailyHealthMonth"
+          :plan-id="dailyHealthPlanId"
+          :plan-options="frequentPlanTreeOptions"
+          @update:month="dailyHealthMonth = $event"
+          @update:plan-id="dailyHealthPlanId = $event"
+          @samples="openHealthSamples"
+        />
       </section>
     </section>
 
@@ -554,6 +568,12 @@
               style="width: 210px"
             />
           </el-form-item>
+          <el-form-item label="模式">
+            <el-select v-model="planQuery.planMode" clearable placeholder="全部模式" style="width: 140px">
+              <el-option label="例行巡检" :value="PLAN_MODE_ROUTINE" />
+              <el-option label="高频监测" :value="PLAN_MODE_FREQUENT" />
+            </el-select>
+          </el-form-item>
           <el-form-item label="状态">
             <el-select v-model="planQuery.status" clearable placeholder="全部状态" style="width: 140px">
               <el-option label="启用" value="0" />
@@ -578,6 +598,9 @@
             <template #default="scope"><el-tag size="small" type="info" effect="plain">{{ scope.row.labelName || '未分类' }}</el-tag></template>
           </el-table-column>
           <el-table-column label="模板" prop="templateName" min-width="170" show-overflow-tooltip />
+          <el-table-column label="运行模式" width="105" align="center">
+            <template #default="scope"><el-tag :type="scope.row.planMode === PLAN_MODE_FREQUENT ? 'warning' : 'info'" effect="plain">{{ scope.row.planMode === PLAN_MODE_FREQUENT ? '高频监测' : '例行巡检' }}</el-tag></template>
+          </el-table-column>
           <el-table-column label="执行周期" min-width="200" show-overflow-tooltip>
             <template #default="scope">{{ formatCronConfig(scope.row) }}</template>
           </el-table-column>
@@ -630,6 +653,27 @@
               <el-col :span="24"><el-form-item label="Bootstrap" prop="host"><el-input v-model="targetForm.host" placeholder="10.0.0.1:9092,10.0.0.2:9092" /></el-form-item></el-col>
               <el-col :span="12"><el-form-item label="默认Topic"><el-input v-model="targetForm.topic" placeholder="可在模板步骤覆盖" /></el-form-item></el-col>
               <el-col :span="12"><el-form-item label="默认消费组"><el-input v-model="targetForm.consumerGroup" placeholder="可在模板步骤覆盖" /></el-form-item></el-col>
+            </el-row>
+          </section>
+
+          <section v-if="targetForm.targetType === 'MQTT'" class="target-section">
+            <header><strong>MQTT 持续订阅</strong><span>保存后由后台保持监听，计划周期负责判定最后消息时间。</span></header>
+            <el-row :gutter="16">
+              <el-col :span="12"><el-form-item label="Broker地址"><el-input v-model="targetForm.host" placeholder="10.0.0.10 或 tcp://10.0.0.10:1883" /></el-form-item></el-col>
+              <el-col :span="6"><el-form-item label="端口"><el-input-number v-model="targetForm.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+              <el-col :span="6"><el-form-item label="协议"><el-select v-model="targetForm.mqttConfig.protocol" style="width: 100%"><el-option label="TCP" value="tcp" /><el-option label="SSL/TLS" value="ssl" /></el-select></el-form-item></el-col>
+              <el-col :span="12"><el-form-item label="Topic Filter"><el-input v-model="targetForm.topic" placeholder="device/+/heartbeat" /></el-form-item></el-col>
+              <el-col :span="6"><el-form-item label="QoS"><el-select v-model="targetForm.mqttConfig.qos" style="width: 100%"><el-option label="QoS 0" :value="0" /><el-option label="QoS 1" :value="1" /><el-option label="QoS 2" :value="2" /></el-select></el-form-item></el-col>
+              <el-col :span="6"><el-form-item label="保留消息"><el-switch v-model="targetForm.mqttConfig.ignoreRetained" active-text="忽略" inactive-text="计入" inline-prompt /></el-form-item></el-col>
+              <el-col :span="8"><el-form-item label="账号"><el-input v-model="targetForm.username" placeholder="匿名可留空" /></el-form-item></el-col>
+              <el-col :span="8">
+                <el-form-item label="密码">
+                  <el-input v-model="targetForm.password" :type="targetForm._passwordVisible ? 'text' : 'password'" placeholder="匿名可留空">
+                    <template #suffix><el-button class="inspection-password-eye" link type="primary" icon="View" :title="targetForm._passwordVisible ? '隐藏密码' : '显示密码'" :loading="isServerPasswordRevealLoading(targetForm)" @click.stop="toggleStepServerPassword(targetForm, TOOL_MQTT_TOPIC_ACTIVITY)" /></template>
+                  </el-input>
+                </el-form-item>
+              </el-col>
+              <el-col :span="8"><el-form-item label="Client ID"><el-input v-model="targetForm.mqttConfig.clientId" placeholder="留空自动生成" /></el-form-item></el-col>
             </el-row>
           </section>
 
@@ -883,7 +927,7 @@
         <section id="step-stage-rule" class="target-section step-stage step-stage--rule" :class="{ 'target-section--rule-compact': isHttpApiTestStep }">
           <header>
             <strong>判定规则</strong>
-            <span>{{ isServiceStatusStep ? '服务状态按 systemctl 返回值判定。' : (isHttpApiTestStep ? '返回条件全部满足才正常；请求失败或任一条件不满足即告警。' : '设置异常阈值、统计窗口和超时。') }}</span>
+            <span>{{ isServiceStatusStep ? '服务状态按 systemctl 返回值判定。' : (isHttpApiTestStep ? '返回条件全部满足才正常；请求失败或任一条件不满足即告警。' : (isActivityStep ? '按最后活跃时间判断关注、异常和恢复状态。' : '设置异常阈值、统计窗口和超时。')) }}</span>
           </header>
           <div v-if="isServiceStatusStep" class="service-rule-card">
             <span>
@@ -906,6 +950,11 @@
               <label>异常</label>
               <strong>请求失败 / 条件不满足</strong>
             </span>
+          </div>
+          <div v-else-if="isActivityStep" class="activity-rule-grid">
+            <label><span>进入关注</span><el-input-number v-model="stepDraft.stepParams.activityRule.warningMinutes" :min="1" :max="1440" controls-position="right" /><em>分钟无新增</em></label>
+            <label><span>确认异常</span><el-input-number v-model="stepDraft.stepParams.activityRule.abnormalMinutes" :min="stepDraft.stepParams.activityRule.warningMinutes" :max="10080" controls-position="right" /><em>分钟无新增</em></label>
+            <label><span>恢复确认</span><el-input-number v-model="stepDraft.stepParams.activityRule.recoverySuccesses" :min="1" :max="20" controls-position="right" /><em>次连续有数据</em></label>
           </div>
           <div class="step-rule-grid" :class="{ 'step-rule-grid--compact': !useGenericNumericRule }">
             <el-form-item v-if="useGenericNumericRule" label="比较规则">
@@ -939,7 +988,25 @@
             <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：原始Kafka消费组" /></el-form-item></el-col>
             <el-col :span="12"><el-form-item label="Bootstrap" required><el-input v-model="stepDraft.target.host" placeholder="10.0.0.1:9092,10.0.0.2:9092" /></el-form-item></el-col>
             <el-col :span="12"><el-form-item label="Topic" required><el-input v-model="stepDraft.target.topic" placeholder="例如：tim-pass-record" /></el-form-item></el-col>
-            <el-col :span="12"><el-form-item label="消费组" required><el-input v-model="stepDraft.target.consumerGroup" placeholder="例如：tim-analysis-group" /></el-form-item></el-col>
+            <el-col v-if="stepDraft.toolCode !== TOOL_KAFKA_TOPIC_ACTIVITY" :span="12"><el-form-item label="消费组" required><el-input v-model="stepDraft.target.consumerGroup" placeholder="例如：tim-analysis-group" /></el-form-item></el-col>
+          </el-row>
+          <el-row v-if="stepTargetType === 'MQTT'" :gutter="16">
+            <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：设备心跳主题" /></el-form-item></el-col>
+            <el-col :span="12"><el-form-item label="Broker地址" required><el-input v-model="stepDraft.target.host" placeholder="10.0.0.10 或 tcp://10.0.0.10:1883" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="端口"><el-input-number v-model="stepDraft.target.port" :min="1" :max="65535" controls-position="right" style="width: 100%" /></el-form-item></el-col>
+            <el-col :span="16"><el-form-item label="Topic Filter" required><el-input v-model="stepDraft.target.topic" placeholder="例如：device/+/heartbeat" /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="协议"><el-select v-model="stepDraft.target.mqttConfig.protocol" style="width: 100%"><el-option label="TCP" value="tcp" /><el-option label="SSL/TLS" value="ssl" /></el-select></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="QoS"><el-select v-model="stepDraft.target.mqttConfig.qos" style="width: 100%"><el-option label="QoS 0" :value="0" /><el-option label="QoS 1" :value="1" /><el-option label="QoS 2" :value="2" /></el-select></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="保留消息"><el-switch v-model="stepDraft.target.mqttConfig.ignoreRetained" active-text="忽略" inactive-text="计入" inline-prompt /></el-form-item></el-col>
+            <el-col :span="8"><el-form-item label="账号"><el-input v-model="stepDraft.target.username" placeholder="匿名连接可留空" /></el-form-item></el-col>
+            <el-col :span="8">
+              <el-form-item label="密码">
+                <el-input v-model="stepDraft.target.password" :type="stepDraft.target._passwordVisible ? 'text' : 'password'" placeholder="匿名连接可留空">
+                  <template #suffix><el-button class="inspection-password-eye" link type="primary" icon="View" :title="stepDraft.target._passwordVisible ? '隐藏密码' : '显示密码'" :loading="isServerPasswordRevealLoading(stepDraft.target)" @click.stop="toggleStepServerPassword(stepDraft.target, stepDraft.toolCode)" /></template>
+                </el-input>
+              </el-form-item>
+            </el-col>
+            <el-col :span="8"><el-form-item label="Client ID"><el-input v-model="stepDraft.target.mqttConfig.clientId" placeholder="留空自动生成" /></el-form-item></el-col>
           </el-row>
           <el-row v-if="stepTargetType === 'HTTP' && !isHttpApiTestStep" :gutter="16">
             <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" :placeholder="isHttpHealthStep ? '例如：海康平台登录页健康检测' : '例如：海康过车数量接口'" /></el-form-item></el-col>
@@ -1646,7 +1713,7 @@
             <el-button type="primary" icon="Check" @click="confirmToolPicker(toolPickerPreviewTool.toolCode)">{{ toolPickerActionLabel }}</el-button>
           </div>
           <div class="tool-picker-meta">
-            <span><label>默认规则</label><strong>{{ toolPickerPreviewTool.defaultCompareRule === 'MIN' ? '不得低于' : '不得高于' }} {{ toolPickerPreviewTool.defaultThresholdValue ?? '-' }}{{ toolPickerPreviewTool.valueUnit || '' }}</strong></span>
+            <span><label>默认规则</label><strong>{{ isActivityTool(toolPickerPreviewTool.toolCode) ? '按持续无数据时长判定' : `${toolPickerPreviewTool.defaultCompareRule === 'MIN' ? '不得低于' : '不得高于'} ${toolPickerPreviewTool.defaultThresholdValue ?? '-'}${toolPickerPreviewTool.valueUnit || ''}` }}</strong></span>
             <span><label>超时</label><strong>{{ toolPickerPreviewTool.defaultTimeoutSeconds || 10 }} 秒</strong></span>
             <span><label>统计窗口</label><strong>{{ toolPickerPreviewTool.defaultTimeWindowMinutes || 0 }} 分钟</strong></span>
           </div>
@@ -1752,6 +1819,12 @@
     <el-dialog v-model="planDialogOpen" width="860px" append-to-body class="auto-dialog">
       <template #header><div class="dialog-title"><span>{{ planForm.planId ? '编辑计划' : '新增计划' }}</span><strong>可视化执行周期</strong></div></template>
       <el-form ref="planRef" :model="planForm" :rules="planRules" label-width="100px">
+        <section class="plan-mode-section">
+          <el-form-item label="运行模式">
+            <el-segmented v-model="planForm.planMode" :options="planModeOptions" @change="handlePlanModeChange" />
+          </el-form-item>
+          <span>{{ planForm.planMode === PLAN_MODE_FREQUENT ? '分钟级执行，结果按天汇总健康度。' : '按日、周或月执行，每次生成一条完整巡检记录。' }}</span>
+        </section>
         <el-row :gutter="16">
           <el-col :span="12"><el-form-item label="计划名称" prop="planName"><el-input v-model="planForm.planName" /></el-form-item></el-col>
           <el-col :span="12">
@@ -1780,12 +1853,13 @@
           <el-col :span="24">
             <el-form-item label="执行周期">
               <div class="schedule-box">
-                <el-radio-group v-model="planForm.cronConfig.type" @change="refreshPlanCron">
+                <el-radio-group v-if="planForm.planMode === PLAN_MODE_ROUTINE" v-model="planForm.cronConfig.type" @change="refreshPlanCron">
                   <el-radio-button value="daily">每日</el-radio-button>
                   <el-radio-button value="weekly">每周</el-radio-button>
                   <el-radio-button value="monthly">每月</el-radio-button>
                   <el-radio-button value="interval">间隔</el-radio-button>
                 </el-radio-group>
+                <el-tag v-else type="warning" effect="plain">高频间隔执行</el-tag>
                 <div class="schedule-form">
                   <el-time-picker v-if="planForm.cronConfig.type !== 'interval'" v-model="planForm.cronConfig.time" value-format="HH:mm:ss" placeholder="执行时间" @change="refreshPlanCron" />
                   <el-select v-if="planForm.cronConfig.type === 'weekly'" v-model="planForm.cronConfig.weekDays" multiple placeholder="选择星期" style="width: 280px" @change="refreshPlanCron">
@@ -1805,6 +1879,16 @@
                 <el-alert type="info" :closable="false" show-icon>
                   <template #title>系统生成周期：{{ planForm.cronExpression || '请完善周期配置' }}</template>
                 </el-alert>
+              </div>
+            </el-form-item>
+          </el-col>
+          <el-col v-if="planForm.planMode === PLAN_MODE_FREQUENT" :span="24">
+            <el-form-item label="健康汇总">
+              <div class="plan-health-config">
+                <label><span>生效开始</span><el-time-picker v-model="planForm.healthConfig.activeStartTime" format="HH:mm" value-format="HH:mm" /></label>
+                <label><span>生效结束</span><el-time-picker v-model="planForm.healthConfig.activeEndTime" format="HH:mm" value-format="HH:mm" /></label>
+                <label><span>数据等待</span><el-input-number v-model="planForm.healthConfig.dataDelayMinutes" :min="0" :max="120" controls-position="right" /><em>分钟</em></label>
+                <label><span>健康目标</span><el-input-number v-model="planForm.healthConfig.healthTarget" :min="0" :max="100" :precision="1" controls-position="right" /><em>%</em></label>
               </div>
             </el-form-item>
           </el-col>
@@ -1908,6 +1992,36 @@
         </div>
       </section>
     </el-drawer>
+
+    <el-drawer v-model="healthSampleDrawerOpen" size="820px" append-to-body class="health-sample-drawer">
+      <template #header>
+        <div class="dialog-title">
+          <span>高频采样明细</span>
+          <strong>{{ healthSampleContext.date }} · {{ healthSampleContext.plan?.planName || '-' }}</strong>
+        </div>
+      </template>
+      <div class="health-sample-summary">
+        <span><label>当日健康度</label><strong>{{ healthSampleContext.plan?.healthScore || 0 }}%</strong></span>
+        <span><label>完成 / 应执行</label><strong>{{ healthSampleContext.plan?.completedCount || 0 }} / {{ healthSampleContext.plan?.expectedCount || 0 }}</strong></span>
+        <span><label>异常 / 关注 / 缺失</label><strong>{{ healthSampleContext.plan?.abnormalCount || 0 }} / {{ healthSampleContext.plan?.warningCount || 0 }} / {{ healthSampleContext.plan?.missingCount || 0 }}</strong></span>
+      </div>
+      <el-table v-loading="healthSampleLoading" :data="healthSampleRows" class="auto-table" empty-text="当天暂无原始采样">
+        <el-table-column label="采样时间" prop="inspectionTime" width="170" />
+        <el-table-column label="状态" width="90" align="center">
+          <template #default="scope"><el-tag :type="resultTagType(scope.row.resultStatus)" effect="plain">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
+        </el-table-column>
+        <el-table-column label="耗时" width="90" align="center">
+          <template #default="scope">{{ scope.row.durationMs ? `${scope.row.durationMs}ms` : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="结果摘要" min-width="300" show-overflow-tooltip>
+          <template #default="scope">{{ scope.row.abnormalSummary || scope.row.summary || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="80" align="center">
+          <template #default="scope"><el-button link type="primary" icon="View" @click="handleRecordDetail(scope.row)">详情</el-button></template>
+        </el-table-column>
+      </el-table>
+      <pagination v-show="healthSampleTotal > 0" :total="healthSampleTotal" v-model:page="healthSampleQuery.pageNum" v-model:limit="healthSampleQuery.pageSize" @pagination="getHealthSamples" />
+    </el-drawer>
   </div>
 </template>
 
@@ -1924,6 +2038,7 @@ import {
   VideoPlay
 } from '@element-plus/icons-vue'
 import InspectionFlowCanvas from './components/InspectionFlowCanvas.vue'
+import ContinuousHealthPanel from './components/ContinuousHealthPanel.vue'
 import { hydrateDatabaseTarget, normalizeDatabaseTargetConfig } from './databaseTargetConfig'
 import {
   buildInspectionRecordTableRows,
@@ -1948,6 +2063,7 @@ import {
   getAutoInspectionServerCredentialPlain,
   getAutoInspectionTarget,
   getAutoInspectionTemplate,
+  listAutoInspectionDailyHealth,
   listAutoInspectionPlan,
   listAutoInspectionRecord,
   listAutoInspectionServerAssetTree,
@@ -1979,6 +2095,11 @@ const TOOL_HTTP_API_TEST = 'HTTP_API_TEST'
 const TOOL_TCP_PORT_CHECK = 'TCP_PORT_CHECK'
 const TOOL_SERVER_SERVICE_STATUS = 'SERVER_SERVICE_STATUS'
 const TOOL_DATABASE_QUERY = 'DATABASE_QUERY'
+const TOOL_KAFKA_TOPIC_ACTIVITY = 'KAFKA_TOPIC_ACTIVITY'
+const TOOL_KAFKA_CONSUMER_PROGRESS = 'KAFKA_CONSUMER_PROGRESS'
+const TOOL_MQTT_TOPIC_ACTIVITY = 'MQTT_TOPIC_ACTIVITY'
+const PLAN_MODE_ROUTINE = 'ROUTINE'
+const PLAN_MODE_FREQUENT = 'FREQUENT'
 const configTabNames = ['template', 'plan']
 const activeTab = ref(resolveRouteTab(route.query.tab, route.path))
 const configTab = ref(resolveConfigTab(route.query.tab, route.query.configTab, route.path))
@@ -2014,7 +2135,7 @@ const planLoading = ref(false)
 const planList = ref([])
 const planTotal = ref(0)
 const planRunId = ref(null)
-const planQuery = ref({ pageNum: 1, pageSize: 10, planName: '', labelName: '', templateId: undefined, status: '' })
+const planQuery = ref({ pageNum: 1, pageSize: 10, planName: '', labelName: '', templateId: undefined, planMode: '', status: '' })
 
 const dashboardLoading = ref(false)
 const dashboardData = ref(defaultDashboardData())
@@ -2028,7 +2149,22 @@ const abnormalChartRef = ref(null)
 const recordLoading = ref(false)
 const recordList = ref([])
 const recordTotal = ref(0)
-const recordQuery = ref({ pageNum: 1, pageSize: 20, templateId: undefined, planId: undefined, sourceType: '', resultStatus: '' })
+const recordViewMode = ref(PLAN_MODE_ROUTINE)
+const recordViewOptions = [
+  { label: '例行巡检记录', value: PLAN_MODE_ROUTINE },
+  { label: '高频每日健康', value: PLAN_MODE_FREQUENT }
+]
+const recordQuery = ref({ pageNum: 1, pageSize: 20, templateId: undefined, planId: undefined, sourceType: '', resultStatus: '', runMode: PLAN_MODE_ROUTINE })
+const dailyHealthLoading = ref(false)
+const dailyHealthRows = ref([])
+const dailyHealthMonth = ref(formatMonthParam(new Date()))
+const dailyHealthPlanId = ref(undefined)
+const healthSampleDrawerOpen = ref(false)
+const healthSampleLoading = ref(false)
+const healthSampleRows = ref([])
+const healthSampleTotal = ref(0)
+const healthSampleContext = ref({ date: '', plan: {} })
+const healthSampleQuery = ref({ pageNum: 1, pageSize: 50 })
 const reportExportOpen = ref(false)
 const reportExportLoading = ref(false)
 const reportExportForm = ref(defaultReportExportForm())
@@ -2115,7 +2251,7 @@ const operationGuideSteps = [
     desc: '点击添加步骤后先进入巡检工具箱，按树状分类选择工具，再进入具体配置页面。',
     manual: [
       '工具箱按消息队列、接口平台、文件目录、服务器和网络端口分类，右侧会展示工具说明、默认规则、配置重点和使用案例。',
-      '当前内置 Kafka 消费积压、海康接口数量、接口调用测试、HTTP 健康、数据库查询、FTP 目录、服务器目录、磁盘、大数据爆盘、TCP 端口和服务器服务状态检测。'
+      '当前内置 Kafka 消费积压、Kafka 写入中断、Kafka 消费停滞、MQTT 主题活跃、海康接口数量、接口调用测试、HTTP 健康、数据库查询、FTP 目录、服务器目录、磁盘、大数据爆盘、TCP 端口和服务器服务状态检测。'
     ],
     actions: ['点击“添加步骤”打开工具箱。', '先阅读工具用途和案例，再点击“进入配置”。', '相同工具可以在一个模板中配置多次。'],
     images: [
@@ -2172,13 +2308,13 @@ const operationGuideSteps = [
     index: '07',
     title: '配置巡检计划',
     place: '巡检配置 / 巡检计划',
-    desc: '计划把模板交给若依定时任务调度，页面使用可视化周期配置生成 Cron。',
+    desc: '计划把模板交给若依定时任务调度，并区分例行巡检和高频健康监测。',
     manual: [
       '巡检计划用于把一个已经验证过的模板交给若依定时任务调度。标签会作为计划目录，模板选择也会按标签树展开。',
-      '页面采用可视化周期配置，不要求用户手写 Cron。',
-      '保存计划前要确认模板、任务编码、执行周期和状态。计划启用后，系统会按周期自动生成巡检记录。'
+      '页面采用可视化周期配置，不要求用户手写 Cron；例行计划支持每日、每周、每月和间隔执行。',
+      '高频计划使用分钟或小时间隔，并配置生效时段、数据等待和健康目标，执行结果在巡检总览按天汇总。'
     ],
-    actions: ['选择巡检模板和执行周期。', '检查生成的任务编码和 Cron 预览。', '启用计划后，系统会按配置自动生成巡检记录。'],
+    actions: ['选择例行巡检或高频监测。', '选择巡检模板并配置可视化周期。', '高频计划到“高频每日健康”查看日期、计划和采样明细。'],
     images: [
       guideImage('11-plan-list.png', '巡检计划列表'),
       guideImage('12-plan-dialog.png', '新增巡检计划和可视化周期配置')
@@ -2188,9 +2324,10 @@ const operationGuideSteps = [
     index: '08',
     title: '看板分析和报告归档',
     place: '巡检总览 / 展开看板 / 导出周月报',
-    desc: '巡检总览默认优先展示记录，展开看板可查看图表和当月日历，报告支持单次、周报和月度周报包。',
+    desc: '巡检总览支持例行记录和高频每日健康切换；例行记录可展开看板并导出报告。',
     manual: [
-      '点击“展开看板”后，可通过图表查看本周趋势、结果分布、工具健康度、异常目标和当月巡检日历。',
+      '例行巡检点击“展开看板”后，可通过图表查看本周趋势、结果分布、工具健康度、异常目标和当月巡检日历。',
+      '高频监测按天展示健康度、异常日期和缺失采样，展开日期可查看计划，再下钻到原始分钟采样。',
       '点击“导出周/月报”后，可选择自然周导出 Word 周报，也可选择月份批量导出该月所有自然周周报压缩包，周报开头包含巡检人员和用户签字确认区。'
     ],
     actions: ['按模板、计划、来源、结果筛选记录。', '展开看板查看趋势、分布和日历。', '按周或按月导出 Word 周报归档。'],
@@ -2204,6 +2341,7 @@ const operationGuideSteps = [
 
 const targetTypeOptions = [
   { label: 'Kafka', value: 'KAFKA' },
+  { label: 'MQTT', value: 'MQTT' },
   { label: 'HTTP接口', value: 'HTTP' },
   { label: 'FTP目录', value: 'FTP' },
   { label: '服务器资产', value: 'SERVER' },
@@ -2225,6 +2363,10 @@ const weekOptions = [
   { label: '周五', value: 'FRI' },
   { label: '周六', value: 'SAT' }
 ]
+const planModeOptions = [
+  { label: '例行巡检', value: PLAN_MODE_ROUTINE },
+  { label: '高频监测', value: PLAN_MODE_FREQUENT }
+]
 const httpDatePlaceholders = [
   { value: '${today}', label: '当天日期', example: '2026-06-11' },
   { value: '${todayStart}', label: '当天开始', example: '2026-06-11 00:00:00' },
@@ -2241,6 +2383,27 @@ const toolGuideMap = {
     scenario: '适合判断数据处理链路是否堵塞，例如原始过车 Topic、二次分析 Topic 是否被消费服务及时处理。',
     configs: ['填写 Kafka bootstrap 地址。', '填写需要检测的 Topic。', '填写对应消费组 consumer group。', '阈值通常设置为最大允许积压条数。'],
     example: '例如“原始Kafka积压”：Topic 填 tim-pass-record，消费组填 tim-analysis-group，阈值设置为 2000 条，高于阈值告警。'
+  },
+  KAFKA_TOPIC_ACTIVITY: {
+    brief: '持续观察 Kafka Topic 是否还有新消息写入。',
+    description: '周期读取各分区末端 Offset，记录最后一次增长时间；持续不增长时按关注和异常时长判定断流。',
+    scenario: '适合监测原始过车、二次分析、违法数据等应持续写入的 Kafka Topic。',
+    configs: ['填写 Kafka bootstrap 和 Topic。', '设置多久无新增进入关注、多久确认异常。', '设置恢复后需要连续确认的次数。'],
+    example: '例如“原始过车Topic断流”：每分钟采样，3分钟无新增进入关注，5分钟无新增确认异常。'
+  },
+  KAFKA_CONSUMER_PROGRESS: {
+    brief: '判断上游有新消息时，消费组是否还在推进。',
+    description: '同时采样 Topic 末端 Offset 和消费组提交 Offset；上游增长但消费位点不动时判定消费停滞。',
+    scenario: '适合发现消费者进程仍存活但实际不再处理消息、消费线程卡死或提交位点停止的问题。',
+    configs: ['填写 Kafka bootstrap、Topic 和消费组。', '配置关注、异常和恢复确认时长。', '上游没有新增时不会误判消费者停滞。'],
+    example: '例如“二次分析消费停滞”：Topic有新增但消费组连续5分钟不推进时告警。'
+  },
+  MQTT_TOPIC_ACTIVITY: {
+    brief: '后台持续订阅 MQTT Topic，检测长时间没有消息。',
+    description: '应用保持持久在线订阅，记录最后一条实时消息时间；计划只负责周期判定，不会只监听几秒后断开。',
+    scenario: '适合设备心跳、物联网状态、采集数据和告警 Topic 的持续活跃监测。',
+    configs: ['填写 Broker、端口和 Topic Filter。', '按需填写账号密码、QoS和Client ID。', '默认忽略首次订阅收到的保留消息。'],
+    example: '例如“设备心跳Topic”：订阅 device/+/heartbeat，3分钟无消息关注，5分钟无消息异常。'
   },
   HTTP_COUNT: {
     brief: '调用接口并从响应里提取一个数量字段。',
@@ -2319,7 +2482,7 @@ const toolTreeCategoryList = [
     key: 'queue',
     label: '消息队列检测',
     brief: 'Kafka Topic、消费组积压等链路堵塞类检查。',
-    matcher: (toolCode) => toolCode === 'KAFKA_LAG'
+    matcher: (toolCode) => ['KAFKA_LAG', TOOL_KAFKA_TOPIC_ACTIVITY, TOOL_KAFKA_CONSUMER_PROGRESS, TOOL_MQTT_TOPIC_ACTIVITY].includes(toolCode)
   },
   {
     key: 'api',
@@ -2425,6 +2588,10 @@ const planTreeOptions = computed(() => buildLabelTreeOptions(allPlanList.value, 
   idKey: 'planId',
   nameKey: 'planName'
 }))
+const frequentPlanTreeOptions = computed(() => buildLabelTreeOptions(
+  allPlanList.value.filter((item) => item.planMode === PLAN_MODE_FREQUENT),
+  { idKey: 'planId', nameKey: 'planName' }
+))
 const inspectionLabelOptions = computed(() => collectLabelNames(allTemplateList.value, allPlanList.value))
 const templateLabelMap = computed(() => new Map(allTemplateList.value.map((item) => [Number(item.templateId), item.labelName || ''])))
 const planLabelMap = computed(() => new Map(allPlanList.value.map((item) => [Number(item.planId), item.labelName || ''])))
@@ -2481,9 +2648,11 @@ const isHttpHealthStep = computed(() => stepDraft.value.toolCode === TOOL_HTTP_H
 const isHttpApiTestStep = computed(() => stepDraft.value.toolCode === TOOL_HTTP_API_TEST)
 const isTcpPortStep = computed(() => stepDraft.value.toolCode === TOOL_TCP_PORT_CHECK)
 const isServiceStatusStep = computed(() => stepDraft.value.toolCode === TOOL_SERVER_SERVICE_STATUS)
-const useGenericNumericRule = computed(() => !isServiceStatusStep.value && !isHttpApiTestStep.value)
+const isActivityStep = computed(() => isActivityTool(stepDraft.value.toolCode))
+const useGenericNumericRule = computed(() => !isServiceStatusStep.value && !isHttpApiTestStep.value && !isActivityStep.value)
 const stepTargetSectionTitle = computed(() => {
-  if (stepTargetType.value === 'KAFKA') return 'Kafka 目标'
+  if (stepTargetType.value === 'KAFKA') return stepDraft.value.toolCode === TOOL_KAFKA_TOPIC_ACTIVITY ? 'Kafka Topic 活跃目标' : 'Kafka 消费目标'
+  if (stepTargetType.value === 'MQTT') return 'MQTT 监听目标'
   if (isHttpHealthStep.value) return 'HTTP 健康目标'
   if (isHttpApiTestStep.value) return '接口调用测试目标'
   if (stepTargetType.value === 'HTTP') return 'HTTP 接口目标'
@@ -2495,7 +2664,9 @@ const stepTargetSectionTitle = computed(() => {
   return '服务器资产目标'
 })
 const stepTargetSectionHint = computed(() => {
-  if (stepTargetType.value === 'KAFKA') return '消费积压检测只需要 bootstrap、topic 和消费组。'
+  if (stepDraft.value.toolCode === TOOL_KAFKA_TOPIC_ACTIVITY) return '只读取 Topic 各分区末端 Offset，不加入业务消费组，也不消费消息内容。'
+  if (stepTargetType.value === 'KAFKA') return '填写 bootstrap、topic 和消费组，系统对比生产与消费位点。'
+  if (stepTargetType.value === 'MQTT') return '后台保持持续订阅，计划周期只负责读取最后消息时间并判断健康状态。'
   if (isHttpHealthStep.value) return '健康检测关注接口是否可访问、状态码是否符合预期，以及接口响应耗时。'
   if (isHttpApiTestStep.value) return '把请求参数、鉴权、请求体和返回条件放在一个步骤里，所有条件满足才算正常。'
   if (stepTargetType.value === 'HTTP') return '接口数量检测关注请求地址、参数模板、认证信息和结果取值路径。'
@@ -2605,6 +2776,7 @@ const detailTargetGroups = computed(() => {
     })
     group.targets.push(target)
     if (target.resultStatus === '2') group.resultStatus = '2'
+    else if (target.resultStatus === '4' && group.resultStatus !== '2') group.resultStatus = '4'
   })
 
   return groups
@@ -2625,6 +2797,12 @@ watch(() => [route.query.tab, route.query.configTab, route.path], ([tab, subTab,
 watch(activeTab, () => loadActiveTab())
 watch(configTab, () => {
   if (activeTab.value === 'config') loadConfigTab()
+})
+watch(recordViewMode, (mode) => {
+  if (mode === PLAN_MODE_FREQUENT) getDailyHealth()
+})
+watch([dailyHealthMonth, dailyHealthPlanId], () => {
+  if (recordViewMode.value === PLAN_MODE_FREQUENT) getDailyHealth()
 })
 
 watch(dashboardDrawerOpen, (open) => {
@@ -2698,12 +2876,12 @@ function resolveAutoInspectionPath(tab) {
 function loadActiveTab() {
   if (activeTab.value === 'dashboard') {
     getDashboard()
-    getRecordList()
+    refreshCurrentRecordView()
   }
   if (activeTab.value === 'config') loadConfigTab()
   if (activeTab.value === 'record') {
     getDashboard()
-    getRecordList()
+    refreshCurrentRecordView()
   }
 }
 
@@ -3086,10 +3264,63 @@ function getPlanOptions() {
 
 function getRecordList() {
   recordLoading.value = true
-  return listAutoInspectionRecord(recordQuery.value).then((res) => {
+  return listAutoInspectionRecord({ ...recordQuery.value, runMode: PLAN_MODE_ROUTINE }).then((res) => {
     recordList.value = res.rows || []
     recordTotal.value = res.total || 0
   }).finally(() => { recordLoading.value = false })
+}
+
+function getDailyHealth() {
+  const range = resolveMonthDateRange(dailyHealthMonth.value)
+  dailyHealthLoading.value = true
+  return listAutoInspectionDailyHealth({
+    beginDate: range.begin,
+    endDate: range.end,
+    planId: dailyHealthPlanId.value
+  }).then((res) => {
+    dailyHealthRows.value = res.data || []
+  }).finally(() => { dailyHealthLoading.value = false })
+}
+
+function refreshCurrentRecordView() {
+  if (recordViewMode.value === PLAN_MODE_FREQUENT) return getDailyHealth()
+  return getRecordList()
+}
+
+function openHealthSamples({ date, plan }) {
+  healthSampleContext.value = { date, plan }
+  healthSampleQuery.value.pageNum = 1
+  healthSampleDrawerOpen.value = true
+  getHealthSamples()
+}
+
+function getHealthSamples() {
+  const { date, plan } = healthSampleContext.value
+  if (!date || !plan?.planId) return Promise.resolve()
+  const nextDay = new Date(`${date}T00:00:00`)
+  nextDay.setDate(nextDay.getDate() + 1)
+  healthSampleLoading.value = true
+  return listAutoInspectionRecord({
+    ...healthSampleQuery.value,
+    planId: plan.planId,
+    sourceType: 'AUTO',
+    runMode: PLAN_MODE_FREQUENT,
+    beginTime: `${date} 00:00:00`,
+    endTime: `${formatDateParam(nextDay)} 00:00:00`
+  }).then((res) => {
+    healthSampleRows.value = res.rows || []
+    healthSampleTotal.value = res.total || 0
+  }).finally(() => { healthSampleLoading.value = false })
+}
+
+function resolveMonthDateRange(month) {
+  const matched = String(month || '').match(/^(\d{4})-(\d{2})$/)
+  const year = matched ? Number(matched[1]) : new Date().getFullYear()
+  const monthIndex = matched ? Number(matched[2]) - 1 : new Date().getMonth()
+  return {
+    begin: formatDateParam(new Date(year, monthIndex, 1)),
+    end: formatDateParam(new Date(year, monthIndex + 1, 0))
+  }
 }
 
 function getDashboard() {
@@ -3318,12 +3549,12 @@ function resetTargetQuery() {
 }
 
 function resetPlanQuery() {
-  planQuery.value = { pageNum: 1, pageSize: 10, planName: '', labelName: '', templateId: undefined, status: '' }
+  planQuery.value = { pageNum: 1, pageSize: 10, planName: '', labelName: '', templateId: undefined, planMode: '', status: '' }
   getPlanList()
 }
 
 function resetRecordQuery() {
-  recordQuery.value = { pageNum: 1, pageSize: 20, templateId: undefined, planId: undefined, sourceType: '', resultStatus: '' }
+  recordQuery.value = { pageNum: 1, pageSize: 20, templateId: undefined, planId: undefined, sourceType: '', resultStatus: '', runMode: PLAN_MODE_ROUTINE }
   getRecordList()
 }
 
@@ -3339,6 +3570,10 @@ function handleTargetTypeChange(type) {
   if (type === 'BIG_DATA_SERVER' && !targetForm.value.port) targetForm.value.port = BIG_DATA_DEFAULT_SSH_PORT
   if (type === 'BIG_DATA_SERVER' && !targetForm.value.username) targetForm.value.username = BIG_DATA_DEFAULT_USERNAME
   if (type === 'HTTP' && !targetForm.value.resultPath) targetForm.value.resultPath = 'data.total'
+  if (type === 'MQTT') {
+    targetForm.value.port = targetForm.value.port || 1883
+    targetForm.value.mqttConfig = normalizeMqttConfig(targetForm.value)
+  }
   if (type === 'DATABASE') {
     targetForm.value.databaseConfig = normalizeDatabaseConfig(targetForm.value)
     targetForm.value.port = targetForm.value.databaseConfig.databaseType === 'POSTGRESQL' ? 5432 : 3306
@@ -3356,6 +3591,7 @@ function handleUpdateTarget(row) {
     targetForm.value = target.targetType === 'DATABASE'
       ? hydrateDatabaseTarget(target, defaultTargetForm())
       : { ...defaultTargetForm(), ...target }
+    if (target.targetType === 'MQTT') targetForm.value.mqttConfig = normalizeMqttConfig(target)
     targetDialogOpen.value = true
   })
 }
@@ -3553,7 +3789,12 @@ function validateTargetBusiness(target) {
   if (target.targetType === 'KAFKA') {
     if (!String(target.host || '').trim()) return '请填写 Kafka Bootstrap 地址'
     if (!String(target.topic || '').trim()) return '请填写 Kafka Topic'
-    if (!String(target.consumerGroup || '').trim()) return '请填写 Kafka 消费组'
+    if (target.toolCode !== TOOL_KAFKA_TOPIC_ACTIVITY && !String(target.consumerGroup || '').trim()) return '请填写 Kafka 消费组'
+  }
+  if (target.targetType === 'MQTT') {
+    if (!String(target.host || '').trim()) return '请填写 MQTT Broker 地址'
+    if (!Number(target.port)) return '请填写 MQTT 端口'
+    if (!String(target.topic || '').trim()) return '请填写 MQTT Topic Filter'
   }
   if (target.targetType === 'HTTP') {
     if (!String(target.url || '').trim()) return '请填写接口 URL'
@@ -3616,6 +3857,18 @@ function cleanTargetPayload(target) {
     payload.secret = ''
     payload.resultPath = ''
     payload.extraParams = ''
+    payload.serverId = undefined
+  }
+  if (payload.targetType === 'MQTT') {
+    payload.port = payload.port || 1883
+    payload.path = ''
+    payload.url = ''
+    payload.httpMethod = 'POST'
+    payload.consumerGroup = ''
+    payload.appKey = ''
+    payload.secret = ''
+    payload.resultPath = ''
+    payload.extraParams = JSON.stringify(normalizeMqttConfig(payload))
     payload.serverId = undefined
   }
   if (payload.targetType === 'HTTP') {
@@ -3712,6 +3965,7 @@ function cleanTargetPayload(target) {
   delete payload._credentialReason
   delete payload._passwordVisible
   delete payload._secretVisible
+  delete payload.mqttConfig
   return payload
 }
 
@@ -4203,6 +4457,12 @@ function openStepDialog(index = null) {
   if (stepDraft.value.toolCode === TOOL_SERVER_SERVICE_STATUS) {
     ensureServiceStatusParams(stepDraft.value)
   }
+  if (isActivityTool(stepDraft.value.toolCode)) {
+    ensureActivityRule(stepDraft.value)
+  }
+  if (getTargetTypeByTool(stepDraft.value.toolCode) === 'MQTT') {
+    stepDraft.value.target.mqttConfig = normalizeMqttConfig(stepDraft.value.target)
+  }
   stepDialogOpen.value = true
 }
 
@@ -4291,6 +4551,9 @@ function handleStepToolChange(toolCode) {
   if (toolCode === TOOL_SERVER_SERVICE_STATUS) {
     ensureServiceStatusParams(draft)
   }
+  if (isActivityTool(toolCode)) {
+    ensureActivityRule(draft)
+  }
 }
 
 function submitStepDraft() {
@@ -4343,6 +4606,9 @@ function defaultStepForm(order, toolCode = '') {
   }
   if (step.toolCode === TOOL_SERVER_SERVICE_STATUS) {
     ensureServiceStatusParams(step)
+  }
+  if (isActivityTool(step.toolCode)) {
+    ensureActivityRule(step)
   }
   return step
 }
@@ -4448,6 +4714,44 @@ function defaultExecutionPolicy() {
   }
 }
 
+function isActivityTool(toolCode) {
+  return [TOOL_KAFKA_TOPIC_ACTIVITY, TOOL_KAFKA_CONSUMER_PROGRESS, TOOL_MQTT_TOPIC_ACTIVITY].includes(toolCode)
+}
+
+function defaultActivityRule() {
+  return { warningMinutes: 3, abnormalMinutes: 5, recoverySuccesses: 2 }
+}
+
+function normalizeActivityRule(rule = {}) {
+  const warningMinutes = Math.max(1, Math.min(1440, Number(rule.warningMinutes || 3)))
+  return {
+    warningMinutes,
+    abnormalMinutes: Math.max(warningMinutes, Math.min(10080, Number(rule.abnormalMinutes || 5))),
+    recoverySuccesses: Math.max(1, Math.min(20, Number(rule.recoverySuccesses || 2)))
+  }
+}
+
+function ensureActivityRule(step) {
+  if (!step.stepParams || typeof step.stepParams !== 'object') step.stepParams = {}
+  step.stepParams.activityRule = normalizeActivityRule(step.stepParams.activityRule)
+  return step.stepParams.activityRule
+}
+
+function defaultMqttConfig() {
+  return { protocol: 'tcp', qos: 1, keepAliveSeconds: 30, ignoreRetained: true, clientId: '' }
+}
+
+function normalizeMqttConfig(target = {}) {
+  const persisted = parseCronConfig(target.extraParams) || {}
+  const config = { ...persisted, ...(target.mqttConfig || {}) }
+  return {
+    ...defaultMqttConfig(),
+    ...config,
+    qos: Math.max(0, Math.min(2, Number(config.qos ?? 1))),
+    ignoreRetained: config.ignoreRetained !== false && config.ignoreRetained !== 'false'
+  }
+}
+
 function normalizeExecutionPolicy(policy = {}) {
   return {
     retryCount: Math.max(0, Math.min(Number(policy.retryCount || 0), 3)),
@@ -4474,6 +4778,7 @@ function applyToolDefaults(step, forceName = false) {
   step.targetIds = []
   const executionPolicy = normalizeExecutionPolicy(step.stepParams?.executionPolicy)
   step.stepParams = { executionPolicy }
+  if (isActivityTool(step.toolCode)) step.stepParams.activityRule = defaultActivityRule()
   if (getTargetTypeByTool(step.toolCode) === 'FTP') {
     ensureFtpStepParams(step)
   }
@@ -4485,6 +4790,9 @@ function applyToolDefaults(step, forceName = false) {
   }
   if (step.toolCode === TOOL_SERVER_SERVICE_STATUS) {
     ensureServiceStatusParams(step)
+  }
+  if (isActivityTool(step.toolCode)) {
+    ensureActivityRule(step)
   }
 }
 
@@ -4504,6 +4812,10 @@ function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
   if (targetType === 'DATABASE') {
     next.databaseConfig = normalizeDatabaseConfig(next)
     next.port = next.port || (next.databaseConfig.databaseType === 'POSTGRESQL' ? 5432 : 3306)
+  }
+  if (targetType === 'MQTT') {
+    next.port = next.port || 1883
+    next.mqttConfig = normalizeMqttConfig(next)
   }
   if (targetType === 'BIG_DATA_SERVER') {
     next.port = next.port || BIG_DATA_DEFAULT_SSH_PORT
@@ -4572,6 +4884,7 @@ function normalizeStepForSave(step) {
   next.target = normalizeStepTarget(next.target, next.toolCode, next.stepName)
   next.targetIds = next.target?.targetId ? [next.target.targetId] : []
   next.stepParams = { executionPolicy }
+  if (isActivityTool(next.toolCode)) next.stepParams.activityRule = normalizeActivityRule(step.stepParams?.activityRule)
   return next
 }
 
@@ -4591,12 +4904,14 @@ function validateStepDraft(step) {
     ensureServiceStatusParams(step)
     return validateServiceStatusTargets(step.stepParams?.serverTargets || [])
   }
+  if (isActivityTool(step.toolCode)) ensureActivityRule(step)
   const target = normalizeStepTarget(step.target, step.toolCode, step.stepName)
   return validateTargetBusiness(target)
 }
 
 function getTargetTypeByTool(toolCode) {
-  if (toolCode === 'KAFKA_LAG') return 'KAFKA'
+  if (['KAFKA_LAG', TOOL_KAFKA_TOPIC_ACTIVITY, TOOL_KAFKA_CONSUMER_PROGRESS].includes(toolCode)) return 'KAFKA'
+  if (toolCode === TOOL_MQTT_TOPIC_ACTIVITY) return 'MQTT'
   if (toolCode === 'HTTP_COUNT' || toolCode === TOOL_HTTP_HEALTH || toolCode === TOOL_HTTP_API_TEST) return 'HTTP'
   if (toolCode === TOOL_DATABASE_QUERY) return 'DATABASE'
   if (toolCode === 'FTP_FILE_COUNT') return 'FTP'
@@ -5062,6 +5377,8 @@ function handleUpdatePlan(row) {
   getAutoInspectionPlan(row.planId).then((res) => {
     const data = { ...defaultPlanForm(), ...res.data }
     data.cronConfig = parseCronConfig(data.cronConfig) || defaultPlanForm().cronConfig
+    data.healthConfig = normalizePlanHealthConfig(data.healthConfig)
+    data.planMode = data.planMode === PLAN_MODE_FREQUENT ? PLAN_MODE_FREQUENT : PLAN_MODE_ROUTINE
     planForm.value = data
     refreshPlanCron()
     planDialogOpen.value = true
@@ -5081,6 +5398,15 @@ function submitPlan() {
       getPlanOptions()
     }).finally(() => { planSubmitLoading.value = false })
   })
+}
+
+function handlePlanModeChange(mode) {
+  if (mode === PLAN_MODE_FREQUENT) {
+    planForm.value.cronConfig.type = 'interval'
+    planForm.value.cronConfig.intervalUnit = 'minute'
+    if (!planForm.value.cronConfig.interval || planForm.value.cronConfig.interval > 59) planForm.value.cronConfig.interval = 5
+  }
+  refreshPlanCron()
 }
 
 function handlePlanStatusChange(row) {
@@ -5162,6 +5488,7 @@ function escapeHtml(value) {
 
 function refreshPlanCron() {
   const cfg = planForm.value.cronConfig
+  if (planForm.value.planMode === PLAN_MODE_FREQUENT) cfg.type = 'interval'
   const [hour, minute, second] = (cfg.time || '08:00:00').split(':')
   if (cfg.type === 'daily') planForm.value.cronExpression = `${second || '0'} ${minute || '0'} ${hour || '8'} * * ?`
   if (cfg.type === 'weekly') planForm.value.cronExpression = `${second || '0'} ${minute || '0'} ${hour || '8'} ? * ${(cfg.weekDays?.length ? cfg.weekDays : ['MON']).join(',')}`
@@ -5175,7 +5502,8 @@ function refreshPlanCron() {
 function compatibleTargets(step) {
   const tool = toolList.value.find((item) => item.toolCode === step.toolCode)
   if (!tool) return targetOptions.value
-  if (tool.toolType === 'KAFKA_LAG') return targetOptions.value.filter((item) => item.targetType === 'KAFKA')
+  if (['KAFKA_LAG', TOOL_KAFKA_TOPIC_ACTIVITY, TOOL_KAFKA_CONSUMER_PROGRESS].includes(tool.toolType)) return targetOptions.value.filter((item) => item.targetType === 'KAFKA')
+  if (tool.toolType === TOOL_MQTT_TOPIC_ACTIVITY) return targetOptions.value.filter((item) => item.targetType === 'MQTT')
   if (['HTTP_COUNT', TOOL_HTTP_HEALTH, TOOL_HTTP_API_TEST].includes(tool.toolType)) return targetOptions.value.filter((item) => item.targetType === 'HTTP')
   if (tool.toolType === TOOL_DATABASE_QUERY) return targetOptions.value.filter((item) => item.targetType === 'DATABASE')
   if (tool.toolType === 'FTP_FILE_COUNT') return targetOptions.value.filter((item) => item.targetType === 'FTP')
@@ -5257,7 +5585,7 @@ function normalizeStepFromServer(step) {
 }
 
 function defaultTargetForm() {
-  return { targetName: '', targetType: 'KAFKA', serverId: undefined, host: '', port: undefined, path: '', url: '', httpMethod: 'POST', topic: '', consumerGroup: '', username: '', password: '', appKey: '', secret: '', resultPath: 'data.total', extraParams: '', apiConfig: defaultApiTestConfig(), databaseConfig: defaultDatabaseConfig(), status: '0', remark: '', _passwordVisible: false, _secretVisible: false }
+  return { targetName: '', targetType: 'KAFKA', serverId: undefined, host: '', port: undefined, path: '', url: '', httpMethod: 'POST', topic: '', consumerGroup: '', username: '', password: '', appKey: '', secret: '', resultPath: 'data.total', extraParams: '', apiConfig: defaultApiTestConfig(), databaseConfig: defaultDatabaseConfig(), mqttConfig: undefined, status: '0', remark: '', _passwordVisible: false, _secretVisible: false }
 }
 
 function defaultTemplateForm() {
@@ -5265,7 +5593,26 @@ function defaultTemplateForm() {
 }
 
 function defaultPlanForm() {
-  return { planName: '', labelName: '', templateId: undefined, reportStyle: 'STANDARD', status: '0', cronExpression: '', cronConfig: { type: 'daily', time: '08:00:00', weekDays: ['MON'], monthDays: [1], interval: 10, intervalUnit: 'minute' }, remark: '' }
+  return {
+    planName: '',
+    labelName: '',
+    templateId: undefined,
+    planMode: PLAN_MODE_ROUTINE,
+    reportStyle: 'STANDARD',
+    status: '0',
+    cronExpression: '',
+    cronConfig: { type: 'daily', time: '08:00:00', weekDays: ['MON'], monthDays: [1], interval: 5, intervalUnit: 'minute' },
+    healthConfig: defaultPlanHealthConfig(),
+    remark: ''
+  }
+}
+
+function defaultPlanHealthConfig() {
+  return { activeStartTime: '00:00', activeEndTime: '23:59', dataDelayMinutes: 0, healthTarget: 99, retentionDays: 7, abnormalRetentionDays: 90 }
+}
+
+function normalizePlanHealthConfig(value) {
+  return { ...defaultPlanHealthConfig(), ...(parseCronConfig(value) || value || {}) }
 }
 
 function defaultDashboardData() {
@@ -5372,7 +5719,7 @@ function getToolGuide(toolCode) {
 }
 
 function getToolCategory(toolCode) {
-  if (toolCode === 'KAFKA_LAG') return '消息队列'
+  if (['KAFKA_LAG', TOOL_KAFKA_TOPIC_ACTIVITY, TOOL_KAFKA_CONSUMER_PROGRESS, TOOL_MQTT_TOPIC_ACTIVITY].includes(toolCode)) return '消息队列'
   if (['HTTP_COUNT', TOOL_HTTP_HEALTH, TOOL_HTTP_API_TEST].includes(toolCode)) return 'HTTP接口'
   if (toolCode === TOOL_DATABASE_QUERY) return '数据库'
   if (toolCode === 'FTP_FILE_COUNT') return '文件目录'
@@ -5386,7 +5733,7 @@ function getToolTreeCategory(toolCode) {
 }
 
 function getToolTagType(toolCode) {
-  if (toolCode === 'KAFKA_LAG') return 'warning'
+  if (['KAFKA_LAG', TOOL_KAFKA_TOPIC_ACTIVITY, TOOL_KAFKA_CONSUMER_PROGRESS, TOOL_MQTT_TOPIC_ACTIVITY].includes(toolCode)) return 'warning'
   if (['HTTP_COUNT', TOOL_HTTP_HEALTH, TOOL_HTTP_API_TEST].includes(toolCode)) return 'success'
   if (toolCode === TOOL_DATABASE_QUERY) return 'warning'
   if (toolCode === 'FTP_FILE_COUNT') return 'info'
@@ -5402,6 +5749,7 @@ function formatTargetAddress(row) {
   if (row.targetType === 'HTTP') return row.url || '-'
   if (row.targetType === 'DATABASE') return `${row.host || '-'}:${row.port || '-'} / ${row.path || '-'}`
   if (row.targetType === 'KAFKA') return `${row.host || '-'} ${row.topic || ''} ${row.consumerGroup || ''}`
+  if (row.targetType === 'MQTT') return `${row.host || '-'}:${row.port || 1883} ${row.topic || ''}`
   return `${row.host || '-'}:${row.port || ''}${row.path ? ' ' + row.path : ''}`
 }
 
@@ -5496,6 +5844,13 @@ function getStepDetailItems(step) {
     )
   } else if (target.targetType === 'KAFKA') {
     items.push({ label: 'Topic', value: target.topic || '-' }, { label: '消费组', value: target.consumerGroup || '-' })
+  } else if (target.targetType === 'MQTT') {
+    const config = normalizeMqttConfig(target)
+    items.push(
+      { label: 'Broker', value: `${target.host || '-'}:${target.port || 1883}` },
+      { label: 'Topic Filter', value: target.topic || '-' },
+      { label: '订阅参数', value: `QoS ${config.qos} · ${config.ignoreRetained ? '忽略保留消息' : '计入保留消息'}` }
+    )
   } else if (target.targetType === 'HTTP') {
     items.push({ label: '请求方法', value: target.httpMethod || (step.toolCode === TOOL_HTTP_HEALTH ? 'GET' : 'POST') })
     if (step.toolCode === TOOL_HTTP_HEALTH) {
@@ -5535,6 +5890,10 @@ function getStepDetailItems(step) {
       { label: '服务器数量', value: `${step.stepParams?.serverTargets?.length || step.targets?.length || 0} 台` },
       { label: '临时文件系统', value: step.stepParams?.includePseudo === 'true' ? '包含' : '过滤' }
     )
+  }
+  if (isActivityTool(step.toolCode)) {
+    const rule = normalizeActivityRule(step.stepParams?.activityRule)
+    items.push({ label: '活性规则', value: `${rule.warningMinutes}分钟关注 / ${rule.abnormalMinutes}分钟异常 / 连续${rule.recoverySuccesses}次恢复` })
   }
   return items
 }
@@ -5588,6 +5947,11 @@ function isServiceStatusResult(row) {
 function formatStepThreshold(row) {
   if (isServiceStatusResult(row)) return '期望 active (running)，非 active 告警'
   if (row?.toolCode === TOOL_HTTP_API_TEST || row?.toolType === TOOL_HTTP_API_TEST) return '所有条件满足，任一不满足告警'
+  if (isActivityTool(row?.toolCode || row?.toolType)) {
+    const params = parseCronConfig(row?.stepParams) || row?.stepParams || {}
+    const rule = normalizeActivityRule(params.activityRule)
+    return `${rule.warningMinutes}分钟关注，${rule.abnormalMinutes}分钟异常，连续${rule.recoverySuccesses}次恢复`
+  }
   if (!row) return '-'
   if (row.thresholdValue === undefined || row.thresholdValue === null || row.thresholdValue === '') return '-'
   return `${row.compareRule === 'MIN' ? '不低于' : '不高于'} ${row.thresholdValue}${row.thresholdUnit || ''}`
@@ -5644,12 +6008,14 @@ function formatTargetResultDetail(row) {
 function formatResult(value) {
   if (value === '1') return '正常'
   if (value === '2') return '异常'
+  if (value === '4') return '关注'
   return '未检测'
 }
 
 function resultTagType(value) {
   if (value === '1') return 'success'
   if (value === '2') return 'danger'
+  if (value === '4') return 'warning'
   return 'info'
 }
 </script>
@@ -5951,8 +6317,44 @@ function resultTagType(value) {
 
 .record-board__actions {
   display: flex;
+  align-items: center;
   flex: 0 0 auto;
   gap: 8px;
+}
+
+.record-board__actions :deep(.el-segmented) {
+  --el-segmented-item-selected-bg-color: #fff;
+  --el-segmented-item-selected-color: #2477df;
+  min-width: 270px;
+}
+
+.health-sample-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 14px;
+  border: 1px solid #e1e9f3;
+  background: #f8fafc;
+}
+
+.health-sample-summary > span {
+  display: grid;
+  gap: 4px;
+  padding: 12px 16px;
+  border-right: 1px solid #e1e9f3;
+}
+
+.health-sample-summary > span:last-child {
+  border-right: 0;
+}
+
+.health-sample-summary label {
+  color: #7a8ca3;
+  font-size: 12px;
+}
+
+.health-sample-summary strong {
+  color: #23476e;
+  font-size: 17px;
 }
 
 .record-table--daily {
@@ -7733,6 +8135,35 @@ function resultTagType(value) {
   gap: 8px;
 }
 
+.activity-rule-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.activity-rule-grid label {
+  display: grid;
+  grid-template-columns: 66px minmax(0, 1fr) 92px;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid #dfe8f2;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.activity-rule-grid span,
+.activity-rule-grid em {
+  color: #60758f;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.activity-rule-grid :deep(.el-input-number) {
+  width: 100%;
+}
+
 .service-rule-card {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -8567,6 +8998,29 @@ function resultTagType(value) {
   }
 }
 
+:global(.template-flow-dialog.el-dialog),
+:global(.step-dialog.el-dialog) {
+  display: flex;
+  flex-direction: column;
+  max-width: 96vw;
+  max-height: 92vh;
+  margin-top: 4vh !important;
+}
+
+:global(.template-flow-dialog.el-dialog .el-dialog__body),
+:global(.step-dialog.el-dialog .el-dialog__body) {
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+
+:global(.template-flow-dialog.el-dialog .el-dialog__header),
+:global(.template-flow-dialog.el-dialog .el-dialog__footer),
+:global(.step-dialog.el-dialog .el-dialog__header),
+:global(.step-dialog.el-dialog .el-dialog__footer) {
+  flex: 0 0 auto;
+}
+
 .step-stage {
   scroll-margin-top: 64px;
 }
@@ -8680,6 +9134,56 @@ function resultTagType(value) {
   width: 100%;
   display: grid;
   gap: 12px;
+}
+
+.plan-mode-section {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border-bottom: 1px solid #e4ebf4;
+  background: #f8fafc;
+
+  :deep(.el-form-item) {
+    margin-bottom: 0;
+  }
+
+  > span {
+    color: #72859d;
+    font-size: 12px;
+  }
+}
+
+.plan-health-config {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #dfe8f2;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.plan-health-config label {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-health-config label > span,
+.plan-health-config label > em {
+  color: #60758f;
+  font-size: 12px;
+  font-style: normal;
+}
+
+.plan-health-config :deep(.el-input-number),
+.plan-health-config :deep(.el-select),
+.plan-health-config :deep(.el-date-editor) {
+  width: 100%;
 }
 
 .schedule-form {

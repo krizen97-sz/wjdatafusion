@@ -278,6 +278,11 @@
         delete from sup_auto_inspection_template_step where template_id = #{templateId}
     </delete>
 
+    <delete id="deleteProbeStatesByTemplateId" parameterType="Long">
+        delete from sup_auto_inspection_probe_state
+        where step_id in (select step_id from sup_auto_inspection_template_step where template_id = #{templateId})
+    </delete>
+
     <select id="selectStepTargetsByTemplateId" parameterType="Long" resultType="java.util.HashMap">
         select st.step_target_id as stepTargetId, st.step_id as stepId, st.target_id as targetId
         from sup_auto_inspection_template_step_target st
@@ -299,16 +304,19 @@
 
     <select id="selectPlanList" parameterType="java.util.HashMap" resultType="java.util.HashMap">
         select p.plan_id as planId, p.template_id as templateId, t.template_name as templateName,
-               p.plan_name as planName, p.label_name as labelName, p.cron_expression as cronExpression,
-               p.cron_config as cronConfig, p.job_id as jobId, p.report_style as reportStyle,
+               p.plan_name as planName, p.label_name as labelName, p.plan_mode as planMode,
+               p.cron_expression as cronExpression, p.cron_config as cronConfig,
+               p.health_config as healthConfig, p.job_id as jobId, p.report_style as reportStyle,
                p.status, p.create_by as createBy, p.create_time as createTime,
                p.update_by as updateBy, p.update_time as updateTime, p.remark,
                (select count(1) from sup_auto_inspection_template_step s where s.template_id = p.template_id and s.enabled_flag = 'Y') as stepCount
         from sup_auto_inspection_plan p
         left join sup_auto_inspection_template t on t.template_id = p.template_id
         <where>
+            <if test="planId != null">and p.plan_id = #{planId}</if>
             <if test="planName != null and planName != ''">and p.plan_name like concat('%', #{planName}, '%')</if>
             <if test="labelName != null and labelName != ''">and p.label_name = #{labelName}</if>
+            <if test="planMode != null and planMode != ''">and p.plan_mode = #{planMode}</if>
             <if test="templateId != null and templateId != ''">and p.template_id = #{templateId}</if>
             <if test="status != null and status != ''">and p.status = #{status}</if>
             <if test="reportStyle != null and reportStyle != ''">and p.report_style = #{reportStyle}</if>
@@ -318,8 +326,9 @@
 
     <select id="selectPlanById" parameterType="Long" resultType="java.util.HashMap">
         select p.plan_id as planId, p.template_id as templateId, t.template_name as templateName,
-               p.plan_name as planName, p.label_name as labelName, p.cron_expression as cronExpression,
-               p.cron_config as cronConfig, p.job_id as jobId, p.report_style as reportStyle,
+               p.plan_name as planName, p.label_name as labelName, p.plan_mode as planMode,
+               p.cron_expression as cronExpression, p.cron_config as cronConfig,
+               p.health_config as healthConfig, p.job_id as jobId, p.report_style as reportStyle,
                p.status, p.create_by as createBy, p.create_time as createTime,
                p.update_by as updateBy, p.update_time as updateTime, p.remark
         from sup_auto_inspection_plan p
@@ -329,10 +338,10 @@
 
     <insert id="insertPlan" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="planId">
         insert into sup_auto_inspection_plan(
-            template_id, plan_name, label_name, cron_expression, cron_config, job_id,
+            template_id, plan_name, label_name, plan_mode, cron_expression, cron_config, health_config, job_id,
             report_style, status, create_by, create_time, update_by, update_time, remark
         ) values (
-            #{templateId}, #{planName}, #{labelName}, #{cronExpression}, #{cronConfig}, #{jobId},
+            #{templateId}, #{planName}, #{labelName}, #{planMode}, #{cronExpression}, #{cronConfig}, #{healthConfig}, #{jobId},
             #{reportStyle}, #{status}, #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
         )
     </insert>
@@ -343,8 +352,10 @@
             <if test="templateId != null">template_id = #{templateId},</if>
             <if test="planName != null and planName != ''">plan_name = #{planName},</if>
             <if test="labelName != null">label_name = #{labelName},</if>
+            <if test="planMode != null and planMode != ''">plan_mode = #{planMode},</if>
             <if test="cronExpression != null and cronExpression != ''">cron_expression = #{cronExpression},</if>
             <if test="cronConfig != null">cron_config = #{cronConfig},</if>
+            <if test="healthConfig != null">health_config = #{healthConfig},</if>
             <if test="jobId != null">job_id = #{jobId},</if>
             <if test="reportStyle != null and reportStyle != ''">report_style = #{reportStyle},</if>
             <if test="status != null and status != ''">status = #{status},</if>
@@ -369,13 +380,22 @@
         delete from sup_auto_inspection_plan where plan_id = #{planId}
     </delete>
 
+    <delete id="deleteProbeStatesByPlanId" parameterType="Long">
+        delete from sup_auto_inspection_probe_state where plan_id = #{planId}
+    </delete>
+
+    <delete id="deleteDailyHealthByPlanId" parameterType="Long">
+        delete from sup_auto_inspection_health_daily where plan_id = #{planId}
+    </delete>
+
     <select id="selectRecordList" parameterType="java.util.HashMap" resultType="java.util.HashMap">
         select record_id as recordId, inspection_time as inspectionTime, source_type as sourceType,
+               run_mode as runMode, schedule_slot_time as scheduleSlotTime, duration_ms as durationMs,
                result_status as resultStatus, executor_name as executorName,
                template_id as templateId, template_name as templateName,
                plan_id as planId, plan_name as planName, report_style as reportStyle,
                enabled_step_count as enabledStepCount, skipped_step_count as skippedStepCount,
-               target_count as targetCount, abnormal_count as abnormalCount,
+               target_count as targetCount, abnormal_count as abnormalCount, warning_count as warningCount,
                summary, abnormal_summary as abnormalSummary,
                create_by as createBy, create_time as createTime,
                update_by as updateBy, update_time as updateTime, remark
@@ -388,6 +408,8 @@
                 </foreach>
             </if>
             <if test="sourceType != null and sourceType != ''">and source_type = #{sourceType}</if>
+            <if test="runMode != null and runMode == 'ROUTINE'">and (run_mode is null or run_mode = 'ROUTINE')</if>
+            <if test="runMode != null and runMode != '' and runMode != 'ROUTINE'">and run_mode = #{runMode}</if>
             <if test="resultStatus != null and resultStatus != ''">and result_status = #{resultStatus}</if>
             <if test="templateId != null">and template_id = #{templateId}</if>
             <if test="planId != null">and plan_id = #{planId}</if>
@@ -402,11 +424,12 @@
 
     <select id="selectRecordById" parameterType="Long" resultType="java.util.HashMap">
         select record_id as recordId, inspection_time as inspectionTime, source_type as sourceType,
+               run_mode as runMode, schedule_slot_time as scheduleSlotTime, duration_ms as durationMs,
                result_status as resultStatus, executor_name as executorName,
                template_id as templateId, template_name as templateName,
                plan_id as planId, plan_name as planName, report_style as reportStyle,
                enabled_step_count as enabledStepCount, skipped_step_count as skippedStepCount,
-               target_count as targetCount, abnormal_count as abnormalCount,
+               target_count as targetCount, abnormal_count as abnormalCount, warning_count as warningCount,
                summary, abnormal_summary as abnormalSummary,
                create_by as createBy, create_time as createTime,
                update_by as updateBy, update_time as updateTime, remark
@@ -414,16 +437,39 @@
         where record_id = #{recordId}
     </select>
 
+    <select id="selectRecordByPlanSlot" resultType="java.util.HashMap">
+        select record_id as recordId
+        from sup_auto_inspection_record
+        where plan_id = #{planId} and schedule_slot_time = #{scheduleSlotTime}
+        limit 1
+    </select>
+
     <insert id="insertRecord" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="recordId">
         insert into sup_auto_inspection_record(
-            inspection_time, source_type, result_status, executor_name,
+            inspection_time, source_type, run_mode, schedule_slot_time, duration_ms,
+            result_status, executor_name,
             template_id, template_name, plan_id, plan_name, report_style,
-            enabled_step_count, skipped_step_count, target_count, abnormal_count,
+            enabled_step_count, skipped_step_count, target_count, abnormal_count, warning_count,
             summary, abnormal_summary, create_by, create_time, update_by, update_time, remark
         ) values (
-            #{inspectionTime}, #{sourceType}, #{resultStatus}, #{executorName},
+            #{inspectionTime}, #{sourceType}, #{runMode}, #{scheduleSlotTime}, #{durationMs},
+            #{resultStatus}, #{executorName},
             #{templateId}, #{templateName}, #{planId}, #{planName}, #{reportStyle},
-            #{enabledStepCount}, #{skippedStepCount}, #{targetCount}, #{abnormalCount},
+            #{enabledStepCount}, #{skippedStepCount}, #{targetCount}, #{abnormalCount}, #{warningCount},
+            #{summary}, #{abnormalSummary}, #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
+        )
+    </insert>
+
+    <insert id="insertFrequentRecord" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="recordId">
+        insert ignore into sup_auto_inspection_record(
+            inspection_time, source_type, run_mode, schedule_slot_time, duration_ms,
+            result_status, executor_name, template_id, template_name, plan_id, plan_name, report_style,
+            enabled_step_count, skipped_step_count, target_count, abnormal_count, warning_count,
+            summary, abnormal_summary, create_by, create_time, update_by, update_time, remark
+        ) values (
+            #{inspectionTime}, #{sourceType}, #{runMode}, #{scheduleSlotTime}, #{durationMs},
+            #{resultStatus}, #{executorName}, #{templateId}, #{templateName}, #{planId}, #{planName}, #{reportStyle},
+            #{enabledStepCount}, #{skippedStepCount}, #{targetCount}, #{abnormalCount}, #{warningCount},
             #{summary}, #{abnormalSummary}, #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
         )
     </insert>
@@ -435,6 +481,8 @@
             skipped_step_count = #{skippedStepCount},
             target_count = #{targetCount},
             abnormal_count = #{abnormalCount},
+            warning_count = #{warningCount},
+            duration_ms = #{durationMs},
             summary = #{summary},
             abnormal_summary = #{abnormalSummary},
             update_by = #{updateBy},
@@ -537,4 +585,122 @@
             #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
         )
     </insert>
+
+    <select id="selectProbeState" resultType="java.util.HashMap">
+        select state_id as stateId, plan_id as planId, step_id as stepId, target_id as targetId,
+               tool_code as toolCode, primary_value as primaryValue, secondary_value as secondaryValue,
+               observed_at as observedAt, last_activity_at as lastActivityAt,
+               abnormal_streak as abnormalStreak, normal_streak as normalStreak,
+               state_status as stateStatus, state_detail as stateDetail,
+               create_by as createBy, create_time as createTime,
+               update_by as updateBy, update_time as updateTime
+        from sup_auto_inspection_probe_state
+        where plan_id = #{planId} and step_id = #{stepId} and target_id = #{targetId} and tool_code = #{toolCode}
+        limit 1
+    </select>
+
+    <insert id="upsertProbeState" parameterType="java.util.HashMap">
+        insert into sup_auto_inspection_probe_state(
+            plan_id, step_id, target_id, tool_code, primary_value, secondary_value,
+            observed_at, last_activity_at, abnormal_streak, normal_streak,
+            state_status, state_detail, create_by, create_time, update_by, update_time
+        ) values (
+            #{planId}, #{stepId}, #{targetId}, #{toolCode}, #{primaryValue}, #{secondaryValue},
+            #{observedAt}, #{lastActivityAt}, #{abnormalStreak}, #{normalStreak},
+            #{stateStatus}, #{stateDetail}, #{createBy}, #{createTime}, #{updateBy}, #{updateTime}
+        )
+        on duplicate key update
+            primary_value = values(primary_value), secondary_value = values(secondary_value),
+            observed_at = values(observed_at), last_activity_at = values(last_activity_at),
+            abnormal_streak = values(abnormal_streak), normal_streak = values(normal_streak),
+            state_status = values(state_status), state_detail = values(state_detail),
+            update_by = values(update_by), update_time = values(update_time)
+    </insert>
+
+    <select id="selectDailyHealthStats" parameterType="java.util.HashMap" resultType="java.util.HashMap">
+        select count(1) as completedCount,
+               sum(case when result_status = '1' then 1 else 0 end) as normalCount,
+               sum(case when result_status = '4' then 1 else 0 end) as warningCount,
+               sum(case when result_status = '2' then 1 else 0 end) as abnormalCount,
+               sum(case when result_status = '3' then 1 else 0 end) as skippedCount,
+               min(case when result_status = '2' then inspection_time end) as firstAbnormalTime,
+               max(case when result_status = '2' then inspection_time end) as lastAbnormalTime,
+               max(inspection_time) as lastRunTime,
+               substring_index(group_concat(result_status order by inspection_time desc, record_id desc), ',', 1) as lastResultStatus,
+               substring_index(group_concat(case when result_status in ('2', '4') then abnormal_summary end order by inspection_time desc, record_id desc separator '||'), '||', 1) as abnormalSummary
+        from sup_auto_inspection_record
+        where plan_id = #{planId} and run_mode = 'FREQUENT' and source_type = 'AUTO'
+          and inspection_time &gt;= #{beginTime} and inspection_time &lt; #{endTime}
+    </select>
+
+    <insert id="upsertDailyHealth" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="summaryId">
+        insert into sup_auto_inspection_health_daily(
+            health_date, plan_id, plan_name, template_id, template_name,
+            expected_count, completed_count, normal_count, warning_count,
+            abnormal_count, skipped_count, missing_count, health_score, health_target,
+            day_status, first_abnormal_time, last_abnormal_time, last_run_time,
+            last_result_status, abnormal_summary, create_by, create_time, update_by, update_time
+        ) values (
+            #{healthDate}, #{planId}, #{planName}, #{templateId}, #{templateName},
+            #{expectedCount}, #{completedCount}, #{normalCount}, #{warningCount},
+            #{abnormalCount}, #{skippedCount}, #{missingCount}, #{healthScore}, #{healthTarget},
+            #{dayStatus}, #{firstAbnormalTime}, #{lastAbnormalTime}, #{lastRunTime},
+            #{lastResultStatus}, #{abnormalSummary}, #{createBy}, #{createTime}, #{updateBy}, #{updateTime}
+        )
+        on duplicate key update
+            plan_name = values(plan_name), template_id = values(template_id), template_name = values(template_name),
+            expected_count = values(expected_count), completed_count = values(completed_count),
+            normal_count = values(normal_count), warning_count = values(warning_count),
+            abnormal_count = values(abnormal_count), skipped_count = values(skipped_count),
+            missing_count = values(missing_count), health_score = values(health_score),
+            health_target = values(health_target), day_status = values(day_status),
+            first_abnormal_time = values(first_abnormal_time), last_abnormal_time = values(last_abnormal_time),
+            last_run_time = values(last_run_time), last_result_status = values(last_result_status),
+            abnormal_summary = values(abnormal_summary), update_by = values(update_by), update_time = values(update_time)
+    </insert>
+
+    <select id="selectDailyHealthList" parameterType="java.util.HashMap" resultType="java.util.HashMap">
+        select summary_id as summaryId, health_date as healthDate, plan_id as planId, plan_name as planName,
+               template_id as templateId, template_name as templateName,
+               expected_count as expectedCount, completed_count as completedCount,
+               normal_count as normalCount, warning_count as warningCount,
+               abnormal_count as abnormalCount, skipped_count as skippedCount,
+               missing_count as missingCount, health_score as healthScore, health_target as healthTarget,
+               day_status as dayStatus, first_abnormal_time as firstAbnormalTime,
+               last_abnormal_time as lastAbnormalTime, last_run_time as lastRunTime,
+               last_result_status as lastResultStatus, abnormal_summary as abnormalSummary,
+               create_by as createBy, create_time as createTime, update_by as updateBy, update_time as updateTime
+        from sup_auto_inspection_health_daily
+        <where>
+            <if test="planId != null">and plan_id = #{planId}</if>
+            <if test="beginDate != null">and health_date &gt;= #{beginDate}</if>
+            <if test="endDate != null">and health_date &lt;= #{endDate}</if>
+        </where>
+        order by health_date desc, plan_name asc, plan_id asc
+    </select>
+
+    <select id="selectExpiredFrequentRecordIds" resultType="Long">
+        select record_id
+        from sup_auto_inspection_record
+        where run_mode = 'FREQUENT'
+          and ((result_status in ('1', '3', '4') and inspection_time &lt; #{normalBefore})
+            or (result_status = '2' and inspection_time &lt; #{abnormalBefore}))
+        order by record_id asc
+        limit 1000
+    </select>
+
+    <delete id="deleteTargetResultsByRecordIds">
+        delete from sup_auto_inspection_target_result where record_id in
+        <foreach collection="recordIds" item="recordId" open="(" separator="," close=")">#{recordId}</foreach>
+    </delete>
+
+    <delete id="deleteStepResultsByRecordIds">
+        delete from sup_auto_inspection_step_result where record_id in
+        <foreach collection="recordIds" item="recordId" open="(" separator="," close=")">#{recordId}</foreach>
+    </delete>
+
+    <delete id="deleteRecordsByIds">
+        delete from sup_auto_inspection_record where record_id in
+        <foreach collection="recordIds" item="recordId" open="(" separator="," close=")">#{recordId}</foreach>
+    </delete>
 </mapper>

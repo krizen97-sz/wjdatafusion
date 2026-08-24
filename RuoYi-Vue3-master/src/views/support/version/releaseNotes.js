@@ -1,5 +1,32 @@
 export const releaseNotes = [
   {
+    version: 'v3.13.0',
+    submitTime: '2026-08-24 10:51:36',
+    level: 'minor',
+    levelLabel: '小版本',
+    tagType: 'primary',
+    title: '高频健康监测与消息活性巡检',
+    summary: '在现有工具、模板、计划和记录闭环内增加计划级高频监测模式，以天为单位汇总分钟级巡检健康度，并新增Kafka断流、Kafka消费停滞和MQTT持续监听能力。',
+    changes: [
+      '巡检计划新增“例行巡检 / 高频监测”模式；同一模板可由不同计划复用，例行计划继续生成完整记录，高频计划按分钟或小时执行并按天汇总。',
+      '高频计划支持生效时段、数据等待和健康目标，执行时间按计划间隔归一化为采样时隙，同一计划同一时隙自动去重，暂停时不继续累计应执行次数。',
+      '新增Kafka主题写入中断检测，通过分区末端Offset变化判断持续无写入；新增Kafka消费停滞检测，区分上游无数据与上游增长但消费位点不推进。',
+      '新增MQTT主题活跃度检测，使用本地打包的Eclipse Paho客户端维护后台持续订阅，记录最后消息时间，并区分MQTT监听失败与业务静默。',
+      '三种活性工具统一使用“首次基线、进入关注、确认异常、恢复确认”状态机；目标测试只验证连接和采样能力，正式高频计划才持续累计状态。',
+      '巡检总览新增“高频每日健康”视图，每天只展示一条汇总结论，可展开当天各计划，并通过采样抽屉查看最近原始执行明细；当天异常恢复后仍保留“异常已恢复”。',
+      '例行巡检列表、原看板和周月报默认排除高频原始采样，避免分钟级数据挤占既有业务视图；正常采样与异常采样按不同保留周期自动清理。',
+      '计划和步骤弹窗完成桌面端视口约束，配置内容独立滚动；MQTT Broker、Topic Filter、QoS、账号密码与活性规则保持紧凑可读。',
+      '新增高频目标状态表与每日健康汇总表，补充计划模式、健康配置、记录模式、采样时隙、耗时和关注数量字段，历史计划与记录统一兼容为例行模式。'
+    ],
+    scope: ['自动化巡检', '高频监测', '每日健康', 'Kafka', 'MQTT', '若依定时任务', '巡检计划', '巡检记录', '离线依赖', '数据库脚本', '版本记录'],
+    database: 'sup_auto_inspection_plan新增plan_mode、health_config；sup_auto_inspection_record新增run_mode、schedule_slot_time、duration_ms、warning_count及采样时隙索引；新增sup_auto_inspection_probe_state和sup_auto_inspection_health_daily。升级脚本保留原有数据并可重复执行。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260824_auto_inspection_high_frequency_health_v3_13_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v3.12.1',
     submitTime: '2026-08-22 13:18:48',
     level: 'patch',

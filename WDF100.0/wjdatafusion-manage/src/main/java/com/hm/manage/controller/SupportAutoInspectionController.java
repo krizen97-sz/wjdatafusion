@@ -23,6 +23,7 @@ import com.hm.manage.domain.SupportAutoInspectionTarget;
 import com.hm.manage.domain.SupportAutoInspectionTemplate;
 import com.hm.manage.domain.SupportAutoInspectionTool;
 import com.hm.manage.domain.bo.AutoInspectionDashboardQuery;
+import com.hm.manage.domain.bo.AutoInspectionHealthQuery;
 import com.hm.manage.domain.bo.AutoInspectionRecordQuery;
 import com.hm.manage.domain.bo.AutoInspectionReportExportBo;
 import com.hm.manage.domain.bo.AutoInspectionServerCredentialBatchBo;
@@ -194,6 +195,13 @@ public class SupportAutoInspectionController extends BaseController
     public AjaxResult dashboard(AutoInspectionDashboardQuery query)
     {
         return success(autoInspectionService.selectDashboard(query));
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:autoInspection:query')")
+    @GetMapping("/health/daily")
+    public AjaxResult dailyHealth(AutoInspectionHealthQuery query)
+    {
+        return success(autoInspectionService.selectDailyHealth(query));
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:query')")

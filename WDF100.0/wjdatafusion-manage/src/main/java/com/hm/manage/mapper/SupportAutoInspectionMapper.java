@@ -44,6 +44,8 @@ public interface SupportAutoInspectionMapper
 
     int deleteStepsByTemplateId(Long templateId);
 
+    int deleteProbeStatesByTemplateId(Long templateId);
+
     List<Map<String, Object>> selectStepTargetsByTemplateId(Long templateId);
 
     int insertStepTarget(@Param("stepId") Long stepId, @Param("targetId") Long targetId,
@@ -66,11 +68,20 @@ public interface SupportAutoInspectionMapper
 
     int deletePlanById(Long planId);
 
+    int deleteProbeStatesByPlanId(Long planId);
+
+    int deleteDailyHealthByPlanId(Long planId);
+
     List<Map<String, Object>> selectRecordList(Map<String, Object> record);
 
     Map<String, Object> selectRecordById(Long recordId);
 
+    Map<String, Object> selectRecordByPlanSlot(@Param("planId") Long planId,
+                                                @Param("scheduleSlotTime") Object scheduleSlotTime);
+
     int insertRecord(Map<String, Object> record);
+
+    int insertFrequentRecord(Map<String, Object> record);
 
     int updateRecord(Map<String, Object> record);
 
@@ -85,4 +96,24 @@ public interface SupportAutoInspectionMapper
     List<Map<String, Object>> selectTargetResultsByRecordIds(@Param("recordIds") List<Long> recordIds);
 
     int insertTargetResult(Map<String, Object> targetResult);
+
+    Map<String, Object> selectProbeState(@Param("planId") Long planId, @Param("stepId") Long stepId,
+                                          @Param("targetId") Long targetId, @Param("toolCode") String toolCode);
+
+    int upsertProbeState(Map<String, Object> state);
+
+    Map<String, Object> selectDailyHealthStats(Map<String, Object> params);
+
+    int upsertDailyHealth(Map<String, Object> summary);
+
+    List<Map<String, Object>> selectDailyHealthList(Map<String, Object> params);
+
+    List<Long> selectExpiredFrequentRecordIds(@Param("normalBefore") Object normalBefore,
+                                               @Param("abnormalBefore") Object abnormalBefore);
+
+    int deleteTargetResultsByRecordIds(@Param("recordIds") List<Long> recordIds);
+
+    int deleteStepResultsByRecordIds(@Param("recordIds") List<Long> recordIds);
+
+    int deleteRecordsByIds(@Param("recordIds") List<Long> recordIds);
 }

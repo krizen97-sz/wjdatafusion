@@ -27,7 +27,8 @@ function normalizeTemplatePayload(data = {}) {
 function normalizePlanPayload(data = {}) {
   return {
     ...data,
-    cronConfig: stringifyConfig(data.cronConfig)
+    cronConfig: stringifyConfig(data.cronConfig),
+    healthConfig: stringifyConfig(data.healthConfig)
   }
 }
 
@@ -147,6 +148,10 @@ export function deleteAutoInspectionPlan(planId) {
 
 export function getAutoInspectionDashboard(query) {
   return request({ url: '/support/autoInspection/dashboard', method: 'get', params: query })
+}
+
+export function listAutoInspectionDailyHealth(query) {
+  return request({ url: '/support/autoInspection/health/daily', method: 'get', params: query })
 }
 
 export function listAutoInspectionRecords(query) {

@@ -3,11 +3,13 @@ package com.hm.manage.service;
 import java.util.List;
 import jakarta.servlet.http.HttpServletResponse;
 import com.hm.manage.domain.SupportAutoInspectionPlan;
+import com.hm.manage.domain.SupportAutoInspectionHealthDaily;
 import com.hm.manage.domain.SupportAutoInspectionRecord;
 import com.hm.manage.domain.SupportAutoInspectionTarget;
 import com.hm.manage.domain.SupportAutoInspectionTemplate;
 import com.hm.manage.domain.SupportAutoInspectionTool;
 import com.hm.manage.domain.bo.AutoInspectionDashboardQuery;
+import com.hm.manage.domain.bo.AutoInspectionHealthQuery;
 import com.hm.manage.domain.bo.AutoInspectionPlanQuery;
 import com.hm.manage.domain.bo.AutoInspectionPlanSaveBo;
 import com.hm.manage.domain.bo.AutoInspectionRecordQuery;
@@ -79,6 +81,8 @@ public interface ISupportAutoInspectionService
     AutoInspectionRecordDetailVo selectRecordDetail(Long recordId);
 
     AutoInspectionDashboardVo selectDashboard(AutoInspectionDashboardQuery query);
+
+    List<SupportAutoInspectionHealthDaily> selectDailyHealth(AutoInspectionHealthQuery query);
 
     AutoInspectionRunResultVo runManualTemplate(Long templateId);
 

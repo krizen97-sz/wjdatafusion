@@ -14,6 +14,10 @@ public class SupportAutoInspectionRecord extends BaseEntity
     @Excel(name = "巡检时间", dateFormat = "yyyy-MM-dd HH:mm:ss")
     private Date inspectionTime;
     private String sourceType;
+    private String runMode;
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private Date scheduleSlotTime;
+    private Long durationMs;
     private String resultStatus;
     private String executorName;
     private Long templateId;
@@ -25,6 +29,7 @@ public class SupportAutoInspectionRecord extends BaseEntity
     private Integer skippedStepCount;
     private Integer targetCount;
     private Integer abnormalCount;
+    private Integer warningCount;
     private String summary;
     private String abnormalSummary;
 
@@ -34,6 +39,12 @@ public class SupportAutoInspectionRecord extends BaseEntity
     public void setInspectionTime(Date inspectionTime) { this.inspectionTime = inspectionTime; }
     public String getSourceType() { return sourceType; }
     public void setSourceType(String sourceType) { this.sourceType = sourceType; }
+    public String getRunMode() { return runMode; }
+    public void setRunMode(String runMode) { this.runMode = runMode; }
+    public Date getScheduleSlotTime() { return scheduleSlotTime; }
+    public void setScheduleSlotTime(Date scheduleSlotTime) { this.scheduleSlotTime = scheduleSlotTime; }
+    public Long getDurationMs() { return durationMs; }
+    public void setDurationMs(Long durationMs) { this.durationMs = durationMs; }
     public String getResultStatus() { return resultStatus; }
     public void setResultStatus(String resultStatus) { this.resultStatus = resultStatus; }
     public String getExecutorName() { return executorName; }
@@ -56,6 +67,8 @@ public class SupportAutoInspectionRecord extends BaseEntity
     public void setTargetCount(Integer targetCount) { this.targetCount = targetCount; }
     public Integer getAbnormalCount() { return abnormalCount; }
     public void setAbnormalCount(Integer abnormalCount) { this.abnormalCount = abnormalCount; }
+    public Integer getWarningCount() { return warningCount; }
+    public void setWarningCount(Integer warningCount) { this.warningCount = warningCount; }
     public String getSummary() { return summary; }
     public void setSummary(String summary) { this.summary = summary; }
     public String getAbnormalSummary() { return abnormalSummary; }

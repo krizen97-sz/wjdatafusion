@@ -826,8 +826,10 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_plan (
   template_id     BIGINT        NOT NULL COMMENT '模板ID',
   plan_name       VARCHAR(120)  NOT NULL COMMENT '计划名称',
   label_name      VARCHAR(64)   DEFAULT NULL COMMENT '标签名称',
+  plan_mode       VARCHAR(16)   DEFAULT 'ROUTINE' COMMENT '计划模式（ROUTINE例行 FREQUENT高频）',
   cron_expression VARCHAR(255)  NOT NULL COMMENT '系统生成Cron表达式',
   cron_config     TEXT          COMMENT '可视化周期配置JSON',
+  health_config   TEXT          COMMENT '高频健康配置JSON',
   job_id          BIGINT        DEFAULT NULL COMMENT '若依定时任务ID',
   report_style    VARCHAR(32)   DEFAULT 'STANDARD' COMMENT '报告样式',
   status          CHAR(1)       DEFAULT '0' COMMENT '状态（0正常 1暂停）',
@@ -847,7 +849,10 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_record (
   record_id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '记录ID',
   inspection_time    DATETIME     NOT NULL COMMENT '巡检时间',
   source_type        VARCHAR(16)  DEFAULT 'AUTO' COMMENT '执行来源（AUTO自动 MANUAL手动）',
-  result_status      CHAR(1)      DEFAULT '3' COMMENT '巡检结果（1正常 2异常 3未检测）',
+  run_mode           VARCHAR(16)  DEFAULT 'ROUTINE' COMMENT '运行模式（ROUTINE例行 FREQUENT高频）',
+  schedule_slot_time DATETIME     DEFAULT NULL COMMENT '高频计划归一化采样时隙',
+  duration_ms        BIGINT       DEFAULT NULL COMMENT '执行耗时毫秒',
+  result_status      CHAR(1)      DEFAULT '3' COMMENT '巡检结果（1正常 2异常 3未检测 4关注）',
   executor_name      VARCHAR(64)  DEFAULT NULL COMMENT '执行人名称',
   template_id        BIGINT       DEFAULT NULL COMMENT '模板ID',
   template_name      VARCHAR(120) DEFAULT NULL COMMENT '模板名称',
@@ -858,6 +863,7 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_record (
   skipped_step_count INT          DEFAULT 0 COMMENT '跳过步骤数',
   target_count       INT          DEFAULT 0 COMMENT '检测目标数',
   abnormal_count     INT          DEFAULT 0 COMMENT '异常步骤数',
+  warning_count      INT          DEFAULT 0 COMMENT '关注步骤数',
   summary            VARCHAR(500) DEFAULT NULL COMMENT '巡检摘要',
   abnormal_summary   TEXT         COMMENT '异常摘要',
   create_by          VARCHAR(64)  DEFAULT '' COMMENT '创建者',
@@ -869,6 +875,8 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_record (
   KEY idx_sup_auto_record_time (inspection_time),
   KEY idx_sup_auto_record_result (result_status, inspection_time),
   KEY idx_sup_auto_record_plan (plan_id, inspection_time),
+  UNIQUE KEY uk_sup_auto_record_plan_slot (plan_id, schedule_slot_time),
+  KEY idx_sup_auto_record_mode_time (run_mode, inspection_time),
   KEY idx_sup_auto_record_template (template_id, inspection_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='自动化巡检记录';
 
@@ -888,7 +896,7 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_step_result (
   time_window_minutes INT           DEFAULT 0 COMMENT '统计时间窗口分钟数',
   timeout_seconds     INT           DEFAULT 10 COMMENT '超时时间秒',
   step_params         TEXT          COMMENT '步骤参数JSON',
-  result_status       CHAR(1)       DEFAULT '3' COMMENT '步骤结果（1正常 2异常 3未检测）',
+  result_status       CHAR(1)       DEFAULT '3' COMMENT '步骤结果（1正常 2异常 3未检测 4关注）',
   actual_value        DECIMAL(18,2) DEFAULT NULL COMMENT '代表实际值',
   actual_unit         VARCHAR(32)   DEFAULT NULL COMMENT '实际单位',
   result_summary      VARCHAR(1000) DEFAULT NULL COMMENT '结果摘要',
@@ -909,7 +917,7 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_target_result (
   target_id       BIGINT        DEFAULT NULL COMMENT '目标ID',
   target_name     VARCHAR(120)  DEFAULT NULL COMMENT '目标名称',
   target_type     VARCHAR(32)   DEFAULT NULL COMMENT '目标类型',
-  result_status   CHAR(1)       DEFAULT '3' COMMENT '目标结果（1正常 2异常 3未检测）',
+  result_status   CHAR(1)       DEFAULT '3' COMMENT '目标结果（1正常 2异常 3未检测 4关注）',
   actual_value    DECIMAL(18,2) DEFAULT NULL COMMENT '实际值',
   actual_unit     VARCHAR(32)   DEFAULT NULL COMMENT '实际单位',
   result_detail   MEDIUMTEXT    DEFAULT NULL COMMENT '结果详情',
@@ -924,9 +932,50 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_target_result (
   KEY idx_sup_auto_target_result_target (target_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='自动化巡检目标结果';
 
+CREATE TABLE IF NOT EXISTS sup_auto_inspection_probe_state (
+  state_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '状态ID', plan_id BIGINT NOT NULL COMMENT '计划ID',
+  step_id BIGINT NOT NULL COMMENT '模板步骤ID', target_id BIGINT NOT NULL COMMENT '目标ID',
+  tool_code VARCHAR(64) NOT NULL COMMENT '工具编码', primary_value DECIMAL(30,2) DEFAULT NULL COMMENT '当前主观测值',
+  secondary_value DECIMAL(30,2) DEFAULT NULL COMMENT '当前辅助观测值', observed_at DATETIME DEFAULT NULL COMMENT '最近采样时间',
+  last_activity_at DATETIME DEFAULT NULL COMMENT '最近活动时间', abnormal_streak INT DEFAULT 0 COMMENT '连续异常次数',
+  normal_streak INT DEFAULT 0 COMMENT '连续恢复次数', state_status CHAR(1) DEFAULT '3' COMMENT '状态',
+  state_detail VARCHAR(1000) DEFAULT NULL COMMENT '状态说明', create_by VARCHAR(64) DEFAULT '' COMMENT '创建者',
+  create_time DATETIME DEFAULT NULL COMMENT '创建时间', update_by VARCHAR(64) DEFAULT '' COMMENT '更新者',
+  update_time DATETIME DEFAULT NULL COMMENT '更新时间', PRIMARY KEY (state_id),
+  UNIQUE KEY uk_sup_auto_probe_scope (plan_id, step_id, target_id, tool_code),
+  KEY idx_sup_auto_probe_activity (last_activity_at, state_status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='自动化巡检高频目标状态';
+
+CREATE TABLE IF NOT EXISTS sup_auto_inspection_health_daily (
+  summary_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '汇总ID', health_date DATE NOT NULL COMMENT '健康日期',
+  plan_id BIGINT NOT NULL COMMENT '高频计划ID', plan_name VARCHAR(120) NOT NULL COMMENT '计划名称快照',
+  template_id BIGINT DEFAULT NULL COMMENT '模板ID', template_name VARCHAR(120) DEFAULT NULL COMMENT '模板名称快照',
+  expected_count INT DEFAULT 0 COMMENT '截至当前应执行次数', completed_count INT DEFAULT 0 COMMENT '实际完成次数',
+  normal_count INT DEFAULT 0 COMMENT '正常采样次数', warning_count INT DEFAULT 0 COMMENT '关注采样次数',
+  abnormal_count INT DEFAULT 0 COMMENT '异常采样次数', skipped_count INT DEFAULT 0 COMMENT '基线或跳过次数',
+  missing_count INT DEFAULT 0 COMMENT '缺失采样次数', health_score DECIMAL(5,2) DEFAULT 0 COMMENT '当日健康度',
+  health_target DECIMAL(5,2) DEFAULT 99 COMMENT '健康目标', day_status CHAR(1) DEFAULT '3' COMMENT '日状态',
+  first_abnormal_time DATETIME DEFAULT NULL COMMENT '首次异常时间', last_abnormal_time DATETIME DEFAULT NULL COMMENT '最后异常时间',
+  last_run_time DATETIME DEFAULT NULL COMMENT '最后运行时间', last_result_status CHAR(1) DEFAULT NULL COMMENT '最后采样状态',
+  abnormal_summary TEXT COMMENT '最近异常摘要', create_by VARCHAR(64) DEFAULT '' COMMENT '创建者',
+  create_time DATETIME DEFAULT NULL COMMENT '创建时间', update_by VARCHAR(64) DEFAULT '' COMMENT '更新者',
+  update_time DATETIME DEFAULT NULL COMMENT '更新时间', PRIMARY KEY (summary_id),
+  UNIQUE KEY uk_sup_auto_health_day_plan (health_date, plan_id),
+  KEY idx_sup_auto_health_plan_date (plan_id, health_date), KEY idx_sup_auto_health_status_date (day_status, health_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='自动化巡检高频每日健康汇总';
+
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
 SELECT 'KAFKA_LAG', 'Kafka消费积压检测', 'KAFKA_LAG', '条', 'MAX', 2000, 10, 0, '{"fields":["topic","consumerGroup"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
 WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'KAFKA_LAG');
+INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
+SELECT 'KAFKA_TOPIC_ACTIVITY', 'Kafka主题写入中断检测', 'KAFKA_TOPIC_ACTIVITY', '条', 'MIN', 0, 10, 0, '{"fields":["topic","activityRule"]}', 'Y', '0', 'admin', NOW(), '按Topic总Offset变化判断持续无写入时长'
+WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'KAFKA_TOPIC_ACTIVITY');
+INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
+SELECT 'KAFKA_CONSUMER_PROGRESS', 'Kafka消费停滞检测', 'KAFKA_CONSUMER_PROGRESS', '条', 'MIN', 0, 10, 0, '{"fields":["topic","consumerGroup","activityRule"]}', 'Y', '0', 'admin', NOW(), '上游有新增但消费组提交位点不推进时告警'
+WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'KAFKA_CONSUMER_PROGRESS');
+INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
+SELECT 'MQTT_TOPIC_ACTIVITY', 'MQTT主题活跃度检测', 'MQTT_TOPIC_ACTIVITY', '条', 'MIN', 0, 10, 0, '{"fields":["broker","topicFilter","qos","ignoreRetained","activityRule"]}', 'Y', '0', 'admin', NOW(), '后台持续订阅MQTT主题并判断持续无消息时长'
+WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'MQTT_TOPIC_ACTIVITY');
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
 SELECT 'HTTP_COUNT', '海康接口数量检测', 'HTTP_COUNT', '条', 'MIN', 0, 10, 480, '{"fields":["resultPath","extraParams","timeWindowMinutes"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
 WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'HTTP_COUNT');
@@ -1045,3 +1094,31 @@ SET @ddl = IF(@plan_label_index = 0,
   'ALTER TABLE sup_auto_inspection_plan ADD INDEX idx_sup_auto_plan_label_status (label_name, status)',
   'SELECT 1');
 PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- v3.13.0 自动化巡检高频模式兼容升级
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_plan' AND COLUMN_NAME = 'plan_mode') = 0,
+  'ALTER TABLE sup_auto_inspection_plan ADD COLUMN plan_mode VARCHAR(16) DEFAULT ''ROUTINE'' COMMENT ''计划模式（ROUTINE例行 FREQUENT高频）'' AFTER label_name', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_plan' AND COLUMN_NAME = 'health_config') = 0,
+  'ALTER TABLE sup_auto_inspection_plan ADD COLUMN health_config TEXT COMMENT ''高频健康配置JSON'' AFTER cron_config', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_record' AND COLUMN_NAME = 'run_mode') = 0,
+  'ALTER TABLE sup_auto_inspection_record ADD COLUMN run_mode VARCHAR(16) DEFAULT ''ROUTINE'' COMMENT ''运行模式（ROUTINE例行 FREQUENT高频）'' AFTER source_type', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_record' AND COLUMN_NAME = 'schedule_slot_time') = 0,
+  'ALTER TABLE sup_auto_inspection_record ADD COLUMN schedule_slot_time DATETIME DEFAULT NULL COMMENT ''高频计划归一化采样时隙'' AFTER run_mode', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_record' AND COLUMN_NAME = 'duration_ms') = 0,
+  'ALTER TABLE sup_auto_inspection_record ADD COLUMN duration_ms BIGINT DEFAULT NULL COMMENT ''执行耗时毫秒'' AFTER schedule_slot_time', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_record' AND COLUMN_NAME = 'warning_count') = 0,
+  'ALTER TABLE sup_auto_inspection_record ADD COLUMN warning_count INT DEFAULT 0 COMMENT ''关注步骤数'' AFTER abnormal_count', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_record' AND INDEX_NAME = 'uk_sup_auto_record_plan_slot') = 0,
+  'ALTER TABLE sup_auto_inspection_record ADD UNIQUE KEY uk_sup_auto_record_plan_slot(plan_id, schedule_slot_time)', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_record' AND INDEX_NAME = 'idx_sup_auto_record_mode_time') = 0,
+  'ALTER TABLE sup_auto_inspection_record ADD KEY idx_sup_auto_record_mode_time(run_mode, inspection_time)', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+UPDATE sup_auto_inspection_plan SET plan_mode = 'ROUTINE' WHERE plan_mode IS NULL OR plan_mode = '';
+UPDATE sup_auto_inspection_record SET run_mode = 'ROUTINE' WHERE run_mode IS NULL OR run_mode = '';
