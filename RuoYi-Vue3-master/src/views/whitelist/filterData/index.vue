@@ -380,14 +380,14 @@ getList()
   border-radius: 12px;
   border: 1px solid #dbe8f8;
   cursor: zoom-in;
-  background: #f5f9ff;
+  background: var(--surface-muted);
 }
 
 .preview-image__img {
   width: 100%;
   max-height: 70vh;
   border-radius: 14px;
-  background: #f5f9ff;
+  background: var(--surface-muted);
 }
 
 .preview-image__empty {

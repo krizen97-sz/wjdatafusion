@@ -248,7 +248,7 @@ async function save() {
 
 <style scoped lang="scss">
 .share-drawer {
-  color: #172033;
+  color: var(--app-heading);
 }
 
 .share-document {
@@ -256,8 +256,8 @@ async function save() {
   align-items: center;
   gap: 12px;
   padding: 14px;
-  border: 1px solid #dde4ee;
-  background: #f7f9fc;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-muted);
   border-radius: 8px;
 
   > div {
@@ -277,7 +277,7 @@ async function save() {
 
   span {
     margin-top: 3px;
-    color: #667085;
+    color: var(--app-muted);
     font-size: 12px;
   }
 }
@@ -325,7 +325,7 @@ async function save() {
 
   span {
     margin-top: 3px;
-    color: #667085;
+    color: var(--app-muted);
     font-size: 12px;
   }
 }
@@ -366,7 +366,7 @@ async function save() {
   &:hover,
   &:focus-visible {
     outline: none;
-    background: #f2f7ff;
+    background: var(--surface-subtle);
   }
 
   > .el-icon {
@@ -404,7 +404,7 @@ async function save() {
 
   span {
     margin-top: 2px;
-    color: #667085;
+    color: var(--app-muted);
     font-size: 12px;
   }
 }
@@ -429,7 +429,7 @@ async function save() {
   min-width: 0;
   align-items: center;
   gap: 4px;
-  color: #667085;
+  color: var(--app-muted);
   font-size: 12px;
   white-space: nowrap;
 

@@ -72,11 +72,13 @@ export default {
     loadingInstance = ElLoading.service({
       lock: true,
       text: content,
-      background: "rgba(0, 0, 0, 0.7)",
+      customClass: 'platform-loading-mask',
+      background: 'var(--loading-mask-bg)',
     })
   },
   // 关闭遮罩层
   closeLoading() {
-    loadingInstance.close()
+    loadingInstance?.close()
+    loadingInstance = undefined
   }
 }

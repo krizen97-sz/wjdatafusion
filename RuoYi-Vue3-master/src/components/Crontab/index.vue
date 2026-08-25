@@ -282,7 +282,7 @@ onMounted(() => {
     margin-left: -70px;
     text-align: center;
     line-height: 30px;
-    background: #fff;
+    background: var(--surface-strong);
 }
 .popup-result table {
     text-align: center;

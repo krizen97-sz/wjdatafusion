@@ -5,7 +5,7 @@
 </template>
 
 <script setup>
-const url = ref('https://gitee.com/y_project/RuoYi-Vue')
+const url = ref('https://github.com/krizen97-sz/wjdatafusion')
 
 function goto() {
   window.open(url.value)

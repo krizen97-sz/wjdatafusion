@@ -213,7 +213,7 @@ getCookie()
   display: grid;
   grid-template-columns: minmax(460px, 46vw) minmax(420px, 1fr);
   overflow: hidden;
-  background: #fbfdff;
+  background: var(--surface-muted);
   color: #172235;
 }
 
@@ -237,7 +237,7 @@ getCookie()
 
   h1 {
     margin: 0;
-    color: #111827;
+    color: var(--app-heading);
     font-size: 34px;
     line-height: 1.2;
     font-weight: 780;
@@ -277,7 +277,7 @@ getCookie()
   :deep(.el-input__wrapper) {
     min-height: 48px;
     border-radius: 14px !important;
-    background: #ffffff !important;
+    background: var(--surface-strong) !important;
     box-shadow: 0 0 0 1px #dde5ef inset !important;
     transition: background 0.24s ease, box-shadow 0.24s ease, transform 0.24s ease;
 
@@ -337,7 +337,7 @@ getCookie()
   padding: 0;
   border: 1px solid #dde5ef;
   border-radius: 14px;
-  background: #ffffff;
+  background: var(--surface-strong);
   overflow: hidden;
   cursor: pointer;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;

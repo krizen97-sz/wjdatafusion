@@ -121,6 +121,14 @@ const activeMenu = computed(() => {
   }
   return path
 })
+
+function revealActiveMenu() {
+  nextTick(() => {
+    document.querySelector('.sidebar-container .el-menu-item.is-active')?.scrollIntoView({ block: 'nearest' })
+  })
+}
+
+watch([activeMenu, sidebarRouters, mascotVisible], revealActiveMenu, { immediate: true, deep: true })
 </script>
 
 <style lang="scss" scoped>
@@ -132,14 +140,19 @@ const activeMenu = computed(() => {
   }
 
   &.has-sidebar-mascot {
-    :deep(.scrollbar-wrapper) {
-      padding-bottom: 220px;
+    :deep(.el-scrollbar) {
+      height: calc(100% - 308px) !important;
+      min-height: 180px;
+    }
+
+    :deep(.el-scrollbar__view) {
+      padding-bottom: 8px;
       box-sizing: border-box;
     }
   }
 
   &.has-mascot-restore {
-    :deep(.scrollbar-wrapper) {
+    :deep(.el-scrollbar__view) {
       padding-bottom: 44px;
       box-sizing: border-box;
     }

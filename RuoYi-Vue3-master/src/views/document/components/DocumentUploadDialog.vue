@@ -184,7 +184,7 @@ function beforeClose(done) {
 </script>
 
 <style scoped lang="scss">
-.upload-dialog-body { color: #172033; }
+.upload-dialog-body { color: var(--app-heading); }
 .upload-target {
   display: flex;
   align-items: center;
@@ -193,10 +193,10 @@ function beforeClose(done) {
   padding: 9px 11px;
   border-radius: 7px;
   background: #f4f7fb;
-  color: #667085;
+  color: var(--app-muted);
   font-size: 12px;
   .el-icon { color: #1677ff; }
-  strong { color: #344054; }
+  strong { color: var(--app-heading); }
 }
 
 .document-uploader :deep(.el-upload) { width: 100%; }
@@ -208,8 +208,8 @@ function beforeClose(done) {
   gap: 15px;
   border-color: #b8c7dc;
   border-radius: 8px;
-  background: #fbfdff;
-  &:hover { border-color: #1677ff; background: #f7fbff; }
+  background: var(--surface-muted);
+  &:hover { border-color: #1677ff; background: var(--surface-muted); }
 }
 .upload-icon { color: #1677ff; font-size: 42px; }
 .upload-copy {
@@ -217,9 +217,9 @@ function beforeClose(done) {
   strong,
   span { display: block; }
   strong { font-size: 15px; }
-  span { margin-top: 6px; color: #667085; font-size: 12px; }
+  span { margin-top: 6px; color: var(--app-muted); font-size: 12px; }
 }
-.upload-tip { margin-top: 7px; color: #98a2b3; font-size: 12px; text-align: center; }
+.upload-tip { margin-top: 7px; color: var(--app-muted); font-size: 12px; text-align: center; }
 
 .selected-file {
   display: flex;
@@ -227,13 +227,13 @@ function beforeClose(done) {
   gap: 11px;
   margin-top: 14px;
   padding: 11px;
-  border: 1px solid #dde4ee;
+  border: 1px solid var(--surface-border);
   border-radius: 7px;
   > div { min-width: 0; flex: 1; }
   strong,
   span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   strong { font-size: 13px; }
-  span { margin-top: 4px; color: #667085; font-size: 11px; }
+  span { margin-top: 4px; color: var(--app-muted); font-size: 11px; }
 }
 .file-mark {
   display: grid;
@@ -262,8 +262,8 @@ function beforeClose(done) {
   span { display: block; }
   strong { font-size: 13px; }
   span { margin-top: 3px; font-size: 12px; line-height: 1.55; }
-  &.is-validating { background: #eef6ff; color: #0f5eba; }
+  &.is-validating { background: var(--surface-subtle); color: #0f5eba; }
   &.is-error { background: #fff2f0; color: #b42318; }
 }
-.validation-note { margin-top: 12px; color: #667085; font-size: 12px; line-height: 1.6; }
+.validation-note { margin-top: 12px; color: var(--app-muted); font-size: 12px; line-height: 1.6; }
 </style>

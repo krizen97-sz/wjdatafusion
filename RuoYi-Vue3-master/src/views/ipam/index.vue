@@ -524,9 +524,9 @@ function handleTabChange(name) {
   min-height: 48px;
   margin-bottom: 12px;
   padding: 7px 10px 7px 14px;
-  border-top: 1px solid #e5e7eb;
-  border-bottom: 1px solid #e5e7eb;
-  background: #f8fafc;
+  border-top: 1px solid var(--surface-border);
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-muted);
 }
 
 .scenario-bar__label {
@@ -552,9 +552,9 @@ function handleTabChange(name) {
 
 .network-pane,
 .ipam-main {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .network-pane {
@@ -593,7 +593,7 @@ function handleTabChange(name) {
 }
 
 .network-list__head span {
-  color: #64748b;
+  color: var(--app-muted);
   font-size: 12px;
 }
 
@@ -607,7 +607,7 @@ function handleTabChange(name) {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0;
   padding: 8px 0 0;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--surface-border);
 }
 
 .workflow-step {
@@ -620,7 +620,7 @@ function handleTabChange(name) {
   border: 0;
   border-bottom: 2px solid transparent;
   border-radius: 0;
-  background: #fff;
+  background: var(--surface-strong);
   color: #374151;
   text-align: left;
   cursor: pointer;
@@ -629,7 +629,7 @@ function handleTabChange(name) {
 
 .workflow-step.active {
   border-bottom-color: #2563eb;
-  background: #f8fafc;
+  background: var(--surface-muted);
   color: #1d4ed8;
 }
 
@@ -677,7 +677,7 @@ function handleTabChange(name) {
 }
 
 .workflow-step__copy em {
-  color: #6b7280;
+  color: var(--app-muted);
   font-size: 12px;
   font-style: normal;
 }
@@ -727,7 +727,7 @@ function handleTabChange(name) {
 
 .network-detail__head p {
   margin: 6px 0 0;
-  color: #64748b;
+  color: var(--app-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 13px;
 }
@@ -736,8 +736,8 @@ function handleTabChange(name) {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 18px;
-  border-top: 1px solid #e5e7eb;
-  border-bottom: 1px solid #e5e7eb;
+  border-top: 1px solid var(--surface-border);
+  border-bottom: 1px solid var(--surface-border);
 }
 
 .network-facts div {
@@ -749,7 +749,7 @@ function handleTabChange(name) {
 
 .network-facts span,
 .network-stats span {
-  color: #64748b;
+  color: var(--app-muted);
   font-size: 12px;
 }
 
@@ -764,14 +764,14 @@ function handleTabChange(name) {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   margin-top: 18px;
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 .network-stats div {
   display: grid;
   gap: 6px;
   padding: 14px;
-  border-right: 1px solid #e5e7eb;
+  border-right: 1px solid var(--surface-border);
 }
 
 .network-stats div:last-child {
@@ -804,7 +804,7 @@ function handleTabChange(name) {
 }
 
 .grid-toolbar span {
-  color: #6b7280;
+  color: var(--app-muted);
 }
 
 .grid-actions {
@@ -843,7 +843,7 @@ function handleTabChange(name) {
 
 .summary-strip span {
   padding: 6px 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--surface-border);
   border-radius: 6px;
   background: #f9fafb;
   color: #374151;
@@ -862,7 +862,7 @@ function handleTabChange(name) {
   min-width: 0;
   height: 26px;
   padding: 0;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--surface-border);
   border-radius: 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
@@ -871,7 +871,7 @@ function handleTabChange(name) {
 }
 
 .mini-cell.selected {
-  border-color: #111827;
+  border-color: var(--app-heading);
   box-shadow: inset 0 0 0 1px #111827;
 }
 
@@ -901,7 +901,7 @@ function handleTabChange(name) {
 }
 
 .sheet-table :deep(.sheet-row-selected td) {
-  background: #eff6ff;
+  background: var(--surface-subtle);
 }
 
 .muted {
@@ -909,9 +909,9 @@ function handleTabChange(name) {
 }
 
 .is-free {
-  background: #f8fafc;
+  background: var(--surface-muted);
   border-color: #d1d5db;
-  color: #64748b;
+  color: var(--app-muted);
 }
 
 .is-reserved {
@@ -921,7 +921,7 @@ function handleTabChange(name) {
 }
 
 .is-allocated {
-  background: #eff6ff;
+  background: var(--surface-subtle);
   border-color: #3b82f6;
   color: #1d4ed8;
 }
@@ -973,7 +973,7 @@ function handleTabChange(name) {
   padding: 12px;
   border: 1px solid #dbeafe;
   border-radius: 8px;
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 .preview-box__head {
@@ -995,16 +995,16 @@ function handleTabChange(name) {
   display: grid;
   gap: 4px;
   padding: 6px 8px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--surface-border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface-strong);
   color: #475569;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
 }
 
 .network-preview-grid small {
-  color: #64748b;
+  color: var(--app-muted);
   font-family: system-ui, sans-serif;
 }
 
@@ -1073,7 +1073,7 @@ function handleTabChange(name) {
 
   .network-stats div {
     border-right: 0;
-    border-bottom: 1px solid #e5e7eb;
+    border-bottom: 1px solid var(--surface-border);
   }
 }
 </style>

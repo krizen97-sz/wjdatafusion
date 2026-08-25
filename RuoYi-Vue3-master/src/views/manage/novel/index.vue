@@ -309,7 +309,7 @@ getList()
 .preview-shell {
   border-radius: 12px;
   overflow: hidden;
-  background: #ffffff;
+  background: var(--surface-strong);
 }
 
 .preview-hero {
@@ -346,7 +346,7 @@ getList()
   padding: 14px 16px;
   border: 1px solid #ebeef5;
   border-radius: 10px;
-  background: #fcfdff;
+  background: var(--surface-muted);
 }
 
 .info-label,
@@ -367,7 +367,7 @@ getList()
   padding: 14px 16px;
   border: 1px solid #ebeef5;
   border-radius: 10px;
-  background: #ffffff;
+  background: var(--surface-strong);
 }
 
 .novel-content {
@@ -396,7 +396,7 @@ getList()
   margin: 14px 0;
   padding: 10px 14px;
   border-left: 3px solid #409eff;
-  background: #f4f8ff;
+  background: var(--surface-muted);
   color: #4b5563;
 }
 

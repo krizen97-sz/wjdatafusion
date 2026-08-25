@@ -1,8 +1,8 @@
 {
-  "name": "ruoyi",
-  "version": "3.9.1",
-  "description": "若依管理系统",
-  "author": "若依",
+  "name": "wjdatafusion-web",
+  "version": "3.14.0",
+  "description": "华东信息融合平台前端",
+  "author": "华东信息融合平台项目组",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -14,7 +14,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://gitee.com/y_project/RuoYi-Vue.git"
+    "url": "https://github.com/krizen97-sz/wjdatafusion.git"
   },
   "dependencies": {
     "@element-plus/icons-vue": "2.3.2",
@@ -31,7 +31,6 @@
     "js-beautify": "1.15.4",
     "js-cookie": "3.0.5",
     "jsencrypt": "3.3.2",
-    "nprogress": "0.2.0",
     "pinia": "3.0.4",
     "pinyin-pro": "^3.28.0",
     "splitpanes": "4.0.4",

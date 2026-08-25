@@ -595,7 +595,7 @@ function pulseMascot() {
 
 <style lang="scss" scoped>
 .sidebar-mascot {
-  position: fixed;
+  position: absolute;
   bottom: 0;
   left: 8px;
   z-index: 1002;
@@ -616,7 +616,7 @@ function pulseMascot() {
   max-height: 74px;
   padding: 7px 9px;
   overflow: hidden;
-  color: #35506d;
+  color: var(--app-text);
   line-height: 18px;
   text-align: left;
   background: rgba(255, 255, 255, 0.9);

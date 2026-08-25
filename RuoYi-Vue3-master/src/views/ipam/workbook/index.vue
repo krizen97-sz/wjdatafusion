@@ -257,7 +257,7 @@ const {
 .workbook-head__meta {
   min-height: 22px;
   margin-top: 5px;
-  color: #6b7280;
+  color: var(--app-muted);
   font-size: 12px;
 }
 
@@ -266,7 +266,7 @@ const {
   margin: 8px 0 10px;
   padding: 8px 10px;
   border: 1px solid #dce1e7;
-  background: #ffffff;
+  background: var(--surface-strong);
   gap: 8px;
 }
 
@@ -290,14 +290,14 @@ const {
   flex: 1;
   grid-template-columns: 264px minmax(0, 1fr);
   border: 1px solid #d7dde5;
-  background: #ffffff;
+  background: var(--surface-strong);
 }
 
 .workbook-explorer {
   min-width: 0;
   overflow: hidden;
   border-right: 1px solid #d7dde5;
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 .workbook-explorer__head {
@@ -317,7 +317,7 @@ const {
 }
 
 .workbook-explorer__head span {
-  color: #6b7280;
+  color: var(--app-muted);
   font-size: 12px;
 }
 
@@ -336,7 +336,7 @@ const {
 }
 
 .workbook-scope-tree :deep(.is-current > .el-tree-node__content) {
-  background: #e8f2ff;
+  background: var(--surface-subtle);
   color: #0958d9;
 }
 
@@ -380,7 +380,7 @@ const {
 
 .scope-node__count {
   min-width: 28px;
-  color: #64748b;
+  color: var(--app-muted);
   font-size: 11px;
   text-align: right;
 }
@@ -419,14 +419,14 @@ const {
 
 .workbook-sheet__title span {
   margin-top: 4px;
-  color: #6b7280;
+  color: var(--app-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
 }
 
 .workbook-sheet__metrics {
   flex: 0 0 auto;
-  color: #64748b;
+  color: var(--app-muted);
   font-size: 12px;
 }
 
@@ -436,7 +436,7 @@ const {
 }
 
 .workbook-sheet__metrics strong {
-  color: #111827;
+  color: var(--app-heading);
 }
 
 .workbook-sheet__metrics .is-dirty strong {
@@ -458,8 +458,8 @@ const {
   padding: 0 11px;
   justify-content: space-between;
   border-top: 1px solid #dfe4ea;
-  background: #f8fafc;
-  color: #6b7280;
+  background: var(--surface-muted);
+  color: var(--app-muted);
   font-size: 11px;
 }
 

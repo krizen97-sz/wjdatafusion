@@ -550,7 +550,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   overflow: hidden;
   border-radius: 999px;
-  background: #ffffff;
+  background: var(--surface-strong);
   transition: height 0.15s ease, transform 0.1s ease-out;
 
   i {

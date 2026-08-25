@@ -613,7 +613,7 @@ getOrgList()
 .support-editor-dialog :deep(.el-dialog) {
   overflow: hidden;
   border-radius: 30px;
-  background: #f4f8fc;
+  background: var(--surface-muted);
 }
 
 .support-editor-dialog :deep(.el-dialog__header) {
@@ -639,7 +639,7 @@ getOrgList()
   grid-template-columns: auto minmax(0, 1fr);
   gap: 16px;
   padding: 24px;
-  border-bottom: 1px solid #dfe9f3;
+  border-bottom: 1px solid var(--surface-border);
 }
 
 .editor-hero--org {
@@ -659,7 +659,7 @@ getOrgList()
   border-radius: 20px;
   font-size: 22px;
   font-weight: 700;
-  color: #17314d;
+  color: var(--app-heading);
   background: rgba(255, 255, 255, 0.82);
   border: 1px solid rgba(212, 224, 238, 0.9);
   box-shadow: 0 12px 28px rgba(22, 50, 79, 0.08);
@@ -674,14 +674,14 @@ getOrgList()
   font-size: 12px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: #577088;
+  color: var(--app-muted);
 }
 
 .editor-hero__copy h3 {
   margin: 0;
   font-size: 28px;
   line-height: 1.12;
-  color: #16324f;
+  color: var(--app-heading);
 }
 
 .editor-hero__copy p {
@@ -689,7 +689,7 @@ getOrgList()
   max-width: 56ch;
   font-size: 13px;
   line-height: 1.6;
-  color: #6c8095;
+  color: var(--app-muted);
 }
 
 .editor-hero__chips {
@@ -712,18 +712,18 @@ getOrgList()
 
 .editor-chip--contact {
   color: #3d6fa6;
-  background: #edf4ff;
-  border-color: #d7e6fb;
+  background: var(--surface-subtle);
+  border-color: var(--surface-border);
 }
 
 .editor-chip--org {
   color: #2f6fb3;
-  background: #eef5ff;
-  border-color: #d7e6fb;
+  background: var(--surface-subtle);
+  border-color: var(--surface-border);
 }
 
 .editor-chip--ghost {
-  color: #61758c;
+  color: var(--app-muted);
   background: rgba(255, 255, 255, 0.76);
   border-color: rgba(214, 225, 237, 0.92);
 }
@@ -747,8 +747,8 @@ getOrgList()
 .editor-section {
   padding: 18px;
   border-radius: 24px;
-  border: 1px solid #e3ebf4;
-  background: #ffffff;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-strong);
   box-shadow: 0 16px 36px rgba(22, 50, 79, 0.05);
 }
 
@@ -757,7 +757,7 @@ getOrgList()
 }
 
 .editor-section__head strong {
-  color: #16324f;
+  color: var(--app-heading);
   font-size: 15px;
 }
 
@@ -765,7 +765,7 @@ getOrgList()
   margin: 6px 0 0;
   font-size: 12px;
   line-height: 1.6;
-  color: #73859a;
+  color: var(--app-muted);
 }
 
 .editor-form--grid {
@@ -802,10 +802,10 @@ getOrgList()
   gap: 12px;
   min-height: 38px;
   padding: 0 12px;
-  border: 1px solid #dfe8f1;
+  border: 1px solid var(--surface-border);
   border-radius: 16px;
-  background: #fbfdff;
-  color: #49627e;
+  background: var(--surface-muted);
+  color: var(--app-muted);
 }
 
 .contact-org-field span {
@@ -819,7 +819,7 @@ getOrgList()
 .editor-form :deep(.el-input__wrapper),
 .editor-form :deep(.el-select__wrapper) {
   border-radius: 16px;
-  background: #fbfdff;
+  background: var(--surface-muted);
   box-shadow: 0 0 0 1px #dfe8f1 inset;
 }
 
@@ -835,7 +835,7 @@ getOrgList()
   min-height: 100%;
   padding: 18px;
   border-radius: 24px;
-  border: 1px solid #d8e4ef;
+  border: 1px solid var(--surface-border);
 }
 
 .editor-preview-card--org {
@@ -856,7 +856,7 @@ getOrgList()
 .editor-preview-card strong {
   font-size: 24px;
   line-height: 1.12;
-  color: #16324f;
+  color: var(--app-heading);
 }
 
 .editor-preview-card p {
@@ -880,7 +880,7 @@ getOrgList()
   border-radius: 999px;
   border: 1px solid rgba(216, 228, 238, 0.95);
   background: rgba(255, 255, 255, 0.8);
-  color: #49627e;
+  color: var(--app-muted);
   font-size: 12px;
 }
 

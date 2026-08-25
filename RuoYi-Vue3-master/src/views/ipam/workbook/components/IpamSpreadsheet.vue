@@ -42,7 +42,7 @@ defineEmits(['after-edit'])
 .ipam-spreadsheet__grid {
   --revo-grid-primary: #1677ff;
   --revo-grid-primary-transparent: rgba(22, 119, 255, 0.12);
-  --revo-grid-background: #ffffff;
+  --revo-grid-background: var(--surface-strong);
   --revo-grid-foreground: #111827;
   --revo-grid-divider: #dfe4ea;
   --revo-grid-header-bg: #f4f6f8;
@@ -69,7 +69,7 @@ defineEmits(['after-edit'])
 }
 
 :deep(.ipam-workbook-status.is-free) {
-  color: #64748b;
+  color: var(--app-muted);
 }
 
 :deep(.ipam-workbook-status.is-reserved) {
@@ -79,7 +79,7 @@ defineEmits(['after-edit'])
 
 :deep(.ipam-workbook-status.is-allocated) {
   color: #1d4ed8;
-  background: #eff6ff;
+  background: var(--surface-subtle);
 }
 
 :deep(.ipam-workbook-status.is-issued) {

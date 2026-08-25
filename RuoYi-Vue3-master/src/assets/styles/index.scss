@@ -6,6 +6,7 @@
 @use './btn.scss';
 @use './ruoyi.scss';
 @use './support.scss';
+@use './platform-theme.scss';
 
 body {
   height: 100%;
@@ -129,12 +130,12 @@ aside {
 
 //main-container全局样式
 .app-container {
-  padding: 20px;
-  background: var(--surface-bg);
-  backdrop-filter: blur(12px);
-  border-radius: 20px;
-  border: 1px solid var(--surface-border);
-  box-shadow: var(--surface-shadow);
+  min-height: calc(100vh - 84px);
+  padding: 16px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 html.dark {
@@ -147,9 +148,7 @@ html.dark {
 
   aside,
   .app-container {
-    background: var(--surface-bg);
-    border-color: var(--surface-border);
-    box-shadow: var(--surface-shadow);
+    color: var(--app-text);
   }
 
   .link-type,

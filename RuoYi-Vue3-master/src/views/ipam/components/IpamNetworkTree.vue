@@ -154,13 +154,13 @@ function occupiedCount(network) {
 }
 
 .network-tree :deep(.el-tree-node__content:hover) {
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 .network-tree :deep(.el-tree-node__expand-icon) {
   align-self: flex-start;
   margin-top: 10px;
-  color: #64748b;
+  color: var(--app-muted);
 }
 
 .network-tree :deep(.el-tree-node__children > .el-tree-node > .el-tree-node__content) {
@@ -192,7 +192,7 @@ function occupiedCount(network) {
 }
 
 .station-node__summary {
-  color: #64748b;
+  color: var(--app-muted);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -208,18 +208,18 @@ function occupiedCount(network) {
   border-left: 3px solid transparent;
   border-bottom: 1px solid #eef2f7;
   border-radius: 5px;
-  background: #fff;
+  background: var(--surface-strong);
   line-height: 1.3;
   transition: border-color 0.16s ease, background-color 0.16s ease;
 }
 
 .network-node:hover {
-  background: #f8fbff;
+  background: var(--surface-muted);
 }
 
 .network-node.is-selected {
   border-left-color: #2563eb;
-  background: #eff6ff;
+  background: var(--surface-subtle);
 }
 
 .network-node__body {
@@ -238,7 +238,7 @@ function occupiedCount(network) {
 
 .network-node__top strong {
   overflow: hidden;
-  color: #111827;
+  color: var(--app-heading);
   font-size: 13px;
   font-weight: 650;
   text-overflow: ellipsis;
@@ -252,7 +252,7 @@ function occupiedCount(network) {
 }
 
 .network-node__status.is-disabled {
-  color: #64748b;
+  color: var(--app-muted);
 }
 
 .network-node__range {
@@ -268,7 +268,7 @@ function occupiedCount(network) {
   display: flex;
   gap: 8px;
   overflow: hidden;
-  color: #64748b;
+  color: var(--app-muted);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -278,7 +278,7 @@ function occupiedCount(network) {
   align-items: center;
   margin-left: 4px;
   padding-left: 4px;
-  border-left: 1px solid #e5e7eb;
+  border-left: 1px solid var(--surface-border);
 }
 
 .network-node__actions .el-button {

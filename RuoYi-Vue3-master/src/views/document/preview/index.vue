@@ -158,7 +158,7 @@ function closePreview() {
   overflow: hidden;
   flex-direction: column;
   background: #eef1f5;
-  color: #172033;
+  color: var(--app-heading);
 }
 
 .preview-header {
@@ -169,7 +169,7 @@ function closePreview() {
   gap: 10px;
   padding: 0 16px;
   border-bottom: 1px solid #d8dee8;
-  background: #fff;
+  background: var(--surface-strong);
   box-shadow: 0 1px 4px rgba(16, 24, 40, 0.06);
 }
 
@@ -190,7 +190,7 @@ function closePreview() {
   strong,
   span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   strong { max-width: 520px; font-size: 14px; }
-  span { margin-top: 3px; color: #667085; font-size: 11px; }
+  span { margin-top: 3px; color: var(--app-muted); font-size: 11px; }
 }
 .preview-spacer { flex: 1; }
 
@@ -215,9 +215,9 @@ function closePreview() {
   gap: 10px;
   flex-direction: column;
   background: #f6f8fb;
-  color: #667085;
+  color: var(--app-muted);
   text-align: center;
-  strong { color: #172033; font-size: 16px; }
+  strong { color: var(--app-heading); font-size: 16px; }
   > span:not(.loading-ring, .error-mark) { max-width: 560px; line-height: 1.65; }
   :deep(.el-progress) { width: min(360px, 70vw); margin-top: 4px; }
 }
@@ -245,8 +245,8 @@ function closePreview() {
   gap: 16px;
   padding: 0 16px;
   border-top: 1px solid #d8dee8;
-  background: #fff;
-  color: #667085;
+  background: var(--surface-strong);
+  color: var(--app-muted);
   font-size: 11px;
   span { display: flex; align-items: center; gap: 5px; }
 }

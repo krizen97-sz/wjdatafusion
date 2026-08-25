@@ -123,14 +123,14 @@ async function saveRow(row) {
 </script>
 
 <style scoped lang="scss">
-.storage-admin { color: #172033; }
+.storage-admin { color: var(--app-heading); }
 .storage-admin-summary {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
   padding: 0 2px 16px;
-  border-bottom: 1px solid #e6eaf0;
+  border-bottom: 1px solid var(--surface-border);
 
   strong, span { display: block; }
   strong { font-size: 18px; }
@@ -147,8 +147,8 @@ async function saveRow(row) {
 }
 .storage-table-head {
   min-height: 42px;
-  border-bottom: 1px solid #e6eaf0;
-  color: #667085;
+  border-bottom: 1px solid var(--surface-border);
+  color: var(--app-muted);
   font-size: 12px;
   font-weight: 650;
 }
@@ -166,12 +166,12 @@ async function saveRow(row) {
 .storage-usage strong,
 .storage-usage small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .storage-user small,
-.storage-usage small { margin-top: 2px; color: #667085; font-size: 12px; }
+.storage-usage small { margin-top: 2px; color: var(--app-muted); font-size: 12px; }
 .storage-user em { margin-left: 4px; color: #b45309; font-size: 11px; font-style: normal; font-weight: 650; }
 .storage-usage .el-progress { margin-top: 8px; }
 .storage-limit-field { position: relative; display: flex; align-items: center; }
 .storage-limit-field .el-input-number { width: 100%; }
-.storage-limit-field small { position: absolute; right: 28px; color: #667085; pointer-events: none; }
+.storage-limit-field small { position: absolute; right: 28px; color: var(--app-muted); pointer-events: none; }
 .storage-policy-note { margin: 16px 2px 0; color: #596579; font-size: 12px; line-height: 1.7; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 
@@ -183,7 +183,7 @@ async function saveRow(row) {
     gap: 12px;
     padding: 14px 0;
   }
-  .storage-limit-field::before { content: '空间'; width: 42px; color: #667085; font-size: 12px; }
+  .storage-limit-field::before { content: '空间'; width: 42px; color: var(--app-muted); font-size: 12px; }
   .storage-limit-field:nth-of-type(2)::before { content: '单文件'; }
   .storage-table-row > .el-button { justify-self: end; }
 }

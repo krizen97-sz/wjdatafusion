@@ -112,22 +112,22 @@ async function loadRecords() {
 </script>
 
 <style scoped lang="scss">
-.records-drawer { color: #172033; }
+.records-drawer { color: var(--app-heading); }
 
 .record-document {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 14px;
-  border: 1px solid #dde4ee;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #f7f9fc;
+  background: var(--surface-muted);
 
   > div { min-width: 0; }
   strong,
   span { display: block; }
   strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  span { margin-top: 3px; color: #667085; font-size: 12px; }
+  span { margin-top: 3px; color: var(--app-muted); font-size: 12px; }
 }
 
 .file-mark {
@@ -165,15 +165,15 @@ async function loadRecords() {
   margin-top: 5px;
   border: 2px solid #1677ff;
   border-radius: 50%;
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .is-current .version-dot { border-color: #15803d; background: #dcfce7; }
 .version-copy { min-width: 0; }
 .version-title { display: flex; align-items: center; gap: 7px; }
 .version-copy > span,
-.version-copy > time { display: block; margin-top: 4px; color: #667085; font-size: 12px; }
-.version-copy > time { color: #98a2b3; }
+.version-copy > time { display: block; margin-top: 4px; color: var(--app-muted); font-size: 12px; }
+.version-copy > time { color: var(--app-muted); }
 
 .operation-filter {
   display: flex;
@@ -189,13 +189,13 @@ async function loadRecords() {
     border: 0;
     border-radius: 5px;
     background: transparent;
-    color: #667085;
+    color: var(--app-muted);
     cursor: pointer;
     font-size: 12px;
   }
   button:hover,
   button:focus-visible,
-  button.is-active { outline: none; background: #fff; color: #0f5eba; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08); }
+  button.is-active { outline: none; background: var(--surface-strong); color: #0f5eba; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08); }
 }
 
 .operation-item {
@@ -209,8 +209,8 @@ async function loadRecords() {
   span,
   time { display: block; }
   strong { font-size: 13px; }
-  span { margin-top: 4px; color: #475467; font-size: 12px; line-height: 1.55; }
-  time { margin-top: 4px; color: #98a2b3; font-size: 11px; }
+  span { margin-top: 4px; color: var(--app-muted); font-size: 12px; line-height: 1.55; }
+  time { margin-top: 4px; color: var(--app-muted); font-size: 11px; }
 }
 
 .operation-icon {
@@ -220,7 +220,7 @@ async function loadRecords() {
   flex: 0 0 28px;
   place-items: center;
   border-radius: 6px;
-  background: #edf4ff;
+  background: var(--surface-subtle);
   color: #0f5eba;
 }
 

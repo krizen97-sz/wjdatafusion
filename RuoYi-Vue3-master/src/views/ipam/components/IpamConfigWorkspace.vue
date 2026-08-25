@@ -739,7 +739,7 @@ watch([expanded, () => props.fullscreen, () => props.displayMode, () => props.sh
 }
 
 .grid-toolbar span {
-  color: #6b7280;
+  color: var(--app-muted);
 }
 
 .grid-actions {
@@ -789,7 +789,7 @@ watch([expanded, () => props.fullscreen, () => props.displayMode, () => props.sh
 
 .summary-strip span {
   padding: 6px 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--surface-border);
   border-radius: 6px;
   background: #f9fafb;
   color: #374151;
@@ -822,7 +822,7 @@ watch([expanded, () => props.fullscreen, () => props.displayMode, () => props.sh
   min-width: 0;
   height: 26px;
   padding: 0;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--surface-border);
   border-radius: 4px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
@@ -899,7 +899,7 @@ watch([expanded, () => props.fullscreen, () => props.displayMode, () => props.sh
 
 .mini-cell__connectivity.is-offline {
   background: #94a3b8;
-  color: #64748b;
+  color: var(--app-muted);
 }
 
 .mini-cell__connectivity.is-unknown {
@@ -984,12 +984,12 @@ watch([expanded, () => props.fullscreen, () => props.displayMode, () => props.sh
   gap: 12px;
   min-height: 34px;
   margin: -4px 0 12px;
-  color: #64748b;
+  color: var(--app-muted);
   font-size: 12px;
 }
 
 .mini-cell.selected {
-  border-color: #111827;
+  border-color: var(--app-heading);
   box-shadow: inset 0 0 0 1px #111827;
 }
 
@@ -1012,15 +1012,15 @@ watch([expanded, () => props.fullscreen, () => props.displayMode, () => props.sh
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--surface-border);
   border-bottom: 0;
   border-radius: 8px 8px 0 0;
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 .sheet-head h4 {
   margin: 0;
-  color: #111827;
+  color: var(--app-heading);
   font-size: 14px;
   font-weight: 650;
 }
@@ -1034,7 +1034,7 @@ watch([expanded, () => props.fullscreen, () => props.displayMode, () => props.sh
 }
 
 .sheet-subtitle {
-  color: #6b7280;
+  color: var(--app-muted);
   font-size: 12px;
 }
 
@@ -1161,7 +1161,7 @@ select.sheet-native-control {
 }
 
 .sheet-table :deep(.sheet-row-selected td) {
-  background: #eff6ff;
+  background: var(--surface-subtle);
 }
 
 .mono {
@@ -1178,14 +1178,14 @@ select.sheet-native-control {
   align-items: center;
   justify-content: center;
   min-height: 320px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--surface-border);
   border-radius: 0 0 8px 8px;
 }
 
 .mini-cell.is-free {
-  background: #f8fafc;
+  background: var(--surface-muted);
   border-color: #d1d5db;
-  color: #64748b;
+  color: var(--app-muted);
 }
 
 .mini-cell.is-reserved {
@@ -1195,7 +1195,7 @@ select.sheet-native-control {
 }
 
 .mini-cell.is-allocated {
-  background: #eff6ff;
+  background: var(--surface-subtle);
   border-color: #3b82f6;
   color: #1d4ed8;
 }

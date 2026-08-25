@@ -13,6 +13,6 @@ onMounted(() => {
 <style lang="scss" scoped>
 .register-redirect {
   min-height: 100vh;
-  background: #fbfdff;
+  background: var(--surface-muted);
 }
 </style>

@@ -24,6 +24,14 @@
     <div class="setting-drawer-title">
       <h3 class="drawer-title">主题风格设置</h3>
     </div>
+    <div class="drawer-item">
+      <span>界面模式</span>
+      <el-segmented
+        :model-value="settingsStore.isDark ? 'dark' : 'light'"
+        :options="themeModeOptions"
+        @change="handleThemeMode"
+      />
+    </div>
     <div class="setting-drawer-block-checbox">
       <div class="setting-drawer-block-checbox-item" @click="handleTheme('theme-dark')">
         <img src="@/assets/images/dark.svg" alt="dark" />
@@ -122,6 +130,10 @@ const theme = ref(settingsStore.theme)
 const sideTheme = ref(settingsStore.sideTheme)
 const storeSettings = computed(() => settingsStore)
 const predefineColors = ref(["#409EFF", "#ff4500", "#ff8c00", "#ffd700", "#90ee90", "#00ced1", "#1e90ff", "#c71585"])
+const themeModeOptions = [
+  { label: '浅色', value: 'light' },
+  { label: '深色', value: 'dark' }
+]
 
 /** 是否需要dynamicTitle */
 function dynamicTitleChange() {
@@ -136,6 +148,11 @@ function themeChange(val) {
 function handleTheme(val) {
   settingsStore.sideTheme = val
   sideTheme.value = val
+}
+
+function handleThemeMode(mode) {
+  const shouldUseDark = mode === 'dark'
+  if (settingsStore.isDark !== shouldUseDark) settingsStore.toggleTheme()
 }
 
 function handleNavType(val) {
@@ -277,7 +294,7 @@ defineExpose({
     b:first-child {
       display: block;
       height: 30%;
-      background: #fff;
+      background: var(--surface-strong);
     }
     b:last-child {
       width: 30%;

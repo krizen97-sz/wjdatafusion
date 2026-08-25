@@ -367,11 +367,11 @@ function closeEditor() {
 </script>
 
 <style scoped lang="scss">
-.document-editor-page { display: flex; width: 100vw; height: 100vh; overflow: hidden; flex-direction: column; background: #f7f9fc; color: #172033; }
-.editor-header { display: flex; height: 54px; flex: 0 0 54px; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid #dde4ee; background: #fff; box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05); }
-.close-button { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: #475467; cursor: pointer; }
+.document-editor-page { display: flex; width: 100vw; height: 100vh; overflow: hidden; flex-direction: column; background: var(--surface-muted); color: var(--app-heading); }
+.editor-header { display: flex; height: 54px; flex: 0 0 54px; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--surface-border); background: var(--surface-strong); box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05); }
+.close-button { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--app-muted); cursor: pointer; }
 .close-button:hover,
-.close-button:focus-visible { outline: none; background: #edf4ff; color: #0f5eba; }
+.close-button:focus-visible { outline: none; background: var(--surface-subtle); color: #0f5eba; }
 .file-mark { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 5px; background: #1677ff; color: #fff; font-size: 12px; font-weight: 750; }
 .file-mark.is-xls,
 .file-mark.is-xlsx { background: #15803d; }
@@ -379,27 +379,27 @@ function closeEditor() {
 .editor-title strong,
 .editor-title span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .editor-title strong { max-width: 440px; font-size: 13px; }
-.editor-title span { margin-top: 2px; color: #667085; font-size: 11px; }
+.editor-title span { margin-top: 2px; color: var(--app-muted); font-size: 11px; }
 .editor-spacer { flex: 1; }
 .save-state,
-.online-summary { display: flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 5px; color: #667085; background: #f7f9fc; font-size: 12px; }
+.online-summary { display: flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 5px; color: var(--app-muted); background: var(--surface-muted); font-size: 12px; }
 .save-state { appearance: none; border: 0; font-family: inherit; }
 .save-state:not(:disabled) { cursor: pointer; }
 .save-state.is-saved { color: #15803d; background: #f2fbf5; }
 .save-state.is-ready,
-.save-state.is-view { color: #475467; background: #f3f6fa; }
-.save-state.is-syncing { color: #0f5eba; background: #f2f7ff; }
+.save-state.is-view { color: var(--app-muted); background: #f3f6fa; }
+.save-state.is-syncing { color: #0f5eba; background: var(--surface-subtle); }
 .save-state.is-error { color: #b42318; background: #fff4f2; }
 .editor-stage { position: relative; min-height: 0; flex: 1; }
 .onlyoffice-editor { width: 100%; height: 100%; }
 .onlyoffice-editor.is-hidden { visibility: hidden; }
 .editor-placeholder,
-.editor-error { position: absolute; z-index: 2; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; flex-direction: column; background: #f7f9fc; color: #667085; }
+.editor-error { position: absolute; z-index: 2; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; flex-direction: column; background: var(--surface-muted); color: var(--app-muted); }
 .editor-placeholder > .el-icon,
 .editor-error > .el-icon { color: #1677ff; font-size: 28px; }
 .editor-error > .el-icon { color: #b42318; }
 .editor-placeholder strong,
-.editor-error strong { color: #172033; font-size: 15px; }
+.editor-error strong { color: var(--app-heading); font-size: 15px; }
 .editor-placeholder span,
 .editor-error span { max-width: 580px; text-align: center; }
 @media (max-width: 760px) { .online-summary { display: none; } .editor-title strong { max-width: 220px; } }

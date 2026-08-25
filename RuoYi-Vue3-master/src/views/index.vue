@@ -448,7 +448,7 @@ function formatDateTime(value) {
 
 .vehiclealarm-home h2 {
   margin: 0;
-  color: #16324f;
+  color: var(--app-heading);
   font-size: 34px;
 }
 
@@ -510,7 +510,7 @@ function formatDateTime(value) {
 }
 
 .fusion-stat span {
-  color: #6d8298;
+  color: var(--app-muted);
 }
 
 .fusion-stat strong {
@@ -571,7 +571,7 @@ function formatDateTime(value) {
   padding: 16px;
   border-radius: 12px;
   border: 1px solid #dce8ef;
-  background: #fbfdff;
+  background: var(--surface-muted);
 }
 
 .fusion-site-card__top {
@@ -654,14 +654,14 @@ function formatDateTime(value) {
   padding: 12px;
   border: 1px solid #e0ebf4;
   border-radius: 10px;
-  background: #fbfdff;
+  background: var(--surface-muted);
   text-align: left;
   cursor: pointer;
 }
 
 .fusion-change-item:hover {
   border-color: #95bdf5;
-  background: #f6fbff;
+  background: var(--surface-muted);
 }
 
 .fusion-change-item strong {
@@ -679,7 +679,7 @@ function formatDateTime(value) {
   padding: 2px 8px;
   border-radius: 999px;
   color: #2f7cf6;
-  background: #edf4ff;
+  background: var(--surface-subtle);
   font-size: 12px;
 }
 
@@ -729,7 +729,7 @@ function formatDateTime(value) {
   padding: 14px;
   border-radius: 10px;
   color: #243c54;
-  background: #f7f9fc;
+  background: var(--surface-muted);
   border: 1px solid #e3edf6;
   white-space: pre-wrap;
   word-break: break-word;
@@ -758,7 +758,7 @@ function formatDateTime(value) {
 .hero h2,
 .module-section h3 {
   margin: 0;
-  color: #16324f;
+  color: var(--app-heading);
 }
 
 .hero h2 {
@@ -830,7 +830,7 @@ function formatDateTime(value) {
   min-height: 40px;
   padding: 0 14px;
   border-radius: 999px;
-  background: #f2f7ff;
+  background: var(--surface-subtle);
   color: #456381;
 }
 

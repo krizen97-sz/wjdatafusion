@@ -69,16 +69,23 @@ $--color-info: #7d90a6;
 :root {
   --app-text: #35506d;
   --app-heading: #17314d;
-  --app-muted: #6d8298;
-  --page-bg:
-    radial-gradient(circle at top left, rgba(194, 224, 255, 0.5), transparent 28%),
-    radial-gradient(circle at top right, rgba(222, 240, 255, 0.72), transparent 32%),
-    linear-gradient(180deg, #f7fbff 0%, #eef5fd 100%);
-  --surface-bg: rgba(255, 255, 255, 0.82);
+  --app-muted: #5f7388;
+  --page-bg: #f2f5f9;
+  --surface-bg: #ffffff;
   --surface-strong: #ffffff;
-  --surface-muted: #f5f9fe;
-  --surface-border: rgba(149, 183, 223, 0.28);
-  --surface-shadow: 0 14px 34px rgba(62, 104, 152, 0.08);
+  --surface-muted: #f7f9fc;
+  --surface-subtle: #eef3f8;
+  --surface-hover: #edf4fb;
+  --surface-border: #dde5ef;
+  --surface-border-strong: #c6d3e1;
+  --surface-shadow: 0 10px 26px rgba(31, 57, 86, 0.08);
+  --loading-mask-bg: rgba(246, 249, 252, 0.88);
+  --chart-grid: #e4eaf1;
+  --chart-axis: #71849a;
+  --health-normal: #2f9b73;
+  --health-warning: #c88824;
+  --health-danger: #d55353;
+  --health-idle: #8a9aad;
 
   --sidebar-bg: #{rgba(247, 251, 255, 0.82)};
   --sidebar-text: #{$menuText};
@@ -107,15 +114,22 @@ html.dark {
   --app-text: #d8e2f0;
   --app-heading: #f4f8ff;
   --app-muted: #91a1b6;
-  --page-bg:
-    radial-gradient(circle at top left, rgba(45, 126, 247, 0.16), transparent 30%),
-    radial-gradient(circle at top right, rgba(47, 128, 237, 0.12), transparent 34%),
-    linear-gradient(180deg, #0b111a 0%, #101722 100%);
-  --surface-bg: rgba(17, 24, 34, 0.88);
+  --page-bg: #0b1119;
+  --surface-bg: #111923;
   --surface-strong: #151d29;
-  --surface-muted: #101722;
-  --surface-border: rgba(116, 142, 174, 0.24);
+  --surface-muted: #101721;
+  --surface-subtle: #1a2533;
+  --surface-hover: #1c2a3a;
+  --surface-border: #29384a;
+  --surface-border-strong: #3a4d63;
   --surface-shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+  --loading-mask-bg: rgba(10, 16, 24, 0.88);
+  --chart-grid: #263547;
+  --chart-axis: #9aabc0;
+  --health-normal: #4db88c;
+  --health-warning: #e3a948;
+  --health-danger: #ef7373;
+  --health-idle: #7e90a6;
   --el-bg-color: #101722;
   --el-bg-color-page: #0b111a;
   --el-bg-color-overlay: #151d29;
@@ -309,4 +323,3 @@ html.dark {
     border-top: 1px solid var(--el-bg-color) !important;
   }
 }
-

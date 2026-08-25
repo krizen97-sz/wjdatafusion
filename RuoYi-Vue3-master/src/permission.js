@@ -1,15 +1,12 @@
 import router from './router'
 import { ElMessage } from 'element-plus'
-import NProgress from 'nprogress'
-import 'nprogress/nprogress.css'
 import { getToken } from '@/utils/auth'
 import { isHttp, isPathMatch } from '@/utils/validate'
 import { isRelogin } from '@/utils/request'
+import { finishRouteProgress, startRouteProgress } from '@/utils/routeProgress'
 import useUserStore from '@/store/modules/user'
 import useSettingsStore from '@/store/modules/settings'
 import usePermissionStore from '@/store/modules/permission'
-
-NProgress.configure({ showSpinner: false })
 
 const whiteList = ['/login', '/register']
 
@@ -18,13 +15,13 @@ const isWhiteList = (path) => {
 }
 
 router.beforeEach((to, from, next) => {
-  NProgress.start()
+  startRouteProgress()
   if (getToken()) {
     to.meta.title && useSettingsStore().setTitle(to.meta.title)
     /* has token*/
     if (to.path === '/login') {
       next({ path: '/' })
-      NProgress.done()
+      finishRouteProgress()
     } else if (isWhiteList(to.path)) {
       next()
     } else {
@@ -59,11 +56,11 @@ router.beforeEach((to, from, next) => {
       next()
     } else {
       next(`/login?redirect=${to.fullPath}`) // 否则全部重定向到登录页
-      NProgress.done()
+      finishRouteProgress()
     }
   }
 })
 
 router.afterEach(() => {
-  NProgress.done()
+  finishRouteProgress()
 })

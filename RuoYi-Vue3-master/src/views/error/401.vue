@@ -1,82 +1,87 @@
 <template>
-  <div class="errPage-container">
-    <el-button icon="arrow-left" class="pan-back-btn" @click="back">
-      返回
-    </el-button>
-    <el-row>
-      <el-col :span="12">
-        <h1 class="text-jumbo text-ginormous">
-          401错误!
-        </h1>
-        <h2>您没有访问权限！</h2>
-        <h6>对不起，您没有访问权限，请不要进行非法操作！您可以返回主页面</h6>
-        <ul class="list-unstyled">
-          <li class="link-type">
-            <router-link to="/">
-              回首页
-            </router-link>
-          </li>
-        </ul>
-      </el-col>
-      <el-col :span="12">
-        <img :src="errGif" width="313" height="428" alt="Girl has dropped her ice cream.">
-      </el-col>
-    </el-row>
-  </div>
+  <main class="platform-error-page">
+    <section class="platform-error-panel" aria-labelledby="forbidden-title">
+      <img src="@/assets/logo/platform-logo.svg" alt="华东信息融合平台" class="platform-error-logo" />
+      <div class="platform-error-code" aria-hidden="true">401</div>
+      <h1 id="forbidden-title">当前账号无权访问</h1>
+      <p>该页面需要额外的菜单或功能权限。请联系管理员核对账号角色，也可以返回工作台访问已有功能。</p>
+      <el-alert title="权限调整后，请重新登录以刷新菜单和权限信息。" type="info" :closable="false" show-icon />
+      <div class="platform-error-actions">
+        <el-button :icon="Back" @click="goBack">返回上一页</el-button>
+        <el-button type="primary" :icon="HomeFilled" @click="goHome">进入工作台</el-button>
+      </div>
+    </section>
+  </main>
 </template>
 
 <script setup>
-import errImage from "@/assets/401_images/401.gif"
+import { Back, HomeFilled } from '@element-plus/icons-vue'
 
-let { proxy } = getCurrentInstance()
+const route = useRoute()
+const router = useRouter()
 
-const errGif = ref(errImage + "?" + +new Date())
+function goBack() {
+  if (route.query.noGoBack || window.history.length <= 1) goHome()
+  else router.back()
+}
 
-function back() {
-  if (proxy.$route.query.noGoBack) {
-    proxy.$router.push({ path: "/" })
-  } else {
-    proxy.$router.go(-1)
-  }
+function goHome() {
+  router.push('/index')
 }
 </script>
 
-<style lang="scss" scoped>
-.errPage-container {
-  width: 800px;
-  max-width: 100%;
-  margin: 100px auto;
-  .pan-back-btn {
-    background: #008489;
-    color: #fff;
-    border: none !important;
-  }
-  .pan-gif {
-    margin: 0 auto;
-    display: block;
-  }
-  .pan-img {
-    display: block;
-    margin: 0 auto;
-    width: 100%;
-  }
-  .text-jumbo {
-    font-size: 60px;
-    font-weight: 700;
-    color: #484848;
-  }
-  .list-unstyled {
-    font-size: 14px;
-    li {
-      padding-bottom: 5px;
-    }
-    a {
-      color: #008489;
-      text-decoration: none;
-      &:hover {
-        text-decoration: underline;
-      }
-    }
-  }
+<style scoped>
+.platform-error-page {
+  display: grid;
+  min-height: 100vh;
+  padding: 48px;
+  place-items: center;
+  background: var(--page-bg);
+  color: var(--app-text);
+}
+
+.platform-error-panel {
+  display: grid;
+  justify-items: start;
+  width: min(680px, 100%);
+  padding: 46px 52px;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  background: var(--surface-strong);
+  box-shadow: var(--surface-shadow);
+}
+
+.platform-error-logo {
+  width: 54px;
+  height: 54px;
+}
+
+.platform-error-code {
+  margin-top: 28px;
+  color: var(--el-color-warning);
+  font-size: 72px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+h1 {
+  margin: 16px 0 8px;
+  color: var(--app-heading);
+  font-size: 28px;
+  letter-spacing: 0;
+}
+
+p {
+  max-width: 62ch;
+  margin: 0 0 18px;
+  color: var(--app-muted);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.platform-error-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
 }
 </style>

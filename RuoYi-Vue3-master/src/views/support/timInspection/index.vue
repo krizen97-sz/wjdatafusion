@@ -178,7 +178,7 @@
           <el-table-column label="启用项/目标" align="center" width="120">
             <template #default="scope">{{ scope.row.itemCount || 0 }} / {{ scope.row.targetCount || 0 }}</template>
           </el-table-column>
-          <el-table-column label="若依任务ID" align="center" prop="jobId" width="110" />
+          <el-table-column label="平台任务ID" align="center" prop="jobId" width="110" />
           <el-table-column label="状态" align="center" width="110">
             <template #default="scope">
               <el-switch
@@ -860,7 +860,7 @@ function submitPlan() {
     const payload = buildPlanPayload()
     const req = payload.planId ? updateTimInspectionPlan(payload) : addTimInspectionPlan(payload)
     req.then(() => {
-      proxy.$modal.msgSuccess('巡检计划已保存，并已同步若依定时任务')
+      proxy.$modal.msgSuccess('巡检计划已保存，并已同步平台定时任务')
       planDialogOpen.value = false
       getPlanList()
       getList()
@@ -909,7 +909,7 @@ function handleRunPlan(row) {
 }
 
 function handleDeletePlan(row) {
-  proxy.$modal.confirm('确认删除巡检计划“' + row.planName + '”吗？对应的若依定时任务也会同步删除。').then(() => {
+  proxy.$modal.confirm('确认删除巡检计划“' + row.planName + '”吗？对应的平台定时任务也会同步删除。').then(() => {
     return delTimInspectionPlan(row.planId)
   }).then(() => {
     proxy.$modal.msgSuccess('删除成功')
@@ -1072,7 +1072,7 @@ getPlanList()
 .tim-page {
   display: grid;
   gap: 16px;
-  color: #17314d;
+  color: var(--app-heading);
 }
 
 .tim-hero {
@@ -1118,7 +1118,7 @@ getPlanList()
   padding: 12px;
   border: 1px solid #dbe7f3;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
   text-align: center;
 }
 
@@ -1139,7 +1139,7 @@ getPlanList()
   padding: 14px 16px 18px;
   border: 1px solid #e0e9f4;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .tim-query-bar,
@@ -1157,7 +1157,7 @@ getPlanList()
 .config-card {
   border: 1px solid #dfe9f5;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
   overflow: hidden;
 }
 
@@ -1170,7 +1170,7 @@ getPlanList()
   justify-content: space-between;
   align-items: center;
   padding: 14px 16px;
-  background: #f7fbff;
+  background: var(--surface-muted);
   border-bottom: 1px solid #e6eef8;
 }
 
@@ -1188,7 +1188,7 @@ getPlanList()
   height: 26px;
   border-radius: 50%;
   color: #2f78ff;
-  background: #eaf3ff;
+  background: var(--surface-subtle);
   font-weight: 700;
 }
 
@@ -1228,13 +1228,13 @@ getPlanList()
 .drawer-title span,
 .dialog-title span {
   font-size: 12px;
-  color: #7890a8;
+  color: var(--app-muted);
 }
 
 .drawer-title strong,
 .dialog-title strong {
   font-size: 20px;
-  color: #17314d;
+  color: var(--app-heading);
 }
 
 .target-form {
@@ -1292,7 +1292,7 @@ getPlanList()
   padding: 12px 14px;
   border: 1px solid #dfe9f5;
   border-radius: 8px;
-  background: #f7fbff;
+  background: var(--surface-muted);
 }
 
 .plan-section-head div {
@@ -1309,7 +1309,7 @@ getPlanList()
 
 .plan-section-head span {
   font-weight: 700;
-  color: #17314d;
+  color: var(--app-heading);
 }
 
 .plan-section-head strong {
@@ -1325,7 +1325,7 @@ getPlanList()
   max-height: calc(100vh - 410px);
   border: 1px solid #dfe9f5;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
   overflow: hidden;
 }
 
@@ -1336,7 +1336,7 @@ getPlanList()
   padding: 12px;
   overflow: auto;
   border-right: 1px solid #e7eff8;
-  background: #f8fbff;
+  background: var(--surface-muted);
 }
 
 .plan-item-option {
@@ -1349,7 +1349,7 @@ getPlanList()
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: #17314d;
+  color: var(--app-heading);
   text-align: left;
   cursor: pointer;
   transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
@@ -1358,7 +1358,7 @@ getPlanList()
 .plan-item-option:hover,
 .plan-item-option.is-active {
   border-color: #bcd6ff;
-  background: #fff;
+  background: var(--surface-strong);
   box-shadow: 0 4px 14px rgba(47, 120, 255, 0.08);
 }
 
@@ -1374,7 +1374,7 @@ getPlanList()
   height: 28px;
   border-radius: 50%;
   color: #2f78ff;
-  background: #eaf3ff;
+  background: var(--surface-subtle);
   font-weight: 700;
 }
 
@@ -1430,7 +1430,7 @@ getPlanList()
 
 .plan-item-detail__head strong {
   font-size: 18px;
-  color: #17314d;
+  color: var(--app-heading);
 }
 
 .plan-item-detail__head em {
@@ -1450,7 +1450,7 @@ getPlanList()
   padding: 12px;
   border: 1px solid #e4eef8;
   border-radius: 8px;
-  background: #fbfdff;
+  background: var(--surface-muted);
 }
 
 .plan-field-title {
@@ -1463,7 +1463,7 @@ getPlanList()
 
 .plan-field-title span {
   font-weight: 700;
-  color: #17314d;
+  color: var(--app-heading);
 }
 
 .plan-field-title em {
@@ -1503,7 +1503,7 @@ getPlanList()
 }
 
 .plan-item-detail__summary strong {
-  color: #17314d;
+  color: var(--app-heading);
   font-size: 14px;
 }
 
@@ -1529,7 +1529,7 @@ getPlanList()
 
 .detail-shell h4 {
   margin: 4px 0 -8px;
-  color: #17314d;
+  color: var(--app-heading);
 }
 
 @media (max-width: 900px) {

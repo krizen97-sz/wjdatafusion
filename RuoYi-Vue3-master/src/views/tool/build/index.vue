@@ -620,7 +620,7 @@ $lighterBlue: #409EFF;
               right: 56px;
               border-color: $lighterBlue;
               color: $lighterBlue;
-              background: #fff;
+              background: var(--surface-strong);
 
               &:hover {
                 background: $lighterBlue;
@@ -632,7 +632,7 @@ $lighterBlue: #409EFF;
               right: 24px;
               border-color: #F56C6C;
               color: #F56C6C;
-              background: #fff;
+              background: var(--surface-strong);
 
               &:hover {
                 background: #F56C6C;

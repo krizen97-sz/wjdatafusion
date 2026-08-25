@@ -129,7 +129,7 @@ function handlePaste(event) {
   padding: 0 10px;
   border: 1px solid #dcdfe6;
   border-radius: 4px;
-  background: #fff;
+  background: var(--surface-strong);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 

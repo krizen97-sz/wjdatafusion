@@ -299,7 +299,7 @@ function handleScroll() {
 
         &::before {
           content: '';
-          background: #fff;
+          background: var(--surface-strong);
           display: inline-block;
           width: 8px;
           height: 8px;

@@ -663,7 +663,7 @@ function getDynamicScopeCategories(entry) {
     '前端样式',
     '前端展示',
     '页面布局',
-    '若依动态路由',
+    '平台动态路由',
     '操作记录',
     '权限',
     '权限策略',
@@ -710,7 +710,7 @@ function getPrimaryModule(entry) {
   height: calc(100vh - 84px);
   min-height: 660px;
   overflow: hidden;
-  color: #17314d;
+  color: var(--app-heading);
 }
 
 .version-hero {
@@ -792,7 +792,7 @@ function getPrimaryModule(entry) {
   min-height: 0;
   border: 1px solid #dbe7f4;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
   overflow: hidden;
 }
 
@@ -804,7 +804,7 @@ function getPrimaryModule(entry) {
   min-height: 0;
   padding: 16px;
   border-right: 1px solid #e3edf7;
-  background: #f8fbff;
+  background: var(--surface-muted);
   overflow: hidden;
 }
 
@@ -830,7 +830,7 @@ function getPrimaryModule(entry) {
   justify-content: space-between;
   gap: 10px;
   min-width: 0;
-  color: #17314d;
+  color: var(--app-heading);
   font-size: 13px;
   font-weight: 800;
 }
@@ -841,8 +841,8 @@ function getPrimaryModule(entry) {
   padding: 0 8px;
   border: 1px solid #d5e4f4;
   border-radius: 12px;
-  background: #fff;
-  color: #5f7892;
+  background: var(--surface-strong);
+  color: var(--app-muted);
   cursor: pointer;
   font-size: 12px;
 }
@@ -883,7 +883,7 @@ function getPrimaryModule(entry) {
   padding: 0 12px;
   border: 1px solid #d5e4f4;
   border-radius: 16px;
-  background: #fff;
+  background: var(--surface-strong);
   color: #5c748d;
   cursor: pointer;
   font-size: 12px;
@@ -904,7 +904,7 @@ function getPrimaryModule(entry) {
 
 .version-filter-row button.is-active {
   border-color: #2f7fdb;
-  background: #eaf4ff;
+  background: var(--surface-subtle);
   color: #1f6fc2;
   font-weight: 700;
 }
@@ -936,8 +936,8 @@ function getPrimaryModule(entry) {
   padding: 0 10px;
   border: 1px solid #d5e4f4;
   border-radius: 8px;
-  background: #fff;
-  color: #17314d;
+  background: var(--surface-strong);
+  color: var(--app-heading);
   cursor: pointer;
   font-size: 12px;
   font-family: inherit;
@@ -952,7 +952,7 @@ function getPrimaryModule(entry) {
 }
 
 .major-filter-card strong {
-  color: #17314d;
+  color: var(--app-heading);
   font-weight: 800;
 }
 
@@ -972,7 +972,7 @@ function getPrimaryModule(entry) {
 .major-filter-card:hover,
 .major-filter-card.is-active {
   border-color: #2f7fdb;
-  background: #eaf4ff;
+  background: var(--surface-subtle);
   color: #1f6fc2;
   box-shadow: 0 8px 18px rgba(30, 96, 160, 0.08);
 }
@@ -1003,7 +1003,7 @@ function getPrimaryModule(entry) {
 
 .major-below-row span {
   flex: 0 0 auto;
-  color: #5f7892;
+  color: var(--app-muted);
   font-weight: 700;
 }
 
@@ -1013,7 +1013,7 @@ function getPrimaryModule(entry) {
   padding: 0 10px;
   border: 1px solid #d5e4f4;
   border-radius: 999px;
-  background: #fff;
+  background: var(--surface-strong);
   color: #6d8195;
   cursor: pointer;
   font-size: 12px;
@@ -1022,7 +1022,7 @@ function getPrimaryModule(entry) {
 .major-below-row button:hover,
 .major-below-row button.is-active {
   border-color: #2f7fdb;
-  background: #eaf4ff;
+  background: var(--surface-subtle);
   color: #1f6fc2;
   font-weight: 800;
 }
@@ -1101,7 +1101,7 @@ function getPrimaryModule(entry) {
 .version-tree-group.is-active .version-tree-group__head,
 .version-tree-group__head:hover {
   border-color: #a8cdef;
-  background: #eef7ff;
+  background: var(--surface-subtle);
 }
 
 .version-tree-group__head span {
@@ -1112,7 +1112,7 @@ function getPrimaryModule(entry) {
 
 .version-tree-group__head strong {
   overflow: hidden;
-  color: #17314d;
+  color: var(--app-heading);
   font-size: 13px;
   line-height: 1.2;
   text-overflow: ellipsis;
@@ -1177,14 +1177,14 @@ function getPrimaryModule(entry) {
   height: 7px;
   border: 1px solid #9ec4ea;
   border-radius: 50%;
-  background: #fff;
+  background: var(--surface-strong);
   content: '';
 }
 
 .version-tree-item:hover,
 .version-tree-item.is-active {
   border-color: #b9d7f3;
-  background: #fff;
+  background: var(--surface-strong);
   box-shadow: 0 8px 20px rgba(30, 96, 160, 0.08);
 }
 
@@ -1213,7 +1213,7 @@ function getPrimaryModule(entry) {
 
 .version-tree-item__title {
   overflow: hidden;
-  color: #17314d;
+  color: var(--app-heading);
   font-size: 14px;
   font-weight: 800;
   text-overflow: ellipsis;
@@ -1237,7 +1237,7 @@ function getPrimaryModule(entry) {
   min-width: 0;
   min-height: 0;
   padding: 22px;
-  background: #fff;
+  background: var(--surface-strong);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -1245,9 +1245,9 @@ function getPrimaryModule(entry) {
 .version-focus-card,
 .version-detail-section,
 .version-info-block {
-  border: 1px solid #dfeaf6;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .version-focus-card {
@@ -1282,7 +1282,7 @@ function getPrimaryModule(entry) {
   padding: 16px;
   border: 1px solid #cfe4f8;
   border-radius: 8px;
-  background: #f4f9ff;
+  background: var(--surface-muted);
 }
 
 .version-focus span {
@@ -1327,7 +1327,7 @@ function getPrimaryModule(entry) {
   align-items: start;
   padding: 12px;
   border-radius: 8px;
-  background: #f8fbff;
+  background: var(--surface-muted);
 }
 
 .version-change-item span {
@@ -1364,7 +1364,7 @@ function getPrimaryModule(entry) {
 .version-scope-list span {
   padding: 6px 10px;
   border-radius: 16px;
-  background: #eef6ff;
+  background: var(--surface-subtle);
   color: #2d6ca8;
   font-size: 12px;
 }
