@@ -137,12 +137,12 @@ const emit = defineEmits(['select', 'add', 'edit', 'duplicate', 'remove', 'move'
 }
 
 .inspection-flow__head strong {
-  color: #203653;
+  color: var(--app-heading);
   font-size: 15px;
 }
 
 .inspection-flow__head span {
-  color: #71829a;
+  color: var(--app-muted);
   font-size: 13px;
 }
 
@@ -174,10 +174,10 @@ const emit = defineEmits(['select', 'add', 'edit', 'duplicate', 'remove', 'move'
   gap: 5px;
   width: 72px;
   min-height: 72px;
-  border: 1px solid #cbd9ea;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #f7faff;
-  color: #476685;
+  background: var(--surface-muted);
+  color: var(--app-text);
 }
 
 .inspection-flow__terminal span,
@@ -202,9 +202,9 @@ const emit = defineEmits(['select', 'add', 'edit', 'duplicate', 'remove', 'move'
   width: 252px;
   min-height: 222px;
   padding: 14px;
-  border: 1px solid #d7e1ee;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
   cursor: pointer;
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
@@ -222,7 +222,7 @@ const emit = defineEmits(['select', 'add', 'edit', 'duplicate', 'remove', 'move'
 }
 
 .inspection-flow__node.is-disabled {
-  background: #f7f8fa;
+  background: var(--surface-muted);
   opacity: 0.78;
 }
 
@@ -238,7 +238,7 @@ const emit = defineEmits(['select', 'add', 'edit', 'duplicate', 'remove', 'move'
 .inspection-flow__name {
   display: block;
   margin-top: 10px;
-  color: #1f3552;
+  color: var(--app-heading);
   font-size: 15px;
   line-height: 1.4;
 }
@@ -246,7 +246,7 @@ const emit = defineEmits(['select', 'add', 'edit', 'duplicate', 'remove', 'move'
 .inspection-flow__tool {
   display: block;
   margin-top: 2px;
-  color: #71859d;
+  color: var(--app-muted);
   font-size: 12px;
   font-style: normal;
 }
@@ -266,17 +266,17 @@ const emit = defineEmits(['select', 'add', 'edit', 'duplicate', 'remove', 'move'
 }
 
 .inspection-flow__phases .el-icon {
-  color: #4f83b8;
+  color: var(--el-color-primary);
 }
 
 .inspection-flow__phases label {
-  color: #7a8ba1;
+  color: var(--app-muted);
   font-size: 12px;
 }
 
 .inspection-flow__phases strong {
   overflow: hidden;
-  color: #304966;
+  color: var(--app-heading);
   font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
@@ -289,7 +289,7 @@ const emit = defineEmits(['select', 'add', 'edit', 'duplicate', 'remove', 'move'
   gap: 6px;
   margin-top: 13px;
   padding-top: 11px;
-  border-top: 1px solid #edf1f6;
+  border-top: 1px solid var(--surface-border);
 }
 
 .inspection-flow__empty {
@@ -299,9 +299,9 @@ const emit = defineEmits(['select', 'add', 'edit', 'duplicate', 'remove', 'move'
   gap: 14px;
   min-height: 112px;
   padding: 18px;
-  border: 1px dashed #cbd9ea;
+  border: 1px dashed var(--surface-border);
   border-radius: 8px;
-  background: #f8fbff;
+  background: var(--surface-muted);
 }
 
 .inspection-flow__empty > .el-icon {
@@ -317,11 +317,11 @@ const emit = defineEmits(['select', 'add', 'edit', 'duplicate', 'remove', 'move'
 }
 
 .inspection-flow__empty strong {
-  color: #243b58;
+  color: var(--app-heading);
 }
 
 .inspection-flow__empty span {
-  color: #74869c;
+  color: var(--app-muted);
   font-size: 13px;
 }
 

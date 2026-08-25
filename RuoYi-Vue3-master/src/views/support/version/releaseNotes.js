@@ -1,5 +1,33 @@
 export const releaseNotes = [
   {
+    version: 'v3.14.0',
+    submitTime: '2026-08-25 23:41:46',
+    level: 'minor',
+    levelLabel: '小版本',
+    tagType: 'primary',
+    title: '巡检统一健康驾驶舱与平台界面本地化',
+    summary: '新增自动化巡检驾驶舱，将例行巡检、高频健康、当前计划和当日问题汇总成同一份健康结论；同时完成平台品牌、加载状态、错误页、标准表单和黑白主题基础治理。',
+    changes: [
+      '新增“巡检驾驶舱”一级子菜单，以当日综合健康度、近七日趋势、计划状态、待处理问题和最近执行形成统一值守视图。',
+      '后端驾驶舱接口同时聚合例行巡检记录和高频每日健康汇总，统一计算综合健康度、按日趋势、当前计划状态与最新问题，避免前端分别请求后自行拼接。',
+      '修复MySQL DATE类型转换可能触发toInstant异常的问题，确保高频每日健康与驾驶舱可稳定读取health_date。',
+      '巡检总览顶部新增统一健康条，例行明细和高频明细仍可下钻，但用户无需切换视图即可看到同一天的总体结论。',
+      '驾驶舱区分未检测与真实0%健康度，补充接口失败重试态和无数据引导；高频问题可直接定位到对应日期、计划和原始采样抽屉。',
+      '模板、目标、步骤和计划表单统一为顶部标签、标准控件高度、语义分区、固定弹窗与内部滚动，继续复用Element Plus并保持原保存字段兼容。',
+      '生产、预发布标题和前端包信息统一为华东信息融合平台；帮助链接、任务提示、代码生成提示等可见文案完成本地化。',
+      '移除上游路由进度条、401动画和404云层动画，改为本地平台加载条、统一加载遮罩以及支持黑白主题的业务错误页。',
+      '新增全局浅色/深色语义变量，将业务页面常见固定白底、深色标题、说明文字和浅色边框迁移到主题令牌，减少深色模式整块发白或发黑。',
+      '驾驶舱图表使用本地ECharts与现有Element Plus组件，不新增外部资源、在线字体或运行依赖。'
+    ],
+    scope: ['自动化巡检', '巡检驾驶舱', '例行巡检', '高频健康', '黑白主题', '平台本地化', '标准表单', '错误页', '加载状态', 'ECharts', '版本记录'],
+    database: '不修改巡检业务表；新增sys_menu菜单2307“巡检驾驶舱”，并为datafusion角色补充菜单关系。升级脚本可重复执行。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260825_auto_inspection_cockpit_theme_v3_14_0.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql'
+    ]
+  },
+  {
     version: 'v3.13.3',
     submitTime: '2026-08-24 15:06:00',
     level: 'patch',
@@ -77,7 +105,7 @@ export const releaseNotes = [
       '计划和步骤弹窗完成桌面端视口约束，配置内容独立滚动；MQTT Broker、Topic Filter、QoS、账号密码与活性规则保持紧凑可读。',
       '新增高频目标状态表与每日健康汇总表，补充计划模式、健康配置、记录模式、采样时隙、耗时和关注数量字段，历史计划与记录统一兼容为例行模式。'
     ],
-    scope: ['自动化巡检', '高频监测', '每日健康', 'Kafka', 'MQTT', '若依定时任务', '巡检计划', '巡检记录', '离线依赖', '数据库脚本', '版本记录'],
+    scope: ['自动化巡检', '高频监测', '每日健康', 'Kafka', 'MQTT', '平台定时任务', '巡检计划', '巡检记录', '离线依赖', '数据库脚本', '版本记录'],
     database: 'sup_auto_inspection_plan新增plan_mode、health_config；sup_auto_inspection_record新增run_mode、schedule_slot_time、duration_ms、warning_count及采样时隙索引；新增sup_auto_inspection_probe_state和sup_auto_inspection_health_daily。升级脚本保留原有数据并可重复执行。',
     scripts: [
       'WDF100.0/sql/support_upgrade_20260824_auto_inspection_high_frequency_health_v3_13_0.sql',
@@ -320,16 +348,16 @@ export const releaseNotes = [
     levelLabel: '修订版本',
     tagType: 'success',
     title: '普通文档用户共享候选范围修复',
-    summary: '修复普通document角色用户打开共享与权限页面时看不到其他文档管理用户、保存跨用户共享又被若依通用数据范围拦截的问题。',
+    summary: '修复普通document角色用户打开共享与权限页面时看不到其他文档管理用户、保存跨用户共享又被平台通用数据范围拦截的问题。',
     changes: [
       '将此前仅存在于集成目录的文档管理前端、后端、独立升级SQL、ONLYOFFICE内网部署材料和回归测试整合为可独立构建的干净模块基线。',
       '根因是document角色为保护其他业务模块使用“仅本人”数据范围，而共享候选列表复用了带@DataScope的系统用户查询，最终只能返回当前用户并在页面排除后变为空列表。',
       '新增文档权限专用候选用户查询，只返回状态正常且通过admin或document:file:manage获得文档管理能力的用户，不受部门和普通用户数据范围影响。',
       '候选查询在数据库层排除当前用户与文档所有者，支持账号、姓名和部门关键字检索，并保持最多100人的既有限制。',
       '保存共享时不再调用通用checkUserDataScope；继续严格校验目标用户有效状态、文档管理权限、ACL权限类型和权限有效期，不放宽文档边界。',
-      'document角色继续保持“仅本人”数据范围，不扩大系统管理、现场融合、IPAM或其他若依业务模块的数据可见范围。'
+      'document角色继续保持“仅本人”数据范围，不扩大系统管理、现场融合、IPAM或其他平台业务模块的数据可见范围。'
     ],
-    scope: ['文档管理', '共享与权限', '离线赋权', 'document角色', '若依数据范围', '跨部门协作', '权限边界'],
+    scope: ['文档管理', '共享与权限', '离线赋权', 'document角色', '平台数据范围', '跨部门协作', '权限边界'],
     database: '无数据库结构或存量数据变更；继续使用现有document角色、document:file:manage和doc_acl。',
     scripts: []
   },
@@ -422,7 +450,7 @@ export const releaseNotes = [
     changes: [
       '完整移除原“我的文档 / 目录”跨栏工具条及其占用的纵向空间，目录栏从页面内容顶部直接开始展示。',
       '刷新、新建目录、空间管理、上传文件、新建 Word、新建 Excel 六个操作统一迁移到“全部文件”等当前文档标题的右侧，并位于列表/网格视图切换之前。',
-      '保留原有若依权限指令、管理员条件、加载状态和业务事件，仅调整前端布局，不改变上传、新建、目录、配额及视图切换逻辑。',
+      '保留原有平台权限指令、管理员条件、加载状态和业务事件，仅调整前端布局，不改变上传、新建、目录、配额及视图切换逻辑。',
       '中等宽度下将刷新、新建目录、空间管理收为带可访问名称的图标按钮；窄屏允许标题与操作区自然换行，避免按钮互相挤压。',
       '根目录旁的紧凑存储入口保持不变，容量详情仍通过点击弹层查看。'
     ],
@@ -479,16 +507,16 @@ export const releaseNotes = [
     levelLabel: '修订版本',
     tagType: 'success',
     title: '文档管理专用角色',
-    summary: '后台角色列表新增若依原生“文档管理”角色（role_key=document）：分配该角色即可看到文档管理菜单并使用目录、上传、下载、共享和编辑功能，撤销角色后同步失去菜单和接口权限；admin继续保留总权限。',
+    summary: '后台角色列表新增平台内置“文档管理”角色（role_key=document）：分配该角色即可看到文档管理菜单并使用目录、上传、下载、共享和编辑功能，撤销角色后同步失去菜单和接口权限；admin继续保留总权限。',
     changes: [
       '在 sys_role 新增可直接分配的“文档管理”专用角色，角色字符为 document，并在系统管理 / 角色管理列表中统一维护。',
-      '专用角色绑定文档管理目录、文件管理应用及2501-2506全部功能按钮，继续使用若依 sys_role_menu 和 document:file:manage 完成前后端鉴权。',
+      '专用角色绑定文档管理目录、文件管理应用及2501-2506全部功能按钮，继续使用平台 sys_role_menu 和 document:file:manage 完成前后端鉴权。',
       '普通业务角色不再直接携带文档菜单，用户是否具备文档应用能力统一由“文档管理”角色控制，避免角色菜单授权来源分散。',
       '迁移会为此前已通过普通角色访问文件管理的有效用户自动补授专用角色，保证上线过程连续；admin角色保持完整文档菜单和通配总权限。',
-      '文档角色的数据范围使用“仅本人”，防止功能角色扩大其他若依业务的数据范围；文档内容仍按所有者、ACL和共享权限独立控制。',
+      '文档角色的数据范围使用“仅本人”，防止功能角色扩大其他平台业务的数据范围；文档内容仍按所有者、ACL和共享权限独立控制。',
       '提供角色菜单授权快照和配套回滚脚本，可恢复升级前普通角色的文档菜单关系，不修改任何文档、目录、ACL、修改记录和存储文件。'
     ],
-    scope: ['文档管理', '若依角色管理', '专用角色', 'role_key=document', '菜单可见性', '功能权限', '用户迁移', 'admin总权限', '可回滚迁移'],
+    scope: ['文档管理', '平台角色管理', '专用角色', 'role_key=document', '菜单可见性', '功能权限', '用户迁移', 'admin总权限', '可回滚迁移'],
     database: '新增“文档管理”sys_role记录并绑定2500-2507菜单；迁移原有普通角色用户后移除普通角色的直接文档菜单授权，保留admin总权限和业务数据不变。',
     scripts: [
       'WDF100.0/sql/document_management_v3_9_21_document_role_20260816.sql',
@@ -501,18 +529,18 @@ export const releaseNotes = [
     level: 'patch',
     levelLabel: '修订版本',
     tagType: 'success',
-    title: '若依原生文件管理角色权限',
-    summary: '文档管理的应用入口权限完整接入若依内置 sys_menu、sys_role_menu 与角色菜单树：角色管理新增“文档管理 / 文件管理”应用节点，勾选后统一获得 document:file:manage，并由若依前端指令和 Spring Security 权限表达式共同管控菜单、接口、上传与下载。',
+    title: '平台内置文件管理角色权限',
+    summary: '文档管理的应用入口权限完整接入平台内置 sys_menu、sys_role_menu 与角色菜单树：角色管理新增“文档管理 / 文件管理”应用节点，勾选后统一获得 document:file:manage，并由平台前端权限指令和 Spring Security 权限表达式共同管控菜单、接口、上传与下载。',
     changes: [
-      '现有文档管理菜单调整为若依标准目录节点，新增“文件管理”应用菜单，角色管理员可在“系统管理 / 角色管理 / 菜单权限”中直接勾选或撤销。',
+      '现有文档管理菜单调整为平台标准目录节点，新增“文件管理”应用菜单，角色管理员可在“系统管理 / 角色管理 / 菜单权限”中直接勾选或撤销。',
       '文件管理应用权限字符统一为 document:file:manage；旧 document:workspace:access 在兼容发布窗口后移除，不再作为业务授权来源。',
-      '前端上传、目录、下载与批量下载入口统一使用 v-hasPermi/checkPermi；后端所有登录态工作区接口统一使用 @PreAuthorize 调用若依 @ss.hasPermi。',
-      '协作者候选和管理员空间用户范围直接查询 sys_user_role、sys_role_menu、sys_menu，只有通过若依角色获得文件管理权限的有效用户才会进入范围。',
+      '前端上传、目录、下载与批量下载入口统一使用 v-hasPermi/checkPermi；后端所有登录态工作区接口统一使用 @PreAuthorize 调用平台 @ss.hasPermi。',
+      '协作者候选和管理员空间用户范围直接查询 sys_user_role、sys_role_menu、sys_menu，只有通过平台角色获得文件管理权限的有效用户才会进入范围。',
       '迁移自动为此前已拥有文档管理菜单的角色补选“文件管理”，保持现有用户连续可用；/documents 地址与 DocumentWorkspace 路由名称保持不变。',
-      '若依路由响应显式保留默认子路由的空 path，避免 NON_EMPTY 序列化省略字段，确保原 /documents 地址稳定渲染文件管理页面。',
+      '平台路由响应显式保留默认子路由的空 path，避免 NON_EMPTY 序列化省略字段，确保原 /documents 地址稳定渲染文件管理页面。',
       '发布使用准备和收口两阶段 SQL：旧后端兼容权限在新代码上线前保留，接口验证通过后再安全清除，并提供反向恢复角色授权意图的回滚脚本。'
     ],
-    scope: ['文档管理', '文件管理', '若依角色管理', 'sys_menu', 'sys_role_menu', '权限字符', '菜单权限', '上传下载', '可回滚迁移'],
+    scope: ['文档管理', '文件管理', '平台角色管理', 'sys_menu', 'sys_role_menu', '权限字符', '菜单权限', '上传下载', '可回滚迁移'],
     database: '重构菜单2500为文档管理目录，新增菜单2507“文件管理”并使用 document:file:manage；按钮权限2501-2506迁移为其子节点，不修改文档及容量业务数据。',
     scripts: [
       'WDF100.0/sql/document_management_v3_9_20_ruoyi_file_permission_20260816_prepare.sql',
@@ -815,7 +843,7 @@ export const releaseNotes = [
     levelLabel: '小版本',
     tagType: 'primary',
     title: 'IPAM连通性扫描与每日全域检测',
-    summary: 'IP分配管控新增独立连通性扫描能力，支持手工扫描当前网段并在IP网格标记在线、离线或检测异常，同时通过若依定时任务每天凌晨1点扫描全部启用网段。',
+    summary: 'IP分配管控新增独立连通性扫描能力，支持手工扫描当前网段并在IP网格标记在线、离线或检测异常，同时通过平台定时任务每天凌晨1点扫描全部启用网段。',
     changes: [
       'IP配置工作区新增“扫描网段”入口，扫描过程异步执行并展示完成进度，不阻塞页面请求。',
       'IP网格详细模式增加在线、离线和异常标签，扫描结果与IP分配状态分离，不会自动改变地址台账。',
@@ -824,7 +852,7 @@ export const releaseNotes = [
       '新增扫描任务和最新扫描结果独立表，以及 ipam:network:scan 权限，不修改现场融合业务表。'
     ],
     scope: ['IP分配管控', '网段扫描', '在线状态', '异步任务', 'Quartz定时任务', '有界并发', 'SQL脚本'],
-    database: '新增 ipam_scan_job、ipam_scan_result 表和扫描权限；新增每天01:00执行的若依定时任务，不修改 sup_* 表。',
+    database: '新增 ipam_scan_job、ipam_scan_result 表和扫描权限；新增每天01:00执行的平台定时任务，不修改 sup_* 表。',
     scripts: [
       'WDF100.0/sql/ipam_upgrade_20260712_v3_9_6.sql'
     ]
@@ -1734,11 +1762,11 @@ export const releaseNotes = [
     title: '自动化巡检看板路由修复',
     summary: '修复巡检看板打开后地址切换到未配置动态菜单路由导致 404 的问题，保持看板作为自动化巡检页面内页签展示。',
     changes: [
-      '巡检看板切换时不再把页面 path 改为 /dashboard，而是继续使用已有若依动态菜单路由，并通过 tab=dashboard 标识当前页签。',
+      '巡检看板切换时不再把页面 path 改为 /dashboard，而是继续使用已有平台动态菜单路由，并通过 tab=dashboard 标识当前页签。',
       '保留“巡检配置 / 巡检记录”已有动态路由和菜单 SQL，不新增数据库菜单项，避免影响现有权限与菜单结构。',
       '修复后从巡检配置、巡检记录切换到巡检看板不会再进入 404 页面。'
     ],
-    scope: ['自动化巡检', '巡检看板', '若依动态路由', '前端修复', '版本记录'],
+    scope: ['自动化巡检', '巡检看板', '平台动态路由', '前端修复', '版本记录'],
     database: '无数据库结构变化，无需执行 SQL。',
     scripts: []
   },
@@ -2207,12 +2235,12 @@ export const releaseNotes = [
     title: '自动化巡检动态路由修复',
     summary: '修复自动化巡检一级目录 component 为空导致 Vue 动态路由渲染时报 Cannot read properties of null (reading component) 的问题。',
     changes: [
-      '将自动化巡检一级菜单 sys_menu.menu_id=2300 的 component 从空值修正为 Layout，符合若依前后端分离动态路由规范。',
+      '将自动化巡检一级菜单 sys_menu.menu_id=2300 的 component 从空值修正为 Layout，符合平台前后端分离动态路由规范。',
       '新增前端动态路由兜底逻辑：后端返回有子路由但 component 为空的目录时，自动按 Layout 处理，避免空组件进入路由树。',
       '同步修正 v3.0.0 初始化脚本、support_v1.sql、support_deploy_all.sql 和 v3.0.3 独立脚本中的自动化巡检一级目录配置。',
       '新增 v3.0.4 独立升级脚本，线上环境可直接执行以修复已落库的菜单数据。'
     ],
-    scope: ['自动化巡检', '若依动态路由', '菜单权限', 'SQL脚本', '版本记录'],
+    scope: ['自动化巡检', '平台动态路由', '菜单权限', 'SQL脚本', '版本记录'],
     database: '不改业务表结构，仅更新 sys_menu 中自动化巡检一级菜单 component 字段为 Layout。',
     scripts: [
       'WDF100.0/sql/support_upgrade_20260611_auto_inspection_route_layout_v3_0_4.sql',
@@ -2279,14 +2307,14 @@ export const releaseNotes = [
     levelLabel: '修订版本',
     tagType: 'success',
     title: '自动化巡检菜单参数修复',
-    summary: '修复自动化巡检菜单 query 参数格式不符合若依前端 JSON 解析规则，导致已登录用户进入首页后页面空白的问题。',
+    summary: '修复自动化巡检菜单 query 参数格式不符合平台前端 JSON 解析规则，导致已登录用户进入首页后页面空白的问题。',
     changes: [
       '将巡检模板、巡检目标、巡检计划、巡检记录四个菜单的 query 从 tab=xxx 修正为 JSON 字符串。',
       '同步修复 v3.0.0 独立升级脚本、support_v1.sql 和 support_deploy_all.sql，避免后续部署再次写入错误菜单数据。',
       '新增 v3.0.1 独立升级脚本，可直接修复已执行 v3.0.0 脚本的环境。',
       '已同步修复本地 rynew 数据库 sys_menu 中 2301-2304 菜单记录。'
     ],
-    scope: ['自动化巡检', '菜单权限', '若依动态路由', 'SQL脚本', '版本记录'],
+    scope: ['自动化巡检', '菜单权限', '平台动态路由', 'SQL脚本', '版本记录'],
     database: '不改表结构，仅更新 sys_menu 中 2301、2302、2303、2304 四条自动化巡检菜单的 query 字段为合法 JSON。',
     scripts: [
       'WDF100.0/sql/support_upgrade_20260611_auto_inspection_menu_query_v3_0_1.sql',
@@ -2307,11 +2335,11 @@ export const releaseNotes = [
       '新增“自动化巡检”一级目录，与现场融合管理同级，包含巡检模板、巡检目标、巡检计划和巡检记录四个入口。',
       '将Kafka积压、海康接口数量、FTP目录文件数、服务器目录文件数、服务器磁盘使用率抽象为内置巡检工具。',
       '新增步骤式巡检模板，用户可在同一模板中多次复用同一工具，自由配置目标、参数、阈值、比较规则和展示名称。',
-      '巡检计划绑定模板，执行周期改为可视化配置，由前端生成Cron并同步若依sys_job定时任务。',
+      '巡检计划绑定模板，执行周期改为可视化配置，由前端生成Cron并同步平台sys_job定时任务。',
       '每次手动或定时执行都会保存模板步骤快照、目标明细结果、异常摘要，并支持Excel和Word报告导出。',
       '旧TIM系统巡检表不删除，旧菜单入口隐藏，避免影响历史数据。'
     ],
-    scope: ['自动化巡检', '巡检模板', '巡检目标', '巡检计划', '巡检报告', '若依定时任务', '菜单权限', 'SQL脚本', '版本记录'],
+    scope: ['自动化巡检', '巡检模板', '巡检目标', '巡检计划', '巡检报告', '平台定时任务', '菜单权限', 'SQL脚本', '版本记录'],
     database: '新增 sup_auto_inspection_tool、sup_auto_inspection_target、sup_auto_inspection_template、sup_auto_inspection_template_step、sup_auto_inspection_template_step_target、sup_auto_inspection_plan、sup_auto_inspection_record、sup_auto_inspection_step_result、sup_auto_inspection_target_result 九张表；新增 support:autoInspection:* 菜单按钮权限；隐藏旧TIM系统巡检菜单。',
     scripts: [
       'WDF100.0/sql/support_upgrade_20260611_auto_inspection_v3_0_0.sql',
@@ -2345,15 +2373,15 @@ export const releaseNotes = [
     levelLabel: '小版本',
     tagType: 'primary',
     title: 'TIM巡检计划配置',
-    summary: '将TIM巡检计划做成可配置能力，并接入若依自带定时任务，实现计划化自动巡检。',
+    summary: '将TIM巡检计划做成可配置能力，并接入平台自带定时任务，实现计划化自动巡检。',
     changes: [
       '新增巡检计划页签，可维护计划名称、Cron表达式、启停状态和报告样式。',
       '每个计划可单独配置7项巡检的启用状态、告警阈值、比较规则、时间窗口、超时时间和巡检目标。',
-      '计划保存后自动同步若依sys_job定时任务，启停和删除计划时同步暂停、恢复或删除对应任务。',
+      '计划保存后自动同步平台sys_job定时任务，启停和删除计划时同步暂停、恢复或删除对应任务。',
       '定时执行时按照计划快照读取巡检项目和目标，巡检记录保留计划名称、计划ID和报告样式。',
       'Word巡检报告按计划样式生成简要、标准、明细或异常报告。'
     ],
-    scope: ['TIM系统巡检', '巡检计划', '若依定时任务', 'Cron配置', '报告样式', 'SQL脚本', '版本记录'],
+    scope: ['TIM系统巡检', '巡检计划', '平台定时任务', 'Cron配置', '报告样式', 'SQL脚本', '版本记录'],
     database: '新增 sup_tim_inspection_plan、sup_tim_inspection_plan_item、sup_tim_inspection_plan_target 三张表；sup_tim_inspection 增加 plan_id、plan_name、report_style 字段；新增 support:timInspection:plan 权限。',
     scripts: [
       'WDF100.0/sql/support_upgrade_20260611_tim_inspection_plan_v2_6_0.sql',
@@ -2409,7 +2437,7 @@ export const releaseNotes = [
     levelLabel: '修订版本',
     tagType: 'success',
     title: 'Datafusion权限字符绑定修复',
-    summary: '按若依权限模型修复 datafusion 权限字符分配问题，确保首页依据 permissions 中的 datafusion 展示现场融合工作台。',
+    summary: '按平台权限模型修复 datafusion 权限字符分配问题，确保首页依据 permissions 中的 datafusion 展示现场融合工作台。',
     changes: [
       '确认 datafusion 为 sys_menu.perms 权限字符，并将首页判断恢复为只匹配 permissions 中的 datafusion。',
       '新增升级脚本，将 sys_menu.perms=datafusion 的菜单权限自动绑定给 role_key=datafusion 的角色。',

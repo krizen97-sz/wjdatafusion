@@ -140,9 +140,9 @@ const summary = computed(() => summarizeDailyHealth(groupedRows.value))
 .continuous-health-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(120px, 1fr));
-  border-top: 1px solid #e4ebf4;
-  border-bottom: 1px solid #e4ebf4;
-  background: #f8fafc;
+  border-top: 1px solid var(--surface-border);
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-muted);
 }
 
 .continuous-health-summary > span {
@@ -151,7 +151,7 @@ const summary = computed(() => summarizeDailyHealth(groupedRows.value))
   justify-content: space-between;
   gap: 12px;
   padding: 12px 16px;
-  border-right: 1px solid #e4ebf4;
+  border-right: 1px solid var(--surface-border);
 }
 
 .continuous-health-summary > span:last-child {
@@ -159,13 +159,13 @@ const summary = computed(() => summarizeDailyHealth(groupedRows.value))
 }
 
 .continuous-health-summary em {
-  color: #70849e;
+  color: var(--app-muted);
   font-style: normal;
   font-size: 12px;
 }
 
 .continuous-health-summary strong {
-  color: #1f4772;
+  color: var(--app-heading);
   font-size: 20px;
 }
 
@@ -183,7 +183,7 @@ const summary = computed(() => summarizeDailyHealth(groupedRows.value))
 }
 
 .continuous-health-date {
-  color: #203d60;
+  color: var(--app-heading);
 }
 
 .continuous-health-score {
@@ -194,7 +194,7 @@ const summary = computed(() => summarizeDailyHealth(groupedRows.value))
 }
 
 .continuous-health-score strong {
-  color: #385b80;
+  color: var(--app-text);
   font-size: 13px;
   text-align: right;
 }
@@ -216,9 +216,9 @@ const summary = computed(() => summarizeDailyHealth(groupedRows.value))
   gap: 14px;
   min-height: 60px;
   padding: 9px 12px;
-  border: 1px solid #e3eaf3;
+  border: 1px solid var(--surface-border);
   border-radius: 6px;
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .continuous-plan-row__name,
@@ -228,14 +228,14 @@ const summary = computed(() => summarizeDailyHealth(groupedRows.value))
 }
 
 .continuous-plan-row__name strong {
-  color: #233f61;
+  color: var(--app-heading);
   font-size: 13px;
 }
 
 .continuous-plan-row__name span,
 .continuous-plan-row__counts span,
 .continuous-plan-row p {
-  color: #71849c;
+  color: var(--app-muted);
   font-size: 12px;
 }
 
@@ -247,7 +247,7 @@ const summary = computed(() => summarizeDailyHealth(groupedRows.value))
 }
 
 .continuous-plan-row__progress span {
-  color: #365b80;
+  color: var(--app-text);
   font-size: 12px;
   text-align: right;
 }

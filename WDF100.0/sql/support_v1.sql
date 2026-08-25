@@ -1031,8 +1031,9 @@ ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name), path=VALUES(path), route_na
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES
-(2305, '巡检总览', 2300, 1, 'dashboard', 'support/autoInspection/index', '{"tab":"dashboard"}', 'AutoInspectionDashboard', 1, 0, 'C', '0', '0', 'support:autoInspection:query', 'dashboard', 'admin', NOW(), '', NULL, '查看自动化巡检运行概览、趋势、异常子项和巡检记录'),
-(2301, '巡检配置', 2300, 2, 'config', 'support/autoInspection/index', '{"tab":"template"}', 'AutoInspectionConfig', 1, 0, 'C', '0', '0', '', 'setting', 'admin', NOW(), '', NULL, '在模板步骤中选择巡检工具并配置目标、阈值和参数'),
+(2307, '巡检驾驶舱', 2300, 1, 'cockpit', 'support/autoInspection/cockpit', '', 'AutoInspectionCockpit', 1, 0, 'C', '0', '0', 'support:autoInspection:query', 'data-analysis', 'admin', NOW(), '', NULL, '统一展示例行巡检、高频健康、当前计划状态和当日问题'),
+(2305, '巡检总览', 2300, 2, 'dashboard', 'support/autoInspection/index', '{"tab":"dashboard"}', 'AutoInspectionDashboard', 1, 0, 'C', '0', '0', 'support:autoInspection:query', 'dashboard', 'admin', NOW(), '', NULL, '按天查看巡检记录和高频每日健康明细'),
+(2301, '巡检配置', 2300, 3, 'config', 'support/autoInspection/index', '{"tab":"template"}', 'AutoInspectionConfig', 1, 0, 'C', '0', '0', '', 'setting', 'admin', NOW(), '', NULL, '在模板步骤中选择巡检工具并配置目标、阈值和参数'),
 (2302, '巡检目标', 2300, 2, 'target', 'support/autoInspection/index', '{"tab":"target"}', 'AutoInspectionTarget', 1, 0, 'C', '1', '0', 'support:autoInspection:target', 'server', 'admin', NOW(), '', NULL, '旧目标独立入口已隐藏，目标在巡检模板步骤内配置'),
 (2303, '巡检计划', 2300, 3, 'plan', 'support/autoInspection/index', '{"tab":"plan"}', 'AutoInspectionPlan', 1, 0, 'C', '1', '0', 'support:autoInspection:plan', 'time', 'admin', NOW(), '', NULL, '已合并到巡检配置入口'),
 (2304, '巡检记录', 2300, 3, 'record', 'support/autoInspection/index', '{"tab":"record"}', 'AutoInspectionRecord', 1, 0, 'C', '1', '0', 'support:autoInspection:query', 'documentation', 'admin', NOW(), '', NULL, '巡检记录已合并到巡检总览，保留隐藏路由兼容历史入口'),
@@ -1052,7 +1053,7 @@ ON DUPLICATE KEY UPDATE perms=VALUES(perms), menu_name=VALUES(menu_name), parent
 INSERT INTO sys_role_menu(role_id, menu_id)
 SELECT r.role_id, m.menu_id
 FROM sys_role r
-INNER JOIN sys_menu m ON m.menu_id IN (2300, 2301, 2302, 2303, 2304, 2305, 2306, 2311, 2312, 2313, 2314, 2315, 2316)
+INNER JOIN sys_menu m ON m.menu_id IN (2300, 2301, 2302, 2303, 2304, 2305, 2306, 2307, 2311, 2312, 2313, 2314, 2315, 2316)
 WHERE r.role_key = 'datafusion'
   AND NOT EXISTS (
     SELECT 1 FROM sys_role_menu rm WHERE rm.role_id = r.role_id AND rm.menu_id = m.menu_id

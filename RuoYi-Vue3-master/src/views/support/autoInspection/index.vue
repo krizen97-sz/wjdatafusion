@@ -9,10 +9,33 @@
           </div>
           <div class="record-board__actions">
             <el-segmented v-model="recordViewMode" :options="recordViewOptions" />
-            <el-button v-if="recordViewMode === PLAN_MODE_ROUTINE" type="primary" plain icon="DataAnalysis" @click="openDashboardDrawer">展开看板</el-button>
+            <el-button type="primary" plain icon="DataAnalysis" @click="openCockpit">巡检驾驶舱</el-button>
             <el-button icon="Refresh" @click="refreshCurrentRecordView">刷新</el-button>
           </div>
         </header>
+
+        <section class="unified-health-strip" :class="`is-${dashboardHealthOverview.status || '3'}`">
+          <div class="unified-health-strip__score">
+            <span class="status-dot" :class="`status-dot--${dashboardHealthOverview.status || '3'}`"></span>
+            <strong>{{ formatDashboardHealthScore(dashboardHealthOverview.healthScore, dashboardHealthOverview.status) }}</strong>
+            <em>今日综合健康度</em>
+          </div>
+          <div>
+            <span>例行巡检</span>
+            <strong>{{ formatResult(dashboardHealthOverview.routineStatus) }}</strong>
+            <em>{{ dashboardHealthOverview.routineRecordCount || 0 }} 次执行</em>
+          </div>
+          <div>
+            <span>高频健康</span>
+            <strong>{{ formatResult(dashboardHealthOverview.frequentStatus) }}</strong>
+            <em>{{ dashboardHealthOverview.frequentCompletedCount || 0 }} / {{ dashboardHealthOverview.frequentExpectedCount || 0 }} 次采样</em>
+          </div>
+          <div>
+            <span>需要处理</span>
+            <strong>{{ dashboardHealthOverview.issueCount || 0 }} 项</strong>
+            <em>异常、关注与缺失</em>
+          </div>
+        </section>
 
         <template v-if="recordViewMode === PLAN_MODE_ROUTINE">
         <section class="dashboard-brief" :class="`dashboard-brief--${dashboardWeekSummary.status || '3'}`">
@@ -518,19 +541,19 @@
         </div>
 
         <el-table v-loading="templateLoading" :data="templateList" class="auto-table">
-          <el-table-column label="模板名称" prop="templateName" min-width="180" show-overflow-tooltip />
-          <el-table-column label="标签" width="130" align="center">
+          <el-table-column label="模板名称" prop="templateName" min-width="160" show-overflow-tooltip />
+          <el-table-column label="标签" width="110" align="center">
             <template #default="scope"><el-tag size="small" effect="plain">{{ scope.row.labelName || '未分类' }}</el-tag></template>
           </el-table-column>
-          <el-table-column label="说明" prop="templateDesc" min-width="240" show-overflow-tooltip />
-          <el-table-column label="步骤数" width="100" align="center">
+          <el-table-column label="说明" prop="templateDesc" min-width="180" show-overflow-tooltip />
+          <el-table-column label="步骤数" width="80" align="center">
             <template #default="scope">{{ scope.row.stepCount || 0 }}</template>
           </el-table-column>
-          <el-table-column label="状态" width="90" align="center">
+          <el-table-column label="状态" width="80" align="center">
             <template #default="scope"><el-tag size="small" :type="scope.row.status === '1' ? 'info' : 'success'">{{ scope.row.status === '1' ? '停用' : '正常' }}</el-tag></template>
           </el-table-column>
-          <el-table-column label="更新时间" prop="updateTime" width="170" align="center" />
-          <el-table-column label="操作" width="340" fixed="right" align="center">
+          <el-table-column label="更新时间" prop="updateTime" width="150" align="center" />
+          <el-table-column label="操作" width="280" align="center">
             <template #default="scope">
               <div class="template-row-actions">
                 <el-button class="template-action template-action--edit" link type="primary" :icon="EditPen" @click="handleUpdateTemplate(scope.row)" v-hasPermi="['support:autoInspection:template']">编辑</el-button>
@@ -631,7 +654,7 @@
 
     <el-dialog v-model="targetDialogOpen" width="860px" append-to-body class="auto-dialog target-dialog">
       <template #header><div class="dialog-title"><span>{{ targetForm.targetId ? '编辑目标' : '新增目标' }}</span><strong>巡检目标</strong></div></template>
-      <el-form ref="targetRef" :model="targetForm" :rules="targetRules" label-width="110px">
+      <el-form ref="targetRef" :model="targetForm" :rules="targetRules" label-position="top" label-width="auto" class="inspection-standard-form">
         <div class="target-form-layout">
           <section class="target-section">
             <header>
@@ -834,7 +857,7 @@
 
     <el-dialog v-model="templateDialogOpen" width="1280px" append-to-body class="template-dialog template-flow-dialog">
       <template #header><div class="dialog-title"><span>{{ templateForm.templateId ? '编辑模板' : '新增模板' }}</span><strong>步骤式巡检模板</strong></div></template>
-      <el-form ref="templateRef" :model="templateForm" :rules="templateRules" label-width="100px">
+      <el-form ref="templateRef" :model="templateForm" :rules="templateRules" label-position="top" label-width="auto" class="inspection-standard-form template-editor-form">
         <el-row :gutter="16">
           <el-col :span="10"><el-form-item label="模板名称" prop="templateName"><el-input v-model="templateForm.templateName" placeholder="例如：TIM每日巡检" /></el-form-item></el-col>
           <el-col :span="8">
@@ -894,7 +917,7 @@
 
     <el-dialog v-model="stepDialogOpen" width="1160px" append-to-body class="template-dialog step-dialog">
       <template #header><div class="dialog-title"><span>{{ stepEditingIndex === null ? '新增步骤配置' : '编辑步骤配置' }}</span><strong>{{ currentStepTool?.toolName || '巡检步骤' }}</strong></div></template>
-      <el-form ref="stepRef" :model="stepDraft" label-width="110px" class="step-workspace-form">
+      <el-form ref="stepRef" :model="stepDraft" label-position="top" label-width="auto" class="inspection-standard-form step-workspace-form">
         <section class="step-identity-bar">
           <el-form-item label="步骤名称" required class="step-identity-bar__name">
             <el-input v-model="stepDraft.stepName" placeholder="例如：原始Kafka积压" />
@@ -1852,7 +1875,7 @@
 
     <el-dialog v-model="planDialogOpen" width="860px" append-to-body class="auto-dialog">
       <template #header><div class="dialog-title"><span>{{ planForm.planId ? '编辑计划' : '新增计划' }}</span><strong>可视化执行周期</strong></div></template>
-      <el-form ref="planRef" :model="planForm" :rules="planRules" label-width="100px">
+      <el-form ref="planRef" :model="planForm" :rules="planRules" label-position="top" label-width="auto" class="inspection-standard-form plan-editor-form">
         <section class="plan-mode-section">
           <el-form-item label="运行模式">
             <el-segmented v-model="planForm.planMode" :options="planModeOptions" @change="handlePlanModeChange" />
@@ -2200,6 +2223,7 @@ const dailyHealthLoading = ref(false)
 const dailyHealthRows = ref([])
 const dailyHealthMonth = ref(formatMonthParam(new Date()))
 const dailyHealthPlanId = ref(undefined)
+const applyingOverviewDeepLink = ref(false)
 const healthSampleDrawerOpen = ref(false)
 const healthSampleLoading = ref(false)
 const healthSampleRows = ref([])
@@ -2259,13 +2283,13 @@ const operationGuideSteps = [
   {
     index: '01',
     title: '理解业务闭环',
-    place: '巡检总览 / 巡检配置',
-    desc: '自动化巡检把现场服务器资产、巡检工具、巡检模板、巡检计划、巡检记录和周报串成闭环。',
+    place: '巡检驾驶舱 / 巡检总览 / 巡检配置',
+    desc: '自动化巡检把现场服务器资产、巡检工具、模板、计划、记录、每日健康和周报串成闭环。',
     manual: [
       '现场融合管理负责维护现场、平台、服务器和设备资产；自动化巡检负责把这些资产变成可执行的检测目标。',
-      '日常使用时先在巡检总览查看最新结果，配置变更时进入巡检配置维护模板和计划，周期归档时导出周报或月度周报包。'
+      '日常值守先在巡检驾驶舱查看例行与高频合并后的健康结论；需要明细时进入巡检总览，配置变更时维护模板和计划。'
     ],
-    actions: ['从巡检总览处理最新结果。', '从巡检配置维护模板、步骤和计划。', '服务器类巡检可复用现场融合管理中的服务器资产。'],
+    actions: ['从巡检驾驶舱识别当日总体健康和待处理问题。', '从巡检总览下钻例行记录或高频每日健康。', '从巡检配置维护模板、步骤和计划。'],
     images: [
       guideImage('01-overview-records.png', '巡检总览优先展示记录和本周情况'),
       guideImage('15-site-management-relation.png', '现场融合管理提供服务器资产来源')
@@ -2350,9 +2374,9 @@ const operationGuideSteps = [
     index: '07',
     title: '配置巡检计划',
     place: '巡检配置 / 巡检计划',
-    desc: '计划把模板交给若依定时任务调度，并区分例行巡检和高频健康监测。',
+    desc: '计划把模板交给平台定时任务调度，并区分例行巡检和高频健康监测。',
     manual: [
-      '巡检计划用于把一个已经验证过的模板交给若依定时任务调度。标签会作为计划目录，模板选择也会按标签树展开。',
+      '巡检计划用于把一个已经验证过的模板交给平台定时任务调度。标签会作为计划目录，模板选择也会按标签树展开。',
       '页面采用可视化周期配置，不要求用户手写 Cron；例行计划支持每日、每周、每月和间隔执行。',
       '高频计划使用分钟或小时间隔，并配置生效时段、数据等待和健康目标，执行结果在巡检总览按天汇总。'
     ],
@@ -2365,14 +2389,14 @@ const operationGuideSteps = [
   {
     index: '08',
     title: '看板分析和报告归档',
-    place: '巡检总览 / 展开看板 / 导出周月报',
-    desc: '巡检总览支持例行记录和高频每日健康切换；例行记录可展开看板并导出报告。',
+    place: '巡检驾驶舱 / 巡检总览 / 导出周月报',
+    desc: '驾驶舱统一展示例行与高频健康；巡检总览保留两类明细下钻和报告导出。',
     manual: [
-      '例行巡检点击“展开看板”后，可通过图表查看本周趋势、结果分布、工具健康度、异常目标和当月巡检日历。',
+      '巡检驾驶舱通过图表统一查看综合健康度、近七日趋势、当前计划状态和待处理问题。',
       '高频监测按天展示健康度、异常日期和缺失采样，展开日期可查看计划，再下钻到原始分钟采样。',
       '点击“导出周/月报”后，可选择自然周导出 Word 周报，也可选择月份批量导出该月所有自然周周报压缩包，周报开头包含巡检人员和用户签字确认区。'
     ],
-    actions: ['按模板、计划、来源、结果筛选记录。', '展开看板查看趋势、分布和日历。', '按周或按月导出 Word 周报归档。'],
+    actions: ['在驾驶舱统一查看例行与高频健康。', '按模板、计划、来源、结果筛选明细。', '按周或按月导出 Word 周报归档。'],
     images: [
       guideImage('02-dashboard-drawer.png', '巡检看板图表和当月日历'),
       guideImage('03-report-export-week.png', '按周导出 Word 周报'),
@@ -2749,6 +2773,7 @@ const stepPolicyNavSummary = computed(() => {
   return `${retryLabel} · ${actionLabel}`
 })
 const dashboardSummary = computed(() => dashboardData.value?.summary || {})
+const dashboardHealthOverview = computed(() => dashboardData.value?.healthOverview || {})
 const dashboardWeekSummary = computed(() => dashboardData.value?.weekSummary || {})
 const dashboardTrend = computed(() => dashboardData.value?.trend || [])
 const dashboardWeekTrend = computed(() => {
@@ -2870,10 +2895,10 @@ watch(configTab, () => {
   if (activeTab.value === 'config') loadConfigTab()
 })
 watch(recordViewMode, (mode) => {
-  if (mode === PLAN_MODE_FREQUENT) getDailyHealth()
+  if (!applyingOverviewDeepLink.value && mode === PLAN_MODE_FREQUENT) getDailyHealth()
 })
 watch([dailyHealthMonth, dailyHealthPlanId], () => {
-  if (recordViewMode.value === PLAN_MODE_FREQUENT) getDailyHealth()
+  if (!applyingOverviewDeepLink.value && recordViewMode.value === PLAN_MODE_FREQUENT) getDailyHealth()
 })
 
 watch(dashboardDrawerOpen, (open) => {
@@ -2902,6 +2927,31 @@ onBeforeUnmount(() => {
 async function initPage() {
   await Promise.all([getTools(), getServerAssetTree()])
   await Promise.all([getDashboard(), getTemplateList(), getTemplateOptions(), getPlanList(), getPlanOptions(), getRecordList()])
+  await applyOverviewDeepLink()
+}
+
+async function applyOverviewDeepLink() {
+  if (route.query.view === 'frequent') {
+    const focusDate = String(route.query.date || '')
+    applyingOverviewDeepLink.value = true
+    try {
+      recordViewMode.value = PLAN_MODE_FREQUENT
+      dailyHealthPlanId.value = route.query.planId ? Number(route.query.planId) : undefined
+      if (/^\d{4}-\d{2}-\d{2}$/.test(focusDate)) dailyHealthMonth.value = focusDate.slice(0, 7)
+      await getDailyHealth()
+      if (route.query.openSamples === '1' && focusDate && dailyHealthPlanId.value) {
+        const plan = dailyHealthRows.value.find((item) => (
+          String(item.healthDate || '') === focusDate && Number(item.planId) === Number(dailyHealthPlanId.value)
+        ))
+        if (plan) await openHealthSamples({ date: focusDate, plan })
+      }
+    } finally {
+      applyingOverviewDeepLink.value = false
+    }
+    return
+  }
+  if (route.query.planId) recordQuery.value.planId = Number(route.query.planId)
+  if (route.query.recordId) handleRecordDetail({ recordId: Number(route.query.recordId) })
 }
 
 function resolveRouteTab(tab, path = '') {
@@ -2933,6 +2983,10 @@ function navigateAutoInspection(tab, config = configTab.value) {
   delete nextQuery.configTab
   nextQuery.tab = tab === 'dashboard' ? 'dashboard' : (tab === 'record' ? 'record' : config)
   router.replace({ path: resolveAutoInspectionPath(tab), query: nextQuery })
+}
+
+function openCockpit() {
+  router.push('/autoInspection/cockpit')
 }
 
 function resolveAutoInspectionPath(tab) {
@@ -3362,7 +3416,7 @@ function openHealthSamples({ date, plan }) {
   healthSampleContext.value = { date, plan }
   healthSampleQuery.value.pageNum = 1
   healthSampleDrawerOpen.value = true
-  getHealthSamples()
+  return getHealthSamples()
 }
 
 function getHealthSamples() {
@@ -3430,7 +3484,7 @@ function renderWeekBriefChart() {
       const totalData = rows.map((item) => Number(item.total || 0))
       const abnormalData = rows.map((item) => Number(item.abnormal || 0))
       chart.setOption({
-        color: ['#2f80ed', '#f56c6c'],
+        color: ['var(--el-color-primary)', 'var(--el-color-danger)'],
         grid: { top: 10, right: 8, bottom: 18, left: 24 },
         tooltip: {
           trigger: 'axis',
@@ -3494,7 +3548,7 @@ function renderTrendChart() {
   if (!chart) return
   const dates = dashboardTrend.value.map((item) => formatTrendDate(item.date))
   chart.setOption({
-    color: ['#2f80ed', '#f56c6c'],
+    color: ['var(--el-color-primary)', 'var(--el-color-danger)'],
     grid: { top: 30, right: 18, bottom: 30, left: 36 },
     tooltip: { trigger: 'axis' },
     legend: { top: 0, right: 0, itemWidth: 10, itemHeight: 10 },
@@ -3511,7 +3565,7 @@ function renderResultPieChart() {
   const chart = getDashboardChart(resultPieChartRef, 'resultPie')
   if (!chart) return
   chart.setOption({
-    color: ['#67c23a', '#f56c6c', '#c0c4cc'],
+    color: ['#67c23a', 'var(--el-color-danger)', '#c0c4cc'],
     tooltip: { trigger: 'item' },
     legend: { bottom: 0, left: 'center', itemWidth: 10, itemHeight: 10 },
     series: [{
@@ -3530,7 +3584,7 @@ function renderToolHealthChart() {
   if (!chart) return
   const rows = dashboardToolStats.value.slice(0, 8)
   chart.setOption({
-    color: ['#2f80ed'],
+    color: ['var(--el-color-primary)'],
     grid: { top: 18, right: 42, bottom: 24, left: 120 },
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
     xAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%' }, splitLine: { lineStyle: { color: '#edf2f7' } } },
@@ -3551,7 +3605,7 @@ function renderAbnormalChart() {
   if (!chart) return
   const rows = dashboardAbnormalStepData.value.length ? dashboardAbnormalStepData.value : [{ name: '暂无异常', value: 1 }]
   chart.setOption({
-    color: ['#f56c6c', '#e6a23c', '#909399', '#2f80ed', '#67c23a'],
+    color: ['var(--el-color-danger)', '#e6a23c', '#909399', 'var(--el-color-primary)', '#67c23a'],
     tooltip: { trigger: 'item' },
     series: [{
       type: 'pie',
@@ -5703,7 +5757,21 @@ function normalizePlanHealthConfig(value) {
 }
 
 function defaultDashboardData() {
-  return { summary: {}, weekSummary: {}, trend: [], calendar: {}, toolStats: [], latestAbnormalTargets: [], recentRecords: [], generatedTime: '' }
+  return {
+    summary: {},
+    frequentSummary: {},
+    healthOverview: {},
+    weekSummary: {},
+    trend: [],
+    combinedTrend: [],
+    calendar: {},
+    toolStats: [],
+    currentPlanHealth: [],
+    latestAbnormalTargets: [],
+    latestIssues: [],
+    recentRecords: [],
+    generatedTime: ''
+  }
 }
 
 function defaultReportExportForm() {
@@ -6099,6 +6167,12 @@ function formatResult(value) {
   return '未检测'
 }
 
+function formatDashboardHealthScore(value, status) {
+  if (!status || status === '3' || value === null || value === undefined || value === '') return '--'
+  const score = Number(value)
+  return Number.isFinite(score) ? `${Math.max(0, Math.min(100, score))}%` : '--'
+}
+
 function resultTagType(value) {
   if (value === '1') return 'success'
   if (value === '2') return 'danger'
@@ -6109,7 +6183,7 @@ function resultTagType(value) {
 
 <style scoped lang="scss">
 .auto-page {
-  background: #f5f8fc;
+  background: var(--surface-muted);
 }
 
 .auto-hero {
@@ -6118,14 +6192,14 @@ function resultTagType(value) {
   gap: 16px;
   align-items: center;
   padding: 10px 14px;
-  border: 1px solid #dce8f6;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fbfdff;
+  background: var(--surface-muted);
   margin-bottom: 10px;
 
   h2 {
     margin: 2px 0;
-    color: #18324f;
+    color: var(--app-heading);
     font-size: 18px;
     line-height: 1.25;
   }
@@ -6134,7 +6208,7 @@ function resultTagType(value) {
     overflow: hidden;
     max-width: 720px;
     margin: 0;
-    color: #6d8199;
+    color: var(--app-muted);
     font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -6142,7 +6216,7 @@ function resultTagType(value) {
 }
 
 .auto-hero__eyebrow {
-  color: #2f80ed;
+  color: var(--el-color-primary);
   font-size: 12px;
   font-weight: 700;
 }
@@ -6157,20 +6231,20 @@ function resultTagType(value) {
     padding: 6px 8px;
     border: 1px solid #d6e4f5;
     border-radius: 7px;
-    background: #fff;
+    background: var(--surface-strong);
     text-align: center;
   }
 
   strong {
     display: block;
-    color: #2167b2;
+    color: var(--el-color-primary);
     font-size: 16px;
     line-height: 1.1;
   }
 
   em {
     font-style: normal;
-    color: #778aa4;
+    color: var(--app-muted);
     font-size: 11px;
   }
 }
@@ -6178,8 +6252,8 @@ function resultTagType(value) {
 .auto-content-section {
   width: 100%;
   min-width: 0;
-  background: #fff;
-  border: 1px solid #e2ebf7;
+  background: var(--surface-strong);
+  border: 1px solid var(--surface-border);
   border-radius: 10px;
   padding: 14px;
 }
@@ -6196,25 +6270,85 @@ function resultTagType(value) {
   gap: 14px;
 }
 
+.unified-health-strip {
+  display: grid;
+  grid-template-columns: 210px repeat(3, minmax(150px, 1fr));
+  min-height: 72px;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  overflow: hidden;
+}
+
+.unified-health-strip > div {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 16px;
+  border-right: 1px solid var(--surface-border);
+}
+
+.unified-health-strip > div:last-child {
+  border-right: 0;
+}
+
+.unified-health-strip span,
+.unified-health-strip em {
+  overflow: hidden;
+  color: var(--app-muted);
+  font-size: 11px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unified-health-strip strong {
+  overflow: hidden;
+  color: var(--app-heading);
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.unified-health-strip__score {
+  grid-template-columns: 10px auto;
+  column-gap: 9px !important;
+  background: var(--surface-subtle);
+}
+
+.unified-health-strip__score .status-dot {
+  grid-row: 1 / span 2;
+  align-self: center;
+}
+
+.unified-health-strip__score strong {
+  font-size: 22px;
+}
+
+.unified-health-strip__score em {
+  grid-column: 2;
+}
+
 .dashboard-brief {
   display: grid;
   grid-template-columns: minmax(220px, .8fr) auto minmax(440px, 1.35fr);
   gap: 18px;
   align-items: center;
   padding: 12px 14px;
-  border: 1px solid #dfeaf6;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #f8fbff;
+  background: var(--surface-muted);
 }
 
 .dashboard-brief--1 {
   border-color: #cfeadc;
-  background: #f6fbf8;
+  background: var(--el-color-success-light-9);
 }
 
 .dashboard-brief--2 {
   border-color: #ffd6d6;
-  background: #fff8f8;
+  background: var(--el-color-danger-light-9);
 }
 
 .dashboard-brief__status {
@@ -6233,12 +6367,12 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 15px;
   }
 
   em {
-    color: #6f8299;
+    color: var(--app-muted);
     font-size: 12px;
     font-style: normal;
   }
@@ -6253,13 +6387,13 @@ function resultTagType(value) {
     gap: 2px;
     min-width: 0;
     padding: 2px 14px;
-    border-left: 1px solid #dce6f1;
+    border-left: 1px solid var(--surface-border);
     text-align: center;
   }
 
   strong {
     overflow: hidden;
-    color: #1d5da6;
+    color: var(--el-color-primary);
     font-size: 14px;
     line-height: 1.15;
     text-overflow: ellipsis;
@@ -6267,7 +6401,7 @@ function resultTagType(value) {
   }
 
   em {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 11px;
     font-style: normal;
   }
@@ -6279,7 +6413,7 @@ function resultTagType(value) {
   gap: 14px;
   min-width: 0;
   padding-left: 16px;
-  border-left: 1px solid #dce6f1;
+  border-left: 1px solid var(--surface-border);
 }
 
 .dashboard-brief__chart {
@@ -6292,7 +6426,7 @@ function resultTagType(value) {
 
 .dashboard-brief__chart--result {
   padding-left: 14px;
-  border-left: 1px solid #dce6f1;
+  border-left: 1px solid var(--surface-border);
 }
 
 .dashboard-brief__chart-head {
@@ -6310,13 +6444,13 @@ function resultTagType(value) {
   }
 
   span {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 12px;
     font-weight: 700;
   }
 
   em {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 11px;
     font-style: normal;
   }
@@ -6336,7 +6470,7 @@ function resultTagType(value) {
 }
 
 :deep(.dashboard-week-result .el-progress__text) {
-  color: #1d3554;
+  color: var(--app-heading);
   font-size: 13px !important;
   font-weight: 700;
 }
@@ -6349,7 +6483,7 @@ function resultTagType(value) {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    color: #6f8299;
+    color: var(--app-muted);
     font-size: 10px;
     white-space: nowrap;
   }
@@ -6392,12 +6526,12 @@ function resultTagType(value) {
 
   strong {
     display: block;
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 17px;
   }
 
   span {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 13px;
   }
 }
@@ -6410,8 +6544,8 @@ function resultTagType(value) {
 }
 
 .record-board__actions :deep(.el-segmented) {
-  --el-segmented-item-selected-bg-color: #fff;
-  --el-segmented-item-selected-color: #2477df;
+  --el-segmented-item-selected-bg-color: var(--surface-strong);
+  --el-segmented-item-selected-color: var(--el-color-primary);
   min-width: 270px;
 }
 
@@ -6419,15 +6553,15 @@ function resultTagType(value) {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin-bottom: 14px;
-  border: 1px solid #e1e9f3;
-  background: #f8fafc;
+  border: 1px solid var(--surface-border);
+  background: var(--surface-muted);
 }
 
 .health-sample-summary > span {
   display: grid;
   gap: 4px;
   padding: 12px 16px;
-  border-right: 1px solid #e1e9f3;
+  border-right: 1px solid var(--surface-border);
 }
 
 .health-sample-summary > span:last-child {
@@ -6440,7 +6574,7 @@ function resultTagType(value) {
 }
 
 .health-sample-summary strong {
-  color: #23476e;
+  color: var(--app-heading);
   font-size: 17px;
 }
 
@@ -6450,7 +6584,7 @@ function resultTagType(value) {
   }
 
   :deep(.record-table-row--abnormal > td.el-table__cell) {
-    background: #fff8f8;
+    background: var(--el-color-danger-light-9);
   }
 }
 
@@ -6461,25 +6595,25 @@ function resultTagType(value) {
   line-height: 1.3;
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 15px;
   }
 
   span,
   em {
-    color: #7b8ea4;
+    color: var(--app-muted);
     font-size: 10px;
     font-style: normal;
   }
 
   em {
     margin-top: 3px;
-    color: #526d88;
+    color: var(--app-text);
   }
 }
 
 .record-clock {
-  color: #294766;
+  color: var(--app-heading);
   font-size: 14px;
 }
 
@@ -6491,7 +6625,7 @@ function resultTagType(value) {
 
   strong {
     overflow: hidden;
-    color: #294766;
+    color: var(--app-heading);
     font-size: 13px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -6515,12 +6649,12 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #294766;
+    color: var(--app-heading);
     font-size: 13px;
   }
 
   span {
-    color: #7b8ea4;
+    color: var(--app-muted);
     font-size: 11px;
   }
 
@@ -6537,13 +6671,13 @@ function resultTagType(value) {
   span {
     padding: 3px 5px;
     border-radius: 4px;
-    background: #f0f4f8;
-    color: #60758d;
+    background: var(--surface-subtle);
+    color: var(--app-muted);
     font-size: 11px;
   }
 
   .has-abnormal {
-    background: #fff0f0;
+    background: var(--el-color-danger-light-9);
     color: #c45656;
   }
 }
@@ -6554,13 +6688,13 @@ function resultTagType(value) {
   gap: 18px;
   align-items: center;
   padding: 18px 20px;
-  border: 1px solid #dce8f6;
+  border: 1px solid var(--surface-border);
   border-radius: 10px;
   background: linear-gradient(135deg, #f8fbff 0%, #eef7ff 100%);
 
   h3 {
     margin: 6px 0;
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 30px;
   }
 
@@ -6573,7 +6707,7 @@ function resultTagType(value) {
 
 .dashboard-status--2 {
   border-color: #ffd8d8;
-  background: linear-gradient(135deg, #fff8f8 0%, #fff1f1 100%);
+  background: linear-gradient(135deg, var(--el-color-danger-light-9) 0%, #fff1f1 100%);
 }
 
 .dashboard-status--1 {
@@ -6582,7 +6716,7 @@ function resultTagType(value) {
 }
 
 .dashboard-status__eyebrow {
-  color: #2f80ed;
+  color: var(--el-color-primary);
   font-size: 13px;
   font-weight: 700;
 }
@@ -6603,12 +6737,12 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #1d5da6;
+    color: var(--el-color-primary);
     font-size: 22px;
   }
 
   em {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
     font-style: normal;
   }
@@ -6627,9 +6761,9 @@ function resultTagType(value) {
 .dashboard-panel {
   min-width: 0;
   padding: 16px;
-  border: 1px solid #e1ebf7;
+  border: 1px solid var(--surface-border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface-strong);
 
   > header {
     display: flex;
@@ -6639,12 +6773,12 @@ function resultTagType(value) {
 
     strong {
       display: block;
-      color: #1d3554;
+      color: var(--app-heading);
       font-size: 16px;
     }
 
     span {
-      color: #7890aa;
+      color: var(--app-muted);
       font-size: 12px;
     }
   }
@@ -6661,22 +6795,22 @@ function resultTagType(value) {
   gap: 6px;
   min-height: 118px;
   padding: 12px;
-  border: 1px solid #e1ebf7;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #f8fbff;
+  background: var(--surface-muted);
 
   span {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 24px;
   }
 
   em {
-    color: #60758d;
+    color: var(--app-muted);
     font-style: normal;
   }
 }
@@ -6688,7 +6822,7 @@ function resultTagType(value) {
 
 .trend-day--2 {
   border-color: #ffd8d8;
-  background: #fff7f7;
+  background: var(--el-color-danger-light-9);
 
   strong,
   em {
@@ -6710,7 +6844,7 @@ function resultTagType(value) {
   padding: 10px 12px;
   border: 1px solid #e5edf7;
   border-radius: 8px;
-  background: #fbfdff;
+  background: var(--surface-muted);
   text-align: left;
   cursor: pointer;
 
@@ -6723,17 +6857,17 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
   }
 
   em {
-    color: #7890aa;
+    color: var(--app-muted);
     font-style: normal;
     font-size: 12px;
   }
 
   label {
-    color: #60758d;
+    color: var(--app-muted);
     cursor: pointer;
   }
 }
@@ -6750,11 +6884,15 @@ function resultTagType(value) {
 }
 
 .status-dot--2 {
-  background: #f56c6c;
+  background: var(--el-color-danger);
 }
 
 .status-dot--3 {
   background: #a8b5c5;
+}
+
+.status-dot--4 {
+  background: var(--health-warning);
 }
 
 .dashboard-drawer__body {
@@ -6764,7 +6902,7 @@ function resultTagType(value) {
 
 :deep(.dashboard-drawer .el-drawer__body) {
   padding: 16px;
-  background: #f5f8fc;
+  background: var(--surface-muted);
 }
 
 .dashboard-drawer__summary {
@@ -6777,19 +6915,19 @@ function resultTagType(value) {
     gap: 5px;
     min-height: 70px;
     padding: 12px;
-    border: 1px solid #e1ebf7;
+    border: 1px solid var(--surface-border);
     border-radius: 8px;
-    background: #fff;
+    background: var(--surface-strong);
   }
 
   span {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
   }
 
   strong {
     overflow: hidden;
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 22px;
     line-height: 1.15;
     text-overflow: ellipsis;
@@ -6799,12 +6937,12 @@ function resultTagType(value) {
 
 .dashboard-drawer__summary--1 div:first-child {
   border-color: #cfeadc;
-  background: #f6fbf8;
+  background: var(--el-color-success-light-9);
 }
 
 .dashboard-drawer__summary--2 div:first-child {
   border-color: #ffd6d6;
-  background: #fff8f8;
+  background: var(--el-color-danger-light-9);
 
   strong {
     color: #c45656;
@@ -6814,9 +6952,9 @@ function resultTagType(value) {
 .dashboard-calendar-panel {
   min-width: 0;
   padding: 12px;
-  border: 1px solid #e1ebf7;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 
   header {
     display: flex;
@@ -6826,12 +6964,12 @@ function resultTagType(value) {
 
     strong {
       display: block;
-      color: #1d3554;
+      color: var(--app-heading);
       font-size: 14px;
     }
 
     span {
-      color: #7890aa;
+      color: var(--app-muted);
       font-size: 12px;
     }
   }
@@ -6863,7 +7001,7 @@ function resultTagType(value) {
 }
 
 .calendar-legend-dot--2 {
-  background: #f56c6c;
+  background: var(--el-color-danger);
 }
 
 .calendar-legend-dot--3 {
@@ -6881,7 +7019,7 @@ function resultTagType(value) {
   margin-bottom: 6px;
 
   span {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
     text-align: center;
   }
@@ -6894,7 +7032,7 @@ function resultTagType(value) {
 }
 
 .dashboard-calendar-empty {
-  background: #f7f9fc;
+  background: var(--surface-muted);
 }
 
 .dashboard-calendar-day {
@@ -6904,7 +7042,7 @@ function resultTagType(value) {
   min-width: 0;
   padding: 7px;
   border: 1px solid #e4edf8;
-  background: #fbfdff;
+  background: var(--surface-muted);
   text-align: left;
   cursor: default;
 
@@ -6917,26 +7055,26 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 15px;
     line-height: 1.1;
   }
 
   em {
-    color: #60758d;
+    color: var(--app-muted);
     font-size: 12px;
     font-style: normal;
   }
 
   small {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 11px;
   }
 }
 
 .dashboard-calendar-day--1 {
   border-color: #cfebdc;
-  background: #f5fbf7;
+  background: var(--el-color-success-light-9);
 
   small {
     color: #3b9d61;
@@ -6945,7 +7083,7 @@ function resultTagType(value) {
 
 .dashboard-calendar-day--2 {
   border-color: #ffd6d6;
-  background: #fff7f7;
+  background: var(--el-color-danger-light-9);
 
   strong,
   small {
@@ -6954,7 +7092,7 @@ function resultTagType(value) {
 }
 
 .dashboard-calendar-day--3 {
-  background: #f8fbff;
+  background: var(--surface-muted);
 }
 
 .dashboard-calendar-day.is-today {
@@ -6974,9 +7112,9 @@ function resultTagType(value) {
 .dashboard-chart-panel {
   min-width: 0;
   padding: 12px;
-  border: 1px solid #e1ebf7;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 
   header {
     display: flex;
@@ -6986,12 +7124,12 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 14px;
   }
 
   span {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
   }
 }
@@ -7013,14 +7151,14 @@ function resultTagType(value) {
   article {
     min-width: 0;
     padding: 12px;
-    border: 1px solid #e1ebf7;
+    border: 1px solid var(--surface-border);
     border-radius: 8px;
-    background: #fff;
+    background: var(--surface-strong);
   }
 
   header {
     margin-bottom: 10px;
-    color: #1d3554;
+    color: var(--app-heading);
   }
 }
 
@@ -7040,13 +7178,13 @@ function resultTagType(value) {
   padding: 9px 10px;
   border: 1px solid #e6eef8;
   border-radius: 7px;
-  background: #fbfdff;
+  background: var(--surface-muted);
   text-align: left;
   cursor: pointer;
 
   &:hover {
     border-color: #9bc8ff;
-    background: #f4f9ff;
+    background: var(--surface-muted);
   }
 
   strong,
@@ -7057,13 +7195,13 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 13px;
   }
 
   em {
     grid-column: 2;
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
     font-style: normal;
   }
@@ -7076,25 +7214,25 @@ function resultTagType(value) {
 
 :deep(.operation-guide-drawer .el-drawer__body) {
   padding: 16px;
-  background: #f5f8fc;
+  background: var(--surface-muted);
 }
 
 .operation-guide__intro,
 .operation-guide__note {
   padding: 14px;
-  border: 1px solid #dce8f6;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 
   strong {
     display: block;
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 15px;
   }
 
   p {
     margin: 6px 0 0;
-    color: #6f8299;
+    color: var(--app-muted);
     font-size: 13px;
     line-height: 1.65;
   }
@@ -7108,7 +7246,7 @@ function resultTagType(value) {
   padding: 14px;
   border: 1px solid #cfe3ff;
   border-radius: 8px;
-  background: #f2f8ff;
+  background: var(--surface-subtle);
 
   div {
     display: grid;
@@ -7117,13 +7255,13 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 15px;
   }
 
   p {
     margin: 0;
-    color: #6f8299;
+    color: var(--app-muted);
     font-size: 13px;
   }
 
@@ -7145,9 +7283,9 @@ function resultTagType(value) {
     grid-template-columns: 42px minmax(0, 1fr);
     gap: 12px;
     padding: 14px;
-    border: 1px solid #e1ebf7;
+    border: 1px solid var(--surface-border);
     border-radius: 8px;
-    background: #fff;
+    background: var(--surface-strong);
 
     > span {
       width: 36px;
@@ -7155,7 +7293,7 @@ function resultTagType(value) {
       line-height: 36px;
       border-radius: 50%;
       background: #e8f3ff;
-      color: #2f80ed;
+      color: var(--el-color-primary);
       text-align: center;
       font-weight: 800;
     }
@@ -7170,12 +7308,12 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 15px;
   }
 
   em {
-    color: #2f80ed;
+    color: var(--el-color-primary);
     font-size: 12px;
     font-style: normal;
     white-space: nowrap;
@@ -7183,7 +7321,7 @@ function resultTagType(value) {
 
   p {
     margin: 0 0 8px;
-    color: #6f8299;
+    color: var(--app-muted);
     font-size: 13px;
     line-height: 1.6;
   }
@@ -7193,7 +7331,7 @@ function resultTagType(value) {
     gap: 6px;
     margin: 0;
     padding-left: 16px;
-    color: #4f6680;
+    color: var(--app-text);
     font-size: 13px;
     line-height: 1.5;
   }
@@ -7204,18 +7342,18 @@ function resultTagType(value) {
   gap: 6px;
   margin: 8px 0 10px;
   padding: 10px 12px;
-  border: 1px solid #dce9f7;
+  border: 1px solid var(--surface-border);
   border-radius: 6px;
-  background: #f7fbff;
+  background: var(--surface-muted);
 
   strong {
-    color: #1d5da6;
+    color: var(--el-color-primary);
     font-size: 13px;
   }
 
   p {
     margin: 0;
-    color: #536b85;
+    color: var(--app-text);
     font-size: 13px;
     line-height: 1.65;
   }
@@ -7230,16 +7368,16 @@ function resultTagType(value) {
   figure {
     overflow: hidden;
     margin: 0;
-    border: 1px solid #dfeaf6;
+    border: 1px solid var(--surface-border);
     border-radius: 8px;
-    background: #fff;
+    background: var(--surface-strong);
   }
 
   :deep(.el-image) {
     display: block;
     width: 100%;
     height: 150px;
-    background: #f1f6fc;
+    background: var(--surface-muted);
   }
 
   :deep(.el-image__inner) {
@@ -7249,8 +7387,8 @@ function resultTagType(value) {
   figcaption {
     overflow: hidden;
     padding: 8px 10px;
-    border-top: 1px solid #eef3fa;
-    color: #536b85;
+    border-top: 1px solid var(--surface-border);
+    color: var(--app-text);
     font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -7276,11 +7414,11 @@ function resultTagType(value) {
   padding: 12px;
   border: 1px solid #e5edf7;
   border-radius: 8px;
-  background: #fbfdff;
+  background: var(--surface-muted);
 
   p {
     margin: 0;
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
   }
 }
@@ -7292,7 +7430,7 @@ function resultTagType(value) {
   gap: 10px;
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
   }
 }
 
@@ -7307,7 +7445,7 @@ function resultTagType(value) {
     height: 100%;
     max-width: 100%;
     border-radius: inherit;
-    background: linear-gradient(90deg, #409eff, #67c23a);
+    background: linear-gradient(90deg, var(--el-color-primary), #67c23a);
   }
 }
 
@@ -7324,14 +7462,14 @@ function resultTagType(value) {
   padding: 12px;
   border: 1px solid #ffd8d8;
   border-radius: 8px;
-  background: #fff8f8;
+  background: var(--el-color-danger-light-9);
 
   > span {
     width: 28px;
     height: 28px;
     line-height: 28px;
     border-radius: 50%;
-    background: #ffecec;
+    background: var(--el-color-danger-light-9);
     color: #c45656;
     text-align: center;
     font-weight: 700;
@@ -7345,11 +7483,11 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
   }
 
   em {
-    color: #7890aa;
+    color: var(--app-muted);
     font-style: normal;
     font-size: 12px;
   }
@@ -7381,7 +7519,7 @@ function resultTagType(value) {
   gap: 20px;
   min-height: 64px;
   padding: 0 2px 10px;
-  border-bottom: 1px solid #dfe8f3;
+  border-bottom: 1px solid var(--surface-border);
 }
 
 .config-switcher {
@@ -7402,14 +7540,14 @@ function resultTagType(value) {
     border-bottom: 2px solid transparent;
     border-radius: 6px 6px 0 0;
     background: transparent;
-    color: #58718e;
+    color: var(--app-text);
     text-align: left;
     cursor: pointer;
     transition: color 180ms ease-out, background-color 180ms ease-out, border-color 180ms ease-out;
 
     &:hover {
-      background: #f3f7fb;
-      color: #2f6ea9;
+      background: var(--surface-hover);
+      color: var(--el-color-primary);
     }
 
     &:focus-visible {
@@ -7418,9 +7556,9 @@ function resultTagType(value) {
     }
 
     &.active {
-      border-bottom-color: #409eff;
-      background: #eef6ff;
-      color: #236fbf;
+      border-bottom-color: var(--el-color-primary);
+      background: var(--surface-subtle);
+      color: var(--el-color-primary);
     }
 
     .el-icon {
@@ -7431,8 +7569,8 @@ function resultTagType(value) {
       min-width: 26px;
       padding: 3px 7px;
       border-radius: 999px;
-      background: #e4ebf3;
-      color: #657b93;
+      background: var(--surface-subtle);
+      color: var(--app-muted);
       font-size: 11px;
       font-style: normal;
       text-align: center;
@@ -7440,8 +7578,8 @@ function resultTagType(value) {
 
     &.active {
       em {
-        background: #dcecff;
-        color: #236fbf;
+        background: var(--el-color-primary-light-8);
+        color: var(--el-color-primary);
       }
     }
   }
@@ -7465,7 +7603,7 @@ function resultTagType(value) {
   }
 
   small {
-    color: #7a8ea5;
+    color: var(--app-muted);
     font-size: 11px;
   }
 }
@@ -7487,8 +7625,8 @@ function resultTagType(value) {
   padding: 4px 9px;
   border: 1px solid #9bc8ff;
   border-radius: 999px;
-  background: #edf6ff;
-  color: #1d6fc9;
+  background: var(--surface-subtle);
+  color: var(--el-color-primary);
   font-size: 12px;
   font-weight: 700;
   box-shadow: 0 6px 16px rgba(47, 128, 237, 0.12);
@@ -7518,9 +7656,9 @@ function resultTagType(value) {
 
 .auto-query-bar {
   padding: 12px 12px 0;
-  border: 1px solid #e5edf7;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fbfdff;
+  background: var(--surface-muted);
   margin-bottom: 12px;
 }
 
@@ -7583,19 +7721,19 @@ function resultTagType(value) {
     padding: 12px 14px;
     border: 1px solid #e0eaf6;
     border-radius: 8px;
-    background: #fbfdff;
+    background: var(--surface-muted);
   }
 
   strong {
     overflow: hidden;
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 20px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   em {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
     font-style: normal;
   }
@@ -7604,12 +7742,80 @@ function resultTagType(value) {
 .auto-table {
   width: 100%;
   max-width: 100%;
-  border: 1px solid #e3ecf7;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
 }
 
 .server-asset-picker {
   width: 100%;
+}
+
+.inspection-standard-form {
+  --inspection-field-gap: 12px;
+  --inspection-control-height: 32px;
+
+  :deep(.el-form-item) {
+    min-width: 0;
+    margin-bottom: var(--inspection-field-gap);
+  }
+
+  :deep(.el-form-item__label) {
+    justify-content: flex-start;
+    width: auto !important;
+    height: auto;
+    margin-bottom: 5px;
+    padding: 0;
+    color: var(--app-text);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 18px;
+  }
+
+  :deep(.el-form-item__content) {
+    min-width: 0;
+    margin-left: 0 !important;
+  }
+
+  :deep(.el-input),
+  :deep(.el-select),
+  :deep(.el-tree-select),
+  :deep(.el-input-number),
+  :deep(.el-date-editor) {
+    width: 100%;
+  }
+
+  :deep(.el-input__wrapper),
+  :deep(.el-select__wrapper),
+  :deep(.el-input-number .el-input__wrapper) {
+    min-height: var(--inspection-control-height);
+    background: var(--surface-strong);
+  }
+
+  :deep(.el-textarea__inner) {
+    background: var(--surface-strong);
+    color: var(--app-text);
+  }
+
+  :deep(.el-radio-group),
+  :deep(.el-checkbox-group) {
+    min-height: var(--inspection-control-height);
+  }
+
+  small.field-hint,
+  .field-hint {
+    display: block;
+    margin-top: 4px;
+    color: var(--app-muted);
+    font-size: 11px;
+    line-height: 1.45;
+  }
+}
+
+.template-editor-form,
+.plan-editor-form {
+  :deep(.el-row) {
+    row-gap: 2px;
+  }
 }
 
 .target-form-layout {
@@ -7619,9 +7825,9 @@ function resultTagType(value) {
 
 .target-section {
   padding: 14px;
-  border: 1px solid #e2ebf7;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fbfdff;
+  background: var(--surface-muted);
 
   header {
     display: flex;
@@ -7630,19 +7836,19 @@ function resultTagType(value) {
     margin-bottom: 12px;
 
     strong {
-      color: #1d3554;
+      color: var(--app-heading);
       font-size: 15px;
     }
 
     span {
-      color: #7890aa;
+      color: var(--app-muted);
       font-size: 12px;
     }
   }
 }
 
 .target-section--subtle {
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .target-section--rule-compact {
@@ -7663,13 +7869,13 @@ function resultTagType(value) {
   padding: 8px 12px;
   border: 1px solid #d7e5f6;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
   cursor: pointer;
   text-align: left;
 
   &:hover {
-    border-color: #409eff;
-    background: #f5f9ff;
+    border-color: var(--el-color-primary);
+    background: var(--surface-muted);
   }
 
   span {
@@ -7680,7 +7886,7 @@ function resultTagType(value) {
 
   strong {
     overflow: hidden;
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 14px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -7688,7 +7894,7 @@ function resultTagType(value) {
 
   em {
     overflow: hidden;
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
     font-style: normal;
     text-overflow: ellipsis;
@@ -7697,7 +7903,7 @@ function resultTagType(value) {
 
   i {
     flex: 0 0 auto;
-    color: #2f80ed;
+    color: var(--el-color-primary);
     font-size: 12px;
     font-style: normal;
     font-weight: 700;
@@ -7722,7 +7928,7 @@ function resultTagType(value) {
   min-height: 0;
   border: 1px solid #e1eaf6;
   border-radius: 8px;
-  background: #fbfdff;
+  background: var(--surface-muted);
 }
 
 .tool-picker-list {
@@ -7745,9 +7951,9 @@ function resultTagType(value) {
 .tool-picker-group {
   display: grid;
   gap: 6px;
-  border: 1px solid #dce8f6;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 
   &.active {
     border-color: #9bc8ff;
@@ -7768,7 +7974,7 @@ function resultTagType(value) {
   text-align: left;
 
   &:hover {
-    background: #f5f9ff;
+    background: var(--surface-muted);
   }
 
   .el-icon {
@@ -7789,7 +7995,7 @@ function resultTagType(value) {
 
   strong {
     overflow: hidden;
-    color: #18324f;
+    color: var(--app-heading);
     font-size: 14px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -7808,8 +8014,8 @@ function resultTagType(value) {
     min-width: 24px;
     padding: 2px 7px;
     border-radius: 999px;
-    background: #edf5ff;
-    color: #2f80ed;
+    background: var(--surface-subtle);
+    color: var(--el-color-primary);
     font-size: 12px;
     font-weight: 700;
     text-align: center;
@@ -7834,7 +8040,7 @@ function resultTagType(value) {
   padding: 9px 10px;
   border: 1px solid #e0eaf5;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
   cursor: pointer;
   text-align: left;
 
@@ -7849,8 +8055,8 @@ function resultTagType(value) {
 
   &:hover,
   &.active {
-    border-color: #409eff;
-    background: #f2f8ff;
+    border-color: var(--el-color-primary);
+    background: var(--surface-subtle);
   }
 
   span {
@@ -7861,7 +8067,7 @@ function resultTagType(value) {
 
   strong {
     overflow: hidden;
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 14px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -7896,7 +8102,7 @@ function resultTagType(value) {
 
   h3 {
     margin: 10px 0 6px;
-    color: #18324f;
+    color: var(--app-heading);
     font-size: 22px;
   }
 
@@ -7916,19 +8122,19 @@ function resultTagType(value) {
     display: grid;
     gap: 4px;
     padding: 10px 12px;
-    border: 1px solid #e2ebf7;
+    border: 1px solid var(--surface-border);
     border-radius: 8px;
-    background: #fff;
+    background: var(--surface-strong);
   }
 
   label {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
   }
 
   strong {
     overflow: hidden;
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 14px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -7938,13 +8144,13 @@ function resultTagType(value) {
 .tool-guide-block,
 .tool-guide-example {
   padding: 12px 14px;
-  border: 1px solid #e2ebf7;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 
   h4 {
     margin: 0 0 8px;
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 14px;
   }
 
@@ -7964,7 +8170,7 @@ function resultTagType(value) {
 
 .tool-guide-example {
   border-color: #cfe3ff;
-  background: #f5f9ff;
+  background: var(--surface-muted);
 }
 
 .placeholder-panel {
@@ -7972,12 +8178,12 @@ function resultTagType(value) {
   padding: 8px 10px;
   border: 1px dashed #cfe0f3;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 
   span {
     display: block;
     margin-bottom: 6px;
-    color: #6d8199;
+    color: var(--app-muted);
     font-size: 12px;
   }
 
@@ -7997,19 +8203,19 @@ function resultTagType(value) {
       gap: 8px;
       width: 100%;
       padding: 7px 9px;
-      border: 1px solid #dce8f6;
+      border: 1px solid var(--surface-border);
       border-radius: 6px;
-      background: #fff;
+      background: var(--surface-strong);
       cursor: pointer;
       text-align: left;
 
       &:hover {
-        border-color: #409eff;
-        background: #f2f8ff;
+        border-color: var(--el-color-primary);
+        background: var(--surface-subtle);
       }
 
       strong {
-        color: #2167b2;
+        color: var(--el-color-primary);
         font-size: 12px;
       }
 
@@ -8036,7 +8242,7 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 20px;
   }
 }
@@ -8049,10 +8255,10 @@ function resultTagType(value) {
 .report-export__tip {
   margin: 0;
   padding: 10px 12px;
-  border: 1px solid #dce8f6;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #f7fbff;
-  color: #60758d;
+  background: var(--surface-muted);
+  color: var(--app-muted);
   font-size: 13px;
   line-height: 1.65;
 }
@@ -8061,17 +8267,17 @@ function resultTagType(value) {
   display: grid;
   gap: 4px;
   padding: 10px 12px;
-  border: 1px solid #e1ebf7;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 14px;
   }
 
   span {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
     line-height: 1.5;
   }
@@ -8111,9 +8317,9 @@ function resultTagType(value) {
   min-height: 0;
   overflow-y: auto;
   padding: 10px;
-  border: 1px solid #e2ebf7;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #f8fbff;
+  background: var(--surface-muted);
 
   button {
     display: grid;
@@ -8121,13 +8327,13 @@ function resultTagType(value) {
     gap: 2px 8px;
     border: 1px solid #dbe7f5;
     border-radius: 8px;
-    background: #fff;
+    background: var(--surface-strong);
     padding: 10px;
     text-align: left;
     cursor: pointer;
 
     &.active {
-      border-color: #409eff;
+      border-color: var(--el-color-primary);
       box-shadow: 0 0 0 2px rgba(64, 158, 255, .12);
     }
 
@@ -8137,8 +8343,8 @@ function resultTagType(value) {
       height: 24px;
       line-height: 24px;
       border-radius: 50%;
-      background: #eaf3ff;
-      color: #2f80ed;
+      background: var(--surface-subtle);
+      color: var(--el-color-primary);
       text-align: center;
       font-weight: 700;
     }
@@ -8151,11 +8357,11 @@ function resultTagType(value) {
     }
 
     strong {
-      color: #1d3554;
+      color: var(--app-heading);
     }
 
     em {
-      color: #7b8fa8;
+      color: var(--app-muted);
       font-style: normal;
       font-size: 12px;
     }
@@ -8167,9 +8373,9 @@ function resultTagType(value) {
   min-height: 0;
   overflow-y: auto;
   padding: 14px;
-  border: 1px solid #e2ebf7;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 
   label {
     display: block;
@@ -8212,7 +8418,7 @@ function resultTagType(value) {
   }
 
   small {
-    color: #7b8fa8;
+    color: var(--app-muted);
     line-height: 1.4;
   }
 }
@@ -8255,7 +8461,7 @@ function resultTagType(value) {
   padding: 9px 11px;
   border: 1px solid #dfe8f2;
   border-radius: 6px;
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 .activity-rule-grid span,
@@ -8282,7 +8488,7 @@ function resultTagType(value) {
     padding: 12px 14px;
     border: 1px solid #d8e8ff;
     border-radius: 8px;
-    background: #f7fbff;
+    background: var(--surface-muted);
   }
 
   label {
@@ -8293,7 +8499,7 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 15px;
   }
 
@@ -8319,7 +8525,7 @@ function resultTagType(value) {
     padding: 5px 9px;
     border: 1px solid #d8e8ff;
     border-radius: 7px;
-    background: #f7fbff;
+    background: var(--surface-muted);
   }
 
   label {
@@ -8330,7 +8536,7 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 13px;
   }
 }
@@ -8342,7 +8548,7 @@ function resultTagType(value) {
 }
 
 .api-condition-section {
-  background: #fbfdff;
+  background: var(--surface-muted);
 }
 
 .api-test-config {
@@ -8371,9 +8577,9 @@ function resultTagType(value) {
   display: grid;
   gap: 8px;
   padding: 10px;
-  border: 1px solid #dfeaf6;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fbfdff;
+  background: var(--surface-muted);
 
   > header {
     display: flex;
@@ -8382,7 +8588,7 @@ function resultTagType(value) {
     min-height: 20px;
 
     strong {
-      color: #1d3554;
+      color: var(--app-heading);
       font-size: 14px;
     }
 
@@ -8424,7 +8630,7 @@ function resultTagType(value) {
     white-space: nowrap;
 
     i {
-      color: #f56c6c;
+      color: var(--el-color-danger);
       font-style: normal;
     }
   }
@@ -8457,7 +8663,7 @@ function resultTagType(value) {
   min-width: 0;
 
   small {
-    color: #7b8fa8;
+    color: var(--app-muted);
     font-size: 12px;
     line-height: 1.2;
     white-space: nowrap;
@@ -8478,7 +8684,7 @@ function resultTagType(value) {
   padding: 6px 8px;
   border: 1px dashed #cfe0f3;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 
   span {
     color: #5b7390;
@@ -8491,16 +8697,16 @@ function resultTagType(value) {
     align-items: center;
     min-width: auto;
     padding: 3px 7px;
-    border: 1px solid #dce8f6;
+    border: 1px solid var(--surface-border);
     border-radius: 6px;
-    background: #fff;
-    color: #2167b2;
+    background: var(--surface-strong);
+    color: var(--el-color-primary);
     cursor: pointer;
     text-align: left;
 
     &:hover {
-      border-color: #409eff;
-      background: #f2f8ff;
+      border-color: var(--el-color-primary);
+      background: var(--surface-subtle);
     }
 
     strong {
@@ -8535,11 +8741,11 @@ function resultTagType(value) {
   padding: 8px;
   border: 1px solid #e5eef8;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 
   &--inner {
     padding: 8px;
-    background: #fbfdff;
+    background: var(--surface-muted);
   }
 }
 
@@ -8552,7 +8758,7 @@ function resultTagType(value) {
 
 	  > strong {
 	    margin-right: auto;
-	    color: #1d3554;
+	    color: var(--app-heading);
     font-size: 13px;
 	  }
 
@@ -8605,7 +8811,7 @@ function resultTagType(value) {
   padding: 8px;
   border: 1px solid #e5eef8;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .api-assertion-main {
@@ -8651,8 +8857,8 @@ function resultTagType(value) {
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  background: #edf5ff;
-  color: #2b7adf;
+  background: var(--surface-subtle);
+  color: var(--el-color-primary);
   font-size: 12px;
   font-weight: 700;
 }
@@ -8668,12 +8874,12 @@ function resultTagType(value) {
   min-width: 150px;
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 13px;
   }
 
   span {
-    color: #7b8fa8;
+    color: var(--app-muted);
     font-size: 12px;
   }
 }
@@ -8692,7 +8898,7 @@ function resultTagType(value) {
 .field-hint {
   display: block;
   margin-top: 4px;
-  color: #7b8fa8;
+  color: var(--app-muted);
   line-height: 1.3;
   font-size: 12px;
 }
@@ -8716,13 +8922,13 @@ function resultTagType(value) {
   align-items: center;
   gap: 14px;
   padding: 10px 12px;
-  border: 1px solid #dfeaf6;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 
   span {
     margin-right: auto;
-    color: #1d3554;
+    color: var(--app-heading);
     font-weight: 700;
   }
 }
@@ -8737,9 +8943,9 @@ function resultTagType(value) {
 
 .bigdata-server-card {
   padding: 12px;
-  border: 1px solid #e2ebf7;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .bigdata-server-card__head {
@@ -8755,7 +8961,7 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
   }
 }
 
@@ -8764,9 +8970,9 @@ function resultTagType(value) {
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   padding: 10px 12px 0;
-  border: 1px solid #dfeaf6;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .credential-source-tip {
@@ -8805,7 +9011,7 @@ function resultTagType(value) {
 
   p {
     margin: 0;
-    color: #6d8199;
+    color: var(--app-muted);
     line-height: 1.6;
   }
 }
@@ -8826,9 +9032,9 @@ function resultTagType(value) {
   min-width: 0;
   min-height: 0;
   padding: 14px;
-  border: 1px solid #dfeaf6;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fbfdff;
+  background: var(--surface-muted);
 
   header {
     display: flex;
@@ -8844,12 +9050,12 @@ function resultTagType(value) {
     }
 
     strong {
-      color: #1d3554;
+      color: var(--app-heading);
       font-size: 15px;
     }
 
     span {
-      color: #7b8fa8;
+      color: var(--app-muted);
       font-size: 12px;
     }
   }
@@ -8860,7 +9066,7 @@ function resultTagType(value) {
   align-content: center;
   justify-items: center;
   gap: 8px;
-  color: #6d8199;
+  color: var(--app-muted);
   font-size: 12px;
   text-align: center;
 
@@ -8870,8 +9076,8 @@ function resultTagType(value) {
     line-height: 32px;
     border: 1px solid #cfe3fb;
     border-radius: 50%;
-    background: #eef7ff;
-    color: #2f80ed;
+    background: var(--surface-subtle);
+    color: var(--el-color-primary);
     font-size: 20px;
     font-weight: 700;
   }
@@ -8884,7 +9090,7 @@ function resultTagType(value) {
   padding: 8px;
   border: 1px solid #e6eef8;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .server-tree-box {
@@ -8898,7 +9104,7 @@ function resultTagType(value) {
   }
 
   :deep(.el-tree-node__content:hover) {
-    background: #f2f8ff;
+    background: var(--surface-subtle);
   }
 }
 
@@ -8909,7 +9115,7 @@ function resultTagType(value) {
   min-width: 0;
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-weight: 600;
   }
 
@@ -8922,14 +9128,14 @@ function resultTagType(value) {
   small {
     padding: 2px 7px;
     border-radius: 999px;
-    background: #eef5ff;
-    color: #2f80ed;
+    background: var(--surface-subtle);
+    color: var(--el-color-primary);
     font-size: 12px;
     font-weight: 600;
   }
 
   &--server strong {
-    color: #2167b2;
+    color: var(--el-color-primary);
   }
 }
 
@@ -8947,7 +9153,7 @@ function resultTagType(value) {
   padding: 10px;
   border: 1px solid #e3edf8;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 
   div {
     display: grid;
@@ -8964,17 +9170,17 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
   }
 
   span {
-    color: #2167b2;
+    color: var(--el-color-primary);
     font-size: 12px;
   }
 
   em,
   small {
-    color: #7b8fa8;
+    color: var(--app-muted);
     font-style: normal;
     font-size: 12px;
   }
@@ -9007,13 +9213,13 @@ function resultTagType(value) {
 
   span,
   em {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
     font-style: normal;
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 18px;
   }
 }
@@ -9037,21 +9243,21 @@ function resultTagType(value) {
     gap: 6px;
     min-height: 72px;
     padding: 12px;
-    border: 1px solid #e2ebf7;
+    border: 1px solid var(--surface-border);
     border-radius: 8px;
-    background: #fbfdff;
+    background: var(--surface-muted);
   }
 
   label {
     margin: 0;
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
     font-weight: 500;
   }
 
   strong {
     overflow: hidden;
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 14px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -9065,7 +9271,7 @@ function resultTagType(value) {
   padding: 12px;
   border: 1px solid #e6eef8;
   border-radius: 8px;
-  background: #f8fbff;
+  background: var(--surface-muted);
 
   p {
     display: grid;
@@ -9076,20 +9282,20 @@ function resultTagType(value) {
 
   label {
     margin: 0;
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
     font-weight: 500;
   }
 
   span {
     overflow-wrap: anywhere;
-    color: #1d3554;
+    color: var(--app-heading);
     line-height: 1.5;
   }
 }
 
 .target-call-info {
-  color: #1d3554;
+  color: var(--app-heading);
   line-height: 1.6;
   white-space: normal;
   word-break: break-word;
@@ -9112,7 +9318,7 @@ function resultTagType(value) {
   padding: 12px 14px;
   border: 1px solid #dde8f4;
   border-radius: 8px;
-  background: #f8fbff;
+  background: var(--surface-muted);
 
   :deep(.el-form-item) {
     display: block;
@@ -9170,7 +9376,7 @@ function resultTagType(value) {
   overflow: hidden;
   border: 1px solid #dce7f3;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .step-workspace-nav {
@@ -9180,7 +9386,7 @@ function resultTagType(value) {
   min-height: 0;
   padding: 14px 10px;
   border-right: 1px solid #e1eaf4;
-  background: #f6f9fc;
+  background: var(--surface-muted);
 
   > button {
     display: grid;
@@ -9233,19 +9439,19 @@ function resultTagType(value) {
     &:hover,
     &:focus-visible {
       border-color: #d4e4f6;
-      background: #fff;
-      color: #2c6eaf;
+      background: var(--surface-strong);
+      color: var(--el-color-primary);
       outline: none;
     }
 
     &.active {
       border-color: #bcd8f7;
-      background: #edf6ff;
-      color: #1f6fbd;
+      background: var(--surface-subtle);
+      color: var(--el-color-primary);
 
       > .el-icon:first-child {
         background: #d8ebff;
-        color: #1f6fbd;
+        color: var(--el-color-primary);
       }
 
       .step-workspace-nav__arrow {
@@ -9262,7 +9468,7 @@ function resultTagType(value) {
   padding: 2px 8px 9px;
 
   strong {
-    color: #243f5e;
+    color: var(--app-heading);
     font-size: 14px;
   }
 
@@ -9274,7 +9480,7 @@ function resultTagType(value) {
 
 .step-workspace-nav__arrow {
   opacity: 0;
-  color: #3d83c9;
+  color: var(--el-color-primary);
   font-size: 13px;
   transform: translateX(-4px);
   transition: opacity 160ms ease-out, transform 160ms ease-out;
@@ -9293,7 +9499,7 @@ function resultTagType(value) {
     padding: 18px 20px 22px;
     border: 0;
     border-radius: 0;
-    background: #fff;
+    background: var(--surface-strong);
   }
 
   > .target-section > header {
@@ -9304,7 +9510,7 @@ function resultTagType(value) {
     margin: -18px 0 16px;
     padding: 17px 0 10px;
     border-bottom: 1px solid #e8eef5;
-    background: #fff;
+    background: var(--surface-strong);
   }
 
   .api-config-tabs :deep(.el-tabs__content) {
@@ -9335,7 +9541,7 @@ function resultTagType(value) {
   }
 
   > span strong {
-    color: #2b6fad;
+    color: var(--el-color-primary);
   }
 
   > div {
@@ -9377,7 +9583,7 @@ function resultTagType(value) {
 :global(.step-dialog.el-dialog .el-dialog__header) {
   flex: 0 0 auto;
   padding: 16px 20px 12px;
-  border-bottom: 1px solid #edf1f6;
+  border-bottom: 1px solid var(--surface-border);
 }
 
 :global(.step-dialog.el-dialog .el-dialog__body) {
@@ -9390,7 +9596,7 @@ function resultTagType(value) {
 :global(.step-dialog.el-dialog .el-dialog__footer) {
   flex: 0 0 auto;
   padding: 11px 20px 14px;
-  border-top: 1px solid #edf1f6;
+  border-top: 1px solid var(--surface-border);
 }
 
 .execution-policy-grid {
@@ -9451,8 +9657,8 @@ function resultTagType(value) {
   gap: 18px;
   margin-bottom: 14px;
   padding: 10px 14px;
-  border-bottom: 1px solid #e4ebf4;
-  background: #f8fafc;
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-muted);
 
   :deep(.el-form-item) {
     margin-bottom: 0;
@@ -9472,7 +9678,7 @@ function resultTagType(value) {
   padding: 12px;
   border: 1px solid #dfe8f2;
   border-radius: 6px;
-  background: #f8fafc;
+  background: var(--surface-muted);
 }
 
 .plan-health-config label {
@@ -9484,7 +9690,7 @@ function resultTagType(value) {
 
 .plan-health-config label > span,
 .plan-health-config label > em {
-  color: #60758f;
+  color: var(--app-muted);
   font-size: 12px;
   font-style: normal;
 }
@@ -9505,7 +9711,7 @@ function resultTagType(value) {
 .target-preview-drawer {
   :deep(.el-drawer__body) {
     padding: 16px 18px 22px;
-    background: #f4f7fb;
+    background: var(--surface-muted);
   }
 }
 
@@ -9522,7 +9728,7 @@ function resultTagType(value) {
   padding: 15px 16px;
   border: 1px solid #dce6f2;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 
   > div {
     display: grid;
@@ -9530,7 +9736,7 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #203853;
+    color: var(--app-heading);
     font-size: 16px;
   }
 
@@ -9561,7 +9767,7 @@ function resultTagType(value) {
     padding: 11px 12px;
     border: 1px solid #e0e8f2;
     border-radius: 8px;
-    background: #fff;
+    background: var(--surface-strong);
   }
 
   label {
@@ -9571,7 +9777,7 @@ function resultTagType(value) {
 
   strong {
     overflow: hidden;
-    color: #263f5c;
+    color: var(--app-heading);
     font-size: 14px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -9584,7 +9790,7 @@ function resultTagType(value) {
   padding: 14px;
   border: 1px solid #dde7f2;
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 
   > header {
     display: flex;
@@ -9592,7 +9798,7 @@ function resultTagType(value) {
     gap: 9px;
 
     strong {
-      color: #213a57;
+      color: var(--app-heading);
       font-size: 15px;
     }
 
@@ -9621,7 +9827,7 @@ function resultTagType(value) {
   dd {
     margin: 0;
     overflow-wrap: anywhere;
-    color: #2b435e;
+    color: var(--app-heading);
   }
 }
 
@@ -9637,7 +9843,7 @@ function resultTagType(value) {
     width: 100%;
 
     strong {
-      color: #2a425e;
+      color: var(--app-heading);
     }
 
     span {
@@ -9655,15 +9861,15 @@ function resultTagType(value) {
     padding: 5px 9px;
     border: 1px solid #d5e3f2;
     border-radius: 6px;
-    background: #f8fbff;
-    color: #315d8d;
+    background: var(--surface-muted);
+    color: var(--el-color-primary);
     cursor: pointer;
     font: inherit;
 
     &:hover,
     &:focus-visible {
       border-color: #75aae2;
-      background: #edf6ff;
+      background: var(--surface-subtle);
       outline: none;
     }
 
@@ -9698,8 +9904,8 @@ function resultTagType(value) {
     padding: 11px 12px;
     border: 1px solid #e1e8f0;
     border-radius: 6px;
-    background: #f7f9fc;
-    color: #263b52;
+    background: var(--surface-muted);
+    color: var(--app-heading);
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 12px;
     line-height: 1.55;
@@ -9723,7 +9929,7 @@ function resultTagType(value) {
 .inspection-detail-drawer {
   :deep(.el-drawer__body) {
     padding: 16px 20px 22px;
-    background: #f5f8fc;
+    background: var(--surface-muted);
   }
 }
 
@@ -9735,7 +9941,7 @@ function resultTagType(value) {
   padding: 18px 20px;
   border: 1px solid #dbe8f6;
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface-strong);
   margin-bottom: 12px;
 
   span {
@@ -9746,13 +9952,13 @@ function resultTagType(value) {
 
   h3 {
     margin: 6px 0;
-    color: #18324f;
+    color: var(--app-heading);
     font-size: 22px;
   }
 
   p {
     margin: 0;
-    color: #6d8199;
+    color: var(--app-muted);
     line-height: 1.5;
   }
 }
@@ -9770,19 +9976,19 @@ function resultTagType(value) {
     padding: 12px;
     border: 1px solid #e0eaf6;
     border-radius: 8px;
-    background: #fff;
+    background: var(--surface-strong);
   }
 
   strong {
     overflow: hidden;
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 18px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   em {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
     font-style: normal;
   }
@@ -9792,7 +9998,7 @@ function resultTagType(value) {
   padding: 14px;
   border: 1px solid #e0eaf6;
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface-strong);
   margin-bottom: 12px;
 
   > header {
@@ -9807,12 +10013,12 @@ function resultTagType(value) {
     }
 
     strong {
-      color: #1d3554;
+      color: var(--app-heading);
       font-size: 16px;
     }
 
     span {
-      color: #7890aa;
+      color: var(--app-muted);
       font-size: 12px;
     }
   }
@@ -9832,9 +10038,9 @@ function resultTagType(value) {
 
 .target-step-group {
   overflow: hidden;
-  border: 1px solid #dce8f6;
+  border: 1px solid var(--surface-border);
   border-radius: 10px;
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .target-step-group__head {
@@ -9844,7 +10050,7 @@ function resultTagType(value) {
   align-items: center;
   padding: 14px 16px;
   border-bottom: 1px solid #e6eef8;
-  background: #f8fbff;
+  background: var(--surface-muted);
 
   > div:nth-child(2) {
     display: grid;
@@ -9860,12 +10066,12 @@ function resultTagType(value) {
   }
 
   strong {
-    color: #18324f;
+    color: var(--app-heading);
     font-size: 16px;
   }
 
   em {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
     font-style: normal;
   }
@@ -9874,8 +10080,8 @@ function resultTagType(value) {
 .target-step-index {
   padding: 5px 10px;
   border-radius: 999px;
-  background: #eaf3ff;
-  color: #2f80ed;
+  background: var(--surface-subtle);
+  color: var(--el-color-primary);
   font-size: 12px;
   font-weight: 700;
 }
@@ -9889,19 +10095,19 @@ function resultTagType(value) {
     display: grid;
     min-width: 48px;
     padding: 5px 8px;
-    border: 1px solid #e2ebf7;
+    border: 1px solid var(--surface-border);
     border-radius: 7px;
-    background: #fff;
+    background: var(--surface-strong);
     text-align: center;
   }
 
   label {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
     font-size: 14px;
   }
 }
@@ -9915,9 +10121,9 @@ function resultTagType(value) {
   gap: 12px;
   min-width: 0;
   padding: 14px;
-  border: 1px solid #e2ebf7;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
-  background: #fbfdff;
+  background: var(--surface-muted);
 
   header {
     display: grid;
@@ -9939,12 +10145,12 @@ function resultTagType(value) {
     }
 
     strong {
-      color: #1d3554;
+      color: var(--app-heading);
       font-size: 15px;
     }
 
     em {
-      color: #7890aa;
+      color: var(--app-muted);
       font-size: 12px;
       font-style: normal;
     }
@@ -9956,8 +10162,8 @@ function resultTagType(value) {
   height: 30px;
   line-height: 30px;
   border-radius: 50%;
-  background: #eaf3ff;
-  color: #2f80ed;
+  background: var(--surface-subtle);
+  color: var(--el-color-primary);
   text-align: center;
   font-weight: 700;
 }
@@ -9972,16 +10178,16 @@ function resultTagType(value) {
     gap: 4px;
     padding: 10px;
     border-radius: 7px;
-    background: #fff;
+    background: var(--surface-strong);
   }
 
   label {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
   }
 
   strong {
-    color: #1d3554;
+    color: var(--app-heading);
   }
 }
 
@@ -9991,17 +10197,17 @@ function resultTagType(value) {
   gap: 6px;
   padding: 10px 12px;
   border-radius: 7px;
-  background: #fff;
+  background: var(--surface-strong);
 
   label {
-    color: #7890aa;
+    color: var(--app-muted);
     font-size: 12px;
     font-weight: 600;
   }
 
   p {
     margin: 0;
-    color: #1d3554;
+    color: var(--app-heading);
     line-height: 1.6;
     white-space: pre-wrap;
     word-break: break-word;
@@ -10009,7 +10215,7 @@ function resultTagType(value) {
 }
 
 .target-error-box {
-  background: #fff7f7;
+  background: var(--el-color-danger-light-9);
 
   p {
     color: #c45656;
@@ -10048,7 +10254,7 @@ function resultTagType(value) {
   .dashboard-brief__charts {
     padding-top: 10px;
     padding-left: 0;
-    border-top: 1px solid #dce6f1;
+    border-top: 1px solid var(--surface-border);
     border-left: 0;
   }
 
@@ -10240,7 +10446,7 @@ function resultTagType(value) {
   .dashboard-brief__chart--result {
     padding-top: 10px;
     padding-left: 0;
-    border-top: 1px solid #dce6f1;
+    border-top: 1px solid var(--surface-border);
     border-left: 0;
   }
 

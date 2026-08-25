@@ -825,15 +825,32 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 .collect(Collectors.toList());
         List<Map<String, Object>> steps = todayRecordIds.isEmpty() ? new ArrayList<>() : autoInspectionMapper.selectStepResultsByRecordIds(todayRecordIds);
         List<Map<String, Object>> targets = todayRecordIds.isEmpty() ? new ArrayList<>() : autoInspectionMapper.selectTargetResultsByRecordIds(todayRecordIds);
+        Map<String, Object> healthQuery = new HashMap<>();
+        healthQuery.put("beginDate", java.sql.Date.valueOf(queryBegin));
+        healthQuery.put("endDate", java.sql.Date.valueOf(today));
+        List<Map<String, Object>> dailyHealthRows = selectDailyHealthRows(healthQuery);
+        Map<String, Object> planQuery = new HashMap<>();
+        planQuery.put("status", STATUS_NORMAL);
+        List<Map<String, Object>> activePlans = autoInspectionMapper.selectPlanList(planQuery);
+
+        Map<String, Object> routineSummary = buildDashboardSummary(today, records, steps, targets);
+        Map<String, Object> frequentSummary = buildFrequentDashboardSummary(today, dailyHealthRows);
+        List<Map<String, Object>> routineTrend = buildDashboardTrend(trendBegin, today, records);
 
         Map<String, Object> dashboard = new LinkedHashMap<>();
-        dashboard.put("summary", buildDashboardSummary(today, records, steps, targets));
+        dashboard.put("summary", routineSummary);
+        dashboard.put("frequentSummary", frequentSummary);
+        dashboard.put("healthOverview", buildCombinedHealthOverview(routineSummary, frequentSummary));
         dashboard.put("weekSummary", buildDashboardWeekSummary(weekBegin, today, records));
-        dashboard.put("trend", buildDashboardTrend(trendBegin, today, records));
+        dashboard.put("trend", routineTrend);
+        dashboard.put("combinedTrend", buildCombinedHealthTrend(routineTrend, dailyHealthRows));
         dashboard.put("calendar", buildDashboardCalendar(today, records));
         dashboard.put("toolStats", buildDashboardToolStats(today, records, steps, targets));
-        dashboard.put("latestAbnormalTargets", buildLatestAbnormalTargets(today, records, targets));
+        List<Map<String, Object>> latestAbnormalTargets = buildLatestAbnormalTargets(today, records, targets);
+        dashboard.put("latestAbnormalTargets", latestAbnormalTargets);
+        dashboard.put("latestIssues", buildLatestDashboardIssues(today, latestAbnormalTargets, dailyHealthRows));
         dashboard.put("recentRecords", buildDashboardRecentRecords(today, records));
+        dashboard.put("currentPlanHealth", buildCurrentPlanHealth(today, activePlans, records, dailyHealthRows));
         dashboard.put("generatedTime", formatDate(new Date()));
         return dashboard;
     }
@@ -842,6 +859,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     public List<SupportAutoInspectionHealthDaily> selectDailyHealth(AutoInspectionHealthQuery query)
     {
         Map<String, Object> params = toMap(query);
+        return toBeanList(selectDailyHealthRows(params), SupportAutoInspectionHealthDaily.class);
+    }
+
+    private List<Map<String, Object>> selectDailyHealthRows(Map<String, Object> params)
+    {
         List<Map<String, Object>> rows = new ArrayList<>(autoInspectionMapper.selectDailyHealthList(params));
         LocalDate today = LocalDate.now();
         LocalDate begin = toLocalDate(params.get("beginDate"));
@@ -879,7 +901,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         rows.sort(Comparator.<Map<String, Object>, LocalDate>comparing(row -> toLocalDate(row.get("healthDate")),
                 Comparator.nullsLast(Comparator.reverseOrder()))
                 .thenComparing(row -> str(row, "planName")));
-        return toBeanList(rows, SupportAutoInspectionHealthDaily.class);
+        return rows;
     }
 
     private Map<String, Object> emptyDailyHealthRow(Map<String, Object> plan, LocalDate date)
@@ -921,6 +943,281 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         row.put("dayStatus", abnormal > 0 ? RESULT_ABNORMAL
                 : warning > 0 || missing > 0 ? RESULT_WARNING
                 : completed > 0 ? RESULT_NORMAL : RESULT_SKIP);
+    }
+
+    private Map<String, Object> buildFrequentDashboardSummary(LocalDate today,
+                                                               List<Map<String, Object>> dailyHealthRows)
+    {
+        List<Map<String, Object>> todayRows = dailyHealthRows.stream()
+                .filter(row -> isSameDate(row.get("healthDate"), today))
+                .collect(Collectors.toList());
+        long expectedCount = sumLong(todayRows, "expectedCount");
+        long completedCount = sumLong(todayRows, "completedCount");
+        long normalCount = sumLong(todayRows, "normalCount");
+        long warningCount = sumLong(todayRows, "warningCount");
+        long abnormalCount = sumLong(todayRows, "abnormalCount");
+        long missingCount = sumLong(todayRows, "missingCount");
+        String status = resolveHealthStatus(abnormalCount, warningCount + missingCount, completedCount);
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("planCount", todayRows.size());
+        summary.put("expectedCount", expectedCount);
+        summary.put("completedCount", completedCount);
+        summary.put("normalCount", normalCount);
+        summary.put("warningCount", warningCount);
+        summary.put("abnormalCount", abnormalCount);
+        summary.put("missingCount", missingCount);
+        summary.put("healthScore", percentageValue(normalCount, expectedCount));
+        summary.put("successRate", formatPercent(normalCount, expectedCount));
+        summary.put("coverageRate", formatPercent(completedCount, expectedCount));
+        summary.put("status", status);
+        summary.put("latestRunTime", todayRows.stream()
+                .map(row -> toLocalDateTime(row.get("lastRunTime")))
+                .filter(value -> value != null)
+                .max(Comparator.naturalOrder())
+                .map(DATE_TIME_FORMATTER::format)
+                .orElse(""));
+        return summary;
+    }
+
+    private Map<String, Object> buildCombinedHealthOverview(Map<String, Object> routineSummary,
+                                                             Map<String, Object> frequentSummary)
+    {
+        long routineTotal = toLongValue(routineSummary.get("recordCount"));
+        long routineNormal = toLongValue(routineSummary.get("normalCount"));
+        long frequentExpected = toLongValue(frequentSummary.get("expectedCount"));
+        long frequentNormal = toLongValue(frequentSummary.get("normalCount"));
+        long totalChecks = routineTotal + frequentExpected;
+        long normalChecks = routineNormal + frequentNormal;
+        String routineStatus = str(routineSummary, "status");
+        String frequentStatus = str(frequentSummary, "status");
+
+        Map<String, Object> overview = new LinkedHashMap<>();
+        overview.put("healthScore", percentageValue(normalChecks, totalChecks));
+        overview.put("healthRate", formatPercent(normalChecks, totalChecks));
+        overview.put("status", mergeHealthStatus(routineStatus, frequentStatus));
+        overview.put("routineStatus", routineStatus);
+        overview.put("frequentStatus", frequentStatus);
+        overview.put("routineRecordCount", routineTotal);
+        overview.put("frequentExpectedCount", frequentExpected);
+        overview.put("frequentCompletedCount", frequentSummary.get("completedCount"));
+        overview.put("issueCount", toLongValue(routineSummary.get("abnormalTargetCount"))
+                + toLongValue(frequentSummary.get("abnormalCount"))
+                + toLongValue(frequentSummary.get("warningCount"))
+                + toLongValue(frequentSummary.get("missingCount")));
+        return overview;
+    }
+
+    private List<Map<String, Object>> buildCombinedHealthTrend(List<Map<String, Object>> routineTrend,
+                                                                List<Map<String, Object>> dailyHealthRows)
+    {
+        Map<String, List<Map<String, Object>>> healthByDate = dailyHealthRows.stream()
+                .filter(row -> toLocalDate(row.get("healthDate")) != null)
+                .collect(Collectors.groupingBy(row -> toLocalDate(row.get("healthDate")).toString(),
+                        LinkedHashMap::new, Collectors.toList()));
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> routine : routineTrend)
+        {
+            String date = str(routine, "date");
+            List<Map<String, Object>> frequentRows = healthByDate.getOrDefault(date, new ArrayList<>());
+            long routineTotal = toLongValue(routine.get("total"));
+            long routineNormal = toLongValue(routine.get("normal"));
+            long routineAbnormal = toLongValue(routine.get("abnormal"));
+            long frequentExpected = sumLong(frequentRows, "expectedCount");
+            long frequentCompleted = sumLong(frequentRows, "completedCount");
+            long frequentNormal = sumLong(frequentRows, "normalCount");
+            long frequentWarning = sumLong(frequentRows, "warningCount");
+            long frequentAbnormal = sumLong(frequentRows, "abnormalCount");
+            long frequentMissing = sumLong(frequentRows, "missingCount");
+            long totalChecks = routineTotal + frequentExpected;
+
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("date", date);
+            item.put("routineTotal", routineTotal);
+            item.put("routineNormal", routineNormal);
+            item.put("routineAbnormal", routineAbnormal);
+            item.put("frequentExpected", frequentExpected);
+            item.put("frequentCompleted", frequentCompleted);
+            item.put("frequentNormal", frequentNormal);
+            item.put("frequentWarning", frequentWarning);
+            item.put("frequentAbnormal", frequentAbnormal);
+            item.put("frequentMissing", frequentMissing);
+            item.put("healthScore", percentageValue(routineNormal + frequentNormal, totalChecks));
+            item.put("status", resolveHealthStatus(routineAbnormal + frequentAbnormal,
+                    frequentWarning + frequentMissing, routineTotal + frequentCompleted));
+            result.add(item);
+        }
+        return result;
+    }
+
+    private List<Map<String, Object>> buildCurrentPlanHealth(LocalDate today,
+                                                              List<Map<String, Object>> activePlans,
+                                                              List<Map<String, Object>> routineRecords,
+                                                              List<Map<String, Object>> dailyHealthRows)
+    {
+        Map<Long, Map<String, Object>> latestRoutineByPlan = new LinkedHashMap<>();
+        for (Map<String, Object> record : routineRecords)
+        {
+            Long planId = toLong(record.get("planId"));
+            if (planId != null && isSameDate(record.get("inspectionTime"), today))
+            {
+                latestRoutineByPlan.putIfAbsent(planId, record);
+            }
+        }
+        Map<Long, Map<String, Object>> frequentByPlan = dailyHealthRows.stream()
+                .filter(row -> isSameDate(row.get("healthDate"), today))
+                .filter(row -> toLong(row.get("planId")) != null)
+                .collect(Collectors.toMap(row -> toLong(row.get("planId")), row -> row,
+                        (left, right) -> left, LinkedHashMap::new));
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> plan : activePlans)
+        {
+            Long planId = toLong(plan.get("planId"));
+            String mode = AutoInspectionPlanHealthConfig.normalizeMode(plan.get("planMode"));
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("planId", planId);
+            row.put("planName", plan.get("planName"));
+            row.put("templateId", plan.get("templateId"));
+            row.put("templateName", plan.get("templateName"));
+            row.put("labelName", plan.get("labelName"));
+            row.put("planMode", mode);
+            if (AutoInspectionPlanHealthConfig.MODE_FREQUENT.equals(mode))
+            {
+                Map<String, Object> health = frequentByPlan.get(planId);
+                row.put("resultStatus", health == null ? RESULT_SKIP : health.get("dayStatus"));
+                row.put("healthScore", health == null ? BigDecimal.ZERO : health.get("healthScore"));
+                row.put("completedCount", health == null ? 0 : health.get("completedCount"));
+                row.put("expectedCount", health == null ? 0 : health.get("expectedCount"));
+                row.put("abnormalCount", health == null ? 0 : health.get("abnormalCount"));
+                row.put("warningCount", health == null ? 0 : health.get("warningCount"));
+                row.put("missingCount", health == null ? 0 : health.get("missingCount"));
+                row.put("latestRunTime", health == null ? "" : formatDate(health.get("lastRunTime")));
+                row.put("issueSummary", health == null ? "今日尚未进入监测时段" : str(health, "abnormalSummary"));
+            }
+            else
+            {
+                Map<String, Object> record = latestRoutineByPlan.get(planId);
+                String status = record == null ? RESULT_SKIP : str(record, "resultStatus");
+                row.put("resultStatus", status);
+                row.put("healthScore", RESULT_NORMAL.equals(status) ? new BigDecimal("100") : BigDecimal.ZERO);
+                row.put("completedCount", record == null ? 0 : 1);
+                row.put("expectedCount", 1);
+                row.put("abnormalCount", record == null ? 0 : record.get("abnormalCount"));
+                row.put("warningCount", 0);
+                row.put("missingCount", record == null ? 1 : 0);
+                row.put("latestRunTime", record == null ? "" : formatDate(record.get("inspectionTime")));
+                row.put("recordId", record == null ? null : record.get("recordId"));
+                row.put("issueSummary", record == null ? "今日尚未执行" : StringUtils.defaultIfBlank(
+                        str(record, "abnormalSummary"), str(record, "summary")));
+            }
+            result.add(row);
+        }
+        result.sort(Comparator
+                .comparingInt((Map<String, Object> row) -> healthStatusPriority(str(row, "resultStatus")))
+                .thenComparing(row -> str(row, "labelName"))
+                .thenComparing(row -> str(row, "planName")));
+        return result;
+    }
+
+    private List<Map<String, Object>> buildLatestDashboardIssues(LocalDate today,
+                                                                  List<Map<String, Object>> routineIssues,
+                                                                  List<Map<String, Object>> dailyHealthRows)
+    {
+        List<Map<String, Object>> issues = new ArrayList<>();
+        for (Map<String, Object> health : dailyHealthRows)
+        {
+            if (!isSameDate(health.get("healthDate"), today))
+            {
+                continue;
+            }
+            String status = str(health, "dayStatus");
+            if (!RESULT_ABNORMAL.equals(status) && !RESULT_WARNING.equals(status))
+            {
+                continue;
+            }
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("sourceMode", AutoInspectionPlanHealthConfig.MODE_FREQUENT);
+            item.put("resultStatus", status);
+            item.put("healthDate", today.toString());
+            item.put("planId", health.get("planId"));
+            item.put("planName", health.get("planName"));
+            item.put("templateName", health.get("templateName"));
+            item.put("issueTitle", StringUtils.defaultIfBlank(str(health, "planName"), "高频健康计划"));
+            item.put("issueDetail", StringUtils.defaultIfBlank(str(health, "abnormalSummary"),
+                    "异常 " + toLongValue(health.get("abnormalCount")) + "，关注 "
+                            + toLongValue(health.get("warningCount")) + "，缺失 "
+                            + toLongValue(health.get("missingCount"))));
+            item.put("inspectionTime", formatDate(health.get("lastRunTime")));
+            item.put("healthScore", health.get("healthScore"));
+            issues.add(item);
+        }
+        for (Map<String, Object> routine : routineIssues)
+        {
+            Map<String, Object> item = new LinkedHashMap<>(routine);
+            item.put("sourceMode", AutoInspectionPlanHealthConfig.MODE_ROUTINE);
+            item.put("issueTitle", StringUtils.defaultIfBlank(str(routine, "stepName"), "例行巡检异常")
+                    + " / " + StringUtils.defaultIfBlank(str(routine, "targetName"), "未命名目标"));
+            item.put("issueDetail", StringUtils.defaultIfBlank(str(routine, "errorMessage"),
+                    StringUtils.defaultIfBlank(str(routine, "actualText"), str(routine, "resultDetail"))));
+            issues.add(item);
+        }
+        issues.sort(Comparator.comparing((Map<String, Object> row) -> toLocalDateTime(row.get("inspectionTime")),
+                Comparator.nullsLast(Comparator.reverseOrder())));
+        return issues.stream().limit(12).collect(Collectors.toList());
+    }
+
+    private long sumLong(List<Map<String, Object>> rows, String key)
+    {
+        return rows.stream().mapToLong(row -> toLongValue(row.get(key))).sum();
+    }
+
+    private BigDecimal percentageValue(long numerator, long denominator)
+    {
+        if (denominator <= 0)
+        {
+            return BigDecimal.ZERO;
+        }
+        return new BigDecimal(numerator).multiply(new BigDecimal("100"))
+                .divide(new BigDecimal(denominator), 1, RoundingMode.HALF_UP);
+    }
+
+    private String resolveHealthStatus(long abnormalCount, long warningCount, long completedCount)
+    {
+        if (abnormalCount > 0)
+        {
+            return RESULT_ABNORMAL;
+        }
+        if (warningCount > 0)
+        {
+            return RESULT_WARNING;
+        }
+        return completedCount > 0 ? RESULT_NORMAL : RESULT_SKIP;
+    }
+
+    private String mergeHealthStatus(String left, String right)
+    {
+        if (RESULT_ABNORMAL.equals(left) || RESULT_ABNORMAL.equals(right))
+        {
+            return RESULT_ABNORMAL;
+        }
+        if (RESULT_WARNING.equals(left) || RESULT_WARNING.equals(right))
+        {
+            return RESULT_WARNING;
+        }
+        if (RESULT_NORMAL.equals(left) || RESULT_NORMAL.equals(right))
+        {
+            return RESULT_NORMAL;
+        }
+        return RESULT_SKIP;
+    }
+
+    private int healthStatusPriority(String status)
+    {
+        if (RESULT_ABNORMAL.equals(status)) return 0;
+        if (RESULT_WARNING.equals(status)) return 1;
+        if (RESULT_SKIP.equals(status)) return 2;
+        return 3;
     }
 
     private Map<String, Object> buildDashboardSummary(LocalDate today, List<Map<String, Object>> records,
@@ -6155,6 +6452,14 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private LocalDate toLocalDate(Object value)
     {
+        if (value instanceof java.sql.Date)
+        {
+            return ((java.sql.Date) value).toLocalDate();
+        }
+        if (value instanceof java.sql.Timestamp)
+        {
+            return ((java.sql.Timestamp) value).toLocalDateTime().toLocalDate();
+        }
         if (value instanceof Date)
         {
             return ((Date) value).toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
@@ -6187,6 +6492,14 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         if (value instanceof LocalDateTime)
         {
             return (LocalDateTime) value;
+        }
+        if (value instanceof java.sql.Timestamp)
+        {
+            return ((java.sql.Timestamp) value).toLocalDateTime();
+        }
+        if (value instanceof java.sql.Date)
+        {
+            return ((java.sql.Date) value).toLocalDate().atStartOfDay();
         }
         if (value instanceof Date)
         {
@@ -6400,6 +6713,14 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private String formatDate(Object value)
     {
+        if (value instanceof LocalDateTime)
+        {
+            return DATE_TIME_FORMATTER.format((LocalDateTime) value);
+        }
+        if (value instanceof LocalDate)
+        {
+            return ((LocalDate) value).toString();
+        }
         if (value instanceof Date)
         {
             return DateUtils.parseDateToStr(DateUtils.YYYY_MM_DD_HH_MM_SS, (Date) value);

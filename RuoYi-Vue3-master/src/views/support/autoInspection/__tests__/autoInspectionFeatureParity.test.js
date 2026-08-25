@@ -100,7 +100,8 @@ test('overview and configuration keep one clear presentation path', () => {
 
 test('step editor uses one compact desktop workspace instead of stacked sections', () => {
   const requiredMarkers = [
-    'class="step-workspace-form"',
+    'step-workspace-form',
+    'inspection-standard-form',
     'class="step-identity-bar"',
     'class="step-workspace-nav"',
     'class="step-workspace-panel"',
