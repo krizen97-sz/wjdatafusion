@@ -34,6 +34,9 @@ test('route loading and error pages use local platform presentation', () => {
 test('global theme contract includes complete light and dark semantic surfaces', () => {
   const variables = read('src/assets/styles/variables.module.scss')
   const theme = read('src/assets/styles/platform-theme.scss')
+  const navbar = read('src/layout/components/Navbar.vue')
+  const settings = read('src/layout/components/Settings/index.vue')
+  const transition = read('src/utils/themeTransition.js')
 
   for (const marker of [
     '--surface-strong',
@@ -49,6 +52,17 @@ test('global theme contract includes complete light and dark semantic surfaces',
   assert.ok(variables.includes('html.dark'))
   assert.ok(theme.includes('.platform-loading-mask'))
   assert.ok(theme.includes('.el-table--enable-row-hover'))
+  assert.ok(navbar.includes('runThemeTransition'))
+  assert.ok(settings.includes('runThemeTransition'))
+  assert.ok(transition.includes('document.startViewTransition'))
+  assert.ok(transition.includes('prefers-reduced-motion: reduce'))
+})
+
+test('async route pages do not use the blank-prone out-in transition mode', () => {
+  const appMain = read('src/layout/components/AppMain.vue')
+
+  assert.ok(appMain.includes('Component && !route.meta.link'))
+  assert.ok(!appMain.includes('mode="out-in"'))
 })
 
 test('cockpit survives production compilation contract', () => {

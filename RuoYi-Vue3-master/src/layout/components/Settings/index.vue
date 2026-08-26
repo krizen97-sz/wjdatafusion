@@ -119,6 +119,7 @@ import useAppStore from '@/store/modules/app'
 import useSettingsStore from '@/store/modules/settings'
 import usePermissionStore from '@/store/modules/permission'
 import { handleThemeStyle } from '@/utils/theme'
+import { runThemeTransition } from '@/utils/themeTransition'
 
 const { proxy } = getCurrentInstance()
 const appStore = useAppStore()
@@ -152,7 +153,12 @@ function handleTheme(val) {
 
 function handleThemeMode(mode) {
   const shouldUseDark = mode === 'dark'
-  if (settingsStore.isDark !== shouldUseDark) settingsStore.toggleTheme()
+  if (settingsStore.isDark !== shouldUseDark) {
+    runThemeTransition({
+      isDark: settingsStore.isDark,
+      toggle: () => settingsStore.toggleTheme()
+    })
+  }
 }
 
 function handleNavType(val) {

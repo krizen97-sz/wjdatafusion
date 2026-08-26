@@ -15,7 +15,14 @@
 .fade-transform--move,
 .fade-transform-leave-active,
 .fade-transform-enter-active {
-  transition: all .5s;
+  transition: opacity .22s ease, transform .22s ease;
+}
+
+.fade-transform-leave-active {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
 }
 
 .fade-transform-enter-from {
@@ -61,20 +68,20 @@
 
 .dark::view-transition-old(root) {
   z-index: 2147483646;
-  background: var(--bg-color-dark); 
+  background: var(--page-bg);
 }
 
 .dark::view-transition-new(root) {
   z-index: 1;
-  background: var(--bg-color);
+  background: var(--page-bg);
 }
 
 ::view-transition-old(root) {
   z-index: 1;
-  background: var(--bg-color);
+  background: var(--page-bg);
 }
 
 ::view-transition-new(root) {
   z-index: 2147483646;
-  background: var(--bg-color-dark);
+  background: var(--page-bg);
 }

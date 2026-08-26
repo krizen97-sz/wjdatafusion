@@ -62,6 +62,7 @@ import HeaderSearch from '@/components/HeaderSearch'
 import useAppStore from '@/store/modules/app'
 import useUserStore from '@/store/modules/user'
 import useSettingsStore from '@/store/modules/settings'
+import { runThemeTransition } from '@/utils/themeTransition'
 
 const appStore = useAppStore()
 const userStore = useUserStore()
@@ -101,8 +102,12 @@ function setLayout() {
   emits('setLayout')
 }
 
-function toggleTheme() {
-  settingsStore.toggleTheme()
+function toggleTheme(event) {
+  runThemeTransition({
+    event,
+    isDark: settingsStore.isDark,
+    toggle: () => settingsStore.toggleTheme()
+  })
 }
 </script>
 
