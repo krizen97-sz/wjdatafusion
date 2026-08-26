@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-const source = readFileSync('../WDF100.0/sql/support_upgrade_20260826_v3_13_3_to_v3_14_3_all.sql', 'utf8')
+const source = readFileSync(
+  new URL('../../../../../../WDF100.0/sql/support_upgrade_20260826_v3_13_3_to_v3_14_3_all.sql', import.meta.url),
+  'utf8'
+)
 
 test('v3.13.3 to v3.14.3 cumulative SQL contains every database change', () => {
   for (const marker of [
