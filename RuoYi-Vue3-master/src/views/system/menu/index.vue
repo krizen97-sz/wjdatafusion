@@ -114,9 +114,10 @@
                         placement="bottom-start"
                         :width="540"
                         trigger="click"
+                        @show="showSelectIcon"
                      >
                         <template #reference>
-                           <el-input v-model="form.icon" placeholder="点击选择图标" @blur="showSelectIcon" readonly>
+                           <el-input v-model="form.icon" placeholder="点击选择图标" readonly>
                               <template #prefix>
                                  <svg-icon
                                     v-if="form.icon"

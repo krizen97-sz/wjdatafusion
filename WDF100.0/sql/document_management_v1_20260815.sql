@@ -113,7 +113,7 @@ INSERT INTO sys_menu(
 )
 VALUES
   (2500, '文档管理', 0, 9, 'documents', 'document/workspace/index', '', 'DocumentWorkspace',
-   1, 0, 'C', '0', '0', 'document:workspace:list', 'documentation',
+   1, 0, 'C', '0', '0', 'document:workspace:list', 'folder-tree',
    'admin', NOW(), 'admin', NOW(), '纯内网在线文档、目录归档与协同权限'),
   (2501, '目录管理', 2500, 1, '#', '', '', '', 1, 0, 'F', '0', '0', 'document:folder:manage', '#', 'admin', NOW(), '', NULL, ''),
   (2502, '新建文档', 2500, 2, '#', '', '', '', 1, 0, 'F', '0', '0', 'document:document:add', '#', 'admin', NOW(), '', NULL, ''),

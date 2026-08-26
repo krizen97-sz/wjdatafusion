@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS ipam_operation_log (
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES
-(2400, 'IP分配管控', 0, 8, 'ipam', 'ipam/index', '', 'Ipam', 1, 0, 'C', '0', '0', 'ipam:network:list', 'tree-table', 'admin', NOW(), '', NULL, '独立IP分配管控应用'),
+(2400, 'IP分配管控', 0, 8, 'ipam', 'ipam/index', '', 'Ipam', 1, 0, 'C', '0', '0', 'ipam:network:list', 'network', 'admin', NOW(), '', NULL, '独立IP分配管控应用'),
 (2401, '网段查询', 2400, 1, '#', '', '', '', 1, 0, 'F', '0', '0', 'ipam:network:list', '#', 'admin', NOW(), '', NULL, ''),
 (2402, '网段新增', 2400, 2, '#', '', '', '', 1, 0, 'F', '0', '0', 'ipam:network:add', '#', 'admin', NOW(), '', NULL, ''),
 (2403, '网段修改', 2400, 3, '#', '', '', '', 1, 0, 'F', '0', '0', 'ipam:network:edit', '#', 'admin', NOW(), '', NULL, ''),

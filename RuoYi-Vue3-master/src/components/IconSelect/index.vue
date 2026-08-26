@@ -1,30 +1,38 @@
 <template>
   <div class="icon-body">
-    <el-input
-      v-model="iconName"
-      class="icon-search"
-      clearable
-      placeholder="请输入图标名称"
-      @clear="filterIcons"
-      @input="filterIcons"
-    >
-      <template #suffix><i class="el-icon-search el-input__icon" /></template>
-    </el-input>
+    <div class="icon-toolbar">
+      <el-input v-model="iconName" class="icon-search" clearable placeholder="搜索图标名称或用途">
+        <template #suffix><el-icon><Search /></el-icon></template>
+      </el-input>
+      <span>{{ iconList.length }} / {{ icons.length }}</span>
+    </div>
     <div class="icon-list">
       <div class="list-container">
-        <div v-for="(item, index) in iconList" class="icon-item-wrapper" :key="index" @click="selectedIcon(item)">
+        <button
+          v-for="item in iconList"
+          :key="item"
+          type="button"
+          class="icon-item-wrapper"
+          :title="`${iconLabel(item)} (${item})`"
+          @click="selectedIcon(item)"
+        >
           <div :class="['icon-item', { active: activeIcon === item }]">
-            <svg-icon :icon-class="item" class-name="icon" style="height: 25px;width: 16px;"/>
-            <span>{{ item }}</span>
+            <svg-icon :icon-class="item" class-name="icon" />
+            <span>
+              <strong>{{ iconLabel(item) }}</strong>
+              <small v-if="iconLabel(item) !== item">{{ item }}</small>
+            </span>
           </div>
-        </div>
+        </button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
+import { Search } from '@element-plus/icons-vue'
 import icons from './requireIcons'
+import { iconLabel, matchesIcon } from './iconCatalog'
 
 const props = defineProps({
   activeIcon: {
@@ -33,15 +41,8 @@ const props = defineProps({
 })
 
 const iconName = ref('')
-const iconList = ref(icons)
+const iconList = computed(() => icons.filter((item) => matchesIcon(item, iconName.value)))
 const emit = defineEmits(['selected'])
-
-function filterIcons() {
-  iconList.value = icons
-  if (iconName.value) {
-    iconList.value = icons.filter(item => item.indexOf(iconName.value) !== -1)
-  }
-}
 
 function selectedIcon(name) {
   emit('selected', name)
@@ -50,7 +51,6 @@ function selectedIcon(name) {
 
 function reset() {
   iconName.value = ''
-  iconList.value = icons
 }
 
 defineExpose({
@@ -59,53 +59,104 @@ defineExpose({
 </script>
 
 <style lang='scss' scoped>
-   .icon-body {
+.icon-body {
     width: 100%;
-    padding: 10px;
-    .icon-search {
-      position: relative;
-      margin-bottom: 5px;
+    padding: 8px;
+    color: var(--app-text);
+
+    .icon-toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+
+      > span {
+        color: var(--app-muted);
+        font-size: 12px;
+        white-space: nowrap;
+      }
     }
+
     .icon-list {
-      height: 200px;
+      height: 252px;
       overflow: auto;
+      scrollbar-gutter: stable;
+
       .list-container {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 4px;
+
         .icon-item-wrapper {
-          width: calc(100% / 3);
-          height: 25px;
-          line-height: 25px;
+          width: 100%;
+          min-width: 0;
+          min-height: 42px;
+          padding: 0;
+          border: 0;
+          border-radius: 6px;
+          background: transparent;
+          color: inherit;
           cursor: pointer;
-          display: flex;
+
           .icon-item {
-            display: flex;
-            max-width: 100%;
-            height: 100%;
-            padding: 0 5px;
+            display: grid;
+            grid-template-columns: 22px minmax(0, 1fr);
+            align-items: center;
+            gap: 7px;
+            width: 100%;
+            min-height: 42px;
+            padding: 5px 8px;
+            border-radius: 6px;
+            text-align: left;
+
             &:hover {
-              background: #ececec;
-              border-radius: 5px;
+              background: var(--surface-hover);
             }
+
             .icon {
-              flex-shrink: 0;
+              width: 18px;
+              height: 18px;
+              color: var(--app-text);
             }
+
             span {
-              display: inline-block;
-              vertical-align: -0.15em;
-              fill: currentColor;
-              padding-left: 2px;
+              display: grid;
+              min-width: 0;
+              gap: 1px;
               overflow: hidden;
-              text-overflow: ellipsis;
-              white-space: nowrap;
+
+              strong,
+              small {
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+              }
+
+              strong {
+                color: var(--app-heading);
+                font-size: 12px;
+                font-weight: 600;
+              }
+
+              small {
+                color: var(--app-muted);
+                font-size: 10px;
+              }
             }
           }
+
           .icon-item.active {
-            background: #ececec;
-            border-radius: 5px;
+            background: var(--el-color-primary-light-9);
+            color: var(--el-color-primary);
+
+            .icon,
+            strong {
+              color: var(--el-color-primary);
+            }
           }
         }
       }
     }
-  }
+}
 </style>

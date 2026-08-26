@@ -354,21 +354,21 @@ WHERE NOT EXISTS (SELECT 1 FROM sys_dict_data WHERE dict_type = 'support_hardwar
 -- 菜单目录
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES
-(2200, '现场融合管理', 0, 5, 'support', NULL, '', 'Support', 1, 0, 'M', '0', '0', '', 'monitor', 'admin', NOW(), '', NULL, '现场信息融合平台')
+(2200, '现场融合管理', 0, 5, 'support', NULL, '', 'Support', 1, 0, 'M', '0', '0', '', 'network', 'admin', NOW(), '', NULL, '现场信息融合平台')
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name), path=VALUES(path), route_name=VALUES(route_name);
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES
-(2201, '现场管理', 2200, 1, 'site', 'support/site/index', '', 'SupportSite', 1, 0, 'C', '0', '0', 'support:site:list', 'tree-table', 'admin', NOW(), '', NULL, ''),
-(2202, '平台管理', 2200, 2, 'platform', 'support/platform/index', '', 'SupportPlatform', 1, 0, 'C', '0', '0', 'support:platform:list', 'build', 'admin', NOW(), '', NULL, ''),
-(2203, '服务器管理', 2200, 3, 'server', 'support/server/index', '', 'SupportServer', 1, 0, 'C', '0', '0', 'support:server:list', 'server', 'admin', NOW(), '', NULL, ''),
-(2204, '组织与联系人', 2200, 4, 'org', 'support/org/index', '', 'SupportOrg', 1, 0, 'C', '0', '0', 'support:org:list', 'peoples', 'admin', NOW(), '', NULL, ''),
-(2207, '版本记录', 2200, 5, 'version', 'support/version/index', '{"module":"site"}', 'SupportSiteVersion', 1, 0, 'C', '0', '0', 'support:version:list', 'documentation', 'admin', NOW(), '', NULL, '现场融合管理模块版本记录')
+(2201, '现场管理', 2200, 1, 'site', 'support/site/index', '', 'SupportSite', 1, 0, 'C', '0', '0', 'support:site:list', 'map-pinned', 'admin', NOW(), '', NULL, ''),
+(2202, '平台管理', 2200, 2, 'platform', 'support/platform/index', '', 'SupportPlatform', 1, 0, 'C', '0', '0', 'support:platform:list', 'panels-top-left', 'admin', NOW(), '', NULL, ''),
+(2203, '服务器管理', 2200, 3, 'server', 'support/server/index', '', 'SupportServer', 1, 0, 'C', '0', '0', 'support:server:list', 'server-cog', 'admin', NOW(), '', NULL, ''),
+(2204, '组织与联系人', 2200, 4, 'org', 'support/org/index', '', 'SupportOrg', 1, 0, 'C', '0', '0', 'support:org:list', 'contact-round', 'admin', NOW(), '', NULL, ''),
+(2207, '版本记录', 2200, 5, 'version', 'support/version/index', '{"module":"site"}', 'SupportSiteVersion', 1, 0, 'C', '0', '0', 'support:version:list', 'file-clock', 'admin', NOW(), '', NULL, '现场融合管理模块版本记录')
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name), perms=VALUES(perms), component=VALUES(component);
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES
-(2205, '版本记录', 0, 7, 'version', 'support/version/index', '', 'SupportVersion', 1, 0, 'C', '0', '0', 'support:version:list', 'documentation', 'admin', NOW(), '', NULL, '平台功能版本记录中心')
+(2205, '版本记录', 0, 7, 'version', 'support/version/index', '', 'SupportVersion', 1, 0, 'C', '0', '0', 'support:version:list', 'file-clock', 'admin', NOW(), '', NULL, '平台功能版本记录中心')
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name), parent_id=VALUES(parent_id), order_num=VALUES(order_num), path=VALUES(path), component=VALUES(component), route_name=VALUES(route_name), visible=VALUES(visible), status=VALUES(status), perms=VALUES(perms), icon=VALUES(icon), remark=VALUES(remark);
 
 INSERT INTO sys_role_menu(role_id, menu_id)
@@ -689,7 +689,7 @@ WHERE NOT EXISTS (SELECT 1 FROM sup_tim_inspection_item_config WHERE item_code =
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES
-(2206, 'TIM系统巡检', 2200, 6, 'timInspection', 'support/timInspection/index', '', 'SupportTimInspection', 1, 0, 'C', '0', '0', 'support:timInspection:list', 'monitor', 'admin', NOW(), '', NULL, 'TIM系统可配置巡检')
+(2206, 'TIM系统巡检', 2200, 6, 'timInspection', 'support/timInspection/index', '', 'SupportTimInspection', 1, 0, 'C', '0', '0', 'support:timInspection:list', 'scan-search', 'admin', NOW(), '', NULL, 'TIM系统可配置巡检')
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name), path=VALUES(path), component=VALUES(component), perms=VALUES(perms), route_name=VALUES(route_name);
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
@@ -1026,18 +1026,18 @@ WHERE invoke_target LIKE 'supportTimInspectionTask%';
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES
-(2300, '自动化巡检', 0, 6, 'autoInspection', 'Layout', '', 'AutoInspection', 1, 0, 'M', '0', '0', '', 'monitor', 'admin', NOW(), '', NULL, '可配置自动化巡检中心')
+(2300, '自动化巡检', 0, 6, 'autoInspection', 'Layout', '', 'AutoInspection', 1, 0, 'M', '0', '0', '', 'scan-search', 'admin', NOW(), '', NULL, '可配置自动化巡检中心')
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name), path=VALUES(path), route_name=VALUES(route_name), visible=VALUES(visible), status=VALUES(status), remark=VALUES(remark);
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES
-(2307, '巡检驾驶舱', 2300, 1, 'cockpit', 'support/autoInspection/cockpit', '', 'AutoInspectionCockpit', 1, 0, 'C', '0', '0', 'support:autoInspection:query', 'data-analysis', 'admin', NOW(), '', NULL, '统一展示例行巡检、高频健康、当前计划状态和当日问题'),
-(2305, '巡检总览', 2300, 2, 'dashboard', 'support/autoInspection/index', '{"tab":"dashboard"}', 'AutoInspectionDashboard', 1, 0, 'C', '0', '0', 'support:autoInspection:query', 'dashboard', 'admin', NOW(), '', NULL, '按天查看巡检记录和高频每日健康明细'),
-(2301, '巡检配置', 2300, 3, 'config', 'support/autoInspection/index', '{"tab":"template"}', 'AutoInspectionConfig', 1, 0, 'C', '0', '0', '', 'setting', 'admin', NOW(), '', NULL, '在模板步骤中选择巡检工具并配置目标、阈值和参数'),
-(2302, '巡检目标', 2300, 2, 'target', 'support/autoInspection/index', '{"tab":"target"}', 'AutoInspectionTarget', 1, 0, 'C', '1', '0', 'support:autoInspection:target', 'server', 'admin', NOW(), '', NULL, '旧目标独立入口已隐藏，目标在巡检模板步骤内配置'),
+(2307, '巡检驾驶舱', 2300, 1, 'cockpit', 'support/autoInspection/cockpit', '', 'AutoInspectionCockpit', 1, 0, 'C', '0', '0', 'support:autoInspection:query', 'gauge', 'admin', NOW(), '', NULL, '统一展示例行巡检、高频健康、当前计划状态和当日问题'),
+(2305, '巡检总览', 2300, 2, 'dashboard', 'support/autoInspection/index', '{"tab":"dashboard"}', 'AutoInspectionDashboard', 1, 0, 'C', '0', '0', 'support:autoInspection:query', 'chart-no-axes-combined', 'admin', NOW(), '', NULL, '按天查看巡检记录和高频每日健康明细'),
+(2301, '巡检配置', 2300, 3, 'config', 'support/autoInspection/index', '{"tab":"template"}', 'AutoInspectionConfig', 1, 0, 'C', '0', '0', '', 'workflow', 'admin', NOW(), '', NULL, '在模板步骤中选择巡检工具并配置目标、阈值和参数'),
+(2302, '巡检目标', 2300, 2, 'target', 'support/autoInspection/index', '{"tab":"target"}', 'AutoInspectionTarget', 1, 0, 'C', '1', '0', 'support:autoInspection:target', 'server-cog', 'admin', NOW(), '', NULL, '旧目标独立入口已隐藏，目标在巡检模板步骤内配置'),
 (2303, '巡检计划', 2300, 3, 'plan', 'support/autoInspection/index', '{"tab":"plan"}', 'AutoInspectionPlan', 1, 0, 'C', '1', '0', 'support:autoInspection:plan', 'time', 'admin', NOW(), '', NULL, '已合并到巡检配置入口'),
-(2304, '巡检记录', 2300, 3, 'record', 'support/autoInspection/index', '{"tab":"record"}', 'AutoInspectionRecord', 1, 0, 'C', '1', '0', 'support:autoInspection:query', 'documentation', 'admin', NOW(), '', NULL, '巡检记录已合并到巡检总览，保留隐藏路由兼容历史入口'),
-(2306, '巡检版本记录', 2300, 4, 'version', 'support/version/index', '{"module":"autoInspection"}', 'AutoInspectionVersion', 1, 0, 'C', '0', '0', 'support:version:list', 'documentation', 'admin', NOW(), '', NULL, '自动化巡检模块版本记录')
+(2304, '巡检记录', 2300, 3, 'record', 'support/autoInspection/index', '{"tab":"record"}', 'AutoInspectionRecord', 1, 0, 'C', '1', '0', 'support:autoInspection:query', 'file-clock', 'admin', NOW(), '', NULL, '巡检记录已合并到巡检总览，保留隐藏路由兼容历史入口'),
+(2306, '巡检版本记录', 2300, 4, 'version', 'support/version/index', '{"module":"autoInspection"}', 'AutoInspectionVersion', 1, 0, 'C', '0', '0', 'support:version:list', 'file-clock', 'admin', NOW(), '', NULL, '自动化巡检模块版本记录')
 ON DUPLICATE KEY UPDATE menu_name=VALUES(menu_name), parent_id=VALUES(parent_id), order_num=VALUES(order_num), path=VALUES(path), component=VALUES(component), `query`=VALUES(`query`), route_name=VALUES(route_name), perms=VALUES(perms), icon=VALUES(icon), visible=VALUES(visible), status=VALUES(status), remark=VALUES(remark);
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)

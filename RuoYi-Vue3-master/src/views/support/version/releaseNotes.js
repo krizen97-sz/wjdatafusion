@@ -1,5 +1,34 @@
 export const releaseNotes = [
   {
+    version: 'v3.14.3',
+    submitTime: '2026-08-26 09:11:55',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '平台语义菜单图标库扩充',
+    summary: '补充与现有界面一致的本地线性菜单图标，重新匹配现场融合、自动化巡检、IP管控、文档和白名单模块的业务语义，并完善图标选择与缺失兜底。',
+    changes: [
+      '新增网络拓扑、现场位置、平台工作区、服务器配置、组织联系人、驾驶舱、自动巡检、流程编排、目录树等25个本地图标，图标总数由90个扩展到115个。',
+      '新增图标采用Lucide 24×24、currentColor、2px圆角线条规范，随前端离线构建发布，不引入在线图标或新增运行依赖。',
+      '现场融合、自动化巡检、IP分配管控、文档管理和白名单管理的标准菜单改用业务语义图标，减少monitor、documentation、tree-table等通用图标重复。',
+      '图标选择器支持中文用途搜索、图标总数提示、语义名称和深色主题，菜单维护人员可以更快找到合适图标。',
+      'SvgIcon增加未知图标兜底，数据库配置不存在的图标名时自动显示通用组件图标，不再留下空白位置。',
+      '补充Lucide许可证文件、图标格式测试、中文搜索测试和菜单SQL映射测试。'
+    ],
+    scope: ['平台通用', '菜单图标', '现场融合管理', '自动化巡检', 'IP分配管控', '文档管理', '白名单管理', '黑白主题', '版本记录'],
+    database: '仅更新sys_menu.icon菜单展示字段，不修改菜单路由、权限关系和业务数据；独立升级脚本可重复执行。',
+    scripts: [
+      'WDF100.0/sql/support_upgrade_20260826_menu_icons_v3_14_3.sql',
+      'WDF100.0/sql/support_v1.sql',
+      'WDF100.0/sql/support_deploy_all.sql',
+      'WDF100.0/sql/whitelist_v1.sql',
+      'WDF100.0/sql/ipam_upgrade_20260707_v3_9_0.sql',
+      'WDF100.0/sql/ipam_upgrade_20260717_v3_9_9.sql',
+      'WDF100.0/sql/document_management_v1_20260815.sql',
+      'WDF100.0/sql/document_management_v3_9_20_ruoyi_file_permission_20260816_prepare.sql'
+    ]
+  },
+  {
     version: 'v3.14.2',
     submitTime: '2026-08-26 08:51:40',
     level: 'patch',

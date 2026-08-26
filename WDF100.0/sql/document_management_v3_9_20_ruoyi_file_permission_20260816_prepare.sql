@@ -45,7 +45,7 @@ UPDATE sys_menu
 SET menu_name = '文档管理', parent_id = 0, order_num = 9,
     path = 'documents', component = '', `query` = '', route_name = 'Documents',
     is_frame = 1, is_cache = 0, menu_type = 'M', visible = '0', status = '0',
-    perms = 'document:workspace:access', icon = 'documentation',
+    perms = 'document:workspace:access', icon = 'folder-tree',
     update_by = 'admin', update_time = NOW(),
     remark = '若依原生角色菜单目录；应用访问由子菜单“文件管理”授权'
 WHERE menu_id = 2500;
@@ -58,7 +58,7 @@ INSERT INTO sys_menu(
   create_by, create_time, update_by, update_time, remark
 ) VALUES (
   2507, '文件管理', 2500, 1, '', 'document/workspace/index', '', 'DocumentWorkspace',
-  1, 0, 'C', '0', '0', 'document:file:manage', 'list',
+  1, 0, 'C', '0', '0', 'document:file:manage', 'files',
   'admin', NOW(), 'admin', NOW(), '文件管理应用入口；使用若依sys_menu/sys_role_menu原生授权'
 );
 

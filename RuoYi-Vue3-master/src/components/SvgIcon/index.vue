@@ -5,11 +5,13 @@
 </template>
 
 <script>
+import { resolveIconName } from '@/utils/iconRegistry'
+
 export default defineComponent({
   props: {
     iconClass: {
       type: String,
-      required: true
+      default: 'component'
     },
     className: {
       type: String,
@@ -22,7 +24,7 @@ export default defineComponent({
   },
   setup(props) {
     return {
-      iconName: computed(() => `#icon-${props.iconClass}`),
+      iconName: computed(() => `#icon-${resolveIconName(props.iconClass)}`),
       svgClass: computed(() => {
         if (props.className) {
           return `svg-icon ${props.className}`

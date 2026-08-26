@@ -29,9 +29,9 @@ create table if not exists wl_filter_data (
   primary key (id)
 ) engine=innodb default charset=utf8mb4 comment='白名单过滤数据';
 
-insert into sys_menu values('3000', '白名单管理', '0', '6', 'whitelist', null, '', '', 1, 0, 'M', '0', '0', '', 'guide', 'admin', sysdate(), '', null, '白名单管理目录');
-insert into sys_menu values('3001', '车牌管控', '3000', '1', 'plate', 'whitelist/plate/index', '', '', 1, 0, 'C', '0', '0', 'whitelist:plate:list', 'guide', 'admin', sysdate(), '', null, '车牌管控菜单');
-insert into sys_menu values('3002', '过滤数据', '3000', '2', 'filterData', 'whitelist/filterData/index', '', '', 1, 0, 'C', '0', '0', 'whitelist:filterData:list', 'table', 'admin', sysdate(), '', null, '过滤数据菜单');
+insert into sys_menu values('3000', '白名单管理', '0', '6', 'whitelist', null, '', '', 1, 0, 'M', '0', '0', '', 'shield-check', 'admin', sysdate(), '', null, '白名单管理目录');
+insert into sys_menu values('3001', '车牌管控', '3000', '1', 'plate', 'whitelist/plate/index', '', '', 1, 0, 'C', '0', '0', 'whitelist:plate:list', 'car-front', 'admin', sysdate(), '', null, '车牌管控菜单');
+insert into sys_menu values('3002', '过滤数据', '3000', '2', 'filterData', 'whitelist/filterData/index', '', '', 1, 0, 'C', '0', '0', 'whitelist:filterData:list', 'list-filter', 'admin', sysdate(), '', null, '过滤数据菜单');
 
 insert into sys_menu values('3003', '车牌管控查询', '3001', '1', '#', '', '', '', 1, 0, 'F', '0', '0', 'whitelist:plate:query', '#', 'admin', sysdate(), '', null, '');
 insert into sys_menu values('3004', '车牌管控新增', '3001', '2', '#', '', '', '', 1, 0, 'F', '0', '0', 'whitelist:plate:add', '#', 'admin', sysdate(), '', null, '');

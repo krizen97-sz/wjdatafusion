@@ -6,8 +6,8 @@
 
 INSERT INTO sys_menu(menu_id, menu_name, parent_id, order_num, path, component, `query`, route_name, is_frame, is_cache, menu_type, visible, status, perms, icon, create_by, create_time, update_by, update_time, remark)
 VALUES
-(2414, '总览', 2400, 1, 'overview', 'ipam/overview/index', '', 'IpamOverview', 1, 0, 'C', '0', '0', 'ipam:network:list', 'dashboard', 'admin', NOW(), '', NULL, 'IP分配全域统计与小区明细'),
-(2415, 'IP分配配置', 2400, 2, 'config', 'ipam/index', '', 'IpamConfig', 1, 0, 'C', '0', '0', 'ipam:network:list', 'tree-table', 'admin', NOW(), '', NULL, '网段、IP配置与地址台账')
+(2414, '总览', 2400, 1, 'overview', 'ipam/overview/index', '', 'IpamOverview', 1, 0, 'C', '0', '0', 'ipam:network:list', 'chart-no-axes-combined', 'admin', NOW(), '', NULL, 'IP分配全域统计与小区明细'),
+(2415, 'IP分配配置', 2400, 2, 'config', 'ipam/index', '', 'IpamConfig', 1, 0, 'C', '0', '0', 'ipam:network:list', 'route', 'admin', NOW(), '', NULL, '网段、IP配置与地址台账')
 ON DUPLICATE KEY UPDATE
   menu_name = VALUES(menu_name),
   parent_id = VALUES(parent_id),
@@ -39,7 +39,7 @@ SET menu_name = 'IP分配管控',
     visible = '0',
     status = '0',
     perms = '',
-    icon = 'tree-table',
+    icon = 'network',
     update_by = 'admin',
     update_time = NOW(),
     remark = '独立IP分配管控应用目录'
