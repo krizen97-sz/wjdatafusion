@@ -164,6 +164,7 @@ python3 -m pip install -r tools/requirements-delivery.txt
 - 自动化巡检操作手册（HTML 渲染版）：`WDF100.0/doc/自动化巡检功能操作手册.html`
 - 自动化巡检操作手册（Markdown 源文档）：`WDF100.0/doc/自动化巡检功能操作手册.md`
 - 自动化巡检手册截图资产：`WDF100.0/doc/auto-inspection-manual-assets/`
+- `v3.13.3` 至 `v3.14.3` 数据库合并升级脚本：`WDF100.0/sql/support_upgrade_20260826_v3_13_3_to_v3_14_3_all.sql`
 
 ## 当前版本
 

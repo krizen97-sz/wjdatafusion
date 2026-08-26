@@ -19,6 +19,7 @@ export const releaseNotes = [
     database: '仅更新sys_menu.icon菜单展示字段，不修改菜单路由、权限关系和业务数据；独立升级脚本可重复执行。',
     scripts: [
       'WDF100.0/sql/support_upgrade_20260826_menu_icons_v3_14_3.sql',
+      'WDF100.0/sql/support_upgrade_20260826_v3_13_3_to_v3_14_3_all.sql',
       'WDF100.0/sql/support_v1.sql',
       'WDF100.0/sql/support_deploy_all.sql',
       'WDF100.0/sql/whitelist_v1.sql',
