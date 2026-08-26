@@ -19,6 +19,7 @@
     ├── auto-inspection-任务名/
     ├── site-fusion-任务名/
     ├── document-management-任务名/
+    ├── knowledge-center-任务名/
     └── ipam-任务名/
 ```
 
@@ -32,6 +33,7 @@
 ./tools/codex-worktree.sh create auto-inspection http-result-condition
 ./tools/codex-worktree.sh create site-fusion equipment-filter
 ./tools/codex-worktree.sh create document-management pdf-preview
+./tools/codex-worktree.sh create knowledge-center article-versioning
 ./tools/codex-worktree.sh create ipam subnet-scan
 ```
 
@@ -70,6 +72,13 @@
 - 前端：`src/views/ipam`、`src/api/ipam`
 - 后端：`Ipam*`
 - SQL：文件名以 `ipam_` 开头
+
+### 知识中心
+
+- 前端：`src/views/knowledge`、`src/api/knowledge`
+- 后端：`Knowledge*`、`Kb*`
+- SQL：文件名以 `knowledge_center` 开头
+- 文档：文件名包含 `KNOWLEDGE_CENTER` 或“知识中心”
 
 ## 共享文件
 

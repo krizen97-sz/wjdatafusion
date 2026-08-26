@@ -11,7 +11,7 @@ Usage:
   tools/codex-worktree.sh create <module> <task-slug>
 
 Modules:
-  auto-inspection | site-fusion | document-management | ipam
+  auto-inspection | site-fusion | document-management | knowledge-center | ipam
 EOF
 }
 
@@ -24,7 +24,7 @@ repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || die "当前目录不�
 
 validate_module() {
   case "${1:-}" in
-    auto-inspection|site-fusion|document-management|ipam) ;;
+    auto-inspection|site-fusion|document-management|knowledge-center|ipam) ;;
     *) die "不支持的模块：${1:-<empty>}" ;;
   esac
 }
@@ -56,6 +56,7 @@ is_module_path() {
     auto-inspection:*autoInspection*|auto-inspection:*AutoInspection*|auto-inspection:*auto_inspection*|auto-inspection:*auto-inspection*|auto-inspection:*自动化巡检*|auto-inspection:*auto-version*|auto-inspection:*auto_version*) return 0 ;;
     site-fusion:*support/site/*|site-fusion:*SupportSite*|site-fusion:*SupportServer*|site-fusion:*SupportHardware*|site-fusion:*SupportEquipment*|site-fusion:*equipmentLocation*|site-fusion:*EquipmentLocation*|site-fusion:*equipment_location*|site-fusion:*hardware_asset*|site-fusion:*server_credential*) return 0 ;;
     document-management:*document*|document-management:*Document*|document-management:*Doc*|document-management:*doc_*) return 0 ;;
+    knowledge-center:*knowledge*|knowledge-center:*Knowledge*|knowledge-center:*KNOWLEDGE*|knowledge-center:*Kb*|knowledge-center:*kb_*|knowledge-center:*知识中心*) return 0 ;;
     ipam:*ipam*|ipam:*Ipam*) return 0 ;;
     *) return 1 ;;
   esac

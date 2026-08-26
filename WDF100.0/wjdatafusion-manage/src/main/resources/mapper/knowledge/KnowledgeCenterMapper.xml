@@ -1,0 +1,299 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+"http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.KnowledgeCenterMapper">
+
+    <resultMap id="KbSpaceResult" type="com.hm.manage.domain.KbSpace">
+        <id property="spaceId" column="space_id"/>
+        <result property="spaceName" column="space_name"/>
+        <result property="description" column="description"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="status" column="status"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <resultMap id="KbPageResult" type="com.hm.manage.domain.KbPage">
+        <id property="pageId" column="page_id"/>
+        <result property="spaceId" column="space_id"/>
+        <result property="parentId" column="parent_id"/>
+        <result property="pageType" column="page_type"/>
+        <result property="title" column="title"/>
+        <result property="summary" column="summary"/>
+        <result property="content" column="content"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="contentVersion" column="content_version"/>
+        <result property="lifecycleStatus" column="lifecycle_status"/>
+        <result property="createUserId" column="create_user_id"/>
+        <result property="updateUserId" column="update_user_id"/>
+        <result property="creatorName" column="creator_name"/>
+        <result property="modifierName" column="modifier_name"/>
+        <result property="createBy" column="create_by"/>
+        <result property="createTime" column="create_time"/>
+        <result property="updateBy" column="update_by"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <resultMap id="KbPageTreeResult" type="com.hm.manage.domain.vo.KbPageTreeVo">
+        <id property="pageId" column="page_id"/>
+        <result property="spaceId" column="space_id"/>
+        <result property="parentId" column="parent_id"/>
+        <result property="pageType" column="page_type"/>
+        <result property="title" column="title"/>
+        <result property="sortOrder" column="sort_order"/>
+        <result property="contentVersion" column="content_version"/>
+        <result property="lifecycleStatus" column="lifecycle_status"/>
+        <result property="modifierName" column="modifier_name"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <resultMap id="KbPageSearchResult" type="com.hm.manage.domain.vo.KbPageSearchVo">
+        <id property="pageId" column="page_id"/>
+        <result property="spaceId" column="space_id"/>
+        <result property="parentId" column="parent_id"/>
+        <result property="title" column="title"/>
+        <result property="summary" column="summary"/>
+        <result property="contentVersion" column="content_version"/>
+        <result property="modifierName" column="modifier_name"/>
+        <result property="tagNames" column="tag_names"/>
+        <result property="updateTime" column="update_time"/>
+    </resultMap>
+
+    <resultMap id="KbPageVersionResult" type="com.hm.manage.domain.KbPageVersion">
+        <id property="versionId" column="version_id"/>
+        <result property="pageId" column="page_id"/>
+        <result property="versionNo" column="version_no"/>
+        <result property="snapshotSpaceId" column="snapshot_space_id"/>
+        <result property="snapshotParentId" column="snapshot_parent_id"/>
+        <result property="snapshotTitle" column="snapshot_title"/>
+        <result property="snapshotSummary" column="snapshot_summary"/>
+        <result property="snapshotContent" column="snapshot_content"/>
+        <result property="snapshotLifecycleStatus" column="snapshot_lifecycle_status"/>
+        <result property="snapshotTags" column="snapshot_tags"/>
+        <result property="snapshotDocumentIds" column="snapshot_document_ids"/>
+        <result property="operationType" column="operation_type"/>
+        <result property="changeFields" column="change_fields"/>
+        <result property="changeNote" column="change_note"/>
+        <result property="contentChecksum" column="content_checksum"/>
+        <result property="operatorId" column="operator_id"/>
+        <result property="operatorName" column="operator_name"/>
+        <result property="restoredFromVersion" column="restored_from_version"/>
+        <result property="createTime" column="create_time"/>
+    </resultMap>
+
+    <sql id="pageProjection">
+        p.page_id, p.space_id, p.parent_id, p.page_type, p.title, p.summary, p.content,
+        p.sort_order, p.content_version, p.lifecycle_status, p.create_user_id, p.update_user_id,
+        p.create_by, p.create_time, p.update_by, p.update_time,
+        coalesce(nullif(creator.nick_name, ''), creator.user_name, p.create_by) as creator_name,
+        coalesce(nullif(modifier.nick_name, ''), modifier.user_name, p.update_by) as modifier_name
+    </sql>
+
+    <select id="selectSpaceList" resultMap="KbSpaceResult">
+        select space_id, space_name, description, sort_order, status,
+               create_by, create_time, update_by, update_time
+        from kb_space
+        where status = '0'
+        order by sort_order, space_id
+    </select>
+
+    <select id="selectSpaceById" resultMap="KbSpaceResult">
+        select space_id, space_name, description, sort_order, status,
+               create_by, create_time, update_by, update_time
+        from kb_space
+        where space_id = #{spaceId}
+    </select>
+
+    <select id="countSpaceName" resultType="int">
+        select count(1) from kb_space
+        where lower(space_name) = lower(#{spaceName})
+        <if test="excludeSpaceId != null">and space_id != #{excludeSpaceId}</if>
+    </select>
+
+    <select id="selectNextSpaceSortOrder" resultType="int">
+        select coalesce(max(sort_order), 0) + 10 from kb_space
+    </select>
+
+    <insert id="insertSpace" parameterType="com.hm.manage.domain.KbSpace" useGeneratedKeys="true" keyProperty="spaceId">
+        insert into kb_space(space_name, description, sort_order, status, create_by, create_time,
+                             update_by, update_time)
+        values(#{spaceName}, #{description}, #{sortOrder}, #{status}, #{createBy}, now(), #{updateBy}, now())
+    </insert>
+
+    <update id="updateSpace" parameterType="com.hm.manage.domain.KbSpace">
+        update kb_space
+        set space_name = #{spaceName}, description = #{description}, sort_order = #{sortOrder},
+            status = #{status}, update_by = #{updateBy}, update_time = now()
+        where space_id = #{spaceId}
+    </update>
+
+    <select id="selectPageTree" resultMap="KbPageTreeResult">
+        select p.page_id, p.space_id, p.parent_id, p.page_type, p.title, p.sort_order,
+               p.content_version, p.lifecycle_status, p.update_time,
+               coalesce(nullif(u.nick_name, ''), u.user_name, p.update_by) as modifier_name
+        from kb_page p
+        left join sys_user u on u.user_id = p.update_user_id
+        where p.space_id = #{spaceId}
+          and ((p.page_type = 'FOLDER' and p.lifecycle_status = 'ACTIVE')
+               or (p.page_type = 'ARTICLE' and p.lifecycle_status = #{lifecycleStatus}))
+        order by p.parent_id, p.sort_order, p.page_type desc, p.title
+    </select>
+
+    <select id="searchPages" resultMap="KbPageSearchResult">
+        select p.page_id, p.space_id, p.parent_id, p.title, p.summary, p.content_version, p.update_time,
+               coalesce(nullif(u.nick_name, ''), u.user_name, p.update_by) as modifier_name,
+               group_concat(distinct t.tag_name order by t.tag_name separator '、') as tag_names
+        from kb_page p
+        left join sys_user u on u.user_id = p.update_user_id
+        left join kb_page_tag pt on pt.page_id = p.page_id
+        left join kb_tag t on t.tag_id = pt.tag_id
+        where p.page_type = 'ARTICLE' and p.lifecycle_status = 'ACTIVE'
+          and (#{spaceId} is null or p.space_id = #{spaceId})
+          and (
+            instr(lower(p.title), lower(#{keyword})) > 0
+            or instr(lower(coalesce(p.summary, '')), lower(#{keyword})) > 0
+            or instr(lower(coalesce(p.content, '')), lower(#{keyword})) > 0
+            or exists(select 1 from kb_page_tag search_pt
+                      join kb_tag search_tag on search_tag.tag_id = search_pt.tag_id
+                      where search_pt.page_id = p.page_id
+                        and instr(lower(search_tag.tag_name), lower(#{keyword})) > 0)
+          )
+        group by p.page_id, p.space_id, p.parent_id, p.title, p.summary, p.content_version,
+                 p.update_time, u.nick_name, u.user_name, p.update_by
+        order by p.update_time desc, p.page_id desc
+        limit #{limit}
+    </select>
+
+    <select id="selectPageById" resultMap="KbPageResult">
+        select <include refid="pageProjection"/>
+        from kb_page p
+        left join sys_user creator on creator.user_id = p.create_user_id
+        left join sys_user modifier on modifier.user_id = p.update_user_id
+        where p.page_id = #{pageId}
+    </select>
+
+    <select id="selectPageForUpdate" resultMap="KbPageResult">
+        select <include refid="pageProjection"/>
+        from kb_page p
+        left join sys_user creator on creator.user_id = p.create_user_id
+        left join sys_user modifier on modifier.user_id = p.update_user_id
+        where p.page_id = #{pageId}
+        for update
+    </select>
+
+    <select id="countPageChildren" resultType="int">
+        select count(1) from kb_page where parent_id = #{pageId}
+    </select>
+
+    <select id="countSiblingTitle" resultType="int">
+        select count(1) from kb_page
+        where space_id = #{spaceId} and parent_id = #{parentId}
+          and lower(title) = lower(#{title}) and lifecycle_status != 'TRASH'
+        <if test="excludePageId != null">and page_id != #{excludePageId}</if>
+    </select>
+
+    <select id="selectNextPageSortOrder" resultType="int">
+        select coalesce(max(sort_order), 0) + 10 from kb_page
+        where space_id = #{spaceId} and parent_id = #{parentId} and lifecycle_status != 'TRASH'
+    </select>
+
+    <insert id="insertPage" parameterType="com.hm.manage.domain.KbPage" useGeneratedKeys="true" keyProperty="pageId">
+        insert into kb_page(space_id, parent_id, page_type, title, summary, content, sort_order,
+                            content_version, lifecycle_status, create_user_id, update_user_id,
+                            create_by, create_time, update_by, update_time)
+        values(#{spaceId}, #{parentId}, #{pageType}, #{title}, #{summary}, #{content}, #{sortOrder},
+               #{contentVersion}, #{lifecycleStatus}, #{createUserId}, #{updateUserId},
+               #{createBy}, now(), #{updateBy}, now())
+    </insert>
+
+    <update id="updatePage">
+        update kb_page
+        set space_id = #{page.spaceId}, parent_id = #{page.parentId}, title = #{page.title},
+            summary = #{page.summary}, content = #{page.content}, sort_order = #{page.sortOrder},
+            content_version = #{page.contentVersion}, lifecycle_status = #{page.lifecycleStatus},
+            update_user_id = #{page.updateUserId}, update_by = #{page.updateBy}, update_time = now()
+        where page_id = #{page.pageId} and page_type = 'ARTICLE' and content_version = #{expectedVersion}
+    </update>
+
+    <update id="updateFolder" parameterType="com.hm.manage.domain.KbPage">
+        update kb_page
+        set space_id = #{spaceId}, parent_id = #{parentId}, title = #{title}, sort_order = #{sortOrder},
+            update_user_id = #{updateUserId}, update_by = #{updateBy}, update_time = now()
+        where page_id = #{pageId} and page_type = 'FOLDER'
+    </update>
+
+    <delete id="deleteFolder">
+        delete from kb_page where page_id = #{pageId} and page_type = 'FOLDER'
+    </delete>
+
+    <select id="selectPageTags" resultType="string">
+        select t.tag_name
+        from kb_page_tag pt
+        join kb_tag t on t.tag_id = pt.tag_id
+        where pt.page_id = #{pageId}
+        order by t.tag_name
+    </select>
+
+    <delete id="deletePageTags">
+        delete from kb_page_tag where page_id = #{pageId}
+    </delete>
+
+    <insert id="insertTag">
+        insert ignore into kb_tag(tag_name, create_by, create_time)
+        values(#{tagName}, #{operator}, now())
+    </insert>
+
+    <select id="selectTagId" resultType="long">
+        select tag_id from kb_tag where tag_name = #{tagName}
+    </select>
+
+    <insert id="insertPageTag">
+        insert ignore into kb_page_tag(page_id, tag_id) values(#{pageId}, #{tagId})
+    </insert>
+
+    <select id="selectPageDocumentIds" resultType="long">
+        select document_id from kb_page_document where page_id = #{pageId} order by sort_order, link_id
+    </select>
+
+    <delete id="deletePageDocuments">
+        delete from kb_page_document where page_id = #{pageId}
+    </delete>
+
+    <insert id="insertPageDocument">
+        insert into kb_page_document(page_id, document_id, sort_order, create_by, create_time)
+        values(#{pageId}, #{documentId}, #{sortOrder}, #{operator}, now())
+    </insert>
+
+    <insert id="insertPageVersion" parameterType="com.hm.manage.domain.KbPageVersion" useGeneratedKeys="true" keyProperty="versionId">
+        insert into kb_page_version(page_id, version_no, snapshot_space_id, snapshot_parent_id,
+                                    snapshot_title, snapshot_summary, snapshot_content,
+                                    snapshot_lifecycle_status, snapshot_tags, snapshot_document_ids,
+                                    operation_type, change_fields, change_note, content_checksum,
+                                    operator_id, operator_name, restored_from_version, create_time)
+        values(#{pageId}, #{versionNo}, #{snapshotSpaceId}, #{snapshotParentId},
+               #{snapshotTitle}, #{snapshotSummary}, #{snapshotContent},
+               #{snapshotLifecycleStatus}, #{snapshotTags}, #{snapshotDocumentIds},
+               #{operationType}, #{changeFields}, #{changeNote}, #{contentChecksum},
+               #{operatorId}, #{operatorName}, #{restoredFromVersion}, now())
+    </insert>
+
+    <select id="selectPageVersions" resultMap="KbPageVersionResult">
+        select version_id, page_id, version_no, operation_type, change_fields, change_note,
+               content_checksum, operator_id, operator_name, restored_from_version, create_time
+        from kb_page_version
+        where page_id = #{pageId}
+        order by version_no desc
+    </select>
+
+    <select id="selectPageVersion" resultMap="KbPageVersionResult">
+        select version_id, page_id, version_no, snapshot_space_id, snapshot_parent_id,
+               snapshot_title, snapshot_summary, snapshot_content, snapshot_lifecycle_status,
+               snapshot_tags, snapshot_document_ids, operation_type, change_fields, change_note,
+               content_checksum, operator_id, operator_name, restored_from_version, create_time
+        from kb_page_version
+        where page_id = #{pageId} and version_no = #{versionNo}
+    </select>
+</mapper>
