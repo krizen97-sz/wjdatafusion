@@ -1,191 +1,269 @@
 <template>
-  <div class="knowledge-workspace-page">
-    <div class="knowledge-shell">
-      <aside class="knowledge-sidebar">
-        <div class="space-row">
-          <el-select v-model="currentSpaceId" :disabled="mode !== 'read'" placeholder="选择知识空间" @change="handleSpaceChange">
-            <el-option v-for="space in spaces" :key="space.spaceId" :label="space.spaceName" :value="Number(space.spaceId)" />
-          </el-select>
-          <el-dropdown v-if="canManageSpace" :disabled="mode !== 'read'" trigger="click" @command="handleSpaceCommand">
-            <el-button text circle aria-label="知识空间设置"><el-icon><Setting /></el-icon></el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item command="create">新建知识空间</el-dropdown-item>
-                <el-dropdown-item command="edit" :disabled="!currentSpace">编辑当前空间</el-dropdown-item>
-                <el-dropdown-item command="folder" divided :disabled="!currentSpace">新建根目录</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-        <el-button v-if="canWrite && mode === 'read'" class="sidebar-new-page" text icon="Plus" @click="startCreatePage">新建知识</el-button>
+  <div class="app-container knowledge-workspace-page">
+    <el-container class="knowledge-layout">
+      <el-aside class="knowledge-navigation-pane">
+        <KnowledgeNavigation
+          v-model:current-space-id="currentSpaceId"
+          v-model:current-scope="currentScope"
+          v-model:search-keyword="searchKeyword"
+          :spaces="spaces"
+          :current-space="currentSpace"
+          :visible-scopes="visibleScopes"
+          :tree-data="treeData"
+          :active-page-id="activePageId"
+          :article-count="articleCount"
+          :fetch-suggestions="fetchSearchSuggestions"
+          :can-write="canWrite && mode === 'read'"
+          :can-manage-space="canManageSpace"
+          :disabled="mode !== 'read'"
+          :loading="loading.tree || loading.spaces"
+          @space-change="handleSpaceChange"
+          @space-command="handleSpaceCommand"
+          @scope-change="handleScopeChange"
+          @create-page="startCreatePage"
+          @select-search="selectSearchResult"
+          @node-click="handleTreeNodeClick"
+          @folder-command="handleFolderCommand"
+        />
+      </el-aside>
 
-        <div class="knowledge-search">
-          <el-input
-            v-model="searchKeyword"
-            clearable
-            prefix-icon="Search"
-            placeholder="搜索本空间"
-            @input="scheduleSearch"
-            @keyup.enter="runSearch"
-          />
-          <div v-if="searchPanelVisible" class="knowledge-search-results" v-loading="loading.search">
-            <header><span>搜索结果</span><b>{{ searchResults.length }}</b></header>
-            <button v-for="item in searchResults" :key="item.pageId" type="button" @click="selectSearchResult(item)">
-              <el-icon><Document /></el-icon>
-              <span><strong>{{ item.title }}</strong><small>{{ item.tagNames || currentSpace?.spaceName }} · V{{ item.contentVersion }}</small></span>
-            </button>
-            <el-empty v-if="!searchResults.length && !loading.search" description="没有匹配的知识" :image-size="56" />
+      <el-container class="knowledge-content-pane">
+        <el-header class="knowledge-command-bar" height="auto">
+          <div class="knowledge-command-bar__context">
+            <el-button class="knowledge-navigation-trigger" icon="Menu" @click="navigationDrawerOpen = true">知识目录</el-button>
+            <el-breadcrumb separator="/">
+              <el-breadcrumb-item>{{ currentSpace?.spaceName || '知识中心' }}</el-breadcrumb-item>
+              <el-breadcrumb-item v-if="mode === 'read'">{{ currentScopeLabel }}</el-breadcrumb-item>
+              <el-breadcrumb-item v-if="mode === 'read' && activePage">{{ activeDirectoryTitle }}</el-breadcrumb-item>
+              <el-breadcrumb-item v-if="mode !== 'read'">{{ mode === 'create' ? '新建知识' : '编辑知识' }}</el-breadcrumb-item>
+            </el-breadcrumb>
           </div>
-        </div>
 
-        <el-radio-group v-model="currentScope" :disabled="mode !== 'read'" class="scope-switch" size="small" @change="handleScopeChange">
-          <el-radio-button v-for="scope in visibleScopes" :key="scope.value" :value="scope.value">{{ scope.label }}</el-radio-button>
-        </el-radio-group>
+          <el-space v-if="mode === 'read' && activePage" wrap>
+            <el-button v-if="outline.length" icon="List" @click="outlineDrawerOpen = true">本文目录</el-button>
+            <el-button icon="Clock" @click="historyOpen = true">修改记录</el-button>
+            <el-button v-if="canWrite && activePage.lifecycleStatus !== 'TRASH'" type="primary" icon="Edit" @click="startEditPage">编辑知识</el-button>
+            <el-dropdown trigger="click" @command="handlePageCommand">
+              <el-button circle icon="MoreFilled" aria-label="更多知识操作" />
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-if="canWrite && activePage.lifecycleStatus === 'ACTIVE'" command="archive">归档知识</el-dropdown-item>
+                  <el-dropdown-item v-if="canRemove && activePage.lifecycleStatus !== 'TRASH'" command="trash" divided>移入回收站</el-dropdown-item>
+                  <el-dropdown-item v-if="canRemove && activePage.lifecycleStatus === 'ARCHIVED'" command="restore">恢复为当前知识</el-dropdown-item>
+                  <el-dropdown-item v-if="canRemove && activePage.lifecycleStatus === 'TRASH'" command="restore">恢复知识</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </el-space>
 
-        <div class="knowledge-tree-wrap" v-loading="loading.tree">
-          <el-tree
-            ref="treeRef"
-            :data="treeData"
-            node-key="pageId"
-            default-expand-all
-            highlight-current
-            :expand-on-click-node="false"
-            :props="{ label: 'title', children: 'children' }"
-            @node-click="handleTreeNodeClick"
-          >
-            <template #default="{ data }">
-              <div class="knowledge-tree-node" :class="{ 'is-folder': data.pageType === 'FOLDER' }">
-                <el-icon><FolderOpened v-if="data.pageType === 'FOLDER'" /><Document v-else /></el-icon>
-                <span>{{ data.title }}</span>
-                <small v-if="data.pageType === 'ARTICLE'">V{{ data.contentVersion }}</small>
-                <el-dropdown
-                  v-if="canManageSpace && data.pageType === 'FOLDER'"
-                  trigger="click"
-                  @click.stop
-                  @command="(command) => handleFolderCommand(command, data)"
-                >
-                  <el-button text circle size="small" aria-label="目录操作" @click.stop><el-icon><MoreFilled /></el-icon></el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item command="child">新建子目录</el-dropdown-item>
-                      <el-dropdown-item command="edit">编辑目录</el-dropdown-item>
-                      <el-dropdown-item command="delete" divided>删除空目录</el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
+          <el-space v-else-if="mode !== 'read'">
+            <el-button @click="cancelEdit">取消</el-button>
+            <el-button
+              type="primary"
+              icon="Finished"
+              :loading="loading.save"
+              :disabled="!editorForm.title.trim() || !editorForm.content.trim()"
+              @click="savePage"
+            >保存新版本</el-button>
+          </el-space>
+        </el-header>
+
+        <el-main class="knowledge-main" v-loading="mode === 'read' ? loading.detail : loading.save">
+          <template v-if="mode === 'read'">
+            <el-empty v-if="!activePage && !loading.detail" description="从左侧目录选择一篇知识开始阅读">
+              <el-button v-if="canWrite" type="primary" icon="Plus" @click="startCreatePage">新建知识</el-button>
+            </el-empty>
+
+            <el-scrollbar v-else-if="activePage" class="knowledge-reader-scroll">
+              <article class="knowledge-article">
+                <header class="knowledge-article-heading">
+                  <div class="knowledge-article-title">
+                    <h1>{{ activePage.title }}</h1>
+                    <el-tag effect="plain">V{{ activePage.contentVersion }}</el-tag>
+                  </div>
+                  <el-space wrap :size="12">
+                    <el-text type="info" size="small">{{ activePage.modifierName || activePage.updateBy }} 修改于 {{ activePage.updateTime }}</el-text>
+                    <el-text type="info" size="small">创建人 {{ activePage.creatorName || activePage.createBy }}</el-text>
+                  </el-space>
+                </header>
+
+                <el-space v-if="activeDetail.tags.length" class="knowledge-tags" wrap>
+                  <el-tag v-for="tag in activeDetail.tags" :key="tag" size="small" effect="plain">{{ tag }}</el-tag>
+                </el-space>
+
+                <el-alert
+                  v-if="activePage.summary"
+                  class="knowledge-summary"
+                  :title="activePage.summary"
+                  type="info"
+                  show-icon
+                  :closable="false"
+                />
+
+                <div ref="articleBodyRef" class="knowledge-body-html" v-html="activePage.content" />
+
+                <section v-if="activeDetail.documents.length" class="knowledge-section">
+                  <div class="knowledge-section-heading">
+                    <h2>附件</h2>
+                    <el-text type="info" size="small">{{ activeDetail.documents.length }} 份 · 权限实时取自文档管理</el-text>
+                  </div>
+                  <el-table :data="activeDetail.documents" size="small" table-layout="fixed">
+                    <el-table-column label="文档" min-width="260">
+                      <template #default="{ row }">
+                        <el-space>
+                          <el-tag size="small" effect="plain">{{ String(row.fileType || 'FILE').toUpperCase() }}</el-tag>
+                          <span class="knowledge-document-title">{{ row.title }}</span>
+                        </el-space>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="状态" width="110">
+                      <template #default="{ row }"><el-tag size="small" effect="plain" :type="documentStatusMeta(row).type">{{ documentStatusMeta(row).label }}</el-tag></template>
+                    </el-table-column>
+                    <el-table-column label="权限" width="100">
+                      <template #default="{ row }">{{ permissionLabel(row.accessPermission) }}</template>
+                    </el-table-column>
+                    <el-table-column label="版本" width="80">
+                      <template #default="{ row }">V{{ row.contentVersion || 1 }}</template>
+                    </el-table-column>
+                    <el-table-column label="操作" width="90" align="right">
+                      <template #default="{ row }">
+                        <el-button link type="primary" :disabled="resolveKnowledgeDocumentAction(row) === 'NONE'" @click="openLinkedDocument(row)">{{ documentActionLabel(row) }}</el-button>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </section>
+
+                <section v-if="relatedArticles.length" class="knowledge-section">
+                  <div class="knowledge-section-heading"><h2>同目录知识</h2></div>
+                  <el-space wrap>
+                    <el-button v-for="item in relatedArticles" :key="item.pageId" plain icon="Document" @click="selectPage(item.pageId)">{{ item.title }}</el-button>
+                  </el-space>
+                </section>
+
+                <footer class="knowledge-article-footer">
+                  <el-button-group>
+                    <el-button icon="ArrowLeft" :disabled="!previousArticle" @click="selectPage(previousArticle?.pageId)">{{ previousArticle?.title || '没有上一篇' }}</el-button>
+                    <el-button :disabled="!nextArticle" @click="selectPage(nextArticle?.pageId)">{{ nextArticle?.title || '没有下一篇' }}<el-icon class="el-icon--right"><ArrowRight /></el-icon></el-button>
+                  </el-button-group>
+                </footer>
+              </article>
+            </el-scrollbar>
+          </template>
+
+          <el-scrollbar v-else class="knowledge-editor-scroll">
+            <el-form class="knowledge-editor-form" label-position="top">
+              <div class="knowledge-editor-heading">
+                <div>
+                  <h1>{{ mode === 'create' ? '新建知识' : '编辑知识' }}</h1>
+                  <el-text type="info">{{ mode === 'create' ? '保存后立即对有查看权限的用户可见' : `基于 V${editorForm.expectedVersion} 编辑，保存后生成新版本` }}</el-text>
+                </div>
               </div>
-            </template>
-          </el-tree>
-          <el-empty v-if="!treeData.length && !loading.tree" description="当前空间还没有知识" :image-size="72">
-            <el-button v-if="canWrite" type="primary" @click="startCreatePage">新建第一篇知识</el-button>
-          </el-empty>
-        </div>
-        <footer><el-icon><CircleCheckFilled /></el-icon><span>本地数据 · {{ articleCount }} 篇知识</span></footer>
-      </aside>
 
-      <template v-if="mode === 'read'">
-        <main class="knowledge-reader" v-loading="loading.detail">
-          <el-empty v-if="!activePage && !loading.detail" description="请选择一篇知识开始阅读" />
-          <div v-else-if="activePage" class="knowledge-reader-scroll">
-            <header class="knowledge-article-header">
-              <div class="article-title-block">
-                <div><h1>{{ activePage.title }}</h1><el-tag size="small" effect="plain">V{{ activePage.contentVersion }}</el-tag></div>
-                <p><span>当前版本 V{{ activePage.contentVersion }} · {{ activePage.modifierName || activePage.updateBy }}修改于 {{ activePage.updateTime }}</span><span>创建人 {{ activePage.creatorName || activePage.createBy }}</span></p>
-              </div>
-              <div class="article-actions">
-                <el-button icon="Clock" @click="historyOpen = true">修改记录</el-button>
-                <el-button v-if="canWrite && activePage.lifecycleStatus !== 'TRASH'" type="primary" icon="Edit" @click="startEditPage">编辑知识</el-button>
-                <el-dropdown trigger="click" @command="handlePageCommand">
-                  <el-button circle aria-label="更多知识操作"><el-icon><MoreFilled /></el-icon></el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item v-if="canWrite && activePage.lifecycleStatus === 'ACTIVE'" command="archive">归档知识</el-dropdown-item>
-                      <el-dropdown-item v-if="canRemove && activePage.lifecycleStatus !== 'TRASH'" command="trash" divided>移入回收站</el-dropdown-item>
-                      <el-dropdown-item v-if="canRemove && activePage.lifecycleStatus === 'ARCHIVED'" command="restore">恢复为当前知识</el-dropdown-item>
-                      <el-dropdown-item v-if="canRemove && activePage.lifecycleStatus === 'TRASH'" command="restore">恢复知识</el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-              </div>
-            </header>
+              <el-row :gutter="24">
+                <el-col :xs="24" :sm="24" :md="16" :lg="17">
+                  <el-form-item label="知识标题" required>
+                    <el-input v-model="editorForm.title" maxlength="160" show-word-limit />
+                  </el-form-item>
+                  <el-form-item label="摘要">
+                    <el-input v-model="editorForm.summary" maxlength="500" show-word-limit placeholder="用一句话说明这篇知识解决什么问题" />
+                  </el-form-item>
+                  <el-form-item label="正文" required>
+                    <editor v-model="editorForm.content" :min-height="460" />
+                  </el-form-item>
+                </el-col>
 
-            <div class="knowledge-tag-row"><el-tag v-for="tag in activeDetail.tags" :key="tag" size="small">{{ tag }}</el-tag></div>
-            <p v-if="activePage.summary" class="knowledge-summary"><el-icon><InfoFilled /></el-icon><span>{{ activePage.summary }}</span></p>
-            <article ref="articleBodyRef" class="knowledge-content" v-html="activePage.content" />
+                <el-col :xs="24" :sm="24" :md="8" :lg="7">
+                  <el-collapse v-model="editorPanels">
+                    <el-collapse-item title="知识设置" name="settings">
+                      <el-form-item label="所属空间">
+                        <el-select v-model="editorForm.spaceId" disabled>
+                          <el-option v-for="space in spaces" :key="space.spaceId" :label="space.spaceName" :value="Number(space.spaceId)" />
+                        </el-select>
+                      </el-form-item>
+                      <el-form-item label="所属目录">
+                        <el-tree-select v-model="editorForm.parentId" :data="folderSelectTree" node-key="pageId" :props="{ label: 'title', children: 'children' }" check-strictly clearable placeholder="根目录" />
+                      </el-form-item>
+                      <el-form-item label="标签">
+                        <el-select v-model="editorForm.tagNames" multiple filterable allow-create default-first-option :multiple-limit="8" placeholder="输入后回车添加标签" />
+                      </el-form-item>
+                      <el-form-item label="修改说明">
+                        <el-input v-model="editorForm.changeNote" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="可选：说明本次调整内容" />
+                      </el-form-item>
+                    </el-collapse-item>
 
-            <div class="knowledge-footer-grid" :class="{ 'without-documents': !activeDetail.documents.length }">
-              <section v-if="activeDetail.documents.length" class="linked-documents">
-                <h3>附件（{{ activeDetail.documents.length }}）<small>联动文档管理</small></h3>
-                <button
-                  v-for="document in activeDetail.documents"
-                  :key="document.documentId"
-                  type="button"
-                  :disabled="resolveKnowledgeDocumentAction(document) === 'NONE'"
-                  @click="openLinkedDocument(document)"
-                >
-                  <span class="linked-file-mark" :class="`is-${String(document.fileType || '').toLowerCase()}`">{{ knowledgeFileMark(document.fileType) }}</span>
-                  <span><strong>{{ document.title }}</strong><small v-if="documentAccessMessage(document)">{{ documentAccessMessage(document) }}</small><small v-else>文档版本 {{ document.contentVersion || 1 }} · {{ permissionLabel(document.accessPermission) }}</small></span>
-                  <em v-if="document.accessStatus === 'ARCHIVED'">已归档</em>
-                  <el-icon><Download v-if="resolveKnowledgeDocumentAction(document) === 'DOWNLOAD'" /><TopRight v-else /></el-icon>
-                </button>
-              </section>
-              <nav class="article-pager" aria-label="上一篇与下一篇">
-                <button type="button" :disabled="!previousArticle" @click="selectPage(previousArticle?.pageId)"><el-icon><ArrowLeft /></el-icon><span><small>上一篇</small><strong>{{ previousArticle?.title || '没有上一篇' }}</strong></span></button>
-                <button type="button" :disabled="!nextArticle" @click="selectPage(nextArticle?.pageId)"><span><small>下一篇</small><strong>{{ nextArticle?.title || '没有下一篇' }}</strong></span><el-icon><ArrowRight /></el-icon></button>
-              </nav>
-            </div>
-          </div>
-        </main>
-
-        <aside class="knowledge-context">
-          <section><h3>本文目录</h3><nav class="article-outline"><button v-for="item in outline" :key="item.id" type="button" :style="{ paddingLeft: `${8 + (item.level - 1) * 10}px` }" @click="scrollToHeading(item.id)">{{ item.text }}</button><p v-if="!outline.length">暂无标题目录</p></nav></section>
-          <section><h3>关联知识</h3><div class="related-knowledge"><button v-for="item in relatedArticles" :key="item.pageId" type="button" @click="selectPage(item.pageId)"><el-icon><Document /></el-icon><span>{{ item.title }}</span></button><p v-if="!relatedArticles.length">暂无关联知识</p></div></section>
-          <section><h3>修改记录</h3><div class="recent-versions"><button v-for="version in recentVersions" :key="version.versionNo" type="button" @click="historyOpen = true"><span>V{{ version.versionNo }}</span><strong>{{ version.operatorName || '-' }}</strong><time>{{ version.createTime }}</time></button><button v-if="activePage" class="view-all-versions" type="button" @click="historyOpen = true">查看全部 {{ recentVersions.length ? activePage.contentVersion : 0 }} 个版本</button></div></section>
-        </aside>
-      </template>
-
-      <section v-else class="knowledge-editor" v-loading="loading.save">
-        <header>
-          <div><el-button text icon="ArrowLeft" @click="cancelEdit">返回阅读</el-button><h2>{{ mode === 'create' ? '新建知识' : '编辑知识' }}</h2><p>{{ mode === 'create' ? '首次保存后立即对有查看权限的用户可见' : `基于当前版本 V${editorForm.expectedVersion} 编辑，每次保存生成一个新版本` }}</p></div>
-          <div><el-button @click="cancelEdit">取消</el-button><el-button type="primary" icon="Finished" :disabled="!editorForm.title.trim() || !editorForm.content.trim()" @click="savePage">保存新版本</el-button></div>
-        </header>
-        <div class="editor-layout">
-          <main>
-            <el-form label-position="top">
-              <el-form-item label="知识标题" required><el-input v-model="editorForm.title" maxlength="160" show-word-limit /></el-form-item>
-              <el-form-item label="摘要"><el-input v-model="editorForm.summary" maxlength="500" show-word-limit placeholder="用一句话说明这篇知识解决什么问题" /></el-form-item>
-              <el-form-item label="正文" required><editor v-model="editorForm.content" :min-height="430" /></el-form-item>
+                    <el-collapse-item title="关联文档" name="documents">
+                      <el-alert title="这里只保存文档ID，打开和下载继续执行文档管理权限。" type="info" :closable="false" />
+                      <el-button v-if="canLinkDocuments" class="knowledge-document-select" icon="Link" @click="documentSelectorOpen = true">选择现有文档</el-button>
+                      <el-table v-if="editorDocuments.length" :data="editorDocuments" size="small" :show-header="false">
+                        <el-table-column min-width="180">
+                          <template #default="{ row }">
+                            <el-space><el-tag size="small" effect="plain">{{ String(row.fileType || 'FILE').toUpperCase() }}</el-tag><span class="knowledge-document-title">{{ row.title }}</span></el-space>
+                          </template>
+                        </el-table-column>
+                        <el-table-column v-if="canLinkDocuments" width="48" align="right">
+                          <template #default="{ row }"><el-button text circle icon="Delete" aria-label="移除关联文档" @click="removeEditorDocument(row.documentId)" /></template>
+                        </el-table-column>
+                      </el-table>
+                      <el-empty v-else description="暂无关联文档" :image-size="64" />
+                      <el-alert v-if="!canLinkDocuments && editorDocuments.length" title="当前账号无文档管理权限，可以修改正文并原样保留附件，但不能调整附件关系。" type="warning" :closable="false" show-icon />
+                    </el-collapse-item>
+                  </el-collapse>
+                </el-col>
+              </el-row>
             </el-form>
-          </main>
-          <aside>
-            <h3>知识设置</h3>
-            <el-form label-position="top">
-              <el-form-item label="所属空间"><el-select v-model="editorForm.spaceId" disabled><el-option v-for="space in spaces" :key="space.spaceId" :label="space.spaceName" :value="Number(space.spaceId)" /></el-select></el-form-item>
-              <el-form-item label="所属目录"><el-tree-select v-model="editorForm.parentId" :data="folderSelectTree" node-key="pageId" :props="{ label: 'title', children: 'children' }" check-strictly clearable placeholder="根目录" /></el-form-item>
-              <el-form-item label="标签"><el-select v-model="editorForm.tagNames" multiple filterable allow-create default-first-option :multiple-limit="8" placeholder="输入后回车添加标签" /></el-form-item>
-              <el-form-item label="修改说明"><el-input v-model="editorForm.changeNote" type="textarea" :rows="3" maxlength="500" show-word-limit placeholder="可选：说明本次调整内容" /></el-form-item>
-            </el-form>
-            <section class="editor-document-links">
-              <header><h4>关联文档</h4><el-button v-if="canLinkDocuments" link type="primary" @click="documentSelectorOpen = true">选择现有文档</el-button></header>
-              <p>只保存文档ID，打开和下载继续使用文档管理权限。</p>
-              <div v-for="document in editorDocuments" :key="document.documentId">
-                <span class="linked-file-mark">{{ knowledgeFileMark(document.fileType) }}</span><strong>{{ document.title }}</strong><el-button v-if="canLinkDocuments" text circle icon="Close" aria-label="移除关联文档" @click="removeEditorDocument(document.documentId)" />
-              </div>
-              <el-empty v-if="!editorDocuments.length" description="暂无关联文档" :image-size="52" />
-              <el-alert v-if="!canLinkDocuments && editorDocuments.length" title="当前账号无文档管理权限；可以修改正文并原样保留已有附件，但不能调整附件关系。" type="info" :closable="false" show-icon />
-            </section>
-          </aside>
-        </div>
-      </section>
-    </div>
+          </el-scrollbar>
+        </el-main>
+      </el-container>
+    </el-container>
+
+    <el-drawer v-model="navigationDrawerOpen" title="知识目录" direction="ltr" size="320px" append-to-body>
+      <KnowledgeNavigation
+        v-model:current-space-id="currentSpaceId"
+        v-model:current-scope="currentScope"
+        v-model:search-keyword="searchKeyword"
+        :spaces="spaces"
+        :current-space="currentSpace"
+        :visible-scopes="visibleScopes"
+        :tree-data="treeData"
+        :active-page-id="activePageId"
+        :article-count="articleCount"
+        :fetch-suggestions="fetchSearchSuggestions"
+        :can-write="canWrite && mode === 'read'"
+        :can-manage-space="canManageSpace"
+        :disabled="mode !== 'read'"
+        :loading="loading.tree || loading.spaces"
+        @space-change="handleSpaceChange"
+        @space-command="handleSpaceCommand"
+        @scope-change="handleScopeChange"
+        @create-page="startCreatePage"
+        @select-search="selectSearchResult"
+        @node-click="handleTreeNodeClick"
+        @folder-command="handleFolderCommand"
+      />
+    </el-drawer>
+
+    <el-drawer v-model="outlineDrawerOpen" title="本文目录" size="320px" append-to-body>
+      <el-empty v-if="!outline.length" description="当前文章没有标题目录" />
+      <el-menu v-else :default-active="outline[0]?.id" @select="scrollToHeading">
+        <el-menu-item v-for="item in outline" :key="item.id" :index="item.id">
+          <span :style="{ paddingLeft: `${(item.level - 1) * 12}px` }">{{ item.text }}</span>
+        </el-menu-item>
+      </el-menu>
+    </el-drawer>
 
     <el-dialog v-model="spaceDialog.open" :title="spaceDialog.mode === 'create' ? '新建知识空间' : '编辑知识空间'" width="480px" append-to-body>
-      <el-form label-position="top"><el-form-item label="空间名称" required><el-input v-model="spaceDialog.form.spaceName" maxlength="100" /></el-form-item><el-form-item label="空间说明"><el-input v-model="spaceDialog.form.description" type="textarea" :rows="3" maxlength="500" /></el-form-item></el-form>
+      <el-form label-position="top">
+        <el-form-item label="空间名称" required><el-input v-model="spaceDialog.form.spaceName" maxlength="100" /></el-form-item>
+        <el-form-item label="空间说明"><el-input v-model="spaceDialog.form.description" type="textarea" :rows="3" maxlength="500" /></el-form-item>
+      </el-form>
       <template #footer><el-button @click="spaceDialog.open = false">取消</el-button><el-button type="primary" @click="saveSpace">保存</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="folderDialog.open" :title="folderDialog.mode === 'create' ? '新建知识目录' : '编辑知识目录'" width="480px" append-to-body>
-      <el-form label-position="top"><el-form-item label="目录名称" required><el-input v-model="folderDialog.form.title" maxlength="100" /></el-form-item><el-form-item label="上级目录"><el-tree-select v-model="folderDialog.form.parentId" :data="folderSelectTree" node-key="pageId" :props="{ label: 'title', children: 'children' }" check-strictly clearable placeholder="根目录" /></el-form-item></el-form>
+      <el-form label-position="top">
+        <el-form-item label="目录名称" required><el-input v-model="folderDialog.form.title" maxlength="100" /></el-form-item>
+        <el-form-item label="上级目录"><el-tree-select v-model="folderDialog.form.parentId" :data="folderSelectTree" node-key="pageId" :props="{ label: 'title', children: 'children' }" check-strictly clearable placeholder="根目录" /></el-form-item>
+      </el-form>
       <template #footer><el-button @click="folderDialog.open = false">取消</el-button><el-button type="primary" @click="saveFolder">保存</el-button></template>
     </el-dialog>
 
@@ -204,7 +282,6 @@ import {
   getKnowledgePage,
   listKnowledgeSpaces,
   listKnowledgeTree,
-  listKnowledgeVersions,
   removeKnowledgeFolder,
   restoreKnowledgePage,
   searchKnowledgePages,
@@ -215,12 +292,12 @@ import {
 } from '@/api/knowledge/index.js'
 import KnowledgeDocumentSelector from '@/views/knowledge/components/KnowledgeDocumentSelector.vue'
 import KnowledgeHistoryDrawer from '@/views/knowledge/components/KnowledgeHistoryDrawer.vue'
+import KnowledgeNavigation from '@/views/knowledge/components/KnowledgeNavigation.vue'
 import {
   KNOWLEDGE_PERMISSIONS,
   KNOWLEDGE_SCOPES,
   buildKnowledgeTree,
   documentAccessMessage,
-  knowledgeFileMark,
   normalizeKnowledgeTags,
   outlineFromHtml,
   resolveKnowledgeDocumentAction
@@ -233,24 +310,24 @@ const currentSpaceId = ref(null)
 const currentScope = ref('ACTIVE')
 const rawTree = ref([])
 const treeData = ref([])
-const treeRef = ref()
+const navigationSelectionId = ref(null)
 const activePageId = ref(null)
 const activeDetail = reactive({ page: null, tags: [], documents: [] })
 const articleBodyRef = ref()
 const outline = ref([])
-const recentVersions = ref([])
 const searchKeyword = ref('')
-const searchResults = ref([])
-const searchPanelVisible = ref(false)
-const searchTimer = ref(null)
+const searchSequence = ref(0)
 const mode = ref('read')
 const historyOpen = ref(false)
 const documentSelectorOpen = ref(false)
+const navigationDrawerOpen = ref(false)
+const outlineDrawerOpen = ref(false)
 const loading = reactive({ spaces: false, tree: false, detail: false, search: false, save: false })
 
 const editorForm = reactive({ spaceId: null, parentId: null, title: '', summary: '', content: '', tagNames: [], documentIds: [], expectedVersion: null, changeNote: '' })
 const editorDocuments = ref([])
 const editorBaseline = ref('')
+const editorPanels = ref(['settings', 'documents'])
 
 const spaceDialog = reactive({ open: false, mode: 'create', form: { spaceId: null, spaceName: '', description: '', sortOrder: null } })
 const folderDialog = reactive({ open: false, mode: 'create', form: { pageId: null, spaceId: null, parentId: null, title: '', sortOrder: null } })
@@ -262,9 +339,14 @@ const canManageSpace = computed(() => Boolean(proxy?.$auth?.hasPermi([KNOWLEDGE_
 const canRemove = computed(() => Boolean(proxy?.$auth?.hasPermi([KNOWLEDGE_PERMISSIONS.REMOVE])))
 const canLinkDocuments = computed(() => canWrite.value && Boolean(proxy?.$auth?.hasPermi([KNOWLEDGE_PERMISSIONS.DOCUMENT])))
 const visibleScopes = computed(() => KNOWLEDGE_SCOPES.filter((scope) => scope.value !== 'TRASH' || canRemove.value))
+const currentScopeLabel = computed(() => visibleScopes.value.find((scope) => scope.value === currentScope.value)?.label || '知识')
 const flatArticles = computed(() => rawTree.value.filter((item) => item.pageType === 'ARTICLE'))
 const articleCount = computed(() => flatArticles.value.length)
 const folderSelectTree = computed(() => [{ pageId: 0, title: '根目录', children: buildFolderOptions(treeData.value) }])
+const activeDirectoryTitle = computed(() => {
+  const parentId = Number(activePage.value?.parentId || 0)
+  return parentId ? rawTree.value.find((item) => Number(item.pageId) === parentId)?.title || '知识目录' : '根目录'
+})
 const relatedArticles = computed(() => flatArticles.value.filter((item) => Number(item.parentId) === Number(activePage.value?.parentId) && Number(item.pageId) !== Number(activePage.value?.pageId)).slice(0, 3))
 const siblingArticles = computed(() => flatArticles.value.filter((item) => Number(item.parentId) === Number(activePage.value?.parentId)))
 const siblingIndex = computed(() => siblingArticles.value.findIndex((item) => Number(item.pageId) === Number(activePage.value?.pageId)))
@@ -277,7 +359,6 @@ onMounted(() => {
   loadInitialData()
 })
 onBeforeUnmount(() => {
-  if (searchTimer.value) clearTimeout(searchTimer.value)
   window.removeEventListener('beforeunload', handleBeforeUnload)
 })
 onBeforeRouteLeave((_to, _from, next) => {
@@ -308,9 +389,6 @@ async function loadTree({ selectFirst = false, keepSelection = true } = {}) {
       const first = rawTree.value.find((item) => item.pageType === 'ARTICLE')
       if (first) await selectPage(first.pageId)
       else clearActivePage()
-    } else if (stillExists) {
-      await nextTick()
-      treeRef.value?.setCurrentKey(activePageId.value)
     }
   } finally {
     loading.tree = false
@@ -322,14 +400,13 @@ async function selectPage(pageId) {
   if (editorDirty.value && !window.confirm('当前知识尚未保存，确认切换吗？')) return
   mode.value = 'read'
   activePageId.value = Number(pageId)
-  searchPanelVisible.value = false
+  navigationSelectionId.value = Number(pageId)
+  navigationDrawerOpen.value = false
   loading.detail = true
   try {
     const response = await getKnowledgePage(pageId)
     applyPageDetail(response.data)
-    await loadRecentVersions()
     await nextTick()
-    treeRef.value?.setCurrentKey(activePageId.value)
     rebuildOutline()
   } finally {
     loading.detail = false
@@ -347,49 +424,47 @@ function clearActivePage() {
   activeDetail.page = null
   activeDetail.tags = []
   activeDetail.documents = []
-  recentVersions.value = []
   outline.value = []
 }
 
 async function handleTreeNodeClick(data) {
+  navigationSelectionId.value = Number(data.pageId)
   if (data.pageType === 'ARTICLE') await selectPage(data.pageId)
 }
 
 async function handleSpaceChange() {
+  navigationSelectionId.value = null
   clearActivePage()
   await loadTree({ selectFirst: true, keepSelection: false })
 }
 
 async function handleScopeChange() {
+  navigationSelectionId.value = null
   clearActivePage()
   await loadTree({ selectFirst: true, keepSelection: false })
 }
 
-function scheduleSearch() {
-  if (searchTimer.value) clearTimeout(searchTimer.value)
-  if (!searchKeyword.value.trim()) {
-    searchResults.value = []
-    searchPanelVisible.value = false
+async function fetchSearchSuggestions(query, callback) {
+  const keyword = String(query || '').trim()
+  if (!keyword) {
+    callback([])
     return
   }
-  searchTimer.value = setTimeout(runSearch, 220)
-}
-
-async function runSearch() {
-  if (!searchKeyword.value.trim()) return
+  const requestId = ++searchSequence.value
   loading.search = true
-  searchPanelVisible.value = true
   try {
-    const response = await searchKnowledgePages({ spaceId: currentSpaceId.value, keyword: searchKeyword.value.trim() })
-    searchResults.value = response.data || []
+    const response = await searchKnowledgePages({ spaceId: currentSpaceId.value, keyword })
+    callback(requestId === searchSequence.value ? response.data || [] : [])
+  } catch (_error) {
+    callback([])
   } finally {
-    loading.search = false
+    if (requestId === searchSequence.value) loading.search = false
   }
 }
 
 async function selectSearchResult(item) {
   searchKeyword.value = ''
-  searchPanelVisible.value = false
+  navigationDrawerOpen.value = false
   if (currentScope.value !== 'ACTIVE') {
     currentScope.value = 'ACTIVE'
     clearActivePage()
@@ -407,12 +482,15 @@ async function startCreatePage() {
     await loadTree({ keepSelection: false })
   }
   mode.value = 'create'
+  navigationDrawerOpen.value = false
+  editorPanels.value = ['settings', 'documents']
   resetEditorForm({ spaceId: currentSpaceId.value, parentId, title: '', summary: '', content: '<h2>知识说明</h2><p>请输入正文内容。</p>', tagNames: [], documents: [], expectedVersion: null })
 }
 
 function startEditPage() {
   if (!activePage.value) return
   mode.value = 'edit'
+  editorPanels.value = ['settings', 'documents']
   resetEditorForm({
     spaceId: Number(activePage.value.spaceId), parentId: Number(activePage.value.parentId) || 0,
     title: activePage.value.title, summary: activePage.value.summary || '', content: activePage.value.content || '',
@@ -452,7 +530,6 @@ async function savePage() {
     mode.value = 'read'
     editorBaseline.value = ''
     await loadTree({ keepSelection: true })
-    await loadRecentVersions()
     await nextTick()
     rebuildOutline()
   } catch (error) {
@@ -498,12 +575,6 @@ async function handlePageCommand(command) {
   await loadTree({ selectFirst: true, keepSelection: false })
 }
 
-async function loadRecentVersions() {
-  if (!activePageId.value) return
-  const response = await listKnowledgeVersions(activePageId.value)
-  recentVersions.value = (response.data || []).slice(0, 2)
-}
-
 function rebuildOutline() {
   outline.value = outlineFromHtml(activePage.value?.content || '')
   nextTick(() => {
@@ -513,7 +584,8 @@ function rebuildOutline() {
 }
 
 function scrollToHeading(id) {
-  articleBodyRef.value?.querySelector(`#${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  outlineDrawerOpen.value = false
+  nextTick(() => articleBodyRef.value?.querySelector(`#${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
 }
 
 function openLinkedDocument(document) {
@@ -537,8 +609,22 @@ function permissionLabel(value) {
   return ({ OWNER: '所有者', EDIT: '可编辑', VIEW: '仅查看', ADMIN: '管理员' })[value] || '可访问'
 }
 
+function documentStatusMeta(document) {
+  const status = document?.accessStatus
+  if (status === 'AVAILABLE') return { label: '可用', type: 'success' }
+  if (status === 'ARCHIVED') return { label: '已归档', type: 'info' }
+  if (status === 'TRASH') return { label: '回收站', type: 'warning' }
+  if (status === 'NO_MODULE_PERMISSION') return { label: '无模块权限', type: 'warning' }
+  return { label: '无权访问', type: 'danger' }
+}
+
+function documentActionLabel(document) {
+  const action = resolveKnowledgeDocumentAction(document)
+  return ({ EDITOR: '打开', PREVIEW: '预览', DOWNLOAD: '下载', NONE: '不可用' })[action] || '打开'
+}
+
 function selectedFolderId() {
-  const current = rawTree.value.find((item) => Number(item.pageId) === Number(treeRef.value?.getCurrentKey()))
+  const current = rawTree.value.find((item) => Number(item.pageId) === Number(navigationSelectionId.value))
   return current?.pageType === 'FOLDER' ? Number(current.pageId) : Number(activePage.value?.parentId) || 0
 }
 
@@ -611,7 +697,6 @@ function removeEditorDocument(documentId) {
 async function handleVersionRestored(detail) {
   applyPageDetail(detail)
   await loadTree({ keepSelection: true })
-  await loadRecentVersions()
   await nextTick()
   rebuildOutline()
 }

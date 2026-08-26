@@ -1,5 +1,27 @@
 export const releaseNotes = [
   {
+    version: 'v3.15.1',
+    submitTime: '2026-08-26 20:04:13',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '知识中心原生组件布局重构',
+    summary: '重构知识中心阅读、导航、编辑和历史版本布局，移除四层横向分栏与手工拼装面板，统一采用 Element Plus 原生组件并完善桌面宽度适配。',
+    changes: [
+      '将“平台导航、知识目录、正文、右侧信息栏”四层横向结构收敛为知识导航与单一内容区，移除右侧自定义目录、关联知识和修改记录栏。',
+      '空间选择、新建知识、搜索联想、生命周期切换和目录树统一使用Element Plus的Select、Button、Autocomplete、Segmented与Tree。',
+      '文章操作固定到原生页头工具栏；标题、版本、修改人、标签、摘要和正文按阅读顺序重新组织，取消手工卡片、装饰性横线和原生button拼装。',
+      '附件从自定义按钮列表改为Element Plus Table，状态、权限、版本和打开操作形成稳定列，不改变现有文档权限及路由联动。',
+      '编辑页改用Element Plus Row、Col、Form、Collapse和Table；宽屏并列展示正文与设置，较窄桌面自动纵向排列。',
+      '修改记录改用Element Plus Drawer、Menu、Descriptions、Tabs与响应式Row/Col，版本选择、元数据、正文对比和关系快照保持同一交互体系。',
+      '视口小于1180px时知识导航自动收起为左侧Drawer，小于900px时工具栏换行且上一篇/下一篇按钮自适应铺满，避免挤压与横向滚动。',
+      '浅色和深色主题继续复用平台语义变量；知识权限、版本记录、生命周期、搜索接口和文档联动逻辑均保持不变。'
+    ],
+    scope: ['知识中心', 'Element Plus', '阅读布局', '编辑布局', '修改记录', '附件表格', '桌面适配', '黑白主题', '版本记录'],
+    database: '无数据库结构或业务数据修改；继续使用v3.15.0知识中心表结构和菜单权限。',
+    scripts: []
+  },
+  {
     version: 'v3.15.0',
     submitTime: '2026-08-26 17:46:00',
     level: 'minor',

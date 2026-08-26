@@ -25,7 +25,7 @@
       <el-table-column label="文档" min-width="260">
         <template #default="{ row }">
           <div class="candidate-document">
-            <span class="candidate-file-mark" :class="`is-${String(row.fileType || '').toLowerCase()}`">{{ knowledgeFileMark(row.fileType) }}</span>
+            <el-tag size="small" effect="plain">{{ String(row.fileType || 'FILE').toUpperCase() }}</el-tag>
             <span><strong>{{ row.title }}</strong><small>{{ row.folderName || '根目录' }}</small></span>
           </div>
         </template>
@@ -51,7 +51,6 @@
 <script setup>
 import { listKnowledgeDocumentCandidates } from '@/api/knowledge/index.js'
 import { formatFileSize } from '@/views/document/workspace/documentWorkspaceRules.js'
-import { knowledgeFileMark } from '@/views/knowledge/workspace/knowledgeWorkspaceRules.js'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -139,13 +138,10 @@ async function syncTableSelection() {
 <style scoped>
 .document-selector-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
 .document-selector-note { margin: 10px 0 14px; color: var(--app-muted); font-size: 12px; line-height: 1.55; }
-.candidate-document { display: grid; align-items: center; gap: 9px; grid-template-columns: 28px minmax(0, 1fr); }
+.candidate-document { display: grid; align-items: center; gap: 9px; grid-template-columns: auto minmax(0, 1fr); }
 .candidate-document > span:last-child { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 .candidate-document strong { overflow: hidden; color: var(--app-heading); text-overflow: ellipsis; white-space: nowrap; }
 .candidate-document small { color: var(--app-muted); }
-.candidate-file-mark { display: flex; width: 26px; height: 28px; align-items: center; justify-content: center; border-radius: 5px; background: #e8f2ff; color: #1677ff; font-size: 11px; font-weight: 700; }
-.candidate-file-mark.is-xls, .candidate-file-mark.is-xlsx { background: #e7f6ed; color: #15803d; }
-.candidate-file-mark.is-pdf { background: #fff0f0; color: #d55353; }
 .document-selector-footer { display: flex; align-items: center; justify-content: space-between; color: var(--app-muted); font-size: 12px; }
 .document-selector-footer > div { display: flex; gap: 8px; }
 </style>
