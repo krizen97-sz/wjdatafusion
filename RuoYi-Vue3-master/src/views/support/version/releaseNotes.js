@@ -1,5 +1,26 @@
 export const releaseNotes = [
   {
+    version: 'v3.15.2',
+    submitTime: '2026-08-27 21:37:11',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '平台离线扩展图标库全量接入',
+    summary: '全量接入547个Keyline线性图标，保留既有115个平台图标与菜单映射，并将图标选择器重构为Element Plus原生的来源、分类和多语言搜索工作区。',
+    changes: [
+      '新增547个Keyline Stroke图标，统一使用keyline-命名空间；既有115个平台图标、sys_menu.icon值和未知图标兜底保持不变，平台可选图标总数达到662个。',
+      '固定上游0.1.4版本与403f023提交，保留MIT许可证、第三方来源说明、聚合SHA-256和可重复执行的离线导入脚本，不新增前端运行依赖或公网资源。',
+      '图标注册改用vite-plugin-svg-icons提供的虚拟名称清单，避免为每个SVG生成独立的冗余JavaScript文件，同时继续复用现有SVG Sprite和currentColor主题能力。',
+      '图标选择器采用Element Plus Segmented、Input、Select、Scrollbar、Button与Empty，按平台图标和扩展图标分层，并提供19个Keyline语义分类及数量反馈。',
+      '扩展图标搜索整合上游关键词和别名，并补充中文语义、完整拼音与拼音首字母；搜索支持多词组合且不扩大既有业务图标的匹配范围。',
+      '打开已有菜单时自动切换到对应图标来源并将当前图标定位到可视区域；浅色、深色和窄桌面布局均使用平台及Element Plus主题变量。',
+      '前端设计规范明确后续页面优先复用Element Plus、平台和keyline-图标，不再为单个页面手工绘制或拼接新SVG。'
+    ],
+    scope: ['平台通用', '离线图标库', '菜单管理', 'Element Plus', '中文与拼音搜索', '黑白主题', '桌面适配', '前端设计规范', '版本记录'],
+    database: '无数据库结构或业务数据修改；不批量替换既有菜单图标，不需要执行SQL升级脚本。',
+    scripts: []
+  },
+  {
     version: 'v3.15.1',
     submitTime: '2026-08-26 20:04:13',
     level: 'patch',

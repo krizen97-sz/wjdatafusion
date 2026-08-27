@@ -18,6 +18,7 @@ VITE_DEV_PORT=5173 VITE_PROXY_TARGET=http://127.0.0.1:18080 npm run dev
 ## 构建
 
 ```bash
+npm run test:icons
 npm run build:prod
 ```
 
@@ -26,6 +27,7 @@ npm run build:prod
 ## 设计与交付
 
 - 项目设计规范：`../DESIGN.md`
+- 平台图标库规范：`../docs/KEYLINE_ICONS.md`
 - 自动化巡检操作手册：`public/docs/auto-inspection/auto-inspection-manual.html`
 - 多窗口开发规范：`../docs/CODEX_WORKTREES.md`
 

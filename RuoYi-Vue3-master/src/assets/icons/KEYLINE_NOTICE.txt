@@ -1,0 +1,11 @@
+Keyline Icons
+Source: https://github.com/keyline-icons/keyline-icons
+Package version: 0.1.4
+Pinned commit: 403f023d0861d01807cdec045b5fb3fec984468d
+Imported scope: 547 stroke SVG icons
+Local symbol prefix: keyline-
+License: MIT (see KEYLINE_LICENSE.txt)
+
+The source project states that its license covers the icons and code but does not
+grant rights in the name “Keyline Icons”. The product UI uses the neutral label
+“扩展图标”; the upstream name is retained here only for third-party notices.

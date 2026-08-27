@@ -111,8 +111,9 @@
                <el-col :span="12" v-if="form.menuType != 'F'">
                   <el-form-item label="菜单图标" prop="icon">
                      <el-popover
+                        ref="iconPopoverRef"
                         placement="bottom-start"
-                        :width="540"
+                        width="min(640px, calc(100vw - 40px))"
                         trigger="click"
                         @show="showSelectIcon"
                      >
@@ -306,6 +307,7 @@ const menuOptions = ref([])
 const isExpandAll = ref(false)
 const refreshTable = ref(true)
 const iconSelectRef = ref(null)
+const iconPopoverRef = ref(null)
 
 const data = reactive({
   form: {},
@@ -372,6 +374,7 @@ function showSelectIcon() {
 /** 选择图标 */
 function selected(name) {
   form.value.icon = name
+  iconPopoverRef.value?.hide()
 }
 
 /** 搜索按钮操作 */

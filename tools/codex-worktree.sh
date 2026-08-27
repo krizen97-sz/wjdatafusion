@@ -11,7 +11,7 @@ Usage:
   tools/codex-worktree.sh create <module> <task-slug>
 
 Modules:
-  auto-inspection | site-fusion | document-management | knowledge-center | ipam
+  platform-ui | auto-inspection | site-fusion | document-management | knowledge-center | ipam
 EOF
 }
 
@@ -24,7 +24,7 @@ repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || die "当前目录不�
 
 validate_module() {
   case "${1:-}" in
-    auto-inspection|site-fusion|document-management|knowledge-center|ipam) ;;
+    platform-ui|auto-inspection|site-fusion|document-management|knowledge-center|ipam) ;;
     *) die "不支持的模块：${1:-<empty>}" ;;
   esac
 }
@@ -53,6 +53,7 @@ is_module_path() {
   module=$1
   path=$2
   case "$module:$path" in
+    platform-ui:DESIGN.md|platform-ui:docs/KEYLINE_ICONS.md|platform-ui:RuoYi-Vue3-master/README.md|platform-ui:RuoYi-Vue3-master/scripts/import-keyline-icons.mjs|platform-ui:RuoYi-Vue3-master/src/assets/icons/*|platform-ui:RuoYi-Vue3-master/src/components/IconSelect/*|platform-ui:RuoYi-Vue3-master/src/components/SvgIcon/*|platform-ui:RuoYi-Vue3-master/src/utils/iconRegistry.js|platform-ui:RuoYi-Vue3-master/src/views/system/menu/index.vue) return 0 ;;
     auto-inspection:*autoInspection*|auto-inspection:*AutoInspection*|auto-inspection:*auto_inspection*|auto-inspection:*auto-inspection*|auto-inspection:*自动化巡检*|auto-inspection:*auto-version*|auto-inspection:*auto_version*) return 0 ;;
     site-fusion:*support/site/*|site-fusion:*SupportSite*|site-fusion:*SupportServer*|site-fusion:*SupportHardware*|site-fusion:*SupportEquipment*|site-fusion:*equipmentLocation*|site-fusion:*EquipmentLocation*|site-fusion:*equipment_location*|site-fusion:*hardware_asset*|site-fusion:*server_credential*) return 0 ;;
     document-management:*document*|document-management:*Document*|document-management:*Doc*|document-management:*doc_*) return 0 ;;

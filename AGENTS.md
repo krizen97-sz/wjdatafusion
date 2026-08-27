@@ -27,9 +27,11 @@ Use `tools/codex-worktree.sh create <module> <task-slug>` to create worktrees an
 
 Supported module names are:
 
+- `platform-ui`
 - `auto-inspection`
 - `site-fusion`
 - `document-management`
+- `knowledge-center`
 - `ipam`
 
 ## Branch and checkout safety

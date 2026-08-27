@@ -1,12 +1,13 @@
 {
   "name": "wjdatafusion-web",
-  "version": "3.15.1",
+  "version": "3.15.2",
   "description": "华东信息融合平台前端",
   "author": "华东信息融合平台项目组",
   "license": "MIT",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test:icons": "node --test src/components/IconSelect/__tests__/menuIconLibrary.test.js",
     "test:ipam": "node --test src/views/ipam/__tests__/*.test.js",
     "test:knowledge": "node --test src/views/knowledge/__tests__/*.test.js",
     "build:prod": "vite build",

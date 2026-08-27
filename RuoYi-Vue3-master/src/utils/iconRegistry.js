@@ -1,7 +1,7 @@
-const iconModules = import.meta.glob('../assets/icons/svg/*.svg')
+import svgIconIds from 'virtual:svg-icons-names'
 
-export const iconNames = Object.keys(iconModules)
-  .map((path) => path.split('/').pop().replace('.svg', ''))
+export const iconNames = svgIconIds
+  .map((id) => id.replace(/^icon-/, ''))
   .sort((left, right) => left.localeCompare(right))
 
 const iconNameSet = new Set(iconNames)

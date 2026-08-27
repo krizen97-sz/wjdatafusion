@@ -1,0 +1,10 @@
+{
+  "name": "Keyline Icons",
+  "source": "https://github.com/keyline-icons/keyline-icons",
+  "packageVersion": "0.1.4",
+  "commit": "403f023d0861d01807cdec045b5fb3fec984468d",
+  "style": "stroke",
+  "iconCount": 547,
+  "symbolPrefix": "keyline-",
+  "aggregateSha256": "c4f50d228bde3e5346cbac54e51cc753267db3a11ad769ce9732999d7ee8d6f4"
+}

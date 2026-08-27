@@ -17,6 +17,7 @@
 ├── rynew/                         # 集成目录，最终保持 main 干净
 └── rynew-worktrees/
     ├── auto-inspection-任务名/
+    ├── platform-ui-任务名/
     ├── site-fusion-任务名/
     ├── document-management-任务名/
     ├── knowledge-center-任务名/
@@ -30,6 +31,7 @@
 优先在 Codex 新任务输入框选择 `Worktree`，起始分支选择干净的 `origin/main`。长期模块可以创建 Permanent Worktree。命令行也可以执行：
 
 ```bash
+./tools/codex-worktree.sh create platform-ui icon-library
 ./tools/codex-worktree.sh create auto-inspection http-result-condition
 ./tools/codex-worktree.sh create site-fusion equipment-filter
 ./tools/codex-worktree.sh create document-management pdf-preview
@@ -48,6 +50,13 @@
 验证失败时不得继续编辑。先处理基线落后、分支错误或跨模块文件污染。
 
 ## 模块边界
+
+### 平台通用前端
+
+- 图标系统：`src/assets/icons`、`IconSelect`、`SvgIcon`、`iconRegistry.js`
+- 系统菜单中的通用图标选择入口及图标离线导入脚本
+- 平台前端设计规范与图标库使用文档
+- 不包含具体业务模块页面；业务页面中的图标替换仍归对应业务模块
 
 ### 自动化巡检
 
@@ -92,7 +101,7 @@
 - `support_v1.sql`、`support_deploy_all.sql`
 - `RouterVo.java`、`SysMenuServiceImpl.java`、全局异常处理
 
-功能分支优先新增独立升级 SQL。全量 SQL 在合并阶段统一维护，避免四个模块同时修改同一大文件。
+功能分支优先新增独立升级 SQL。全量 SQL 在合并阶段统一维护，避免多个模块同时修改同一大文件。
 
 ## 提交前检查
 
