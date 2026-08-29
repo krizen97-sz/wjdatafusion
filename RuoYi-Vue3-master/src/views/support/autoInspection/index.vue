@@ -2133,34 +2133,33 @@
                   </el-table-column>
                   <el-table-column label="调用结果" min-width="340">
                     <template #default="targetScope">
-                      <div class="health-target-result">
-                        <span class="health-target-result__preview">{{ targetScope.row.resultDetail || '本次未记录调用明细' }}</span>
-                        <el-popover placement="left" :width="520" trigger="click">
-                          <template #reference>
-                            <el-button type="primary" link :icon="View" class="health-target-result__action">详情</el-button>
-                          </template>
-                          <div class="health-call-detail">
-                            <header>
-                              <div>
-                                <span>调用结果</span>
-                                <strong>{{ targetScope.row.targetName || `检测子项 ${targetScope.$index + 1}` }}</strong>
-                              </div>
-                              <el-tag class="soft-status-tag" size="small" effect="plain" :type="resultTagType(targetScope.row.resultStatus)">{{ formatResult(targetScope.row.resultStatus) }}</el-tag>
-                            </header>
-                            <el-scrollbar max-height="260px">
-                              <section>
-                                <label>调用信息</label>
-                                <p>{{ targetScope.row.resultDetail || '本次未记录调用明细' }}</p>
-                              </section>
-                              <section v-if="targetScope.row.errorMessage" class="is-error">
-                                <label>异常原因</label>
-                                <p>{{ targetScope.row.errorMessage }}</p>
-                              </section>
-                            </el-scrollbar>
+                      <el-popover placement="left" :width="520" trigger="hover" :show-after="250" :hide-after="80">
+                        <template #reference>
+                          <div class="health-target-result">
+                            <span class="health-target-result__preview">{{ targetScope.row.resultDetail || '本次未记录调用明细' }}</span>
+                            <strong v-if="targetScope.row.errorMessage" class="health-target-result__error">{{ targetScope.row.errorMessage }}</strong>
                           </div>
-                        </el-popover>
-                        <strong v-if="targetScope.row.errorMessage" class="health-target-result__error">{{ targetScope.row.errorMessage }}</strong>
-                      </div>
+                        </template>
+                        <div class="health-call-detail">
+                          <header>
+                            <div>
+                              <span>调用结果</span>
+                              <strong>{{ targetScope.row.targetName || `检测子项 ${targetScope.$index + 1}` }}</strong>
+                            </div>
+                            <el-tag class="soft-status-tag" size="small" effect="plain" :type="resultTagType(targetScope.row.resultStatus)">{{ formatResult(targetScope.row.resultStatus) }}</el-tag>
+                          </header>
+                          <el-scrollbar max-height="260px">
+                            <section>
+                              <label>调用信息</label>
+                              <p>{{ targetScope.row.resultDetail || '本次未记录调用明细' }}</p>
+                            </section>
+                            <section v-if="targetScope.row.errorMessage" class="is-error">
+                              <label>异常原因</label>
+                              <p>{{ targetScope.row.errorMessage }}</p>
+                            </section>
+                          </el-scrollbar>
+                        </div>
+                      </el-popover>
                     </template>
                   </el-table-column>
                   <el-table-column label="状态" width="84" align="center">
@@ -2213,8 +2212,7 @@ import {
   EditPen,
   Files,
   Setting,
-  VideoPlay,
-  View
+  VideoPlay
 } from '@element-plus/icons-vue'
 import InspectionFlowCanvas from './components/InspectionFlowCanvas.vue'
 import ContinuousHealthPanel from './components/ContinuousHealthPanel.vue'
@@ -6974,8 +6972,8 @@ function resultTagType(value) {
 
 .health-target-values {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 5px;
 }
 
 .health-target-values span {
@@ -6991,7 +6989,7 @@ function resultTagType(value) {
 }
 
 .health-target-values label {
-  flex: 0 0 auto;
+  flex: 0 0 30px;
   color: var(--app-muted);
   font-size: 10px;
 }
@@ -7007,9 +7005,14 @@ function resultTagType(value) {
 }
 
 .health-target-result {
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  column-gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  cursor: help;
+  transition: background-color 0.16s ease;
+}
+
+.health-target-result:hover {
+  background: var(--surface-subtle);
 }
 
 .health-target-result__preview {
@@ -7022,16 +7025,9 @@ function resultTagType(value) {
   -webkit-line-clamp: 2;
 }
 
-.health-target-result__action {
-  min-height: 28px;
-  margin: 0;
-  padding: 2px 0;
-}
-
 .health-target-result__error {
   display: block;
   overflow: hidden;
-  grid-column: 1 / -1;
   color: var(--el-color-danger);
   font-size: 11px;
   font-weight: 600;
