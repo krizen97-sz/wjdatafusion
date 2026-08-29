@@ -2076,52 +2076,95 @@
       </div>
       <div class="health-sample-toolbar">
         <div>
-          <strong>采样时间线</strong>
-          <span>步骤和目标结果直接展开，异常记录优先查看判定依据。</span>
+          <strong>执行记录</strong>
+          <span>每次执行默认收起，展开后查看步骤与目标明细。</span>
         </div>
         <el-segmented v-model="healthSampleResultStatus" :options="healthSampleStatusOptions" @change="handleHealthSampleStatusChange" />
       </div>
-      <div v-loading="healthSampleLoading" class="health-sample-timeline">
-        <el-empty v-if="!healthSampleRows.length && !healthSampleLoading" description="当天暂无检测结果" :image-size="90" />
-        <article v-for="sample in healthSampleRows" :key="sample.recordId" class="health-sample-card" :class="`is-${sample.resultStatus || '3'}`">
-          <header class="health-sample-card__head">
-            <div class="health-sample-card__time">
-              <strong>{{ formatInspectionClock(sample.inspectionTime) }}</strong>
-              <span>{{ sample.planName || '未命名计划' }}</span>
-            </div>
-            <div class="health-sample-card__summary">
-              <strong>{{ sample.abnormalSummary || sample.summary || '本次检测已完成' }}</strong>
-              <span>{{ sample.templateName || '未命名模板' }} · {{ sample.durationMs ? `${sample.durationMs}ms` : '耗时未记录' }}</span>
-            </div>
-            <el-tag :type="resultTagType(sample.resultStatus)" effect="plain">{{ formatResult(sample.resultStatus) }}</el-tag>
-          </header>
-          <section v-for="(group, groupIndex) in getRecordResultGroups(sample)" :key="group.key" class="health-sample-step">
-            <header>
-              <span>{{ groupIndex + 1 }}</span>
-              <div><strong>{{ group.stepName }}</strong><em>{{ group.toolName || '巡检步骤' }}</em></div>
-              <el-tag size="small" :type="resultTagType(group.resultStatus)" effect="plain">{{ formatResult(group.resultStatus) }}</el-tag>
-            </header>
-            <div class="health-sample-targets">
-              <article v-for="(target, targetIndex) in group.targets" :key="target.resultId || `${group.key}-${targetIndex}`" class="health-sample-target">
+      <el-table
+        v-loading="healthSampleLoading"
+        :data="healthSampleRows"
+        row-key="recordId"
+        :expand-row-keys="healthSampleExpandedKeys"
+        class="auto-table health-sample-table"
+        empty-text="当天暂无检测结果"
+        @expand-change="handleHealthSampleExpand"
+      >
+        <el-table-column type="expand" width="46">
+          <template #default="scope">
+            <div class="health-sample-detail">
+              <section v-for="(group, groupIndex) in getRecordResultGroups(scope.row)" :key="group.key" class="health-sample-step">
                 <header>
-                  <strong>{{ target.targetName || `检测子项 ${targetIndex + 1}` }}</strong>
-                  <span v-if="target.baselineFlag === 'Y'" class="health-baseline-mark">基线已建立</span>
-                  <el-tag size="small" :type="resultTagType(target.resultStatus)">{{ formatResult(target.resultStatus) }}</el-tag>
+                  <span>{{ groupIndex + 1 }}</span>
+                  <div><strong>{{ group.stepName }}</strong><em>{{ group.toolName || '巡检步骤' }}</em></div>
+                  <small>子项 {{ group.targets.length }} · 异常 {{ getAbnormalTargetCount(group.targets) }}</small>
                 </header>
-                <div class="health-evidence-grid">
-                  <span><label>判定方式</label><strong>{{ formatEvaluationMode(target) }}</strong></span>
-                  <span><label>本次数据</label><strong>{{ formatMetricValue(target.actualValue, target.actualUnit) }}</strong></span>
-                  <span><label>上次数据</label><strong>{{ formatMetricValue(target.previousValue, target.actualUnit) }}</strong></span>
-                  <span><label>变化量</label><strong>{{ formatChangeValue(target.changeValue, target.actualUnit) }}</strong></span>
-                </div>
-                <div class="health-evaluation-rule"><label>判定规则</label><strong>{{ target.evaluationRule || formatStepThreshold(group) }}</strong></div>
-                <p>{{ target.resultDetail || '本次未记录调用明细' }}</p>
-                <div v-if="target.errorMessage" class="health-sample-error"><label>异常原因</label><strong>{{ target.errorMessage }}</strong></div>
-              </article>
+                <el-table :data="group.targets" size="small" class="health-target-table" empty-text="当前步骤暂无目标结果">
+                  <el-table-column label="检测子项" min-width="160" show-overflow-tooltip>
+                    <template #default="targetScope">
+                      <div class="health-target-name">
+                        <strong>{{ targetScope.row.targetName || `检测子项 ${targetScope.$index + 1}` }}</strong>
+                        <span v-if="targetScope.row.baselineFlag === 'Y'">基线已建立</span>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="判定数据" min-width="190">
+                    <template #default="targetScope">
+                      <div class="health-target-values">
+                        <span><label>本次</label>{{ formatMetricValue(targetScope.row.actualValue, targetScope.row.actualUnit) }}</span>
+                        <span><label>上次</label>{{ formatMetricValue(targetScope.row.previousValue, targetScope.row.actualUnit) }}</span>
+                        <span><label>变化</label>{{ formatChangeValue(targetScope.row.changeValue, targetScope.row.actualUnit) }}</span>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="判定规则" min-width="220" show-overflow-tooltip>
+                    <template #default="targetScope">
+                      <div class="health-target-rule">
+                        <span>{{ formatEvaluationMode(targetScope.row) }}</span>
+                        <strong>{{ targetScope.row.evaluationRule || formatStepThreshold(group) }}</strong>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="调用结果" min-width="280">
+                    <template #default="targetScope">
+                      <div class="health-target-result">
+                        <span :title="targetScope.row.resultDetail || ''">{{ targetScope.row.resultDetail || '本次未记录调用明细' }}</span>
+                        <strong v-if="targetScope.row.errorMessage">{{ targetScope.row.errorMessage }}</strong>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="状态" width="84" align="center">
+                    <template #default="targetScope">
+                      <el-tag class="soft-status-tag" size="small" effect="plain" :type="resultTagType(targetScope.row.resultStatus)">{{ formatResult(targetScope.row.resultStatus) }}</el-tag>
+                    </template>
+                  </el-table-column>
+                </el-table>
+              </section>
             </div>
-          </section>
-        </article>
-      </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="执行时间" prop="inspectionTime" width="160" />
+        <el-table-column label="计划" prop="planName" min-width="130" show-overflow-tooltip>
+          <template #default="scope">{{ scope.row.planName || '未命名计划' }}</template>
+        </el-table-column>
+        <el-table-column label="模板" prop="templateName" min-width="140" show-overflow-tooltip>
+          <template #default="scope">{{ scope.row.templateName || '未命名模板' }}</template>
+        </el-table-column>
+        <el-table-column label="结果摘要" min-width="220" show-overflow-tooltip>
+          <template #default="scope">{{ scope.row.abnormalSummary || scope.row.summary || '本次检测已完成' }}</template>
+        </el-table-column>
+        <el-table-column label="步骤 / 目标" width="100" align="center">
+          <template #default="scope">{{ scope.row.enabledStepCount || 0 }} / {{ scope.row.targetCount || 0 }}</template>
+        </el-table-column>
+        <el-table-column label="耗时" width="82" align="center">
+          <template #default="scope">{{ scope.row.durationMs ? `${scope.row.durationMs}ms` : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="82" align="center">
+          <template #default="scope">
+            <el-tag class="soft-status-tag" size="small" effect="plain" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag>
+          </template>
+        </el-table-column>
+      </el-table>
       <pagination v-show="healthSampleTotal > 0" :total="healthSampleTotal" v-model:page="healthSampleQuery.pageNum" v-model:limit="healthSampleQuery.pageSize" @pagination="getHealthSamples" />
     </el-drawer>
   </div>
@@ -2282,6 +2325,7 @@ const healthSampleRows = ref([])
 const healthSampleTotal = ref(0)
 const healthSampleContext = ref({ date: '', group: {} })
 const healthSampleQuery = ref({ pageNum: 1, pageSize: 20 })
+const healthSampleExpandedKeys = ref([])
 const healthSampleResultStatus = ref('ALL')
 const healthSampleStatusOptions = [
   { label: '全部结果', value: 'ALL' },
@@ -2454,7 +2498,7 @@ const operationGuideSteps = [
     desc: '驾驶舱统一展示例行与高频健康；巡检总览保留两类明细下钻和报告导出。',
     manual: [
       '巡检驾驶舱通过图表统一查看综合健康度、近七日趋势、当前计划状态和待处理问题。',
-      '高频监测按天展示健康度、计划、异常摘要和缺失采样；点击“查看当日结果”即可直接查看采样、步骤、子项、本次值、上次值、变化量和判定规则。',
+      '高频监测按天展示健康度、计划、异常摘要和缺失采样；点击“查看”打开分页执行记录，展开某一次后查看步骤、子项和判定依据。',
       '点击“导出周/月报”后，可选择自然周导出 Word 周报，也可选择月份批量导出该月所有自然周周报压缩包，周报开头包含巡检人员和用户签字确认区。'
     ],
     actions: ['在驾驶舱统一查看例行与高频健康。', '按模板、计划、来源、结果筛选明细。', '按周或按月导出 Word 周报归档。'],
@@ -3506,6 +3550,7 @@ function refreshCurrentRecordView() {
 function openHealthSamples({ date, group }) {
   healthSampleContext.value = { date, group: group || {} }
   healthSampleQuery.value.pageNum = 1
+  healthSampleExpandedKeys.value = []
   healthSampleResultStatus.value = 'ALL'
   healthSampleDrawerOpen.value = true
   return getHealthSamples()
@@ -3514,6 +3559,7 @@ function openHealthSamples({ date, group }) {
 function getHealthSamples() {
   const { date } = healthSampleContext.value
   if (!date) return Promise.resolve()
+  healthSampleExpandedKeys.value = []
   healthSampleLoading.value = true
   return listAutoInspectionHealthSamples({
     ...healthSampleQuery.value,
@@ -3529,6 +3575,15 @@ function getHealthSamples() {
 function handleHealthSampleStatusChange() {
   healthSampleQuery.value.pageNum = 1
   getHealthSamples()
+}
+
+function handleHealthSampleExpand(row, expandedRows = []) {
+  const expanded = expandedRows.some((item) => Number(item.recordId) === Number(row.recordId))
+  healthSampleExpandedKeys.value = expanded ? [row.recordId] : []
+}
+
+function getAbnormalTargetCount(targets = []) {
+  return targets.filter((target) => target.resultStatus === '2').length
 }
 
 function resolveMonthDateRange(month) {
@@ -6786,50 +6841,17 @@ function resultTagType(value) {
   }
 }
 
-.health-sample-timeline {
+.health-sample-table {
   min-height: 240px;
 }
 
-.health-sample-card {
-  margin-bottom: 12px;
-  padding: 14px 0 18px;
-  border-bottom: 1px solid var(--surface-border);
+.health-sample-table :deep(.el-table__expanded-cell) {
+  padding: 0 16px 16px 46px;
+  background: var(--surface-muted);
 }
 
-.health-sample-card__head {
-  display: grid;
-  grid-template-columns: 116px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 14px;
-}
-
-.health-sample-card__time,
-.health-sample-card__summary {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.health-sample-card__time strong {
-  color: var(--app-heading);
-  font-size: 20px;
-}
-
-.health-sample-card__time span,
-.health-sample-card__summary span {
-  overflow: hidden;
-  color: var(--app-muted);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.health-sample-card__summary strong {
-  overflow: hidden;
-  color: var(--app-text);
-  font-size: 13px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.health-sample-detail {
+  padding-top: 2px;
 }
 
 .health-sample-step {
@@ -6864,7 +6886,7 @@ function resultTagType(value) {
 }
 
 .health-sample-step > header strong,
-.health-sample-target header strong {
+.health-target-name strong {
   color: var(--app-heading);
   font-size: 13px;
 }
@@ -6875,59 +6897,35 @@ function resultTagType(value) {
   font-style: normal;
 }
 
-.health-sample-targets {
-  display: grid;
-  gap: 8px;
-  padding-left: 38px;
-}
-
-.health-sample-target {
-  padding: 11px 12px;
-  border: 1px solid var(--surface-border);
-  border-radius: 5px;
-  background: var(--surface-muted);
-}
-
-.health-sample-target > header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.health-sample-target > header strong {
-  min-width: 0;
-  flex: 1;
-}
-
-.health-baseline-mark {
-  color: var(--el-color-primary);
+.health-sample-step > header small {
+  color: var(--app-muted);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 400;
 }
 
-.health-evidence-grid {
-  display: grid;
-  grid-template-columns: 1.2fr repeat(3, minmax(110px, 1fr));
-  gap: 8px;
-  margin-top: 10px;
+.health-target-table {
+  width: 100%;
 }
 
-.health-evidence-grid span,
-.health-evaluation-rule {
+.health-target-table :deep(th.el-table__cell) {
+  background: var(--surface-strong);
+}
+
+.health-target-name,
+.health-target-rule,
+.health-target-result {
   display: grid;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
 }
 
-.health-evidence-grid label,
-.health-evaluation-rule label,
-.health-sample-error label {
+.health-target-name span,
+.health-target-rule span {
   color: var(--app-muted);
   font-size: 10px;
 }
 
-.health-evidence-grid strong,
-.health-evaluation-rule strong {
+.health-target-rule strong {
   overflow: hidden;
   color: var(--app-text);
   font-size: 12px;
@@ -6935,29 +6933,39 @@ function resultTagType(value) {
   white-space: nowrap;
 }
 
-.health-evaluation-rule {
-  margin-top: 8px;
+.health-target-values {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
 }
 
-.health-sample-target > p {
-  margin: 8px 0 0;
+.health-target-values span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  color: var(--app-text);
+  font-size: 11px;
+}
+
+.health-target-values label {
+  color: var(--app-muted);
+  font-size: 10px;
+}
+
+.health-target-result span {
+  display: -webkit-box;
+  overflow: hidden;
   color: var(--app-muted);
   font-size: 11px;
   line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
-.health-sample-error {
-  display: grid;
-  gap: 2px;
-  margin-top: 8px;
-  padding: 7px 9px;
-  border-left: 2px solid var(--el-color-danger);
-  background: var(--el-color-danger-light-9);
-}
-
-.health-sample-error strong {
+.health-target-result strong {
   color: var(--el-color-danger);
-  font-size: 12px;
+  font-size: 11px;
+  font-weight: 600;
 }
 
 .record-table--daily {

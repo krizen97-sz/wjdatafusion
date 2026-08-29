@@ -8,6 +8,7 @@ import {
 } from '../continuousHealthPresentation.js'
 
 const workspaceSource = readFileSync(new URL('../index.vue', import.meta.url), 'utf8')
+const panelSource = readFileSync(new URL('../components/ContinuousHealthPanel.vue', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../../../../api/support/autoInspection/index.js', import.meta.url), 'utf8')
 
 test('daily health groups multiple plans into one date and preserves abnormal history', () => {
@@ -41,9 +42,15 @@ test('workspace exposes plan mode, daily health and activity tools', () => {
   assert.ok(apiSource.includes("/support/autoInspection/health/daily"))
   assert.ok(apiSource.includes("/support/autoInspection/health/samples"))
   assert.ok(apiSource.includes('healthConfig: stringifyConfig(data.healthConfig)'))
-  assert.ok(workspaceSource.includes('查看当日结果'))
-  assert.ok(workspaceSource.includes('target.previousValue'))
-  assert.ok(workspaceSource.includes('target.changeValue'))
+  assert.ok(panelSource.includes('>查看</el-button>'))
+  assert.ok(!panelSource.includes('查看当日结果'))
+  assert.ok(!panelSource.includes('v-for="plan in scope.row.plans'))
+  assert.ok(workspaceSource.includes('type="expand"'))
+  assert.ok(workspaceSource.includes(':expand-row-keys="healthSampleExpandedKeys"'))
+  assert.ok(workspaceSource.includes('handleHealthSampleExpand'))
+  assert.ok(!workspaceSource.includes('<article v-for="sample in healthSampleRows"'))
+  assert.ok(workspaceSource.includes('targetScope.row.previousValue'))
+  assert.ok(workspaceSource.includes('targetScope.row.changeValue'))
   assert.ok(!workspaceSource.includes('进入关注</span>'))
   assert.ok(!workspaceSource.includes('确认异常</span>'))
   assert.ok(!workspaceSource.includes('恢复确认</span>'))

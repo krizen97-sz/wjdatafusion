@@ -51,18 +51,9 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="当日计划" min-width="220">
+      <el-table-column label="计划" min-width="220" show-overflow-tooltip>
         <template #default="scope">
-          <div class="continuous-health-plans">
-            <el-tag
-              v-for="plan in scope.row.plans.slice(0, 3)"
-              :key="`${scope.row.healthDate}-${plan.planId}`"
-              :type="healthStatusType(plan.dayStatus)"
-              effect="plain"
-              size="small"
-            >{{ plan.planName || '未命名计划' }}</el-tag>
-            <span v-if="scope.row.plans.length > 3">+{{ scope.row.plans.length - 3 }}</span>
-          </div>
+          <span class="continuous-health-plan-text">{{ formatPlanNames(scope.row.plans) }}</span>
         </template>
       </el-table-column>
       <el-table-column label="完成 / 应执行" width="130" align="center">
@@ -76,9 +67,9 @@
       <el-table-column label="异常摘要" min-width="260" show-overflow-tooltip>
         <template #default="scope">{{ scope.row.abnormalSummary || '当天未记录异常' }}</template>
       </el-table-column>
-      <el-table-column label="结果" width="116" fixed="right" align="center">
+      <el-table-column label="操作" width="76" fixed="right" align="center">
         <template #default="scope">
-          <el-button type="primary" link icon="View" @click="$emit('day-results', { date: scope.row.healthDate, group: scope.row })">查看当日结果</el-button>
+          <el-button type="primary" link icon="View" @click="$emit('day-results', { date: scope.row.healthDate, group: scope.row })">查看</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -107,6 +98,11 @@ defineEmits(['update:month', 'update:planId', 'day-results'])
 
 const groupedRows = computed(() => groupDailyHealthRows(props.rows))
 const summary = computed(() => summarizeDailyHealth(groupedRows.value))
+
+function formatPlanNames(plans = []) {
+  const names = plans.map((plan) => plan.planName || '未命名计划')
+  return names.length ? names.join('、') : '-'
+}
 </script>
 
 <style scoped>
@@ -169,21 +165,13 @@ const summary = computed(() => summarizeDailyHealth(groupedRows.value))
   color: #c78322;
 }
 
-.continuous-health-plans {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.continuous-health-plan-text {
+  display: block;
   overflow: hidden;
+  color: var(--app-text);
+  font-size: 13px;
+  text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.continuous-health-plans .el-tag {
-  max-width: 120px;
-}
-
-.continuous-health-plans span {
-  color: var(--app-muted);
-  font-size: 12px;
 }
 
 .continuous-health-table {
@@ -211,59 +199,4 @@ const summary = computed(() => summarizeDailyHealth(groupedRows.value))
   font-weight: 700;
 }
 
-.continuous-plan-list {
-  display: grid;
-  gap: 8px;
-  padding: 4px 18px 8px 54px;
-}
-
-.continuous-plan-row {
-  display: grid;
-  grid-template-columns: 108px minmax(170px, 1fr) 150px 190px minmax(220px, 1.4fr) 82px;
-  align-items: center;
-  gap: 14px;
-  min-height: 60px;
-  padding: 9px 12px;
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  background: var(--surface-strong);
-}
-
-.continuous-plan-row__name,
-.continuous-plan-row__counts {
-  display: grid;
-  gap: 3px;
-}
-
-.continuous-plan-row__name strong {
-  color: var(--app-heading);
-  font-size: 13px;
-}
-
-.continuous-plan-row__name span,
-.continuous-plan-row__counts span,
-.continuous-plan-row p {
-  color: var(--app-muted);
-  font-size: 12px;
-}
-
-.continuous-plan-row__progress {
-  display: grid;
-  grid-template-columns: 1fr 42px;
-  align-items: center;
-  gap: 8px;
-}
-
-.continuous-plan-row__progress span {
-  color: var(--app-text);
-  font-size: 12px;
-  text-align: right;
-}
-
-.continuous-plan-row p {
-  overflow: hidden;
-  margin: 0;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 </style>
