@@ -39,5 +39,18 @@ test('workspace exposes plan mode, daily health and activity tools', () => {
     assert.ok(workspaceSource.includes(marker), `missing high-frequency workspace marker: ${marker}`)
   }
   assert.ok(apiSource.includes("/support/autoInspection/health/daily"))
+  assert.ok(apiSource.includes("/support/autoInspection/health/samples"))
   assert.ok(apiSource.includes('healthConfig: stringifyConfig(data.healthConfig)'))
+  assert.ok(workspaceSource.includes('查看当日结果'))
+  assert.ok(workspaceSource.includes('target.previousValue'))
+  assert.ok(workspaceSource.includes('target.changeValue'))
+  assert.ok(!workspaceSource.includes('进入关注</span>'))
+  assert.ok(!workspaceSource.includes('确认异常</span>'))
+  assert.ok(!workspaceSource.includes('恢复确认</span>'))
+})
+
+test('unexecuted state is distinct from a healthy comparison baseline', () => {
+  assert.equal(healthStatusLabel('3'), '尚未执行')
+  assert.ok(workspaceSource.includes('基线已建立'))
+  assert.ok(workspaceSource.includes('首次执行建立基线并按正常计入'))
 })

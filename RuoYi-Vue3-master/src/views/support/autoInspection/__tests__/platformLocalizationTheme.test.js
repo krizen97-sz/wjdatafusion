@@ -74,7 +74,7 @@ test('cockpit survives production compilation contract', () => {
   assert.ok(cockpit.includes('combinedTrend'))
   assert.ok(cockpit.includes('currentPlanHealth'))
   assert.ok(cockpit.includes("openSamples: '1'"))
-  assert.ok(overview.includes('await openHealthSamples({ date: focusDate, plan })'))
+  assert.ok(overview.includes('await openHealthSamples({ date: focusDate, group: plan })'))
   assert.ok(overview.includes('applyingOverviewDeepLink'))
   assert.ok(releaseNotes.includes("version: 'v3.14.0'"))
 })

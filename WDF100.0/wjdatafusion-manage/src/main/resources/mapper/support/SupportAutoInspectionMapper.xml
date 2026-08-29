@@ -546,7 +546,10 @@
                sr.step_name as stepName, sr.tool_code as toolCode, sr.tool_name as toolName,
                sr.sort_order as sortOrder, tr.target_id as targetId, tr.target_name as targetName,
                tr.target_type as targetType, tr.result_status as resultStatus, tr.actual_value as actualValue,
-               tr.actual_unit as actualUnit, tr.result_detail as resultDetail,
+               tr.actual_unit as actualUnit, tr.evaluation_mode as evaluationMode,
+               tr.previous_value as previousValue, tr.change_value as changeValue,
+               tr.evaluation_rule as evaluationRule, tr.baseline_flag as baselineFlag,
+               tr.result_detail as resultDetail,
                tr.error_message as errorMessage, tr.create_by as createBy,
                tr.create_time as createTime, tr.update_by as updateBy,
                tr.update_time as updateTime, tr.remark
@@ -561,7 +564,10 @@
                sr.step_name as stepName, sr.tool_code as toolCode, sr.tool_name as toolName,
                sr.sort_order as sortOrder, tr.target_id as targetId, tr.target_name as targetName,
                tr.target_type as targetType, tr.result_status as resultStatus, tr.actual_value as actualValue,
-               tr.actual_unit as actualUnit, tr.result_detail as resultDetail,
+               tr.actual_unit as actualUnit, tr.evaluation_mode as evaluationMode,
+               tr.previous_value as previousValue, tr.change_value as changeValue,
+               tr.evaluation_rule as evaluationRule, tr.baseline_flag as baselineFlag,
+               tr.result_detail as resultDetail,
                tr.error_message as errorMessage, tr.create_by as createBy,
                tr.create_time as createTime, tr.update_by as updateBy,
                tr.update_time as updateTime, tr.remark
@@ -577,11 +583,13 @@
     <insert id="insertTargetResult" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="resultId">
         insert into sup_auto_inspection_target_result(
             record_id, step_result_id, target_id, target_name, target_type,
-            result_status, actual_value, actual_unit, result_detail, error_message,
+            result_status, actual_value, actual_unit, evaluation_mode, previous_value,
+            change_value, evaluation_rule, baseline_flag, result_detail, error_message,
             create_by, create_time, update_by, update_time, remark
         ) values (
             #{recordId}, #{stepResultId}, #{targetId}, #{targetName}, #{targetType},
-            #{resultStatus}, #{actualValue}, #{actualUnit}, #{resultDetail}, #{errorMessage},
+            #{resultStatus}, #{actualValue}, #{actualUnit}, #{evaluationMode}, #{previousValue},
+            #{changeValue}, #{evaluationRule}, #{baselineFlag}, #{resultDetail}, #{errorMessage},
             #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
         )
     </insert>

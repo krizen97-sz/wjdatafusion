@@ -69,7 +69,7 @@
             <span><i class="is-normal"></i>健康</span>
             <span><i class="is-warning"></i>需关注</span>
             <span><i class="is-danger"></i>异常</span>
-            <span><i class="is-idle"></i>未检测</span>
+            <span><i class="is-idle"></i>未执行</span>
           </div>
         </header>
         <div v-if="hasTrendData" ref="trendChartRef" class="cockpit-chart cockpit-chart--trend"></div>

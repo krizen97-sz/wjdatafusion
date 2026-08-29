@@ -18,7 +18,7 @@ export function healthStatusLabel(status) {
   if (status === RESULT_NORMAL) return '健康'
   if (status === RESULT_ABNORMAL) return '异常'
   if (status === RESULT_WARNING) return '需关注'
-  return '未检测'
+  return '未执行'
 }
 
 export function healthStatusType(status) {
@@ -74,7 +74,7 @@ export function buildCurrentStatusDistribution(rows = []) {
     { name: '健康', status: RESULT_NORMAL, value: counts[RESULT_NORMAL] },
     { name: '需关注', status: RESULT_WARNING, value: counts[RESULT_WARNING] },
     { name: '异常', status: RESULT_ABNORMAL, value: counts[RESULT_ABNORMAL] },
-    { name: '未检测', status: RESULT_SKIP, value: counts[RESULT_SKIP] }
+    { name: '未执行', status: RESULT_SKIP, value: counts[RESULT_SKIP] }
   ]
 }
 

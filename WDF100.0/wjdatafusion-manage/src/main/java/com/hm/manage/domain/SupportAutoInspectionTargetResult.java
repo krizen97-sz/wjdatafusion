@@ -20,6 +20,11 @@ public class SupportAutoInspectionTargetResult extends BaseEntity
     private String resultStatus;
     private BigDecimal actualValue;
     private String actualUnit;
+    private String evaluationMode;
+    private BigDecimal previousValue;
+    private BigDecimal changeValue;
+    private String evaluationRule;
+    private String baselineFlag;
     private String resultDetail;
     private String errorMessage;
 
@@ -49,6 +54,16 @@ public class SupportAutoInspectionTargetResult extends BaseEntity
     public void setActualValue(BigDecimal actualValue) { this.actualValue = actualValue; }
     public String getActualUnit() { return actualUnit; }
     public void setActualUnit(String actualUnit) { this.actualUnit = actualUnit; }
+    public String getEvaluationMode() { return evaluationMode; }
+    public void setEvaluationMode(String evaluationMode) { this.evaluationMode = evaluationMode; }
+    public BigDecimal getPreviousValue() { return previousValue; }
+    public void setPreviousValue(BigDecimal previousValue) { this.previousValue = previousValue; }
+    public BigDecimal getChangeValue() { return changeValue; }
+    public void setChangeValue(BigDecimal changeValue) { this.changeValue = changeValue; }
+    public String getEvaluationRule() { return evaluationRule; }
+    public void setEvaluationRule(String evaluationRule) { this.evaluationRule = evaluationRule; }
+    public String getBaselineFlag() { return baselineFlag; }
+    public void setBaselineFlag(String baselineFlag) { this.baselineFlag = baselineFlag; }
     public String getResultDetail() { return resultDetail; }
     public void setResultDetail(String resultDetail) { this.resultDetail = resultDetail; }
     public String getErrorMessage() { return errorMessage; }

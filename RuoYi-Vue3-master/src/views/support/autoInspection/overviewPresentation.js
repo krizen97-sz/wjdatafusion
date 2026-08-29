@@ -163,6 +163,6 @@ export function buildWeekResultDistribution(summary = {}) {
   return [
     { name: '正常', value: normal },
     { name: '异常', value: abnormal },
-    { name: '未检测', value: unknown }
+    { name: '未执行', value: unknown }
   ].filter((item) => item.value > 0)
 }

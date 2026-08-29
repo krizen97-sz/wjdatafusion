@@ -22,6 +22,10 @@ class AutoInspectionHighFrequencyMapperContractTest
             assertTrue(source.contains("id=\"upsertDailyHealth\""));
             assertTrue(source.contains("id=\"selectDailyHealthList\""));
             assertTrue(source.contains("run_mode = 'FREQUENT'"));
+            assertTrue(source.contains("tr.evaluation_mode as evaluationMode"));
+            assertTrue(source.contains("tr.previous_value as previousValue"));
+            assertTrue(source.contains("tr.change_value as changeValue"));
+            assertTrue(source.contains("tr.baseline_flag as baselineFlag"));
         }
     }
 }

@@ -36,7 +36,7 @@ test('health score and labels support normal warning abnormal and missing states
   assert.equal(healthStatusLabel(RESULT_NORMAL), '健康')
   assert.equal(healthStatusLabel(RESULT_WARNING), '需关注')
   assert.equal(healthStatusLabel(RESULT_ABNORMAL), '异常')
-  assert.equal(healthStatusLabel(RESULT_SKIP), '未检测')
+  assert.equal(healthStatusLabel(RESULT_SKIP), '未执行')
 })
 
 test('plan filters keep routine and frequent plans in one searchable collection', () => {

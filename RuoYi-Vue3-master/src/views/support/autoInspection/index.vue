@@ -79,7 +79,7 @@
                     :class="{
                       'is-normal': item.name === '正常',
                       'is-abnormal': item.name === '异常',
-                      'is-unknown': item.name === '未检测' || item.empty
+                      'is-unknown': item.name === '未执行' || item.empty
                     }"
                   ><i></i>{{ item.name }} {{ item.empty ? 0 : item.value }}</span>
                 </div>
@@ -124,7 +124,7 @@
               <el-select v-model="recordQuery.resultStatus" clearable placeholder="全部结果" style="width: 130px">
                 <el-option label="正常" value="1" />
                 <el-option label="异常" value="2" />
-                <el-option label="未检测" value="3" />
+                <el-option label="未执行" value="3" />
               </el-select>
             </el-form-item>
             <el-form-item>
@@ -215,7 +215,7 @@
           :plan-options="frequentPlanTreeOptions"
           @update:month="dailyHealthMonth = $event"
           @update:plan-id="dailyHealthPlanId = $event"
-          @samples="openHealthSamples"
+          @day-results="openHealthSamples"
         />
       </section>
     </section>
@@ -969,7 +969,7 @@
         <section v-show="stepActiveSection === 'rule'" id="step-stage-rule" class="target-section step-stage step-stage--rule" :class="{ 'target-section--rule-compact': isHttpApiTestStep }">
           <header>
             <strong>判定规则</strong>
-            <span>{{ isServiceStatusStep ? '服务状态按 systemctl 返回值判定。' : (isHttpApiTestStep ? '返回条件全部满足才正常；请求失败或任一条件不满足即告警。' : (isActivityStep ? '按最后活跃时间判断关注、异常和恢复状态。' : '设置异常阈值、统计窗口和超时。')) }}</span>
+            <span>{{ isServiceStatusStep ? '服务状态按 systemctl 返回值判定。' : (isHttpApiTestStep ? '返回条件全部满足才正常；请求失败或任一条件不满足即告警。' : '先选择和固定值比较，还是和上一次执行结果比较。') }}</span>
           </header>
           <div v-if="isServiceStatusStep" class="service-rule-card">
             <span>
@@ -1052,19 +1052,20 @@
               </div>
             </section>
           </div>
-          <div v-else-if="isActivityStep" class="activity-rule-grid">
-            <label><span>进入关注</span><el-input-number v-model="stepDraft.stepParams.activityRule.warningMinutes" :min="1" :max="1440" controls-position="right" /><em>分钟无新增</em></label>
-            <label><span>确认异常</span><el-input-number v-model="stepDraft.stepParams.activityRule.abnormalMinutes" :min="stepDraft.stepParams.activityRule.warningMinutes" :max="10080" controls-position="right" /><em>分钟无新增</em></label>
-            <label><span>恢复确认</span><el-input-number v-model="stepDraft.stepParams.activityRule.recoverySuccesses" :min="1" :max="20" controls-position="right" /><em>次连续有数据</em></label>
+          <div v-if="useGenericNumericRule" class="evaluation-mode-panel">
+            <el-segmented v-model="stepDraft.stepParams.evaluationConfig.mode" :options="evaluationModeOptions" />
+            <div>
+              <strong>{{ stepDraft.stepParams.evaluationConfig.mode === EVALUATION_MODE_PREVIOUS ? '本次结果与上一次执行结果比较' : '本次结果与固定阈值比较' }}</strong>
+              <span>{{ evaluationModeHint }}</span>
+            </div>
           </div>
           <div class="step-rule-grid" :class="{ 'step-rule-grid--compact': !useGenericNumericRule }">
             <el-form-item v-if="useGenericNumericRule" label="比较规则" class="step-rule-field step-rule-field--compare">
               <el-select v-model="stepDraft.compareRule" style="width: 100%">
-                <el-option label="实际值不得低于阈值" value="MIN" />
-                <el-option label="实际值不得高于阈值" value="MAX" />
+                <el-option v-for="item in comparisonRuleOptions" :key="item.value" :label="item.label" :value="item.value" />
               </el-select>
             </el-form-item>
-            <el-form-item v-if="useGenericNumericRule" label="告警阈值" class="step-rule-field step-rule-field--threshold">
+            <el-form-item v-if="useGenericNumericRule" :label="comparisonThresholdLabel" class="step-rule-field step-rule-field--threshold">
               <el-input-number v-model="stepDraft.thresholdValue" :min="0" controls-position="right" style="width: 100%" />
             </el-form-item>
             <el-form-item v-if="useGenericNumericRule" label="阈值单位" class="step-rule-field step-rule-field--unit">
@@ -1098,6 +1099,16 @@
             <el-col :span="12"><el-form-item label="Bootstrap" required><el-input v-model="stepDraft.target.host" placeholder="10.0.0.1:9092,10.0.0.2:9092" /></el-form-item></el-col>
             <el-col :span="12"><el-form-item label="Topic" required><el-input v-model="stepDraft.target.topic" placeholder="例如：tim-pass-record" /></el-form-item></el-col>
             <el-col v-if="stepDraft.toolCode !== TOOL_KAFKA_TOPIC_ACTIVITY" :span="12"><el-form-item label="消费组" required><el-input v-model="stepDraft.target.consumerGroup" placeholder="例如：tim-analysis-group" /></el-form-item></el-col>
+            <el-col v-if="stepDraft.toolCode === 'KAFKA_LAG'" :span="12">
+              <el-form-item label="检测指标">
+                <el-select v-model="stepDraft.stepParams.kafkaMetric" style="width: 100%" @change="handleKafkaMetricChange">
+                  <el-option label="最大分区积压" :value="KAFKA_METRIC_MAX_LAG" />
+                  <el-option label="消费组总积压" :value="KAFKA_METRIC_TOTAL_LAG" />
+                  <el-option label="生产总 Offset" :value="KAFKA_METRIC_PRODUCED_OFFSET" />
+                  <el-option label="消费总 Offset" :value="KAFKA_METRIC_CONSUMED_OFFSET" />
+                </el-select>
+              </el-form-item>
+            </el-col>
           </el-row>
           <el-row v-if="stepTargetType === 'MQTT'" :gutter="16">
             <el-col :span="12"><el-form-item label="目标名称"><el-input v-model="stepDraft.target.targetName" placeholder="例如：设备心跳主题" /></el-form-item></el-col>
@@ -1770,7 +1781,7 @@
             <el-button type="primary" icon="Check" @click="confirmToolPicker(toolPickerPreviewTool.toolCode)">{{ toolPickerActionLabel }}</el-button>
           </div>
           <div class="tool-picker-meta">
-            <span><label>默认规则</label><strong>{{ isActivityTool(toolPickerPreviewTool.toolCode) ? '按持续无数据时长判定' : `${toolPickerPreviewTool.defaultCompareRule === 'MIN' ? '不得低于' : '不得高于'} ${toolPickerPreviewTool.defaultThresholdValue ?? '-'}${toolPickerPreviewTool.valueUnit || ''}` }}</strong></span>
+            <span><label>默认规则</label><strong>{{ isActivityTool(toolPickerPreviewTool.toolCode) ? '与上次执行结果比较' : `${toolPickerPreviewTool.defaultCompareRule === 'MIN' ? '不得低于' : '不得高于'} ${toolPickerPreviewTool.defaultThresholdValue ?? '-'}${toolPickerPreviewTool.valueUnit || ''}` }}</strong></span>
             <span><label>超时</label><strong>{{ toolPickerPreviewTool.defaultTimeoutSeconds || 10 }} 秒</strong></span>
             <span><label>统计窗口</label><strong>{{ toolPickerPreviewTool.defaultTimeWindowMinutes || 0 }} 分钟</strong></span>
           </div>
@@ -2050,33 +2061,67 @@
       </section>
     </el-drawer>
 
-    <el-drawer v-model="healthSampleDrawerOpen" size="820px" append-to-body class="health-sample-drawer">
+    <el-drawer v-model="healthSampleDrawerOpen" size="1080px" append-to-body class="health-sample-drawer">
       <template #header>
         <div class="dialog-title">
-          <span>高频采样明细</span>
-          <strong>{{ healthSampleContext.date }} · {{ healthSampleContext.plan?.planName || '-' }}</strong>
+          <span>高频每日检测</span>
+          <strong>{{ healthSampleContext.date }} · 当日检测结果</strong>
         </div>
       </template>
       <div class="health-sample-summary">
-        <span><label>当日健康度</label><strong>{{ healthSampleContext.plan?.healthScore || 0 }}%</strong></span>
-        <span><label>完成 / 应执行</label><strong>{{ healthSampleContext.plan?.completedCount || 0 }} / {{ healthSampleContext.plan?.expectedCount || 0 }}</strong></span>
-        <span><label>异常 / 关注 / 缺失</label><strong>{{ healthSampleContext.plan?.abnormalCount || 0 }} / {{ healthSampleContext.plan?.warningCount || 0 }} / {{ healthSampleContext.plan?.missingCount || 0 }}</strong></span>
+        <span><label>当日健康度</label><strong>{{ healthSampleContext.group?.healthScore || 0 }}%</strong></span>
+        <span><label>完成 / 应执行</label><strong>{{ healthSampleContext.group?.completedCount || 0 }} / {{ healthSampleContext.group?.expectedCount || 0 }}</strong></span>
+        <span><label>正常 / 关注 / 异常</label><strong>{{ healthSampleContext.group?.normalCount || 0 }} / {{ healthSampleContext.group?.warningCount || 0 }} / {{ healthSampleContext.group?.abnormalCount || 0 }}</strong></span>
+        <span><label>缺失执行</label><strong>{{ healthSampleContext.group?.missingCount || 0 }}</strong></span>
       </div>
-      <el-table v-loading="healthSampleLoading" :data="healthSampleRows" class="auto-table" empty-text="当天暂无原始采样">
-        <el-table-column label="采样时间" prop="inspectionTime" width="170" />
-        <el-table-column label="状态" width="90" align="center">
-          <template #default="scope"><el-tag :type="resultTagType(scope.row.resultStatus)" effect="plain">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
-        </el-table-column>
-        <el-table-column label="耗时" width="90" align="center">
-          <template #default="scope">{{ scope.row.durationMs ? `${scope.row.durationMs}ms` : '-' }}</template>
-        </el-table-column>
-        <el-table-column label="结果摘要" min-width="300" show-overflow-tooltip>
-          <template #default="scope">{{ scope.row.abnormalSummary || scope.row.summary || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" align="center">
-          <template #default="scope"><el-button link type="primary" icon="View" @click="handleRecordDetail(scope.row)">详情</el-button></template>
-        </el-table-column>
-      </el-table>
+      <div class="health-sample-toolbar">
+        <div>
+          <strong>采样时间线</strong>
+          <span>步骤和目标结果直接展开，异常记录优先查看判定依据。</span>
+        </div>
+        <el-segmented v-model="healthSampleResultStatus" :options="healthSampleStatusOptions" @change="handleHealthSampleStatusChange" />
+      </div>
+      <div v-loading="healthSampleLoading" class="health-sample-timeline">
+        <el-empty v-if="!healthSampleRows.length && !healthSampleLoading" description="当天暂无检测结果" :image-size="90" />
+        <article v-for="sample in healthSampleRows" :key="sample.recordId" class="health-sample-card" :class="`is-${sample.resultStatus || '3'}`">
+          <header class="health-sample-card__head">
+            <div class="health-sample-card__time">
+              <strong>{{ formatInspectionClock(sample.inspectionTime) }}</strong>
+              <span>{{ sample.planName || '未命名计划' }}</span>
+            </div>
+            <div class="health-sample-card__summary">
+              <strong>{{ sample.abnormalSummary || sample.summary || '本次检测已完成' }}</strong>
+              <span>{{ sample.templateName || '未命名模板' }} · {{ sample.durationMs ? `${sample.durationMs}ms` : '耗时未记录' }}</span>
+            </div>
+            <el-tag :type="resultTagType(sample.resultStatus)" effect="plain">{{ formatResult(sample.resultStatus) }}</el-tag>
+          </header>
+          <section v-for="(group, groupIndex) in getRecordResultGroups(sample)" :key="group.key" class="health-sample-step">
+            <header>
+              <span>{{ groupIndex + 1 }}</span>
+              <div><strong>{{ group.stepName }}</strong><em>{{ group.toolName || '巡检步骤' }}</em></div>
+              <el-tag size="small" :type="resultTagType(group.resultStatus)" effect="plain">{{ formatResult(group.resultStatus) }}</el-tag>
+            </header>
+            <div class="health-sample-targets">
+              <article v-for="(target, targetIndex) in group.targets" :key="target.resultId || `${group.key}-${targetIndex}`" class="health-sample-target">
+                <header>
+                  <strong>{{ target.targetName || `检测子项 ${targetIndex + 1}` }}</strong>
+                  <span v-if="target.baselineFlag === 'Y'" class="health-baseline-mark">基线已建立</span>
+                  <el-tag size="small" :type="resultTagType(target.resultStatus)">{{ formatResult(target.resultStatus) }}</el-tag>
+                </header>
+                <div class="health-evidence-grid">
+                  <span><label>判定方式</label><strong>{{ formatEvaluationMode(target) }}</strong></span>
+                  <span><label>本次数据</label><strong>{{ formatMetricValue(target.actualValue, target.actualUnit) }}</strong></span>
+                  <span><label>上次数据</label><strong>{{ formatMetricValue(target.previousValue, target.actualUnit) }}</strong></span>
+                  <span><label>变化量</label><strong>{{ formatChangeValue(target.changeValue, target.actualUnit) }}</strong></span>
+                </div>
+                <div class="health-evaluation-rule"><label>判定规则</label><strong>{{ target.evaluationRule || formatStepThreshold(group) }}</strong></div>
+                <p>{{ target.resultDetail || '本次未记录调用明细' }}</p>
+                <div v-if="target.errorMessage" class="health-sample-error"><label>异常原因</label><strong>{{ target.errorMessage }}</strong></div>
+              </article>
+            </div>
+          </section>
+        </article>
+      </div>
       <pagination v-show="healthSampleTotal > 0" :total="healthSampleTotal" v-model:page="healthSampleQuery.pageNum" v-model:limit="healthSampleQuery.pageSize" @pagination="getHealthSamples" />
     </el-drawer>
   </div>
@@ -2128,6 +2173,7 @@ import {
   getAutoInspectionTarget,
   getAutoInspectionTemplate,
   listAutoInspectionDailyHealth,
+  listAutoInspectionHealthSamples,
   listAutoInspectionPlan,
   listAutoInspectionRecord,
   listAutoInspectionServerAssetTree,
@@ -2162,6 +2208,12 @@ const TOOL_DATABASE_QUERY = 'DATABASE_QUERY'
 const TOOL_KAFKA_TOPIC_ACTIVITY = 'KAFKA_TOPIC_ACTIVITY'
 const TOOL_KAFKA_CONSUMER_PROGRESS = 'KAFKA_CONSUMER_PROGRESS'
 const TOOL_MQTT_TOPIC_ACTIVITY = 'MQTT_TOPIC_ACTIVITY'
+const EVALUATION_MODE_FIXED = 'FIXED'
+const EVALUATION_MODE_PREVIOUS = 'PREVIOUS'
+const KAFKA_METRIC_MAX_LAG = 'MAX_LAG'
+const KAFKA_METRIC_TOTAL_LAG = 'TOTAL_LAG'
+const KAFKA_METRIC_PRODUCED_OFFSET = 'PRODUCED_OFFSET'
+const KAFKA_METRIC_CONSUMED_OFFSET = 'CONSUMED_OFFSET'
 const PLAN_MODE_ROUTINE = 'ROUTINE'
 const PLAN_MODE_FREQUENT = 'FREQUENT'
 const configTabNames = ['template', 'plan']
@@ -2228,8 +2280,16 @@ const healthSampleDrawerOpen = ref(false)
 const healthSampleLoading = ref(false)
 const healthSampleRows = ref([])
 const healthSampleTotal = ref(0)
-const healthSampleContext = ref({ date: '', plan: {} })
-const healthSampleQuery = ref({ pageNum: 1, pageSize: 50 })
+const healthSampleContext = ref({ date: '', group: {} })
+const healthSampleQuery = ref({ pageNum: 1, pageSize: 20 })
+const healthSampleResultStatus = ref('ALL')
+const healthSampleStatusOptions = [
+  { label: '全部结果', value: 'ALL' },
+  { label: '仅看异常', value: '2' },
+  { label: '仅看关注', value: '4' },
+  { label: '仅看正常', value: '1' },
+  { label: '未执行', value: '3' }
+]
 const reportExportOpen = ref(false)
 const reportExportLoading = ref(false)
 const reportExportForm = ref(defaultReportExportForm())
@@ -2317,7 +2377,7 @@ const operationGuideSteps = [
     desc: '点击添加步骤后先进入巡检工具箱，按树状分类选择工具，再进入具体配置页面。',
     manual: [
       '工具箱按消息队列、接口平台、文件目录、服务器和网络端口分类，右侧会展示工具说明、默认规则、配置重点和使用案例。',
-      '当前内置 Kafka 消费积压、Kafka 写入中断、Kafka 消费停滞、MQTT 主题活跃、海康接口数量、接口调用测试、HTTP 健康、数据库查询、FTP 目录、服务器目录、磁盘、大数据爆盘、TCP 端口和服务器服务状态检测。'
+      'Kafka积压、Topic写入和消费推进统一使用“Kafka消费组指标检测”：先选择最大积压、总积压、生产Offset或消费Offset，再决定与固定阈值还是上次结果比较。'
     ],
     actions: ['点击“添加步骤”打开工具箱。', '先阅读工具用途和案例，再点击“进入配置”。', '相同工具可以在一个模板中配置多次。'],
     images: [
@@ -2332,6 +2392,7 @@ const operationGuideSteps = [
     manual: [
       'HTTP 和海康接口类步骤需要配置 URL、请求方式、结果路径、AppKey、Secret 和请求体模板；接口调用测试还支持 Header、Cookie、静态鉴权、请求体和多条件判断，支持 ${todayStart}、${todayEnd} 等日期变量。',
       '数据库工具使用只读 SQL 获取业务指标；FTP 和服务器目录工具支持一个步骤配置多个子项；服务器服务状态检测会清晰展示 active、inactive、failed 等状态规则。',
+      '所有数值型步骤都可选择“固定阈值”或“上次结果”。选择上次结果时，系统直接比较本次值与上次值的差值；首次成功采样只建立基线并按正常计入健康度。',
       '执行策略可以设置异常复检次数、复检间隔，以及异常后继续或停止后续步骤。'
     ],
     actions: ['填写数据来源、结果判断和执行策略。', '使用日期变量生成当天接口参数。', '点击“测试并预览”核对真实返回值和可用字段。'],
@@ -2393,7 +2454,7 @@ const operationGuideSteps = [
     desc: '驾驶舱统一展示例行与高频健康；巡检总览保留两类明细下钻和报告导出。',
     manual: [
       '巡检驾驶舱通过图表统一查看综合健康度、近七日趋势、当前计划状态和待处理问题。',
-      '高频监测按天展示健康度、异常日期和缺失采样，展开日期可查看计划，再下钻到原始分钟采样。',
+      '高频监测按天展示健康度、计划、异常摘要和缺失采样；点击“查看当日结果”即可直接查看采样、步骤、子项、本次值、上次值、变化量和判定规则。',
       '点击“导出周/月报”后，可选择自然周导出 Word 周报，也可选择月份批量导出该月所有自然周周报压缩包，周报开头包含巡检人员和用户签字确认区。'
     ],
     actions: ['在驾驶舱统一查看例行与高频健康。', '按模板、计划、来源、结果筛选明细。', '按周或按月导出 Word 周报归档。'],
@@ -2444,32 +2505,32 @@ const httpDatePlaceholders = [
 
 const toolGuideMap = {
   KAFKA_LAG: {
-    brief: '检测 Kafka Topic 在指定消费组下的消息积压。',
-    description: '连接 Kafka 集群，读取 Topic 各分区的最新位点和消费组提交位点，计算最大积压与平均积压。',
-    scenario: '适合判断数据处理链路是否堵塞，例如原始过车 Topic、二次分析 Topic 是否被消费服务及时处理。',
-    configs: ['填写 Kafka bootstrap 地址。', '填写需要检测的 Topic。', '填写对应消费组 consumer group。', '阈值通常设置为最大允许积压条数。'],
-    example: '例如“原始Kafka积压”：Topic 填 tim-pass-record，消费组填 tim-analysis-group，阈值设置为 2000 条，高于阈值告警。'
+    brief: '一次获取 Kafka 消费组指标，可检查积压，也可检查生产或消费是否推进。',
+    description: '连接 Kafka 集群后同时读取最大积压、总积压、生产总 Offset 和消费总 Offset；配置时选择指标，再选择与固定阈值或上次结果比较。',
+    scenario: '同一工具既能判断积压是否超限，也能判断 Topic 是否继续写入、消费组是否继续消费，避免为相同取数逻辑维护多个工具。',
+    configs: ['填写 Kafka bootstrap、Topic 和消费组。', '选择最大积压、总积压、生产 Offset 或消费 Offset。', '积压通常与固定阈值比较；Offset 通常与上次结果比较。', '首次历史比较会建立基线并按正常计入。'],
+    example: '积压检测：最大积压不得高于 2000；消费停滞检测：消费总 Offset 与上次相比至少增加 1。'
   },
   KAFKA_TOPIC_ACTIVITY: {
-    brief: '持续观察 Kafka Topic 是否还有新消息写入。',
-    description: '周期读取各分区末端 Offset，记录最后一次增长时间；持续不增长时按关注和异常时长判定断流。',
+    brief: '旧模板兼容工具，新建步骤请使用“Kafka消费组指标检测”。',
+    description: '保留旧模板的 Topic Offset 取数与执行能力，判定已改为本次结果直接与上次结果比较。',
     scenario: '适合监测原始过车、二次分析、违法数据等应持续写入的 Kafka Topic。',
-    configs: ['填写 Kafka bootstrap 和 Topic。', '设置多久无新增进入关注、多久确认异常。', '设置恢复后需要连续确认的次数。'],
-    example: '例如“原始过车Topic断流”：每分钟采样，3分钟无新增进入关注，5分钟无新增确认异常。'
+    configs: ['历史模板可继续编辑和执行。', '新配置统一使用 Kafka 消费组指标检测的生产总 Offset。'],
+    example: '生产总 Offset 与上次相比至少增加 1，否则判定本次没有新增。'
   },
   KAFKA_CONSUMER_PROGRESS: {
-    brief: '判断上游有新消息时，消费组是否还在推进。',
-    description: '同时采样 Topic 末端 Offset 和消费组提交 Offset；上游增长但消费位点不动时判定消费停滞。',
+    brief: '旧模板兼容工具，新建步骤请使用“Kafka消费组指标检测”。',
+    description: '保留旧模板的消费 Offset 取数与执行能力，判定已改为本次结果直接与上次结果比较。',
     scenario: '适合发现消费者进程仍存活但实际不再处理消息、消费线程卡死或提交位点停止的问题。',
-    configs: ['填写 Kafka bootstrap、Topic 和消费组。', '配置关注、异常和恢复确认时长。', '上游没有新增时不会误判消费者停滞。'],
-    example: '例如“二次分析消费停滞”：Topic有新增但消费组连续5分钟不推进时告警。'
+    configs: ['历史模板可继续编辑和执行。', '新配置统一使用 Kafka 消费组指标检测的消费总 Offset。'],
+    example: '消费总 Offset 与上次相比至少增加 1，否则判定本次消费没有推进。'
   },
   MQTT_TOPIC_ACTIVITY: {
     brief: '后台持续订阅 MQTT Topic，检测长时间没有消息。',
     description: '应用保持持久在线订阅，记录最后一条实时消息时间；计划只负责周期判定，不会只监听几秒后断开。',
     scenario: '适合设备心跳、物联网状态、采集数据和告警 Topic 的持续活跃监测。',
     configs: ['填写 Broker、端口和 Topic Filter。', '按需填写账号密码、QoS和Client ID。', '默认忽略首次订阅收到的保留消息。'],
-    example: '例如“设备心跳Topic”：订阅 device/+/heartbeat，3分钟无消息关注，5分钟无消息异常。'
+    example: '例如“设备心跳Topic”：选择与上次结果比较，累计消息数与上次相比至少增加 1。'
   },
   HTTP_COUNT: {
     brief: '调用接口并从响应里提取一个数量字段。',
@@ -2606,10 +2667,13 @@ const databasePreviewColumns = computed(() => targetPreviewData.value?.preview?.
 const databasePreviewRows = computed(() => targetPreviewData.value?.preview?.rows || [])
 const currentStepTool = computed(() => toolList.value.find((item) => item.toolCode === stepDraft.value.toolCode))
 const currentStepToolGuide = computed(() => getToolGuide(stepDraft.value.toolCode))
+const selectableToolList = computed(() => toolList.value.filter((tool) => (
+  tool.status !== '1' && ![TOOL_KAFKA_TOPIC_ACTIVITY, TOOL_KAFKA_CONSUMER_PROGRESS].includes(tool.toolCode)
+)))
 const filteredToolList = computed(() => {
   const keyword = normalizeSearchText(toolPickerKeyword.value)
-  if (!keyword) return toolList.value
-  return toolList.value.filter((tool) => {
+  if (!keyword) return selectableToolList.value
+  return selectableToolList.value.filter((tool) => {
     const guide = getToolGuide(tool.toolCode)
     return normalizeSearchText([
       tool.toolName,
@@ -2636,7 +2700,7 @@ const toolPickerTreeGroups = computed(() => {
 const toolPickerPreviewTool = computed(() => {
   return toolList.value.find((item) => item.toolCode === toolPickerPreviewCode.value)
     || currentStepTool.value
-    || toolList.value[0]
+    || selectableToolList.value[0]
 })
 const toolPickerPreviewGuide = computed(() => getToolGuide(toolPickerPreviewTool.value?.toolCode))
 const toolPickerDialogTitle = computed(() => toolPickerMode.value === 'new' ? '先选择工具，再进入对应配置页面' : '重新选择当前步骤的巡检工具')
@@ -2715,8 +2779,30 @@ const isHttpHealthStep = computed(() => stepDraft.value.toolCode === TOOL_HTTP_H
 const isHttpApiTestStep = computed(() => stepDraft.value.toolCode === TOOL_HTTP_API_TEST)
 const isTcpPortStep = computed(() => stepDraft.value.toolCode === TOOL_TCP_PORT_CHECK)
 const isServiceStatusStep = computed(() => stepDraft.value.toolCode === TOOL_SERVER_SERVICE_STATUS)
-const isActivityStep = computed(() => isActivityTool(stepDraft.value.toolCode))
-const useGenericNumericRule = computed(() => !isServiceStatusStep.value && !isHttpApiTestStep.value && !isActivityStep.value)
+const useGenericNumericRule = computed(() => !isServiceStatusStep.value && !isHttpApiTestStep.value)
+const evaluationModeOptions = [
+  { label: '固定阈值', value: EVALUATION_MODE_FIXED },
+  { label: '上次结果', value: EVALUATION_MODE_PREVIOUS }
+]
+const comparisonRuleOptions = computed(() => stepDraft.value.stepParams?.evaluationConfig?.mode === EVALUATION_MODE_PREVIOUS
+  ? [
+      { label: '变化量至少达到', value: 'MIN' },
+      { label: '变化量不得超过', value: 'MAX' }
+    ]
+  : [
+      { label: '当前值不得低于', value: 'MIN' },
+      { label: '当前值不得高于', value: 'MAX' }
+    ])
+const comparisonThresholdLabel = computed(() => {
+  if (stepDraft.value.stepParams?.evaluationConfig?.mode !== EVALUATION_MODE_PREVIOUS) return '固定阈值'
+  return stepDraft.value.compareRule === 'MIN' ? '最小变化量' : '最大变化量'
+})
+const evaluationModeHint = computed(() => {
+  if (stepDraft.value.stepParams?.evaluationConfig?.mode !== EVALUATION_MODE_PREVIOUS) {
+    return `正常条件：本次值${stepDraft.value.compareRule === 'MIN' ? '不低于' : '不高于'} ${stepDraft.value.thresholdValue ?? 0}${stepDraft.value.thresholdUnit || ''}`
+  }
+  return `正常条件：本次值 - 上次值${stepDraft.value.compareRule === 'MIN' ? '不低于' : '不高于'} ${stepDraft.value.thresholdValue ?? 0}${stepDraft.value.thresholdUnit || ''}；首次执行建立基线并按正常计入，历史按同一计划、步骤和目标隔离。`
+})
 const stepTargetSectionTitle = computed(() => {
   if (stepToolContractIssue.value) return '工具配置不可用'
   if (stepTargetType.value === 'KAFKA') return stepDraft.value.toolCode === TOOL_KAFKA_TOPIC_ACTIVITY ? 'Kafka Topic 活跃目标' : 'Kafka 消费目标'
@@ -2758,9 +2844,8 @@ const stepRuleNavSummary = computed(() => {
     const count = normalizeApiTestConfig(stepDraft.value.target).assertions.length
     return `${count} 条返回条件`
   }
-  if (isActivityStep.value) {
-    const rule = stepDraft.value.stepParams?.activityRule || {}
-    return `${rule.warningMinutes || 3}/${rule.abnormalMinutes || 5} 分钟`
+  if (stepDraft.value.stepParams?.evaluationConfig?.mode === EVALUATION_MODE_PREVIOUS) {
+    return `较上次 ${stepDraft.value.compareRule === 'MIN' ? '≥' : '≤'} ${stepDraft.value.thresholdValue ?? 0}${stepDraft.value.thresholdUnit || ''}`
   }
   const symbol = stepDraft.value.compareRule === 'MIN' ? '≥' : '≤'
   return `${symbol} ${stepDraft.value.thresholdValue ?? 0}${stepDraft.value.thresholdUnit || ''}`
@@ -2943,7 +3028,7 @@ async function applyOverviewDeepLink() {
         const plan = dailyHealthRows.value.find((item) => (
           String(item.healthDate || '') === focusDate && Number(item.planId) === Number(dailyHealthPlanId.value)
         ))
-        if (plan) await openHealthSamples({ date: focusDate, plan })
+        if (plan) await openHealthSamples({ date: focusDate, group: plan })
       }
     } finally {
       applyingOverviewDeepLink.value = false
@@ -3017,7 +3102,13 @@ function loadConfigTab(tab = configTab.value) {
 
 function getTools() {
   return listAutoInspectionTool().then((res) => {
-    toolList.value = res.data || []
+    toolList.value = (res.data || []).map((tool) => {
+      if (tool.toolCode === 'KAFKA_LAG') return { ...tool, toolName: 'Kafka消费组指标检测' }
+      if ([TOOL_KAFKA_TOPIC_ACTIVITY, TOOL_KAFKA_CONSUMER_PROGRESS].includes(tool.toolCode)) {
+        return { ...tool, status: '1' }
+      }
+      return tool
+    })
   })
 }
 
@@ -3412,30 +3503,32 @@ function refreshCurrentRecordView() {
   return getRecordList()
 }
 
-function openHealthSamples({ date, plan }) {
-  healthSampleContext.value = { date, plan }
+function openHealthSamples({ date, group }) {
+  healthSampleContext.value = { date, group: group || {} }
   healthSampleQuery.value.pageNum = 1
+  healthSampleResultStatus.value = 'ALL'
   healthSampleDrawerOpen.value = true
   return getHealthSamples()
 }
 
 function getHealthSamples() {
-  const { date, plan } = healthSampleContext.value
-  if (!date || !plan?.planId) return Promise.resolve()
-  const nextDay = new Date(`${date}T00:00:00`)
-  nextDay.setDate(nextDay.getDate() + 1)
+  const { date } = healthSampleContext.value
+  if (!date) return Promise.resolve()
   healthSampleLoading.value = true
-  return listAutoInspectionRecord({
+  return listAutoInspectionHealthSamples({
     ...healthSampleQuery.value,
-    planId: plan.planId,
-    sourceType: 'AUTO',
-    runMode: PLAN_MODE_FREQUENT,
-    beginTime: `${date} 00:00:00`,
-    endTime: `${formatDateParam(nextDay)} 00:00:00`
+    healthDate: date,
+    planId: dailyHealthPlanId.value,
+    resultStatus: healthSampleResultStatus.value === 'ALL' ? undefined : healthSampleResultStatus.value
   }).then((res) => {
     healthSampleRows.value = res.rows || []
     healthSampleTotal.value = res.total || 0
   }).finally(() => { healthSampleLoading.value = false })
+}
+
+function handleHealthSampleStatusChange() {
+  healthSampleQuery.value.pageNum = 1
+  getHealthSamples()
 }
 
 function resolveMonthDateRange(month) {
@@ -4570,7 +4663,7 @@ function openStepDialog(index = null) {
   stepActiveSection.value = 'source'
   ensureExecutionPolicy(stepDraft.value)
   apiConfigActiveTab.value = 'request'
-  if (!stepDraft.value.toolCode && toolList.value.length) handleStepToolChange(toolList.value[0].toolCode)
+  if (!stepDraft.value.toolCode && selectableToolList.value.length) handleStepToolChange(selectableToolList.value[0].toolCode)
   if (getTargetTypeByTool(stepDraft.value.toolCode) === 'FTP') {
     ensureFtpStepParams(stepDraft.value)
   }
@@ -4583,9 +4676,7 @@ function openStepDialog(index = null) {
   if (stepDraft.value.toolCode === TOOL_SERVER_SERVICE_STATUS) {
     ensureServiceStatusParams(stepDraft.value)
   }
-  if (isActivityTool(stepDraft.value.toolCode)) {
-    ensureActivityRule(stepDraft.value)
-  }
+  ensureEvaluationConfig(stepDraft.value)
   if (getTargetTypeByTool(stepDraft.value.toolCode) === 'MQTT') {
     stepDraft.value.target.mqttConfig = normalizeMqttConfig(stepDraft.value.target)
   }
@@ -4601,7 +4692,7 @@ function activateStepSection(section) {
 }
 
 function openNewStepToolPicker() {
-  if (!toolList.value.length) {
+  if (!selectableToolList.value.length) {
     proxy.$modal.msgWarning('巡检工具加载中，请稍后再试')
     return
   }
@@ -4609,7 +4700,7 @@ function openNewStepToolPicker() {
   toolPickerMode.value = 'new'
   toolPickerKeyword.value = ''
   collapsedToolGroupKeys.value = []
-  toolPickerPreviewCode.value = toolList.value[0]?.toolCode || ''
+  toolPickerPreviewCode.value = selectableToolList.value[0]?.toolCode || ''
   toolPickerOpen.value = true
 }
 
@@ -4617,7 +4708,9 @@ function openToolPicker() {
   toolPickerMode.value = 'change'
   toolPickerKeyword.value = ''
   collapsedToolGroupKeys.value = []
-  toolPickerPreviewCode.value = stepDraft.value.toolCode || toolList.value[0]?.toolCode || ''
+  toolPickerPreviewCode.value = selectableToolList.value.some((tool) => tool.toolCode === stepDraft.value.toolCode)
+    ? stepDraft.value.toolCode
+    : (selectableToolList.value[0]?.toolCode || '')
   toolPickerOpen.value = true
 }
 
@@ -4691,9 +4784,7 @@ function handleStepToolChange(toolCode) {
   if (toolCode === TOOL_SERVER_SERVICE_STATUS) {
     ensureServiceStatusParams(draft)
   }
-  if (isActivityTool(toolCode)) {
-    ensureActivityRule(draft)
-  }
+  ensureEvaluationConfig(draft)
 }
 
 function submitStepDraft() {
@@ -4719,7 +4810,8 @@ function cloneStep(step) {
 }
 
 function defaultStepForm(order, toolCode = '') {
-  const tool = toolList.value.find((item) => item.toolCode === toolCode) || toolList.value[0]
+  const tool = toolList.value.find((item) => item.toolCode === toolCode)
+    || toolList.value.find((item) => item.status !== '1' && ![TOOL_KAFKA_TOPIC_ACTIVITY, TOOL_KAFKA_CONSUMER_PROGRESS].includes(item.toolCode))
   const stepName = tool?.toolName || ''
   const step = {
     stepName,
@@ -4733,7 +4825,11 @@ function defaultStepForm(order, toolCode = '') {
     timeoutSeconds: tool?.defaultTimeoutSeconds || 10,
     targetIds: [],
     target: normalizeStepTarget({}, tool?.toolCode, stepName),
-    stepParams: { executionPolicy: defaultExecutionPolicy() }
+    stepParams: {
+      executionPolicy: defaultExecutionPolicy(),
+      evaluationConfig: defaultEvaluationConfig(tool?.toolCode),
+      kafkaMetric: tool?.toolCode === 'KAFKA_LAG' ? KAFKA_METRIC_MAX_LAG : undefined
+    }
   }
   if (getTargetTypeByTool(step.toolCode) === 'BIG_DATA_SERVER') {
     ensureBigDataServerParams(step)
@@ -4747,9 +4843,7 @@ function defaultStepForm(order, toolCode = '') {
   if (step.toolCode === TOOL_SERVER_SERVICE_STATUS) {
     ensureServiceStatusParams(step)
   }
-  if (isActivityTool(step.toolCode)) {
-    ensureActivityRule(step)
-  }
+  ensureEvaluationConfig(step)
   return step
 }
 
@@ -4858,23 +4952,39 @@ function isActivityTool(toolCode) {
   return [TOOL_KAFKA_TOPIC_ACTIVITY, TOOL_KAFKA_CONSUMER_PROGRESS, TOOL_MQTT_TOPIC_ACTIVITY].includes(toolCode)
 }
 
-function defaultActivityRule() {
-  return { warningMinutes: 3, abnormalMinutes: 5, recoverySuccesses: 2 }
-}
-
-function normalizeActivityRule(rule = {}) {
-  const warningMinutes = Math.max(1, Math.min(1440, Number(rule.warningMinutes || 3)))
+function defaultEvaluationConfig(toolCode = '') {
   return {
-    warningMinutes,
-    abnormalMinutes: Math.max(warningMinutes, Math.min(10080, Number(rule.abnormalMinutes || 5))),
-    recoverySuccesses: Math.max(1, Math.min(20, Number(rule.recoverySuccesses || 2)))
+    mode: isActivityTool(toolCode) ? EVALUATION_MODE_PREVIOUS : EVALUATION_MODE_FIXED,
+    resetOnDecrease: isActivityTool(toolCode)
   }
 }
 
-function ensureActivityRule(step) {
+function normalizeEvaluationConfig(config = {}, toolCode = '') {
+  const fallback = defaultEvaluationConfig(toolCode)
+  return {
+    mode: config.mode === EVALUATION_MODE_PREVIOUS ? EVALUATION_MODE_PREVIOUS : (config.mode === EVALUATION_MODE_FIXED ? EVALUATION_MODE_FIXED : fallback.mode),
+    resetOnDecrease: config.resetOnDecrease === true || config.resetOnDecrease === 'true' || (config.resetOnDecrease === undefined && fallback.resetOnDecrease)
+  }
+}
+
+function ensureEvaluationConfig(step) {
   if (!step.stepParams || typeof step.stepParams !== 'object') step.stepParams = {}
-  step.stepParams.activityRule = normalizeActivityRule(step.stepParams.activityRule)
-  return step.stepParams.activityRule
+  step.stepParams.evaluationConfig = normalizeEvaluationConfig(step.stepParams.evaluationConfig, step.toolCode)
+  if (step.toolCode === 'KAFKA_LAG') step.stepParams.kafkaMetric = step.stepParams.kafkaMetric || KAFKA_METRIC_MAX_LAG
+  if (isActivityTool(step.toolCode) && Number(step.thresholdValue || 0) <= 0) {
+    step.thresholdValue = 1
+    step.compareRule = 'MIN'
+  }
+  return step.stepParams.evaluationConfig
+}
+
+function handleKafkaMetricChange(metric) {
+  ensureEvaluationConfig(stepDraft.value)
+  const usesOffset = [KAFKA_METRIC_PRODUCED_OFFSET, KAFKA_METRIC_CONSUMED_OFFSET].includes(metric)
+  stepDraft.value.stepParams.evaluationConfig.mode = usesOffset ? EVALUATION_MODE_PREVIOUS : EVALUATION_MODE_FIXED
+  stepDraft.value.stepParams.evaluationConfig.resetOnDecrease = usesOffset
+  stepDraft.value.compareRule = usesOffset ? 'MIN' : 'MAX'
+  stepDraft.value.thresholdValue = usesOffset ? 1 : 2000
 }
 
 function defaultMqttConfig() {
@@ -4917,8 +5027,11 @@ function applyToolDefaults(step, forceName = false) {
   step.timeoutSeconds = tool.defaultTimeoutSeconds || 10
   step.targetIds = []
   const executionPolicy = normalizeExecutionPolicy(step.stepParams?.executionPolicy)
-  step.stepParams = { executionPolicy }
-  if (isActivityTool(step.toolCode)) step.stepParams.activityRule = defaultActivityRule()
+  step.stepParams = {
+    executionPolicy,
+    evaluationConfig: defaultEvaluationConfig(step.toolCode),
+    kafkaMetric: step.toolCode === 'KAFKA_LAG' ? KAFKA_METRIC_MAX_LAG : undefined
+  }
   if (getTargetTypeByTool(step.toolCode) === 'FTP') {
     ensureFtpStepParams(step)
   }
@@ -4931,9 +5044,7 @@ function applyToolDefaults(step, forceName = false) {
   if (step.toolCode === TOOL_SERVER_SERVICE_STATUS) {
     ensureServiceStatusParams(step)
   }
-  if (isActivityTool(step.toolCode)) {
-    ensureActivityRule(step)
-  }
+  ensureEvaluationConfig(step)
 }
 
 function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
@@ -4977,12 +5088,15 @@ function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
 function normalizeStepForSave(step) {
   const next = cloneStep(step)
   const executionPolicy = normalizeExecutionPolicy(next.stepParams?.executionPolicy)
+  const evaluationConfig = normalizeEvaluationConfig(next.stepParams?.evaluationConfig, next.toolCode)
+  const kafkaMetric = next.stepParams?.kafkaMetric || (next.toolCode === 'KAFKA_LAG' ? KAFKA_METRIC_MAX_LAG : undefined)
   if (next.toolCode === 'BIG_DATA_SERVER_DISK') {
     const servers = normalizeBigDataServerTargets(next.stepParams?.serverTargets || [])
     next.stepParams = {
       includePseudo: next.stepParams?.includePseudo || 'false',
       serverTargets: servers,
-      executionPolicy
+      executionPolicy,
+      evaluationConfig
     }
     next.target = {}
     next.targetIds = servers.filter((server) => server.targetId).map((server) => server.targetId)
@@ -4992,7 +5106,8 @@ function normalizeStepForSave(step) {
     const targets = normalizeFtpStepTargets(next.stepParams?.ftpTargets || [])
     next.stepParams = {
       ftpTargets: targets,
-      executionPolicy
+      executionPolicy,
+      evaluationConfig
     }
     next.target = {}
     next.targetIds = targets.filter((target) => target.targetId).map((target) => target.targetId)
@@ -5004,7 +5119,8 @@ function normalizeStepForSave(step) {
       recursive: next.stepParams?.recursive || 'true',
       filePattern: next.stepParams?.filePattern || '',
       serverTargets: servers,
-      executionPolicy
+      executionPolicy,
+      evaluationConfig
     }
     next.target = {}
     next.targetIds = servers.filter((server) => server.targetId).map((server) => server.targetId)
@@ -5023,8 +5139,7 @@ function normalizeStepForSave(step) {
   }
   next.target = normalizeStepTarget(next.target, next.toolCode, next.stepName)
   next.targetIds = next.target?.targetId ? [next.target.targetId] : []
-  next.stepParams = { executionPolicy }
-  if (isActivityTool(next.toolCode)) next.stepParams.activityRule = normalizeActivityRule(step.stepParams?.activityRule)
+  next.stepParams = { executionPolicy, evaluationConfig, kafkaMetric }
   return next
 }
 
@@ -5046,7 +5161,7 @@ function validateStepDraft(step) {
     ensureServiceStatusParams(step)
     return validateServiceStatusTargets(step.stepParams?.serverTargets || [])
   }
-  if (isActivityTool(step.toolCode)) ensureActivityRule(step)
+  ensureEvaluationConfig(step)
   const target = normalizeStepTarget(step.target, step.toolCode, step.stepName)
   return validateTargetBusiness(target)
 }
@@ -5656,6 +5771,11 @@ function compatibleTargets(step) {
 function normalizeStepFromServer(step) {
   const params = parseCronConfig(step.stepParams) || {}
   params.executionPolicy = normalizeExecutionPolicy(params.executionPolicy)
+  params.evaluationConfig = normalizeEvaluationConfig(params.evaluationConfig, step.toolCode)
+  if (step.toolCode === 'KAFKA_LAG') params.kafkaMetric = params.kafkaMetric || KAFKA_METRIC_MAX_LAG
+  const thresholdValue = isActivityTool(step.toolCode) && Number(step.thresholdValue || 0) <= 0
+    ? 1
+    : step.thresholdValue
   if (step.toolCode === 'FTP_FILE_COUNT') {
     const ftpTargets = (step.targets?.length ? step.targets : params.ftpTargets || (step.target ? [step.target] : []))
       .map((target, index) => ({
@@ -5719,6 +5839,8 @@ function normalizeStepFromServer(step) {
   }
   return {
     ...step,
+    thresholdValue,
+    compareRule: isActivityTool(step.toolCode) ? 'MIN' : step.compareRule,
     stepParams: params,
     targetIds: step.targetIds || [],
     target: normalizeStepTarget(step.target || {}, step.toolCode, step.stepName)
@@ -5861,6 +5983,15 @@ function labelPrivilegeMode(value) {
 
 function getToolLabel(value) {
   return toolList.value.find((item) => item.toolCode === value)?.toolName || value || '-'
+}
+
+function labelKafkaMetric(value) {
+  return ({
+    [KAFKA_METRIC_MAX_LAG]: '最大分区积压',
+    [KAFKA_METRIC_TOTAL_LAG]: '消费组总积压',
+    [KAFKA_METRIC_PRODUCED_OFFSET]: '生产总 Offset',
+    [KAFKA_METRIC_CONSUMED_OFFSET]: '消费总 Offset'
+  })[value || KAFKA_METRIC_MAX_LAG] || value || '最大分区积压'
 }
 
 function getToolGuide(toolCode) {
@@ -6046,9 +6177,12 @@ function getStepDetailItems(step) {
       { label: '临时文件系统', value: step.stepParams?.includePseudo === 'true' ? '包含' : '过滤' }
     )
   }
-  if (isActivityTool(step.toolCode)) {
-    const rule = normalizeActivityRule(step.stepParams?.activityRule)
-    items.push({ label: '活性规则', value: `${rule.warningMinutes}分钟关注 / ${rule.abnormalMinutes}分钟异常 / 连续${rule.recoverySuccesses}次恢复` })
+  if (!isServiceStatusResult(step) && step.toolCode !== TOOL_HTTP_API_TEST) {
+    const evaluation = normalizeEvaluationConfig(step.stepParams?.evaluationConfig, step.toolCode)
+    items.push({ label: '判定方式', value: evaluation.mode === EVALUATION_MODE_PREVIOUS ? '本次值与上次结果比较' : '本次值与固定阈值比较' })
+  }
+  if (step.toolCode === 'KAFKA_LAG') {
+    items.push({ label: 'Kafka指标', value: labelKafkaMetric(step.stepParams?.kafkaMetric) })
   }
   return items
 }
@@ -6094,6 +6228,59 @@ function getTargetResultGroupKey(target) {
   return ''
 }
 
+function getRecordResultGroups(record = {}) {
+  const steps = Array.isArray(record.steps) ? record.steps : []
+  const targets = Array.isArray(record.targetResults) ? record.targetResults : []
+  const groups = []
+  const groupMap = new Map()
+  steps
+    .slice()
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+    .forEach((step, index) => {
+      const key = getStepResultGroupKey(step, index)
+      const group = { ...step, key, targets: [] }
+      groups.push(group)
+      groupMap.set(key, group)
+    })
+  targets.forEach((target, index) => {
+    const key = getTargetResultGroupKey(target)
+    let group = groupMap.get(key)
+    if (!group) {
+      group = {
+        key: key || `unassigned-${index}`,
+        stepName: target.stepName || '未归属步骤',
+        toolName: target.toolName || '',
+        resultStatus: target.resultStatus || '3',
+        targets: []
+      }
+      groups.push(group)
+      groupMap.set(group.key, group)
+    }
+    group.targets.push(target)
+  })
+  return groups.filter((group) => group.targets.length)
+}
+
+function formatEvaluationMode(row) {
+  if (row?.baselineFlag === 'Y') return '首次建立基线'
+  if (row?.toolCode === TOOL_HTTP_API_TEST) return '按返回条件判断'
+  if (row?.toolCode === TOOL_SERVER_SERVICE_STATUS) return '按服务状态判断'
+  if (!row?.evaluationRule) return '按工具规则判断'
+  return row?.evaluationMode === EVALUATION_MODE_PREVIOUS ? '与上次结果比较' : '与固定阈值比较'
+}
+
+function formatMetricValue(value, unit = '') {
+  if (value === undefined || value === null || value === '') return '-'
+  return `${value}${unit || ''}`
+}
+
+function formatChangeValue(value, unit = '') {
+  if (value === undefined || value === null || value === '') return '-'
+  const number = Number(value)
+  const prefix = Number.isFinite(number) && number > 0 ? '+' : ''
+  return `${prefix}${value}${unit || ''}`
+}
+
 function isServiceStatusResult(row) {
   if (!row) return false
   return row.toolCode === TOOL_SERVER_SERVICE_STATUS || row.toolType === TOOL_SERVER_SERVICE_STATUS || row.actualUnit === '状态'
@@ -6102,14 +6289,12 @@ function isServiceStatusResult(row) {
 function formatStepThreshold(row) {
   if (isServiceStatusResult(row)) return '期望 active (running)，非 active 告警'
   if (row?.toolCode === TOOL_HTTP_API_TEST || row?.toolType === TOOL_HTTP_API_TEST) return '所有条件满足，任一不满足告警'
-  if (isActivityTool(row?.toolCode || row?.toolType)) {
-    const params = parseCronConfig(row?.stepParams) || row?.stepParams || {}
-    const rule = normalizeActivityRule(params.activityRule)
-    return `${rule.warningMinutes}分钟关注，${rule.abnormalMinutes}分钟异常，连续${rule.recoverySuccesses}次恢复`
-  }
   if (!row) return '-'
   if (row.thresholdValue === undefined || row.thresholdValue === null || row.thresholdValue === '') return '-'
-  return `${row.compareRule === 'MIN' ? '不低于' : '不高于'} ${row.thresholdValue}${row.thresholdUnit || ''}`
+  const params = parseCronConfig(row.stepParams) || row.stepParams || {}
+  const evaluation = normalizeEvaluationConfig(params.evaluationConfig, row.toolCode || row.toolType)
+  const subject = evaluation.mode === EVALUATION_MODE_PREVIOUS ? '本次值 - 上次值' : '本次值'
+  return `${subject}${row.compareRule === 'MIN' ? '不得低于' : '不得高于'} ${row.thresholdValue}${row.thresholdUnit || ''}`
 }
 
 function formatStepExecutionPolicy(step) {
@@ -6152,7 +6337,7 @@ function formatStepResultSummary(row) {
     const state = extractServiceStatusText(row)
     return `服务状态异常：${state}`
   }
-  return row?.resultSummary || '未检测'
+  return row?.resultSummary || '未执行'
 }
 
 function formatTargetResultDetail(row) {
@@ -6164,7 +6349,7 @@ function formatResult(value) {
   if (value === '1') return '正常'
   if (value === '2') return '异常'
   if (value === '4') return '关注'
-  return '未检测'
+  return '未执行'
 }
 
 function formatDashboardHealthScore(value, status) {
@@ -6551,7 +6736,7 @@ function resultTagType(value) {
 
 .health-sample-summary {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 14px;
   border: 1px solid var(--surface-border);
   background: var(--surface-muted);
@@ -6569,13 +6754,210 @@ function resultTagType(value) {
 }
 
 .health-sample-summary label {
-  color: #7a8ca3;
+  color: var(--app-muted);
   font-size: 12px;
 }
 
 .health-sample-summary strong {
   color: var(--app-heading);
   font-size: 17px;
+}
+
+.health-sample-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 16px 0 10px;
+
+  > div {
+    display: grid;
+    gap: 2px;
+  }
+
+  strong {
+    color: var(--app-heading);
+    font-size: 15px;
+  }
+
+  span {
+    color: var(--app-muted);
+    font-size: 12px;
+  }
+}
+
+.health-sample-timeline {
+  min-height: 240px;
+}
+
+.health-sample-card {
+  margin-bottom: 12px;
+  padding: 14px 0 18px;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.health-sample-card__head {
+  display: grid;
+  grid-template-columns: 116px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.health-sample-card__time,
+.health-sample-card__summary {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.health-sample-card__time strong {
+  color: var(--app-heading);
+  font-size: 20px;
+}
+
+.health-sample-card__time span,
+.health-sample-card__summary span {
+  overflow: hidden;
+  color: var(--app-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-sample-card__summary strong {
+  overflow: hidden;
+  color: var(--app-text);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-sample-step {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--surface-border);
+}
+
+.health-sample-step > header {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.health-sample-step > header > span {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.health-sample-step > header > div {
+  display: grid;
+  gap: 1px;
+}
+
+.health-sample-step > header strong,
+.health-sample-target header strong {
+  color: var(--app-heading);
+  font-size: 13px;
+}
+
+.health-sample-step > header em {
+  color: var(--app-muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.health-sample-targets {
+  display: grid;
+  gap: 8px;
+  padding-left: 38px;
+}
+
+.health-sample-target {
+  padding: 11px 12px;
+  border: 1px solid var(--surface-border);
+  border-radius: 5px;
+  background: var(--surface-muted);
+}
+
+.health-sample-target > header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.health-sample-target > header strong {
+  min-width: 0;
+  flex: 1;
+}
+
+.health-baseline-mark {
+  color: var(--el-color-primary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.health-evidence-grid {
+  display: grid;
+  grid-template-columns: 1.2fr repeat(3, minmax(110px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.health-evidence-grid span,
+.health-evaluation-rule {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.health-evidence-grid label,
+.health-evaluation-rule label,
+.health-sample-error label {
+  color: var(--app-muted);
+  font-size: 10px;
+}
+
+.health-evidence-grid strong,
+.health-evaluation-rule strong {
+  overflow: hidden;
+  color: var(--app-text);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-evaluation-rule {
+  margin-top: 8px;
+}
+
+.health-sample-target > p {
+  margin: 8px 0 0;
+  color: var(--app-muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.health-sample-error {
+  display: grid;
+  gap: 2px;
+  margin-top: 8px;
+  padding: 7px 9px;
+  border-left: 2px solid var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
+}
+
+.health-sample-error strong {
+  color: var(--el-color-danger);
+  font-size: 12px;
 }
 
 .record-table--daily {
@@ -8446,33 +8828,32 @@ function resultTagType(value) {
   }
 }
 
-.activity-rule-grid {
+.evaluation-mode-panel {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.activity-rule-grid label {
-  display: grid;
-  grid-template-columns: 66px minmax(0, 1fr) 92px;
+  grid-template-columns: 280px minmax(0, 1fr);
   align-items: center;
-  gap: 8px;
-  padding: 9px 11px;
-  border: 1px solid #dfe8f2;
+  gap: 16px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--surface-border);
   border-radius: 6px;
   background: var(--surface-muted);
 }
 
-.activity-rule-grid span,
-.activity-rule-grid em {
-  color: #60758f;
-  font-size: 12px;
-  font-style: normal;
+.evaluation-mode-panel > div {
+  display: grid;
+  gap: 2px;
 }
 
-.activity-rule-grid :deep(.el-input-number) {
-  width: 100%;
+.evaluation-mode-panel strong {
+  color: var(--app-heading);
+  font-size: 13px;
+}
+
+.evaluation-mode-panel span {
+  color: var(--app-muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .service-rule-card {
@@ -10330,7 +10711,6 @@ function resultTagType(value) {
     display: none;
   }
 
-	  .step-rule-grid,
   .api-param-grid,
   .api-request-grid,
   .api-body-controls,

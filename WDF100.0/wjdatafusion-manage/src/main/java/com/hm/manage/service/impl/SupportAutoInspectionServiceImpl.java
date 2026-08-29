@@ -75,6 +75,7 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.PartitionInfo;
 import org.apache.kafka.common.TopicPartition;
+import com.github.pagehelper.Page;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -99,6 +100,7 @@ import com.hm.manage.domain.SupportServer;
 import com.hm.manage.domain.SupportServerCredential;
 import com.hm.manage.domain.bo.AutoInspectionDashboardQuery;
 import com.hm.manage.domain.bo.AutoInspectionHealthQuery;
+import com.hm.manage.domain.bo.AutoInspectionHealthSampleQuery;
 import com.hm.manage.domain.bo.AutoInspectionPlanQuery;
 import com.hm.manage.domain.bo.AutoInspectionPlanSaveBo;
 import com.hm.manage.domain.bo.AutoInspectionRecordQuery;
@@ -164,6 +166,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final String TOOL_TCP_PORT_CHECK = "TCP_PORT_CHECK";
     private static final String TOOL_SERVER_SERVICE_STATUS = "SERVER_SERVICE_STATUS";
     private static final String TOOL_DATABASE_QUERY = "DATABASE_QUERY";
+    private static final String KAFKA_METRIC_MAX_LAG = "MAX_LAG";
+    private static final String KAFKA_METRIC_TOTAL_LAG = "TOTAL_LAG";
+    private static final String KAFKA_METRIC_PRODUCED_OFFSET = "PRODUCED_OFFSET";
+    private static final String KAFKA_METRIC_CONSUMED_OFFSET = "CONSUMED_OFFSET";
     private static final String TARGET_BIG_DATA_SERVER = "BIG_DATA_SERVER";
     private static final String TARGET_DATABASE = "DATABASE";
     private static final String PRIVILEGE_NONE = "NONE";
@@ -860,6 +866,70 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     {
         Map<String, Object> params = toMap(query);
         return toBeanList(selectDailyHealthRows(params), SupportAutoInspectionHealthDaily.class);
+    }
+
+    @Override
+    public List<AutoInspectionRecordDetailVo> selectDailyHealthSamples(AutoInspectionHealthSampleQuery query)
+    {
+        if (query == null || query.getHealthDate() == null)
+        {
+            throw new ServiceException("请选择需要查看的健康日期");
+        }
+        LocalDate date = query.getHealthDate().toInstant().atZone(ZoneId.systemDefault()).toLocalDate();
+        Map<String, Object> params = new HashMap<>();
+        params.put("planId", query.getPlanId());
+        String resultStatus = StringUtils.trimToEmpty(query.getResultStatus());
+        params.put("resultStatus", List.of(RESULT_NORMAL, RESULT_ABNORMAL, RESULT_SKIP, RESULT_WARNING)
+                .contains(resultStatus) ? resultStatus : null);
+        params.put("sourceType", SOURCE_AUTO);
+        params.put("runMode", AutoInspectionPlanHealthConfig.MODE_FREQUENT);
+        params.put("beginTime", toDate(date.atStartOfDay()));
+        params.put("endTime", toDate(date.plusDays(1).atStartOfDay()));
+        List<Map<String, Object>> records = autoInspectionMapper.selectRecordList(params);
+        long total = records instanceof Page<?> page ? page.getTotal() : records.size();
+        int pageNum = records instanceof Page<?> page ? page.getPageNum() : 1;
+        int pageSize = records instanceof Page<?> page ? page.getPageSize() : Math.max(records.size(), 1);
+        Page<AutoInspectionRecordDetailVo> result = new Page<>(pageNum, pageSize);
+        result.setTotal(total);
+        if (records.isEmpty())
+        {
+            return result;
+        }
+
+        List<Long> recordIds = records.stream()
+                .map(row -> toLong(row.get("recordId")))
+                .filter(id -> id != null)
+                .collect(Collectors.toList());
+        Map<Long, List<Map<String, Object>>> stepsByRecord = groupRowsByLongKey(
+                autoInspectionMapper.selectStepResultsByRecordIds(recordIds), "recordId");
+        Map<Long, List<Map<String, Object>>> targetsByRecord = groupRowsByLongKey(
+                autoInspectionMapper.selectTargetResultsByRecordIds(recordIds), "recordId");
+        for (Map<String, Object> record : records)
+        {
+            Long recordId = toLong(record.get("recordId"));
+            record.put("steps", stepsByRecord.getOrDefault(recordId, new ArrayList<>()));
+            record.put("targetResults", targetsByRecord.getOrDefault(recordId, new ArrayList<>()));
+            result.add(toBean(record, AutoInspectionRecordDetailVo.class));
+        }
+        return result;
+    }
+
+    private Map<Long, List<Map<String, Object>>> groupRowsByLongKey(List<Map<String, Object>> rows, String key)
+    {
+        Map<Long, List<Map<String, Object>>> result = new LinkedHashMap<>();
+        if (rows == null)
+        {
+            return result;
+        }
+        for (Map<String, Object> row : rows)
+        {
+            Long id = toLong(row.get(key));
+            if (id != null)
+            {
+                result.computeIfAbsent(id, ignored -> new ArrayList<>()).add(row);
+            }
+        }
+        return result;
     }
 
     private List<Map<String, Object>> selectDailyHealthRows(Map<String, Object> params)
@@ -1757,7 +1827,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         html.append("<h2>一、整体健康度分析</h2>")
                 .append("<table class=\"summary\"><tr><th>统计项</th><th>数值</th><th>说明</th></tr>")
                 .append("<tr><td>巡检次数</td><td>").append(total).append("</td><td>本周自动与手动巡检执行总次数</td></tr>")
-                .append("<tr><td>正常 / 异常 / 未检测</td><td>").append(normalCount).append(" / ").append(abnormalCount).append(" / ").append(skippedCount).append("</td><td>按巡检主结果统计</td></tr>")
+                .append("<tr><td>正常 / 异常 / 未执行</td><td>").append(normalCount).append(" / ").append(abnormalCount).append(" / ").append(skippedCount).append("</td><td>按巡检主结果统计</td></tr>")
                 .append("<tr><td>记录健康度</td><td>").append(escapeHtml(recordHealth)).append("</td><td>正常巡检记录数 / 巡检记录总数</td></tr>")
                 .append("<tr><td>目标子项健康度</td><td>").append(escapeHtml(targetHealth)).append("</td><td>正常目标子项数 / 目标子项总数</td></tr>")
                 .append("<tr><td>目标子项 / 异常子项</td><td>").append(targetCount).append(" / ").append(abnormalTargetCount).append("</td><td>用于定位具体巡检对象</td></tr>")
@@ -2046,7 +2116,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         writeRow(sheet, rowIndex++, null, "巡检记录数", records.size(), "该范围内的巡检执行次数");
         writeRow(sheet, rowIndex++, null, "正常记录数", normalCount, "主结果为正常的记录");
         writeRow(sheet, rowIndex++, abnormalCount > 0 ? styles.get("warning") : null, "异常记录数", abnormalCount, "主结果为异常的记录");
-        writeRow(sheet, rowIndex++, null, "未检测/跳过记录数", skippedCount, "主结果为未检测的记录");
+        writeRow(sheet, rowIndex++, null, "未执行/跳过记录数", skippedCount, "主结果为未执行的记录");
         writeRow(sheet, rowIndex++, null, "手动 / 自动执行", manualCount + " / " + (records.size() - manualCount), "按执行来源统计");
         writeRow(sheet, rowIndex++, null, "涉及模板数", templateNames.size(), StringUtils.join(templateNames, "、"));
         writeRow(sheet, rowIndex++, null, "涉及计划数", planNames.size(), StringUtils.join(planNames, "、"));
@@ -2305,8 +2375,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         int baselineStepCount = 0;
         boolean flowStopped = false;
         List<String> abnormalSummaries = new ArrayList<>();
-        FrequentExecutionContext frequentContext = frequentAuto
-                ? new FrequentExecutionContext(toLong(plan.get("planId")), executionTime) : null;
+        ComparisonExecutionContext comparisonContext = plan == null ? null
+                : new ComparisonExecutionContext(toLong(plan.get("planId")), executionTime);
         for (Map<String, Object> sourceStep : steps)
         {
             Map<String, Object> step = new HashMap<>(sourceStep);
@@ -2350,10 +2420,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             boolean hasAbnormal = false;
             boolean hasWarning = false;
             boolean hasNormal = false;
+            boolean hasBaseline = false;
             for (Map<String, Object> target : targets)
             {
                 TargetCheckResult result = runTargetWithPolicy(step, tool, withPlainSecret(target), executionPolicy,
-                        frequentContext);
+                        comparisonContext);
                 results.add(result);
                 if (RESULT_ABNORMAL.equals(result.status))
                 {
@@ -2366,6 +2437,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 else if (RESULT_NORMAL.equals(result.status))
                 {
                     hasNormal = true;
+                }
+                if (result.baseline)
+                {
+                    hasBaseline = true;
                 }
             }
 
@@ -2393,10 +2468,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             else if (hasNormal)
             {
                 normalStepCount++;
-            }
-            else
-            {
-                baselineStepCount++;
+                if (hasBaseline)
+                {
+                    baselineStepCount++;
+                }
             }
             autoInspectionMapper.insertStepResult(stepResult);
             for (TargetCheckResult result : results)
@@ -2412,9 +2487,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         record.put("abnormalCount", abnormalCount);
         record.put("warningCount", warningCount);
         record.put("resultStatus", resolveInspectionStatus(enabledCount, abnormalCount, warningCount,
-                normalStepCount, baselineStepCount));
+                normalStepCount));
         record.put("summary", "启用" + enabledCount + "步，跳过" + skippedCount + "步，检测目标" + targetCount
-                + "个，异常" + abnormalCount + "步，关注" + warningCount + "步，基线" + baselineStepCount + "步");
+                + "个，异常" + abnormalCount + "步，关注" + warningCount + "步，建立基线" + baselineStepCount + "步");
         record.put("abnormalSummary", abnormalSummaries.isEmpty() ? "无异常" : StringUtils.join(abnormalSummaries, "；"));
         record.put("durationMs", System.currentTimeMillis() - startedAt);
         record.put("updateBy", getCurrentUsername());
@@ -2447,51 +2522,93 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return result;
     }
 
-    private boolean isActivityTool(String toolCode)
+    private boolean isLegacyPreviousTool(String toolCode)
     {
         return TOOL_KAFKA_TOPIC_ACTIVITY.equals(toolCode)
                 || TOOL_KAFKA_CONSUMER_PROGRESS.equals(toolCode)
                 || TOOL_MQTT_TOPIC_ACTIVITY.equals(toolCode);
     }
 
-    private void applyActivityState(FrequentExecutionContext context, Map<String, Object> step,
-                                    TargetCheckResult result)
+    private boolean usesPreviousComparison(Map<String, Object> step)
+    {
+        return AutoInspectionValueComparison.MODE_PREVIOUS.equals(resolveEvaluationMode(step));
+    }
+
+    private String resolveEvaluationMode(Map<String, Object> step)
+    {
+        Map<String, Object> params = readParams(step);
+        Map<String, Object> config = nestedMap(params.get("evaluationConfig"));
+        return AutoInspectionValueComparison.normalizeMode(config.get("mode"),
+                isLegacyPreviousTool(str(step, "toolCode")));
+    }
+
+    private BigDecimal resolveComparisonThreshold(Map<String, Object> step)
+    {
+        BigDecimal threshold = toBigDecimal(step.get("thresholdValue"));
+        Map<String, Object> config = nestedMap(readParams(step).get("evaluationConfig"));
+        if (threshold == null)
+        {
+            return BigDecimal.ZERO;
+        }
+        if (config.isEmpty() && isLegacyPreviousTool(str(step, "toolCode"))
+                && threshold.compareTo(BigDecimal.ZERO) <= 0)
+        {
+            return BigDecimal.ONE;
+        }
+        return threshold;
+    }
+
+    private boolean shouldResetComparisonBaseline(Map<String, Object> step)
+    {
+        Map<String, Object> params = readParams(step);
+        Map<String, Object> config = nestedMap(params.get("evaluationConfig"));
+        if (config.containsKey("resetOnDecrease"))
+        {
+            return Boolean.parseBoolean(String.valueOf(config.get("resetOnDecrease")));
+        }
+        String metric = StringUtils.defaultIfBlank(str(params, "kafkaMetric"), KAFKA_METRIC_MAX_LAG);
+        return isLegacyPreviousTool(str(step, "toolCode"))
+                || KAFKA_METRIC_PRODUCED_OFFSET.equals(metric)
+                || KAFKA_METRIC_CONSUMED_OFFSET.equals(metric);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> nestedMap(Object value)
+    {
+        return value instanceof Map<?, ?> ? (Map<String, Object>) value : new HashMap<>();
+    }
+
+    private void applyPreviousComparison(ComparisonExecutionContext context, Map<String, Object> step,
+                                         TargetCheckResult result)
     {
         Long stepId = toLong(step.get("stepId"));
         Long targetId = result.targetId;
         String toolCode = str(step, "toolCode");
-        if (context.planId == null || stepId == null || targetId == null)
+        BigDecimal previousValue = null;
+        Map<String, Object> previousRow = null;
+        if (context != null && context.planId != null && stepId != null && targetId != null)
         {
-            result.status = RESULT_SKIP;
-            result.appendDetail("当前目标尚未形成稳定的计划、步骤和目标标识，本次仅完成采样");
-            return;
+            previousRow = autoInspectionMapper.selectProbeState(context.planId, stepId, targetId, toolCode);
+            previousValue = previousRow == null ? null : toBigDecimal(previousRow.get("primaryValue"));
         }
 
-        Map<String, Object> previousRow = autoInspectionMapper.selectProbeState(context.planId, stepId,
-                targetId, toolCode);
-        AutoInspectionActivityStateMachine.State previous = previousRow == null ? null
-                : new AutoInspectionActivityStateMachine.State(
-                        toBigDecimal(previousRow.get("primaryValue")),
-                        toBigDecimal(previousRow.get("secondaryValue")),
-                        toLocalDateTime(previousRow.get("observedAt")),
-                        toLocalDateTime(previousRow.get("lastActivityAt")),
-                        toInt(previousRow.get("abnormalStreak"), 0),
-                        toInt(previousRow.get("normalStreak"), 0),
-                        str(previousRow, "stateStatus"));
-        BigDecimal primary = toBigDecimal(result.preview.get("primaryValue"));
-        if (primary == null)
+        AutoInspectionValueComparison.Evaluation evaluation = AutoInspectionValueComparison.evaluate(
+                AutoInspectionValueComparison.MODE_PREVIOUS,
+                StringUtils.defaultIfBlank(str(step, "compareRule"), RULE_MIN),
+                resolveComparisonThreshold(step), result.actualValue, previousValue,
+                shouldResetComparisonBaseline(step));
+        result.applyEvaluation(evaluation);
+        String unit = StringUtils.defaultString(result.actualUnit);
+        result.evaluationRule = evaluation.rule + unit;
+        result.appendDetail("判定依据：" + evaluation.detail + (StringUtils.isBlank(unit) ? "" : "（单位：" + unit + "）"));
+
+        if (context == null || context.planId == null || stepId == null || targetId == null)
         {
-            primary = result.actualValue;
+            result.baseline = true;
+            result.evaluationRule = "未绑定执行计划，本次只展示取值，不更新历史基线";
+            result.appendDetail(result.evaluationRule);
+            return;
         }
-        BigDecimal secondary = toBigDecimal(result.preview.get("secondaryValue"));
-        LocalDateTime externalActivity = toLocalDateTime(result.preview.get("lastActivityAt"));
-        AutoInspectionActivityStateMachine.Observation observation =
-                new AutoInspectionActivityStateMachine.Observation(primary, secondary,
-                        context.observedAt, externalActivity);
-        AutoInspectionActivityStateMachine.Rule rule =
-                AutoInspectionActivityStateMachine.ruleFromStepParams(step.get("stepParams"));
-        AutoInspectionActivityStateMachine.Evaluation evaluation = AutoInspectionActivityStateMachine.evaluate(
-                resolveActivityMode(toolCode), rule, previous, observation);
 
         Date now = DateUtils.getNowDate();
         Map<String, Object> state = new HashMap<>();
@@ -2499,41 +2616,21 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         state.put("stepId", stepId);
         state.put("targetId", targetId);
         state.put("toolCode", toolCode);
-        state.put("primaryValue", evaluation.primaryValue);
-        state.put("secondaryValue", evaluation.secondaryValue);
-        state.put("observedAt", toDate(evaluation.observedAt));
-        state.put("lastActivityAt", evaluation.lastActivityAt == null ? null : toDate(evaluation.lastActivityAt));
-        state.put("abnormalStreak", evaluation.abnormalStreak);
-        state.put("normalStreak", evaluation.normalStreak);
-        state.put("stateStatus", evaluation.status);
+        state.put("primaryValue", result.actualValue);
+        state.put("secondaryValue", result.preview.get("secondaryValue"));
+        state.put("observedAt", toDate(context.observedAt));
+        state.put("lastActivityAt", toDate(context.observedAt));
+        state.put("abnormalStreak", RESULT_ABNORMAL.equals(result.status)
+                ? toInt(previousRow == null ? null : previousRow.get("abnormalStreak"), 0) + 1 : 0);
+        state.put("normalStreak", RESULT_NORMAL.equals(result.status)
+                ? toInt(previousRow == null ? null : previousRow.get("normalStreak"), 0) + 1 : 0);
+        state.put("stateStatus", result.status);
         state.put("stateDetail", evaluation.detail);
         state.put("createBy", "system");
         state.put("createTime", now);
         state.put("updateBy", "system");
         state.put("updateTime", now);
         autoInspectionMapper.upsertProbeState(state);
-
-        result.status = evaluation.status;
-        result.appendDetail("活性判定：" + evaluation.detail
-                + "；关注" + rule.warningMinutes + "分钟，异常" + rule.abnormalMinutes
-                + "分钟，恢复确认" + rule.recoverySuccesses + "次");
-        if (RESULT_ABNORMAL.equals(result.status))
-        {
-            result.errorMessage = evaluation.detail;
-        }
-    }
-
-    private AutoInspectionActivityStateMachine.Mode resolveActivityMode(String toolCode)
-    {
-        if (TOOL_KAFKA_CONSUMER_PROGRESS.equals(toolCode))
-        {
-            return AutoInspectionActivityStateMachine.Mode.CONSUMER_PROGRESS;
-        }
-        if (TOOL_MQTT_TOPIC_ACTIVITY.equals(toolCode))
-        {
-            return AutoInspectionActivityStateMachine.Mode.MQTT_ACTIVITY;
-        }
-        return AutoInspectionActivityStateMachine.Mode.TOPIC_ACTIVITY;
     }
 
     private void refreshDailyHealth(Map<String, Object> plan, LocalDate date, LocalDateTime now)
@@ -2615,17 +2712,17 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private TargetCheckResult runTargetWithPolicy(Map<String, Object> step, Map<String, Object> tool,
                                                    Map<String, Object> target, AutoInspectionExecutionPolicy policy,
-                                                   FrequentExecutionContext frequentContext)
+                                                   ComparisonExecutionContext comparisonContext)
     {
-        if (isActivityTool(str(step, "toolCode")))
+        if (usesPreviousComparison(step))
         {
-            return runActivityTargetWithPolicy(step, tool, target, policy, frequentContext);
+            return runPreviousComparisonTargetWithPolicy(step, tool, target, policy, comparisonContext);
         }
         TargetCheckResult result = null;
         int attempts = policy.getRetryCount() + 1;
         for (int attempt = 1; attempt <= attempts; attempt++)
         {
-            result = runSingleTarget(step, tool, target, true, frequentContext);
+            result = runSingleTarget(step, tool, target, true, comparisonContext);
             if (RESULT_NORMAL.equals(result.status) || attempt >= attempts)
             {
                 if (attempt > 1)
@@ -2648,10 +2745,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return result;
     }
 
-    private TargetCheckResult runActivityTargetWithPolicy(Map<String, Object> step, Map<String, Object> tool,
-                                                           Map<String, Object> target,
-                                                           AutoInspectionExecutionPolicy policy,
-                                                           FrequentExecutionContext frequentContext)
+    private TargetCheckResult runPreviousComparisonTargetWithPolicy(Map<String, Object> step,
+                                                                     Map<String, Object> tool,
+                                                                     Map<String, Object> target,
+                                                                     AutoInspectionExecutionPolicy policy,
+                                                                     ComparisonExecutionContext comparisonContext)
     {
         TargetCheckResult result = null;
         int attempts = policy.getRetryCount() + 1;
@@ -2661,9 +2759,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             if (RESULT_NORMAL.equals(result.status) || attempt >= attempts)
             {
                 boolean sampled = RESULT_NORMAL.equals(result.status);
-                if (sampled && frequentContext != null)
+                if (sampled)
                 {
-                    applyActivityState(frequentContext, step, result);
+                    applyPreviousComparison(comparisonContext, step, result);
                 }
                 if (attempt > 1)
                 {
@@ -2693,7 +2791,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private TargetCheckResult runSingleTarget(Map<String, Object> step, Map<String, Object> tool,
                                               Map<String, Object> target, boolean thresholdEnabled,
-                                              FrequentExecutionContext frequentContext)
+                                              ComparisonExecutionContext comparisonContext)
     {
         try
         {
@@ -2704,12 +2802,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 throw new ServiceException("不支持的巡检工具类型：" + str(tool, "toolType"));
             }
             TargetCheckResult result = handler.handle(context);
-            if (frequentContext != null && isActivityTool(str(step, "toolCode")))
+            if (comparisonContext != null && usesPreviousComparison(step))
             {
-                applyActivityState(frequentContext, step, result);
+                applyPreviousComparison(comparisonContext, step, result);
             }
             else if (context.thresholdEnabled && !TOOL_HTTP_API_TEST.equals(str(step, "toolCode"))
-                    && !isActivityTool(str(step, "toolCode")))
+                    && !usesPreviousComparison(step))
             {
                 applyThreshold(step, tool, result);
             }
@@ -4413,21 +4511,56 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private TargetCheckResult checkKafkaLag(Map<String, Object> step, Map<String, Object> target)
     {
-        String topic = StringUtils.defaultIfBlank(str(readParams(step), "topic"), str(target, "topic"));
-        String group = StringUtils.defaultIfBlank(str(readParams(step), "consumerGroup"), str(target, "consumerGroup"));
+        Map<String, Object> params = readParams(step);
+        String topic = StringUtils.defaultIfBlank(str(params, "topic"), str(target, "topic"));
+        String group = StringUtils.defaultIfBlank(str(params, "consumerGroup"), str(target, "consumerGroup"));
         requireText(str(target, "host"), "Kafka bootstrap不能为空");
         requireText(topic, "Kafka topic不能为空");
         requireText(group, "Kafka消费组不能为空");
         KafkaOffsetSnapshot snapshot = readKafkaOffsets(step, target, topic, group, true);
         BigDecimal average = snapshot.partitionCount == 0 ? BigDecimal.ZERO
                 : new BigDecimal(snapshot.sumLag).divide(new BigDecimal(snapshot.partitionCount), 2, RoundingMode.HALF_UP);
-        return TargetCheckResult.normal(target, new BigDecimal(snapshot.maxLag), "条",
-                "调用方式：Kafka消费积压；Bootstrap：" + str(target, "host")
+        String metric = StringUtils.defaultIfBlank(str(params, "kafkaMetric"), KAFKA_METRIC_MAX_LAG).toUpperCase();
+        BigDecimal actualValue;
+        String metricLabel;
+        switch (metric)
+        {
+            case KAFKA_METRIC_TOTAL_LAG:
+                actualValue = new BigDecimal(snapshot.sumLag);
+                metricLabel = "消费组总积压";
+                break;
+            case KAFKA_METRIC_PRODUCED_OFFSET:
+                actualValue = new BigDecimal(snapshot.endOffsetTotal);
+                metricLabel = "生产总Offset";
+                break;
+            case KAFKA_METRIC_CONSUMED_OFFSET:
+                actualValue = new BigDecimal(snapshot.committedOffsetTotal);
+                metricLabel = "消费总Offset";
+                break;
+            default:
+                metric = KAFKA_METRIC_MAX_LAG;
+                actualValue = new BigDecimal(snapshot.maxLag);
+                metricLabel = "最大分区积压";
+                break;
+        }
+        TargetCheckResult result = TargetCheckResult.normal(target, actualValue, "条",
+                "调用方式：Kafka消费组指标采样；Bootstrap：" + str(target, "host")
                         + "；Topic：" + topic
                         + "；消费组：" + group
                         + "；分区数：" + snapshot.partitionCount
+                        + "；判定指标：" + metricLabel + "=" + formatDecimal(actualValue)
                         + "；最大积压：" + snapshot.maxLag
+                        + "；总积压：" + snapshot.sumLag
+                        + "；生产总Offset：" + snapshot.endOffsetTotal
+                        + "；消费总Offset：" + snapshot.committedOffsetTotal
                         + "；平均积压：" + average);
+        result.preview.put("kafkaMetric", metric);
+        result.preview.put("maxLag", new BigDecimal(snapshot.maxLag));
+        result.preview.put("totalLag", new BigDecimal(snapshot.sumLag));
+        result.preview.put("producedOffset", new BigDecimal(snapshot.endOffsetTotal));
+        result.preview.put("consumedOffset", new BigDecimal(snapshot.committedOffsetTotal));
+        result.preview.put("partitionCount", snapshot.partitionCount);
+        return result;
     }
 
     private TargetCheckResult checkKafkaTopicActivity(Map<String, Object> step, Map<String, Object> target)
@@ -4814,17 +4947,21 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         if (result.actualValue == null || threshold == null)
         {
             result.status = RESULT_NORMAL;
+            result.evaluationMode = AutoInspectionValueComparison.MODE_FIXED;
+            result.evaluationRule = "本步骤未配置数值阈值，仅校验取数是否成功";
             return;
         }
         String rule = StringUtils.defaultIfBlank(str(step, "compareRule"), str(tool, "defaultCompareRule"));
-        int compared = result.actualValue.compareTo(threshold);
-        boolean abnormal = RULE_MIN.equals(rule) ? compared < 0 : compared > 0;
-        result.status = abnormal ? RESULT_ABNORMAL : RESULT_NORMAL;
-        if (abnormal)
+        AutoInspectionValueComparison.Evaluation evaluation = AutoInspectionValueComparison.evaluate(
+                AutoInspectionValueComparison.MODE_FIXED, rule, threshold,
+                result.actualValue, null, false);
+        result.applyEvaluation(evaluation);
+        String unit = StringUtils.defaultString(result.actualUnit);
+        result.evaluationRule = evaluation.rule + unit;
+        result.appendDetail("判定依据：" + evaluation.detail + (StringUtils.isBlank(unit) ? "" : "（单位：" + unit + "）"));
+        if (RESULT_ABNORMAL.equals(result.status))
         {
-            String relation = RULE_MIN.equals(rule) ? "低于" : "高于";
-            result.errorMessage = "实际值" + formatDecimal(result.actualValue) + result.actualUnit
-                    + relation + "阈值" + formatDecimal(threshold) + StringUtils.defaultString(str(step, "thresholdUnit"));
+            result.errorMessage = evaluation.detail + (StringUtils.isBlank(unit) ? "" : "（单位：" + unit + "）");
         }
     }
 
@@ -4864,10 +5001,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 warning++;
                 details.add(result.targetName + " " + result.detail);
             }
-            else if (RESULT_SKIP.equals(result.status))
+            if (result.baseline)
             {
                 baseline++;
-                details.add(result.targetName + " " + result.detail);
+                details.add(result.targetName + " 基线值"
+                        + (result.actualValue == null ? "-" : formatDecimal(result.actualValue))
+                        + StringUtils.defaultString(result.actualUnit));
             }
         }
         if (hasAbnormal)
@@ -4880,7 +5019,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         }
         if (baseline == results.size() && baseline > 0)
         {
-            return "共" + results.size() + "个目标正在建立活性基线：" + StringUtils.join(details, "；");
+            return "共" + results.size() + "个目标已建立对照基线，本次均按正常计入健康度："
+                    + StringUtils.join(details, "；");
         }
         if (TOOL_SERVER_SERVICE_STATUS.equals(str(step, "toolCode")))
         {
@@ -4891,7 +5031,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     private String resolveInspectionStatus(int enabledCount, int abnormalCount, int warningCount,
-                                           int normalStepCount, int baselineStepCount)
+                                           int normalStepCount)
     {
         if (enabledCount == 0)
         {
@@ -4904,10 +5044,6 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         if (warningCount > 0)
         {
             return RESULT_WARNING;
-        }
-        if (baselineStepCount > 0)
-        {
-            return RESULT_SKIP;
         }
         return normalStepCount > 0 ? RESULT_NORMAL : RESULT_SKIP;
     }
@@ -5711,14 +5847,14 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private void ensureBuiltinTools()
     {
-        insertBuiltinTool(TOOL_KAFKA_LAG, "Kafka消费积压检测", TOOL_KAFKA_LAG, "条", RULE_MAX, new BigDecimal("2000"), 10, 0,
-                "{\"fields\":[\"topic\",\"consumerGroup\"]}");
+        insertBuiltinTool(TOOL_KAFKA_LAG, "Kafka消费组指标检测", TOOL_KAFKA_LAG, "条", RULE_MAX, new BigDecimal("2000"), 10, 0,
+                "{\"fields\":[\"topic\",\"consumerGroup\",\"kafkaMetric\",\"evaluationConfig\"]}");
         insertBuiltinTool(TOOL_KAFKA_TOPIC_ACTIVITY, "Kafka主题写入中断检测", TOOL_KAFKA_TOPIC_ACTIVITY, "条", RULE_MIN, BigDecimal.ZERO, 10, 0,
-                "{\"fields\":[\"topic\",\"activityRule\"]}");
+                "{\"fields\":[\"topic\",\"evaluationConfig\"]}");
         insertBuiltinTool(TOOL_KAFKA_CONSUMER_PROGRESS, "Kafka消费停滞检测", TOOL_KAFKA_CONSUMER_PROGRESS, "条", RULE_MIN, BigDecimal.ZERO, 10, 0,
-                "{\"fields\":[\"topic\",\"consumerGroup\",\"activityRule\"]}");
+                "{\"fields\":[\"topic\",\"consumerGroup\",\"evaluationConfig\"]}");
         insertBuiltinTool(TOOL_MQTT_TOPIC_ACTIVITY, "MQTT主题活跃度检测", TOOL_MQTT_TOPIC_ACTIVITY, "条", RULE_MIN, BigDecimal.ZERO, 10, 0,
-                "{\"fields\":[\"broker\",\"topicFilter\",\"qos\",\"ignoreRetained\",\"activityRule\"]}");
+                "{\"fields\":[\"broker\",\"topicFilter\",\"qos\",\"ignoreRetained\",\"evaluationConfig\"]}");
         insertBuiltinTool(TOOL_HTTP_COUNT, "海康接口数量检测", TOOL_HTTP_COUNT, "条", RULE_MIN, new BigDecimal("0"), 10, 480,
                 "{\"fields\":[\"resultPath\",\"extraParams\",\"timeWindowMinutes\"]}");
         insertBuiltinTool(TOOL_HTTP_HEALTH, "HTTP接口健康检测", TOOL_HTTP_HEALTH, "ms", RULE_MAX, new BigDecimal("3000"), 10, 0,
@@ -6603,19 +6739,16 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             return "期望 active (running)，非 active 告警";
         }
-        if (isActivityTool(str(row, "toolCode")))
-        {
-            AutoInspectionActivityStateMachine.Rule rule =
-                    AutoInspectionActivityStateMachine.ruleFromStepParams(row.get("stepParams"));
-            return rule.warningMinutes + "分钟关注，" + rule.abnormalMinutes + "分钟异常，连续"
-                    + rule.recoverySuccesses + "次恢复";
-        }
         String threshold = str(row, "thresholdValue");
         if (StringUtils.isBlank(threshold))
         {
             return "-";
         }
-        return labelCompareRule(str(row, "compareRule")) + " " + threshold + StringUtils.defaultString(str(row, "thresholdUnit"));
+        String mode = resolveEvaluationMode(row);
+        String subject = AutoInspectionValueComparison.MODE_PREVIOUS.equals(mode)
+                ? "本次值-上次值" : "本次值";
+        return subject + labelCompareRule(str(row, "compareRule")) + " " + threshold
+                + StringUtils.defaultString(str(row, "thresholdUnit"));
     }
 
     private boolean isServiceStatusResult(Map<String, Object> row)
@@ -6629,11 +6762,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     {
         if (RULE_MIN.equals(compareRule))
         {
-            return "低于阈值告警";
+            return "不得低于";
         }
         if (RULE_MAX.equals(compareRule))
         {
-            return "高于阈值告警";
+            return "不得高于";
         }
         return StringUtils.defaultIfBlank(compareRule, "-");
     }
@@ -6652,7 +6785,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             return "关注";
         }
-        return "未检测";
+        return "未执行";
     }
 
     private String buildTestSuccessMessage(TargetCheckResult result)
@@ -7023,12 +7156,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         private int partitionCount;
     }
 
-    private static class FrequentExecutionContext
+    private static class ComparisonExecutionContext
     {
         private final Long planId;
         private final LocalDateTime observedAt;
 
-        private FrequentExecutionContext(Long planId, LocalDateTime observedAt)
+        private ComparisonExecutionContext(Long planId, LocalDateTime observedAt)
         {
             this.planId = planId;
             this.observedAt = observedAt;
@@ -7067,6 +7200,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         private final String actualUnit;
         private String detail;
         private String errorMessage;
+        private String evaluationMode = AutoInspectionValueComparison.MODE_FIXED;
+        private BigDecimal previousValue;
+        private BigDecimal changeValue;
+        private String evaluationRule = "";
+        private boolean baseline;
         private Map<String, Object> preview = new LinkedHashMap<>();
 
         private TargetCheckResult(Map<String, Object> target, String status, BigDecimal actualValue, String actualUnit, String detail)
@@ -7105,6 +7243,20 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             this.preview = preview == null ? new LinkedHashMap<>() : preview;
         }
 
+        private void applyEvaluation(AutoInspectionValueComparison.Evaluation evaluation)
+        {
+            if (evaluation == null)
+            {
+                return;
+            }
+            status = evaluation.status;
+            evaluationMode = evaluation.mode;
+            previousValue = evaluation.previousValue;
+            changeValue = evaluation.changeValue;
+            evaluationRule = evaluation.rule;
+            baseline = evaluation.baseline;
+        }
+
         private Map<String, Object> toTargetResult(Long recordId, Long stepResultId, Date now, String operator)
         {
             Map<String, Object> result = new HashMap<>();
@@ -7116,6 +7268,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             result.put("resultStatus", status);
             result.put("actualValue", actualValue);
             result.put("actualUnit", actualUnit);
+            result.put("evaluationMode", evaluationMode);
+            result.put("previousValue", previousValue);
+            result.put("changeValue", changeValue);
+            result.put("evaluationRule", evaluationRule);
+            result.put("baselineFlag", baseline ? "Y" : "N");
             result.put("resultDetail", limitTargetResultText(detail));
             result.put("errorMessage", limitTargetResultText(errorMessage));
             result.put("createBy", operator);

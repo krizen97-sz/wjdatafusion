@@ -42,6 +42,7 @@ test('mature workspace is adapted to resource-style backend endpoints', () => {
     '/support/autoInspection/templates',
     '/support/autoInspection/plans',
     '/support/autoInspection/records',
+    '/support/autoInspection/health/samples',
     '/support/autoInspection/targets/preview'
   ]
   const compatibilityExports = [

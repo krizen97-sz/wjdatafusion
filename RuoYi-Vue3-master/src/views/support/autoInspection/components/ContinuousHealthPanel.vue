@@ -33,31 +33,6 @@
     </div>
 
     <el-table v-loading="loading" :data="groupedRows" row-key="healthDate" class="continuous-health-table" empty-text="当前月份暂无高频健康记录">
-      <el-table-column type="expand" width="44">
-        <template #default="scope">
-          <div class="continuous-plan-list">
-            <div v-for="plan in scope.row.plans" :key="`${scope.row.healthDate}-${plan.planId}`" class="continuous-plan-row">
-              <el-tag :type="healthStatusType(plan.dayStatus)" effect="plain">
-                {{ healthStatusLabel(plan.dayStatus, plan.dayStatus === '2' && plan.lastResultStatus !== '2') }}
-              </el-tag>
-              <div class="continuous-plan-row__name">
-                <strong>{{ plan.planName || '未命名计划' }}</strong>
-                <span>{{ plan.templateName || '未绑定模板' }}</span>
-              </div>
-              <div class="continuous-plan-row__progress">
-                <el-progress :percentage="clampHealthScore(plan.healthScore)" :stroke-width="8" :show-text="false" />
-                <span>{{ clampHealthScore(plan.healthScore) }}%</span>
-              </div>
-              <div class="continuous-plan-row__counts">
-                <span>完成 {{ plan.completedCount }}/{{ plan.expectedCount }}</span>
-                <span>异常 {{ plan.abnormalCount }} · 关注 {{ plan.warningCount }} · 缺失 {{ plan.missingCount }}</span>
-              </div>
-              <p>{{ plan.abnormalSummary || '当天未记录异常内容' }}</p>
-              <el-button link type="primary" icon="View" @click="$emit('samples', { date: scope.row.healthDate, plan })">查看采样</el-button>
-            </div>
-          </div>
-        </template>
-      </el-table-column>
       <el-table-column label="日期" prop="healthDate" width="130">
         <template #default="scope"><strong class="continuous-health-date">{{ scope.row.healthDate }}</strong></template>
       </el-table-column>
@@ -76,8 +51,19 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="计划" width="80" align="center">
-        <template #default="scope">{{ scope.row.plans.length }}</template>
+      <el-table-column label="当日计划" min-width="220">
+        <template #default="scope">
+          <div class="continuous-health-plans">
+            <el-tag
+              v-for="plan in scope.row.plans.slice(0, 3)"
+              :key="`${scope.row.healthDate}-${plan.planId}`"
+              :type="healthStatusType(plan.dayStatus)"
+              effect="plain"
+              size="small"
+            >{{ plan.planName || '未命名计划' }}</el-tag>
+            <span v-if="scope.row.plans.length > 3">+{{ scope.row.plans.length - 3 }}</span>
+          </div>
+        </template>
       </el-table-column>
       <el-table-column label="完成 / 应执行" width="130" align="center">
         <template #default="scope">{{ scope.row.completedCount }} / {{ scope.row.expectedCount }}</template>
@@ -89,6 +75,11 @@
       </el-table-column>
       <el-table-column label="异常摘要" min-width="260" show-overflow-tooltip>
         <template #default="scope">{{ scope.row.abnormalSummary || '当天未记录异常' }}</template>
+      </el-table-column>
+      <el-table-column label="结果" width="116" fixed="right" align="center">
+        <template #default="scope">
+          <el-button type="primary" link icon="View" @click="$emit('day-results', { date: scope.row.healthDate, group: scope.row })">查看当日结果</el-button>
+        </template>
       </el-table-column>
     </el-table>
   </section>
@@ -112,7 +103,7 @@ const props = defineProps({
   planOptions: { type: Array, default: () => [] }
 })
 
-defineEmits(['update:month', 'update:planId', 'samples'])
+defineEmits(['update:month', 'update:planId', 'day-results'])
 
 const groupedRows = computed(() => groupDailyHealthRows(props.rows))
 const summary = computed(() => summarizeDailyHealth(groupedRows.value))
@@ -176,6 +167,23 @@ const summary = computed(() => summarizeDailyHealth(groupedRows.value))
 
 .continuous-health-summary .is-warning strong {
   color: #c78322;
+}
+
+.continuous-health-plans {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.continuous-health-plans .el-tag {
+  max-width: 120px;
+}
+
+.continuous-health-plans span {
+  color: var(--app-muted);
+  font-size: 12px;
 }
 
 .continuous-health-table {

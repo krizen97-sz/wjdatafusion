@@ -154,6 +154,10 @@ export function listAutoInspectionDailyHealth(query) {
   return request({ url: '/support/autoInspection/health/daily', method: 'get', params: query })
 }
 
+export function listAutoInspectionHealthSamples(query) {
+  return request({ url: '/support/autoInspection/health/samples', method: 'get', params: query })
+}
+
 export function listAutoInspectionRecords(query) {
   return request({ url: '/support/autoInspection/records', method: 'get', params: query })
 }

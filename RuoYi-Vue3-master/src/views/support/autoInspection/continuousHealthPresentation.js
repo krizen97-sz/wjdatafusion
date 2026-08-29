@@ -16,7 +16,7 @@ export function healthStatusLabel(status, recovered = false) {
   if (status === '2') return recovered ? '异常已恢复' : '异常持续中'
   if (status === '4') return '需要关注'
   if (status === '1') return '正常'
-  return '暂无数据'
+  return '尚未执行'
 }
 
 export function healthStatusType(status) {

@@ -44,7 +44,7 @@ test('week distribution keeps normal abnormal and untested results', () => {
   assert.deepEqual(buildWeekResultDistribution({ recordCount: 6, normalCount: 3, abnormalCount: 2 }), [
     { name: '正常', value: 3 },
     { name: '异常', value: 2 },
-    { name: '未检测', value: 1 }
+    { name: '未执行', value: 1 }
   ])
   assert.equal(buildWeekResultDistribution({})[0].empty, true)
   assert.equal(formatInspectionClock('2026-08-20T09:26:31'), '09:26')

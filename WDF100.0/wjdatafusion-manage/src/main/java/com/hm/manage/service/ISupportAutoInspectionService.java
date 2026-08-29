@@ -10,6 +10,7 @@ import com.hm.manage.domain.SupportAutoInspectionTemplate;
 import com.hm.manage.domain.SupportAutoInspectionTool;
 import com.hm.manage.domain.bo.AutoInspectionDashboardQuery;
 import com.hm.manage.domain.bo.AutoInspectionHealthQuery;
+import com.hm.manage.domain.bo.AutoInspectionHealthSampleQuery;
 import com.hm.manage.domain.bo.AutoInspectionPlanQuery;
 import com.hm.manage.domain.bo.AutoInspectionPlanSaveBo;
 import com.hm.manage.domain.bo.AutoInspectionRecordQuery;
@@ -83,6 +84,8 @@ public interface ISupportAutoInspectionService
     AutoInspectionDashboardVo selectDashboard(AutoInspectionDashboardQuery query);
 
     List<SupportAutoInspectionHealthDaily> selectDailyHealth(AutoInspectionHealthQuery query);
+
+    List<AutoInspectionRecordDetailVo> selectDailyHealthSamples(AutoInspectionHealthSampleQuery query);
 
     AutoInspectionRunResultVo runManualTemplate(Long templateId);
 

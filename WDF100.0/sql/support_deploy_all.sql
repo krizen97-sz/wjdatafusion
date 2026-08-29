@@ -1283,9 +1283,14 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_target_result (
   target_id       BIGINT        DEFAULT NULL COMMENT '目标ID',
   target_name     VARCHAR(120)  DEFAULT NULL COMMENT '目标名称',
   target_type     VARCHAR(32)   DEFAULT NULL COMMENT '目标类型',
-  result_status   CHAR(1)       DEFAULT '3' COMMENT '目标结果（1正常 2异常 3未检测 4关注）',
+  result_status   CHAR(1)       DEFAULT '3' COMMENT '目标结果（1正常 2异常 3未执行 4关注）',
   actual_value    DECIMAL(18,2) DEFAULT NULL COMMENT '实际值',
   actual_unit     VARCHAR(32)   DEFAULT NULL COMMENT '实际单位',
+  evaluation_mode VARCHAR(16)   DEFAULT 'FIXED' COMMENT '判定方式（FIXED固定阈值 PREVIOUS上次结果）',
+  previous_value  DECIMAL(30,2) DEFAULT NULL COMMENT '上次采样值',
+  change_value    DECIMAL(30,2) DEFAULT NULL COMMENT '本次与上次变化量',
+  evaluation_rule VARCHAR(500)  DEFAULT NULL COMMENT '本次判定公式',
+  baseline_flag   CHAR(1)       DEFAULT 'N' COMMENT '是否本次建立基线（Y是 N否）',
   result_detail   MEDIUMTEXT    DEFAULT NULL COMMENT '结果详情',
   error_message   MEDIUMTEXT    DEFAULT NULL COMMENT '异常原因',
   create_by       VARCHAR(64)   DEFAULT '' COMMENT '创建者',
@@ -1333,7 +1338,7 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_health_daily (
   normal_count        INT           DEFAULT 0 COMMENT '正常采样次数',
   warning_count       INT           DEFAULT 0 COMMENT '关注采样次数',
   abnormal_count      INT           DEFAULT 0 COMMENT '异常采样次数',
-  skipped_count       INT           DEFAULT 0 COMMENT '基线或跳过次数',
+  skipped_count       INT           DEFAULT 0 COMMENT '未执行或跳过次数',
   missing_count       INT           DEFAULT 0 COMMENT '缺失采样次数',
   health_score        DECIMAL(5,2)  DEFAULT 0 COMMENT '当日健康度',
   health_target       DECIMAL(5,2)  DEFAULT 99 COMMENT '健康目标',
@@ -1354,16 +1359,16 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_health_daily (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='自动化巡检高频每日健康汇总';
 
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
-SELECT 'KAFKA_LAG', 'Kafka消费积压检测', 'KAFKA_LAG', '条', 'MAX', 2000, 10, 0, '{"fields":["topic","consumerGroup"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
+SELECT 'KAFKA_LAG', 'Kafka消费组指标检测', 'KAFKA_LAG', '条', 'MAX', 2000, 10, 0, '{"fields":["topic","consumerGroup","kafkaMetric","evaluationConfig"]}', 'Y', '0', 'admin', NOW(), '一次采集Kafka积压和Offset指标，支持固定阈值或上次结果比较'
 WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'KAFKA_LAG');
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
-SELECT 'KAFKA_TOPIC_ACTIVITY', 'Kafka主题写入中断检测', 'KAFKA_TOPIC_ACTIVITY', '条', 'MIN', 0, 10, 0, '{"fields":["topic","activityRule"]}', 'Y', '0', 'admin', NOW(), '按Topic总Offset变化判断持续无写入时长'
+SELECT 'KAFKA_TOPIC_ACTIVITY', 'Kafka主题写入中断检测', 'KAFKA_TOPIC_ACTIVITY', '条', 'MIN', 1, 10, 0, '{"fields":["topic","evaluationConfig"]}', 'Y', '1', 'admin', NOW(), '历史模板兼容工具'
 WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'KAFKA_TOPIC_ACTIVITY');
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
-SELECT 'KAFKA_CONSUMER_PROGRESS', 'Kafka消费停滞检测', 'KAFKA_CONSUMER_PROGRESS', '条', 'MIN', 0, 10, 0, '{"fields":["topic","consumerGroup","activityRule"]}', 'Y', '0', 'admin', NOW(), '上游有新增但消费组提交位点不推进时告警'
+SELECT 'KAFKA_CONSUMER_PROGRESS', 'Kafka消费停滞检测', 'KAFKA_CONSUMER_PROGRESS', '条', 'MIN', 1, 10, 0, '{"fields":["topic","consumerGroup","evaluationConfig"]}', 'Y', '1', 'admin', NOW(), '历史模板兼容工具'
 WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'KAFKA_CONSUMER_PROGRESS');
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
-SELECT 'MQTT_TOPIC_ACTIVITY', 'MQTT主题活跃度检测', 'MQTT_TOPIC_ACTIVITY', '条', 'MIN', 0, 10, 0, '{"fields":["broker","topicFilter","qos","ignoreRetained","activityRule"]}', 'Y', '0', 'admin', NOW(), '后台持续订阅MQTT主题并判断持续无消息时长'
+SELECT 'MQTT_TOPIC_ACTIVITY', 'MQTT主题活跃度检测', 'MQTT_TOPIC_ACTIVITY', '条', 'MIN', 1, 10, 0, '{"fields":["broker","topicFilter","qos","ignoreRetained","evaluationConfig"]}', 'Y', '0', 'admin', NOW(), '后台持续订阅MQTT主题并支持固定阈值或上次结果比较'
 WHERE NOT EXISTS (SELECT 1 FROM sup_auto_inspection_tool WHERE tool_code = 'MQTT_TOPIC_ACTIVITY');
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
 SELECT 'HTTP_COUNT', '海康接口数量检测', 'HTTP_COUNT', '条', 'MIN', 0, 10, 480, '{"fields":["resultPath","extraParams","timeWindowMinutes"]}', 'Y', '0', 'admin', NOW(), '自动化巡检内置工具'
@@ -1512,3 +1517,25 @@ SET @ddl = IF((SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SC
 PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 UPDATE sup_auto_inspection_plan SET plan_mode = 'ROUTINE' WHERE plan_mode IS NULL OR plan_mode = '';
 UPDATE sup_auto_inspection_record SET run_mode = 'ROUTINE' WHERE run_mode IS NULL OR run_mode = '';
+
+-- v3.16.0 自动化巡检统一数值判定与结构化判定证据
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_target_result' AND COLUMN_NAME = 'evaluation_mode') = 0,
+  'ALTER TABLE sup_auto_inspection_target_result ADD COLUMN evaluation_mode VARCHAR(16) DEFAULT ''FIXED'' COMMENT ''判定方式（FIXED固定阈值 PREVIOUS上次结果）'' AFTER actual_unit', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_target_result' AND COLUMN_NAME = 'previous_value') = 0,
+  'ALTER TABLE sup_auto_inspection_target_result ADD COLUMN previous_value DECIMAL(30,2) DEFAULT NULL COMMENT ''上次采样值'' AFTER evaluation_mode', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_target_result' AND COLUMN_NAME = 'change_value') = 0,
+  'ALTER TABLE sup_auto_inspection_target_result ADD COLUMN change_value DECIMAL(30,2) DEFAULT NULL COMMENT ''本次与上次变化量'' AFTER previous_value', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_target_result' AND COLUMN_NAME = 'evaluation_rule') = 0,
+  'ALTER TABLE sup_auto_inspection_target_result ADD COLUMN evaluation_rule VARCHAR(500) DEFAULT NULL COMMENT ''本次判定公式'' AFTER change_value', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_target_result' AND COLUMN_NAME = 'baseline_flag') = 0,
+  'ALTER TABLE sup_auto_inspection_target_result ADD COLUMN baseline_flag CHAR(1) DEFAULT ''N'' COMMENT ''是否本次建立基线（Y是 N否）'' AFTER evaluation_rule', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+UPDATE sup_auto_inspection_target_result SET evaluation_mode = 'FIXED' WHERE evaluation_mode IS NULL OR evaluation_mode = '';
+UPDATE sup_auto_inspection_target_result SET baseline_flag = 'N' WHERE baseline_flag IS NULL OR baseline_flag = '';
+UPDATE sup_auto_inspection_tool SET tool_name = 'Kafka消费组指标检测', param_schema = '{"fields":["topic","consumerGroup","kafkaMetric","evaluationConfig"]}', status = '0', remark = '一次采集最大积压、总积压、生产Offset和消费Offset；支持固定阈值或与上次结果比较', update_time = NOW() WHERE tool_code = 'KAFKA_LAG';
+UPDATE sup_auto_inspection_tool SET status = '1', default_threshold_value = 1, param_schema = CASE tool_code WHEN 'KAFKA_TOPIC_ACTIVITY' THEN '{"fields":["topic","evaluationConfig"]}' ELSE '{"fields":["topic","consumerGroup","evaluationConfig"]}' END, remark = '历史模板兼容工具；新建步骤请使用KAFKA_LAG并选择生产总Offset或消费总Offset', update_time = NOW() WHERE tool_code IN ('KAFKA_TOPIC_ACTIVITY', 'KAFKA_CONSUMER_PROGRESS');
+UPDATE sup_auto_inspection_tool SET default_threshold_value = 1, param_schema = '{"fields":["broker","topicFilter","qos","ignoreRetained","evaluationConfig"]}', remark = '后台持续订阅MQTT主题并支持固定阈值或上次结果比较', update_time = NOW() WHERE tool_code = 'MQTT_TOPIC_ACTIVITY';
