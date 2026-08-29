@@ -2061,11 +2061,11 @@
       </section>
     </el-drawer>
 
-    <el-drawer v-model="healthSampleDrawerOpen" size="1080px" append-to-body class="health-sample-drawer">
+    <el-drawer v-model="healthSampleDrawerOpen" size="1280px" append-to-body class="health-sample-drawer">
       <template #header>
         <div class="dialog-title">
           <span>高频每日检测</span>
-          <strong>{{ healthSampleContext.date }} · 当日检测结果</strong>
+          <strong>{{ healthSampleContext.date }} · {{ healthSampleContext.planName || '当日全部计划' }}</strong>
         </div>
       </template>
       <div class="health-sample-summary">
@@ -2108,12 +2108,18 @@
                       </div>
                     </template>
                   </el-table-column>
-                  <el-table-column label="判定数据" min-width="190">
+                  <el-table-column label="判定数据" min-width="320">
                     <template #default="targetScope">
                       <div class="health-target-values">
-                        <span><label>本次</label>{{ formatMetricValue(targetScope.row.actualValue, targetScope.row.actualUnit) }}</span>
-                        <span><label>上次</label>{{ formatMetricValue(targetScope.row.previousValue, targetScope.row.actualUnit) }}</span>
-                        <span><label>变化</label>{{ formatChangeValue(targetScope.row.changeValue, targetScope.row.actualUnit) }}</span>
+                        <el-tooltip :content="formatMetricValue(targetScope.row.actualValue, targetScope.row.actualUnit)" placement="top" :show-after="300">
+                          <span><label>本次</label><strong>{{ formatMetricValue(targetScope.row.actualValue, targetScope.row.actualUnit) }}</strong></span>
+                        </el-tooltip>
+                        <el-tooltip :content="formatMetricValue(targetScope.row.previousValue, targetScope.row.actualUnit)" placement="top" :show-after="300">
+                          <span><label>上次</label><strong>{{ formatMetricValue(targetScope.row.previousValue, targetScope.row.actualUnit) }}</strong></span>
+                        </el-tooltip>
+                        <el-tooltip :content="formatChangeValue(targetScope.row.changeValue, targetScope.row.actualUnit)" placement="top" :show-after="300">
+                          <span><label>变化</label><strong>{{ formatChangeValue(targetScope.row.changeValue, targetScope.row.actualUnit) }}</strong></span>
+                        </el-tooltip>
                       </div>
                     </template>
                   </el-table-column>
@@ -2125,11 +2131,35 @@
                       </div>
                     </template>
                   </el-table-column>
-                  <el-table-column label="调用结果" min-width="280">
+                  <el-table-column label="调用结果" min-width="340">
                     <template #default="targetScope">
                       <div class="health-target-result">
-                        <span :title="targetScope.row.resultDetail || ''">{{ targetScope.row.resultDetail || '本次未记录调用明细' }}</span>
-                        <strong v-if="targetScope.row.errorMessage">{{ targetScope.row.errorMessage }}</strong>
+                        <span class="health-target-result__preview">{{ targetScope.row.resultDetail || '本次未记录调用明细' }}</span>
+                        <el-popover placement="left" :width="520" trigger="click">
+                          <template #reference>
+                            <el-button type="primary" link :icon="View" class="health-target-result__action">详情</el-button>
+                          </template>
+                          <div class="health-call-detail">
+                            <header>
+                              <div>
+                                <span>调用结果</span>
+                                <strong>{{ targetScope.row.targetName || `检测子项 ${targetScope.$index + 1}` }}</strong>
+                              </div>
+                              <el-tag class="soft-status-tag" size="small" effect="plain" :type="resultTagType(targetScope.row.resultStatus)">{{ formatResult(targetScope.row.resultStatus) }}</el-tag>
+                            </header>
+                            <el-scrollbar max-height="260px">
+                              <section>
+                                <label>调用信息</label>
+                                <p>{{ targetScope.row.resultDetail || '本次未记录调用明细' }}</p>
+                              </section>
+                              <section v-if="targetScope.row.errorMessage" class="is-error">
+                                <label>异常原因</label>
+                                <p>{{ targetScope.row.errorMessage }}</p>
+                              </section>
+                            </el-scrollbar>
+                          </div>
+                        </el-popover>
+                        <strong v-if="targetScope.row.errorMessage" class="health-target-result__error">{{ targetScope.row.errorMessage }}</strong>
                       </div>
                     </template>
                   </el-table-column>
@@ -2183,7 +2213,8 @@ import {
   EditPen,
   Files,
   Setting,
-  VideoPlay
+  VideoPlay,
+  View
 } from '@element-plus/icons-vue'
 import InspectionFlowCanvas from './components/InspectionFlowCanvas.vue'
 import ContinuousHealthPanel from './components/ContinuousHealthPanel.vue'
@@ -2323,7 +2354,7 @@ const healthSampleDrawerOpen = ref(false)
 const healthSampleLoading = ref(false)
 const healthSampleRows = ref([])
 const healthSampleTotal = ref(0)
-const healthSampleContext = ref({ date: '', group: {} })
+const healthSampleContext = ref({ date: '', group: {}, planId: undefined, planName: '' })
 const healthSampleQuery = ref({ pageNum: 1, pageSize: 20 })
 const healthSampleExpandedKeys = ref([])
 const healthSampleResultStatus = ref('ALL')
@@ -3547,8 +3578,16 @@ function refreshCurrentRecordView() {
   return getRecordList()
 }
 
-function openHealthSamples({ date, group }) {
-  healthSampleContext.value = { date, group: group || {} }
+function openHealthSamples({ date, group, planId, planName }) {
+  const singlePlan = Array.isArray(group?.plans) && group.plans.length === 1 ? group.plans[0] : null
+  const resolvedPlanId = planId ?? group?.planId ?? singlePlan?.planId
+  const resolvedPlanName = planName ?? group?.planName ?? singlePlan?.planName ?? ''
+  healthSampleContext.value = {
+    date,
+    group: group || {},
+    planId: resolvedPlanId,
+    planName: resolvedPlanName
+  }
   healthSampleQuery.value.pageNum = 1
   healthSampleExpandedKeys.value = []
   healthSampleResultStatus.value = 'ALL'
@@ -3557,14 +3596,14 @@ function openHealthSamples({ date, group }) {
 }
 
 function getHealthSamples() {
-  const { date } = healthSampleContext.value
+  const { date, planId } = healthSampleContext.value
   if (!date) return Promise.resolve()
   healthSampleExpandedKeys.value = []
   healthSampleLoading.value = true
   return listAutoInspectionHealthSamples({
     ...healthSampleQuery.value,
     healthDate: date,
-    planId: dailyHealthPlanId.value,
+    planId: planId ?? dailyHealthPlanId.value,
     resultStatus: healthSampleResultStatus.value === 'ALL' ? undefined : healthSampleResultStatus.value
   }).then((res) => {
     healthSampleRows.value = res.rows || []
@@ -6936,23 +6975,44 @@ function resultTagType(value) {
 .health-target-values {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  gap: 8px;
 }
 
 .health-target-values span {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
   min-width: 0;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: var(--surface-subtle);
   color: var(--app-text);
   font-size: 11px;
 }
 
 .health-target-values label {
+  flex: 0 0 auto;
   color: var(--app-muted);
   font-size: 10px;
 }
 
-.health-target-result span {
+.health-target-values strong {
+  overflow: hidden;
+  min-width: 0;
+  color: var(--app-heading);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-target-result {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  column-gap: 8px;
+}
+
+.health-target-result__preview {
   display: -webkit-box;
   overflow: hidden;
   color: var(--app-muted);
@@ -6962,10 +7022,78 @@ function resultTagType(value) {
   -webkit-line-clamp: 2;
 }
 
-.health-target-result strong {
+.health-target-result__action {
+  min-height: 28px;
+  margin: 0;
+  padding: 2px 0;
+}
+
+.health-target-result__error {
+  display: block;
+  overflow: hidden;
+  grid-column: 1 / -1;
   color: var(--el-color-danger);
   font-size: 11px;
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-call-detail {
+  display: grid;
+  gap: 12px;
+}
+
+.health-call-detail > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.health-call-detail > header > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.health-call-detail > header span,
+.health-call-detail section label {
+  color: var(--app-muted);
+  font-size: 11px;
+}
+
+.health-call-detail > header strong {
+  overflow: hidden;
+  color: var(--app-heading);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-call-detail section {
+  display: grid;
+  gap: 6px;
+  padding: 8px 2px;
+}
+
+.health-call-detail section + section {
+  border-top: 1px solid var(--surface-border);
+}
+
+.health-call-detail section p {
+  margin: 0;
+  color: var(--app-text);
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.health-call-detail section.is-error p {
+  color: var(--el-color-danger);
 }
 
 .record-table--daily {

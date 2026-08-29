@@ -36,7 +36,26 @@
       <el-table-column label="日期" prop="healthDate" width="130">
         <template #default="scope"><strong class="continuous-health-date">{{ scope.row.healthDate }}</strong></template>
       </el-table-column>
-      <el-table-column label="当日结论" width="130" align="center">
+      <el-table-column width="142" align="center">
+        <template #header>
+          <div class="continuous-health-status-header">
+            <span>当日结论</span>
+            <el-popover placement="top" :width="360" trigger="click">
+              <template #reference>
+                <el-button text circle class="continuous-health-status-help" aria-label="查看当日结论说明">
+                  <el-icon><QuestionFilled /></el-icon>
+                </el-button>
+              </template>
+              <div class="continuous-health-status-guide">
+                <strong>当日结论说明</strong>
+                <div v-for="item in statusGuide" :key="item.label">
+                  <el-tag size="small" effect="plain" :type="item.type">{{ item.label }}</el-tag>
+                  <span>{{ item.description }}</span>
+                </div>
+              </div>
+            </el-popover>
+          </div>
+        </template>
         <template #default="scope">
           <el-tag :type="healthStatusType(scope.row.dayStatus)" effect="plain">
             {{ healthStatusLabel(scope.row.dayStatus, scope.row.recovered) }}
@@ -51,9 +70,24 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="计划" min-width="220" show-overflow-tooltip>
+      <el-table-column label="计划" min-width="240">
         <template #default="scope">
-          <span class="continuous-health-plan-text">{{ formatPlanNames(scope.row.plans) }}</span>
+          <div class="continuous-health-plans">
+            <el-button
+              v-for="plan in scope.row.plans"
+              :key="`${scope.row.healthDate}-${plan.planId}`"
+              type="primary"
+              link
+              class="continuous-health-plan-link"
+              @click.stop="$emit('day-results', {
+                date: scope.row.healthDate,
+                group: plan,
+                planId: plan.planId,
+                planName: plan.planName
+              })"
+            >{{ plan.planName || '未命名计划' }}</el-button>
+            <span v-if="!scope.row.plans.length" class="continuous-health-plan-empty">-</span>
+          </div>
         </template>
       </el-table-column>
       <el-table-column label="完成 / 应执行" width="130" align="center">
@@ -67,9 +101,9 @@
       <el-table-column label="异常摘要" min-width="260" show-overflow-tooltip>
         <template #default="scope">{{ scope.row.abnormalSummary || '当天未记录异常' }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="76" fixed="right" align="center">
+      <el-table-column label="操作" width="94" fixed="right" align="center" class-name="continuous-health-action-column">
         <template #default="scope">
-          <el-button type="primary" link icon="View" @click="$emit('day-results', { date: scope.row.healthDate, group: scope.row })">查看</el-button>
+          <el-button type="primary" link :icon="View" @click="$emit('day-results', { date: scope.row.healthDate, group: scope.row })">查看</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -78,6 +112,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { QuestionFilled, View } from '@element-plus/icons-vue'
 import {
   clampHealthScore,
   groupDailyHealthRows,
@@ -99,10 +134,13 @@ defineEmits(['update:month', 'update:planId', 'day-results'])
 const groupedRows = computed(() => groupDailyHealthRows(props.rows))
 const summary = computed(() => summarizeDailyHealth(groupedRows.value))
 
-function formatPlanNames(plans = []) {
-  const names = plans.map((plan) => plan.planName || '未命名计划')
-  return names.length ? names.join('、') : '-'
-}
+const statusGuide = [
+  { label: '正常', type: 'success', description: '当天已执行，且没有异常、关注或缺失采样。' },
+  { label: '需要关注', type: 'warning', description: '当天存在关注结果或缺失采样，但没有确认异常。' },
+  { label: '异常持续中', type: 'danger', description: '当天出现异常，且至少一个计划最近一次执行仍然异常。' },
+  { label: '异常已恢复', type: 'danger', description: '当天出现过异常，但相关计划最近一次执行已经恢复。' },
+  { label: '尚未执行', type: 'info', description: '当天还没有形成有效执行结果。' }
+]
 </script>
 
 <style scoped>
@@ -127,8 +165,9 @@ function formatPlanNames(plans = []) {
 .continuous-health-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(120px, 1fr));
-  border-top: 1px solid var(--surface-border);
-  border-bottom: 1px solid var(--surface-border);
+  overflow: hidden;
+  border: 1px solid var(--surface-border);
+  border-radius: 7px;
   background: var(--surface-muted);
 }
 
@@ -165,13 +204,72 @@ function formatPlanNames(plans = []) {
   color: #c78322;
 }
 
-.continuous-health-plan-text {
+.continuous-health-status-header {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.continuous-health-status-help {
+  width: 24px;
+  height: 24px;
+  color: var(--app-muted);
+}
+
+.continuous-health-status-guide {
+  display: grid;
+  gap: 9px;
+}
+
+.continuous-health-status-guide > strong {
+  color: var(--app-heading);
+  font-size: 14px;
+}
+
+.continuous-health-status-guide > div {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.continuous-health-status-guide span {
+  color: var(--app-text);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.continuous-health-plans {
+  display: grid;
+  justify-items: start;
+  gap: 1px;
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.continuous-health-plan-link {
+  display: flex;
+  justify-content: flex-start;
+  max-width: 100%;
+  height: auto;
+  min-height: 24px;
+  margin: 0;
+  padding: 2px 0;
+  font-size: 13px;
+}
+
+.continuous-health-plan-link :deep(span) {
   display: block;
   overflow: hidden;
-  color: var(--app-text);
-  font-size: 13px;
+  max-width: 100%;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.continuous-health-plan-empty {
+  color: var(--app-muted);
 }
 
 .continuous-health-table {
@@ -197,6 +295,13 @@ function formatPlanNames(plans = []) {
 
 .continuous-health-counts b {
   font-weight: 700;
+}
+
+.continuous-health-table :deep(.continuous-health-action-column .cell) {
+  overflow: visible;
+  padding-right: 8px;
+  padding-left: 8px;
+  text-overflow: clip;
 }
 
 </style>

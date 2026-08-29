@@ -35,6 +35,19 @@ test('monthly summary is weighted by expected slots', () => {
   assert.equal(summary.abnormalDays, 1)
 })
 
+test('a multi-plan day stays abnormal while any plan remains abnormal', () => {
+  const [group] = groupDailyHealthRows([
+    { healthDate: '2026-08-29', planId: 1, planName: 'Kafka', expectedCount: 20, completedCount: 20, normalCount: 18, abnormalCount: 2, dayStatus: '2', lastResultStatus: '1', abnormalSummary: 'Kafka异常已恢复' },
+    { healthDate: '2026-08-29', planId: 2, planName: '数据库', expectedCount: 10, completedCount: 10, normalCount: 8, abnormalCount: 2, dayStatus: '2', lastResultStatus: '2', abnormalSummary: '数据库异常仍在持续' }
+  ])
+
+  assert.equal(group.plans.length, 2)
+  assert.equal(group.recovered, false)
+  assert.equal(healthStatusLabel(group.dayStatus, group.recovered), '异常持续中')
+  assert.equal(group.abnormalSummary, '数据库异常仍在持续')
+  assert.equal(group.plans[0].planName, '数据库')
+})
+
 test('workspace exposes plan mode, daily health and activity tools', () => {
   for (const marker of ['PLAN_MODE_ROUTINE', 'PLAN_MODE_FREQUENT', 'ContinuousHealthPanel', 'TOOL_KAFKA_TOPIC_ACTIVITY', 'TOOL_KAFKA_CONSUMER_PROGRESS', 'TOOL_MQTT_TOPIC_ACTIVITY']) {
     assert.ok(workspaceSource.includes(marker), `missing high-frequency workspace marker: ${marker}`)
@@ -44,13 +57,22 @@ test('workspace exposes plan mode, daily health and activity tools', () => {
   assert.ok(apiSource.includes('healthConfig: stringifyConfig(data.healthConfig)'))
   assert.ok(panelSource.includes('>查看</el-button>'))
   assert.ok(!panelSource.includes('查看当日结果'))
-  assert.ok(!panelSource.includes('v-for="plan in scope.row.plans'))
+  assert.ok(panelSource.includes('v-for="plan in scope.row.plans'))
+  assert.ok(panelSource.includes('planId: plan.planId'))
+  assert.ok(panelSource.includes('continuous-health-plan-link'))
+  assert.ok(panelSource.includes('QuestionFilled'))
+  assert.ok(panelSource.includes('statusGuide'))
+  assert.ok(panelSource.includes('width="94"'))
   assert.ok(workspaceSource.includes('type="expand"'))
   assert.ok(workspaceSource.includes(':expand-row-keys="healthSampleExpandedKeys"'))
   assert.ok(workspaceSource.includes('handleHealthSampleExpand'))
+  assert.ok(workspaceSource.includes('planId: planId ?? dailyHealthPlanId.value'))
   assert.ok(!workspaceSource.includes('<article v-for="sample in healthSampleRows"'))
   assert.ok(workspaceSource.includes('targetScope.row.previousValue'))
   assert.ok(workspaceSource.includes('targetScope.row.changeValue'))
+  assert.ok(workspaceSource.includes('health-target-result__action'))
+  assert.ok(workspaceSource.includes('<el-popover placement="left" :width="520" trigger="click">'))
+  assert.ok(workspaceSource.includes('<el-scrollbar max-height="260px">'))
   assert.ok(!workspaceSource.includes('进入关注</span>'))
   assert.ok(!workspaceSource.includes('确认异常</span>'))
   assert.ok(!workspaceSource.includes('恢复确认</span>'))

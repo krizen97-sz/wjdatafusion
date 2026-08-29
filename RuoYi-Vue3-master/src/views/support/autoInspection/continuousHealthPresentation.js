@@ -65,14 +65,24 @@ export function groupDailyHealthRows(rows = []) {
     ;['expectedCount', 'completedCount', 'normalCount', 'warningCount', 'abnormalCount', 'skippedCount', 'missingCount']
       .forEach((key) => { group[key] += plan[key] })
     if ((STATUS_PRIORITY[plan.dayStatus] || 0) > (STATUS_PRIORITY[group.dayStatus] || 0)) group.dayStatus = plan.dayStatus
-    if (!group.abnormalSummary && plan.abnormalSummary) group.abnormalSummary = plan.abnormalSummary
   })
 
   return Array.from(groups.values()).map((group) => {
     const denominator = Math.max(group.expectedCount, group.completedCount)
     group.healthScore = denominator > 0 ? Number(((group.normalCount / denominator) * 100).toFixed(2)) : 0
     group.recovered = group.dayStatus === '2' && group.plans.every((plan) => plan.lastResultStatus !== '2')
-    group.plans.sort((a, b) => (STATUS_PRIORITY[b.dayStatus] || 0) - (STATUS_PRIORITY[a.dayStatus] || 0) || String(a.planName || '').localeCompare(String(b.planName || ''), 'zh-CN'))
+    group.plans.sort((a, b) => {
+      const statusDifference = (STATUS_PRIORITY[b.dayStatus] || 0) - (STATUS_PRIORITY[a.dayStatus] || 0)
+      if (statusDifference) return statusDifference
+      const ongoingDifference = Number(b.lastResultStatus === '2') - Number(a.lastResultStatus === '2')
+      if (ongoingDifference) return ongoingDifference
+      return String(a.planName || '').localeCompare(String(b.planName || ''), 'zh-CN')
+    })
+    const summaryPlan = group.plans.find((plan) => plan.dayStatus === '2' && plan.lastResultStatus === '2' && plan.abnormalSummary)
+      || group.plans.find((plan) => plan.dayStatus === '2' && plan.abnormalSummary)
+      || group.plans.find((plan) => plan.dayStatus === '4' && plan.abnormalSummary)
+      || group.plans.find((plan) => plan.abnormalSummary)
+    group.abnormalSummary = summaryPlan?.abnormalSummary || ''
     return group
   }).sort((a, b) => b.healthDate.localeCompare(a.healthDate))
 }
