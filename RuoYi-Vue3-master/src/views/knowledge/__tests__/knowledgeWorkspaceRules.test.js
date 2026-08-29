@@ -73,8 +73,15 @@ test('knowledge page source keeps document linkage on existing document routes',
 test('knowledge upgrade SQL is isolated, repeatable and preserves document ownership boundaries', () => {
   const upgrade = readFileSync(new URL('../../../../../WDF100.0/sql/knowledge_center_v3_15_0_20260826.sql', import.meta.url), 'utf8')
   const rollback = readFileSync(new URL('../../../../../WDF100.0/sql/knowledge_center_v3_15_0_20260826_rollback.sql', import.meta.url), 'utf8')
+  const cumulative = readFileSync(new URL('../../../../../WDF100.0/sql/knowledge_center_upgrade_20260829_v3_14_3_to_v3_15_2_all.sql', import.meta.url), 'utf8')
+  const upgradeGuide = readFileSync(new URL('../../../../../docs/KNOWLEDGE_CENTER_V3_14_3_TO_V3_15_2_DATABASE_UPGRADE.md', import.meta.url), 'utf8')
+  const releaseNotes = readFileSync(new URL('../../support/version/releaseNotes.js', import.meta.url), 'utf8')
+  const executableCumulative = cumulative
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*--.*$/gm, '')
   for (const table of ['kb_space', 'kb_page', 'kb_tag', 'kb_page_tag', 'kb_page_document', 'kb_page_version']) {
     assert.match(upgrade, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`))
+    assert.match(cumulative, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`))
   }
   assert.match(upgrade, /kb_page_document[\s\S]*document_id/)
   assert.match(upgrade, /ON DUPLICATE KEY UPDATE/)
@@ -85,4 +92,15 @@ test('knowledge upgrade SQL is isolated, repeatable and preserves document owner
   assert.doesNotMatch(upgrade, /INSERT\s+INTO\s+doc_acl/i)
   assert.doesNotMatch(rollback, /DROP\s+TABLE/i)
   assert.match(rollback, /FROM sys_role_menu role_menu[\s\S]*JOIN sys_menu menu/)
+  assert.match(cumulative, /v3\.15\.1 无数据库修改/)
+  assert.match(cumulative, /v3\.15\.2 无数据库修改/)
+  assert.match(cumulative, /knowledge_center_cumulative_preflight_20260829/)
+  assert.match(cumulative, /kb_table_count/)
+  assert.match(cumulative, /default_root_folder_count/)
+  assert.match(cumulative, /admin_knowledge_menu_count/)
+  assert.doesNotMatch(executableCumulative, /DROP\s+TABLE|TRUNCATE\s+TABLE/i)
+  assert.doesNotMatch(executableCumulative, /(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM|ALTER\s+TABLE)\s+doc_/i)
+  assert.match(upgradeGuide, /两种方式二选一/)
+  assert.match(upgradeGuide, /不删除 `kb_\*` 表或知识版本数据/)
+  assert.match(releaseNotes, /knowledge_center_upgrade_20260829_v3_14_3_to_v3_15_2_all\.sql/)
 })

@@ -14,11 +14,16 @@ export const releaseNotes = [
       '图标选择器采用Element Plus Segmented、Input、Select、Scrollbar、Button与Empty，按平台图标和扩展图标分层，并提供19个Keyline语义分类及数量反馈。',
       '扩展图标搜索整合上游关键词和别名，并补充中文语义、完整拼音与拼音首字母；搜索支持多词组合且不扩大既有业务图标的匹配范围。',
       '打开已有菜单时自动切换到对应图标来源并将当前图标定位到可视区域；浅色、深色和窄桌面布局均使用平台及Element Plus主题变量。',
-      '前端设计规范明确后续页面优先复用Element Plus、平台和keyline-图标，不再为单个页面手工绘制或拼接新SVG。'
+      '前端设计规范明确后续页面优先复用Element Plus、平台和keyline-图标，不再为单个页面手工绘制或拼接新SVG。',
+      '补充v3.14.3至v3.15.2数据库累计升级脚本和执行说明；累计范围只包含v3.15.0知识中心数据库变化，v3.15.1与v3.15.2均无新增数据库修改。'
     ],
-    scope: ['平台通用', '离线图标库', '菜单管理', 'Element Plus', '中文与拼音搜索', '黑白主题', '桌面适配', '前端设计规范', '版本记录'],
-    database: '无数据库结构或业务数据修改；不批量替换既有菜单图标，不需要执行SQL升级脚本。',
-    scripts: []
+    scope: ['平台通用', '离线图标库', '菜单管理', 'Element Plus', '中文与拼音搜索', '黑白主题', '桌面适配', '前端设计规范', '数据库升级交付', '版本记录'],
+    database: 'v3.15.2自身无数据库修改；从v3.14.3升级时需执行累计脚本，其中只包含v3.15.0知识中心六张表及菜单权限变化。',
+    scripts: [
+      'WDF100.0/sql/knowledge_center_upgrade_20260829_v3_14_3_to_v3_15_2_all.sql',
+      'WDF100.0/sql/knowledge_center_v3_15_0_20260826.sql',
+      'WDF100.0/sql/knowledge_center_v3_15_0_20260826_rollback.sql'
+    ]
   },
   {
     version: 'v3.15.1',

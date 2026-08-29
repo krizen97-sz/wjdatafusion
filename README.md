@@ -168,6 +168,8 @@ python3 -m pip install -r tools/requirements-delivery.txt
 - 知识中心开发与部署说明：`docs/KNOWLEDGE_CENTER_V3_15_0.md`
 - 知识中心操作手册：`WDF100.0/doc/知识中心功能操作手册.md`
 - `v3.13.3` 至 `v3.14.3` 数据库合并升级脚本：`WDF100.0/sql/support_upgrade_20260826_v3_13_3_to_v3_14_3_all.sql`
+- `v3.14.3` 至 `v3.15.2` 数据库累计升级脚本：`WDF100.0/sql/knowledge_center_upgrade_20260829_v3_14_3_to_v3_15_2_all.sql`
+- `v3.14.3` 至 `v3.15.2` 数据库升级说明：`docs/KNOWLEDGE_CENTER_V3_14_3_TO_V3_15_2_DATABASE_UPGRADE.md`
 
 ## 当前版本
 
