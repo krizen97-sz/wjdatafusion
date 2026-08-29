@@ -20,13 +20,16 @@
           <article
             class="inspection-flow__node"
             :class="{ 'is-active': activeIndex === index, 'is-disabled': step.enabledFlag !== 'Y' }"
+            role="button"
             tabindex="0"
+            :aria-label="`选择巡检步骤 ${step.stepName || index + 1}`"
             @click="emit('select', index)"
             @keydown.enter.prevent="emit('select', index)"
+            @keydown.space.prevent="emit('select', index)"
           >
             <header>
               <span>步骤 {{ index + 1 }}</span>
-              <el-tag size="small" :type="step.enabledFlag === 'Y' ? 'success' : 'info'">
+              <el-tag size="small" :type="step.enabledFlag === 'Y' ? 'success' : 'danger'">
                 {{ step.enabledFlag === 'Y' ? '启用' : '停用' }}
               </el-tag>
             </header>
@@ -53,19 +56,19 @@
 
             <footer @click.stop>
               <el-tooltip content="上移" placement="top">
-                <el-button circle size="small" :icon="Top" :disabled="index <= 0" @click="emit('move', index, -1)" />
+                <el-button circle size="small" :icon="Top" :disabled="index <= 0" :aria-label="`上移步骤 ${step.stepName || index + 1}`" @click="emit('move', index, -1)" />
               </el-tooltip>
               <el-tooltip content="下移" placement="top">
-                <el-button circle size="small" :icon="Bottom" :disabled="index >= steps.length - 1" @click="emit('move', index, 1)" />
+                <el-button circle size="small" :icon="Bottom" :disabled="index >= steps.length - 1" :aria-label="`下移步骤 ${step.stepName || index + 1}`" @click="emit('move', index, 1)" />
               </el-tooltip>
               <el-tooltip content="复制步骤" placement="top">
-                <el-button circle size="small" type="success" plain :icon="CopyDocument" @click="emit('duplicate', index)" />
+                <el-button circle size="small" type="success" plain :icon="CopyDocument" :aria-label="`复制步骤 ${step.stepName || index + 1}`" @click="emit('duplicate', index)" />
               </el-tooltip>
               <el-tooltip content="编辑步骤" placement="top">
-                <el-button circle size="small" type="primary" plain :icon="Edit" @click="emit('edit', index)" />
+                <el-button circle size="small" type="primary" plain :icon="Edit" :aria-label="`编辑步骤 ${step.stepName || index + 1}`" @click="emit('edit', index)" />
               </el-tooltip>
               <el-tooltip content="删除步骤" placement="top">
-                <el-button circle size="small" type="danger" plain :icon="Delete" @click="emit('remove', index)" />
+                <el-button circle size="small" type="danger" plain :icon="Delete" :aria-label="`删除步骤 ${step.stepName || index + 1}`" @click="emit('remove', index)" />
               </el-tooltip>
             </footer>
           </article>
@@ -162,7 +165,7 @@ const emit = defineEmits(['select', 'add', 'edit', 'duplicate', 'remove', 'move'
   display: grid;
   place-items: center;
   width: 34px;
-  color: #86a2c3;
+  color: var(--app-muted);
   flex: 0 0 34px;
 }
 
@@ -211,14 +214,14 @@ const emit = defineEmits(['select', 'add', 'edit', 'duplicate', 'remove', 'move'
 
 .inspection-flow__node:hover,
 .inspection-flow__node:focus-visible {
-  border-color: #88b7ef;
-  box-shadow: 0 8px 22px rgba(42, 87, 136, 0.1);
+  border-color: var(--el-color-primary-light-7);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--el-color-primary) 10%, transparent);
   outline: none;
 }
 
 .inspection-flow__node.is-active {
   border-color: var(--el-color-primary);
-  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12), 0 10px 24px rgba(42, 87, 136, 0.11);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--el-color-primary) 12%, transparent), 0 10px 24px color-mix(in srgb, var(--el-color-primary) 11%, transparent);
 }
 
 .inspection-flow__node.is-disabled {
@@ -231,7 +234,7 @@ const emit = defineEmits(['select', 'add', 'edit', 'duplicate', 'remove', 'move'
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  color: #6e829a;
+  color: var(--app-text);
   font-size: 12px;
 }
 
@@ -307,7 +310,7 @@ const emit = defineEmits(['select', 'add', 'edit', 'duplicate', 'remove', 'move'
 .inspection-flow__empty > .el-icon {
   width: 42px;
   height: 42px;
-  color: #5c8fc4;
+  color: var(--app-muted);
   font-size: 28px;
 }
 

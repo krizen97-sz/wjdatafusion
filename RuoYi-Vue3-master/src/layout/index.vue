@@ -1,6 +1,6 @@
 <template>
   <div :class="classObj" class="app-wrapper" :style="{ '--current-color': theme }">
-    <div v-if="device === 'mobile' && sidebar.opened" class="drawer-bg" @click="handleClickOutside"/>
+    <button v-if="device === 'mobile' && sidebar.opened" type="button" class="drawer-bg" aria-label="关闭侧栏" @click="handleClickOutside"/>
     <sidebar v-if="!sidebar.hide" class="sidebar-container" />
     <div :class="{ hasTagsView: needTagsView, sidebarHide: sidebar.hide }" class="main-container">
       <div :class="{ 'fixed-header': fixedHeader }">
@@ -93,6 +93,8 @@ function setLayout() {
 }
 
 .drawer-bg {
+  padding: 0;
+  border: 0;
   background: rgba(27, 52, 84, 0.24);
   width: 100%;
   top: 0;

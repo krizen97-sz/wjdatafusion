@@ -206,8 +206,8 @@ const {
   padding: 14px 16px;
   overflow: hidden;
   flex-direction: column;
-  background: #f3f5f7;
-  color: #1f2937;
+  background: var(--surface-muted);
+  color: var(--app-heading);
 }
 
 .ipam-workbook-page.is-fullscreen {
@@ -265,7 +265,7 @@ const {
   min-height: 54px;
   margin: 8px 0 10px;
   padding: 8px 10px;
-  border: 1px solid #dce1e7;
+  border: 1px solid var(--surface-border);
   background: var(--surface-strong);
   gap: 8px;
 }
@@ -289,20 +289,20 @@ const {
   overflow: hidden;
   flex: 1;
   grid-template-columns: 264px minmax(0, 1fr);
-  border: 1px solid #d7dde5;
+  border: 1px solid var(--surface-border);
   background: var(--surface-strong);
 }
 
 .workbook-explorer {
   min-width: 0;
   overflow: hidden;
-  border-right: 1px solid #d7dde5;
+  border-right: 1px solid var(--surface-border);
   background: var(--surface-muted);
 }
 
 .workbook-explorer__head {
   padding: 13px 12px 10px;
-  border-bottom: 1px solid #e2e7ed;
+  border-bottom: 1px solid var(--surface-muted);
 }
 
 .workbook-explorer__head > div {
@@ -332,12 +332,12 @@ const {
 }
 
 .workbook-scope-tree :deep(.el-tree-node__content:hover) {
-  background: #eef3f8;
+  background: var(--surface-muted);
 }
 
 .workbook-scope-tree :deep(.is-current > .el-tree-node__content) {
   background: var(--surface-subtle);
-  color: #0958d9;
+  color: var(--el-color-primary);
 }
 
 .scope-node {
@@ -369,7 +369,7 @@ const {
 
 .scope-node__copy span {
   margin-top: 3px;
-  color: #7b8491;
+  color: var(--app-muted);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11px;
 }
@@ -397,7 +397,7 @@ const {
   min-height: 56px;
   padding: 8px 13px;
   justify-content: space-between;
-  border-bottom: 1px solid #dfe4ea;
+  border-bottom: 1px solid var(--surface-border);
   gap: 16px;
 }
 
@@ -432,7 +432,7 @@ const {
 
 .workbook-sheet__metrics span {
   padding-left: 10px;
-  border-left: 1px solid #d9dfe7;
+  border-left: 1px solid var(--surface-border);
 }
 
 .workbook-sheet__metrics strong {
@@ -440,7 +440,7 @@ const {
 }
 
 .workbook-sheet__metrics .is-dirty strong {
-  color: #c2410c;
+  color: var(--el-color-danger);
 }
 
 .workbook-load-progress {
@@ -457,7 +457,7 @@ const {
   min-height: 30px;
   padding: 0 11px;
   justify-content: space-between;
-  border-top: 1px solid #dfe4ea;
+  border-top: 1px solid var(--surface-border);
   background: var(--surface-muted);
   color: var(--app-muted);
   font-size: 11px;
@@ -473,14 +473,14 @@ const {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: #94a3b8;
+  background: var(--app-muted);
   content: '';
 }
 
-.workbook-statusbar__legend .is-reserved::before { background: #d97706; }
-.workbook-statusbar__legend .is-allocated::before { background: #2563eb; }
-.workbook-statusbar__legend .is-issued::before { background: #059669; }
-.workbook-statusbar__legend .is-disabled::before { background: #dc2626; }
+.workbook-statusbar__legend .is-reserved::before { background: var(--el-color-warning); }
+.workbook-statusbar__legend .is-allocated::before { background: var(--el-color-primary); }
+.workbook-statusbar__legend .is-issued::before { background: var(--el-color-success); }
+.workbook-statusbar__legend .is-disabled::before { background: var(--el-color-danger); }
 
 @media (max-width: 1100px) {
   .ipam-workbook-page {

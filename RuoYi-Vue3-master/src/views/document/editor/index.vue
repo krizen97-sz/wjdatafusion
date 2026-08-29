@@ -368,13 +368,13 @@ function closeEditor() {
 
 <style scoped lang="scss">
 .document-editor-page { display: flex; width: 100vw; height: 100vh; overflow: hidden; flex-direction: column; background: var(--surface-muted); color: var(--app-heading); }
-.editor-header { display: flex; height: 54px; flex: 0 0 54px; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--surface-border); background: var(--surface-strong); box-shadow: 0 1px 3px rgba(16, 24, 40, 0.05); }
+.editor-header { display: flex; height: 54px; flex: 0 0 54px; align-items: center; gap: 10px; padding: 0 14px; border-bottom: 1px solid var(--surface-border); background: var(--surface-strong); box-shadow: 0 1px 3px color-mix(in srgb, var(--app-heading) 5%, transparent); }
 .close-button { display: grid; width: 34px; height: 34px; place-items: center; border: 0; border-radius: 6px; background: transparent; color: var(--app-muted); cursor: pointer; }
 .close-button:hover,
-.close-button:focus-visible { outline: none; background: var(--surface-subtle); color: #0f5eba; }
-.file-mark { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 5px; background: #1677ff; color: #fff; font-size: 12px; font-weight: 750; }
+.close-button:focus-visible { outline: none; background: var(--surface-subtle); color: var(--el-color-primary); }
+.file-mark { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 5px; background: var(--el-color-primary); color: var(--el-color-white); font-size: 12px; font-weight: 750; }
 .file-mark.is-xls,
-.file-mark.is-xlsx { background: #15803d; }
+.file-mark.is-xlsx { background: var(--el-color-success); }
 .editor-title { min-width: 0; }
 .editor-title strong,
 .editor-title span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -385,19 +385,19 @@ function closeEditor() {
 .online-summary { display: flex; align-items: center; gap: 5px; padding: 5px 8px; border-radius: 5px; color: var(--app-muted); background: var(--surface-muted); font-size: 12px; }
 .save-state { appearance: none; border: 0; font-family: inherit; }
 .save-state:not(:disabled) { cursor: pointer; }
-.save-state.is-saved { color: #15803d; background: #f2fbf5; }
+.save-state.is-saved { color: var(--el-color-success); background: var(--el-color-success-light-9); }
 .save-state.is-ready,
-.save-state.is-view { color: var(--app-muted); background: #f3f6fa; }
-.save-state.is-syncing { color: #0f5eba; background: var(--surface-subtle); }
-.save-state.is-error { color: #b42318; background: #fff4f2; }
+.save-state.is-view { color: var(--app-muted); background: var(--surface-muted); }
+.save-state.is-syncing { color: var(--el-color-primary); background: var(--surface-subtle); }
+.save-state.is-error { color: var(--el-color-danger); background: var(--el-color-danger-light-9); }
 .editor-stage { position: relative; min-height: 0; flex: 1; }
 .onlyoffice-editor { width: 100%; height: 100%; }
 .onlyoffice-editor.is-hidden { visibility: hidden; }
 .editor-placeholder,
 .editor-error { position: absolute; z-index: 2; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; flex-direction: column; background: var(--surface-muted); color: var(--app-muted); }
 .editor-placeholder > .el-icon,
-.editor-error > .el-icon { color: #1677ff; font-size: 28px; }
-.editor-error > .el-icon { color: #b42318; }
+.editor-error > .el-icon { color: var(--el-color-primary); font-size: 28px; }
+.editor-error > .el-icon { color: var(--el-color-danger); }
 .editor-placeholder strong,
 .editor-error strong { color: var(--app-heading); font-size: 15px; }
 .editor-placeholder span,

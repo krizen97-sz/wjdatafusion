@@ -110,13 +110,12 @@
       </el-col>
     </el-row>
 
-    <el-dialog v-model="orgOpen" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--org">
-      <template #header>
+    <el-dialog v-model="orgOpen" :aria-label="orgTitle" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--org">
+      <template #header="{ titleId, titleClass }">
         <div class="editor-hero editor-hero--org">
           <div class="editor-hero__icon">组</div>
           <div class="editor-hero__copy">
-            <span class="editor-hero__eyebrow">组织编辑工作卡</span>
-            <h3>{{ orgTitle }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ orgTitle }}</h3>
             <p>{{ orgDialogLead }}</p>
           </div>
           <div class="editor-hero__chips">
@@ -146,8 +145,8 @@
                 </el-form-item>
                 <el-form-item label="状态" prop="status">
                   <el-radio-group v-model="orgForm.status">
-                    <el-radio label="0">正常</el-radio>
-                    <el-radio label="1">停用</el-radio>
+                    <el-radio value="0">正常</el-radio>
+                    <el-radio value="1">停用</el-radio>
                   </el-radio-group>
                 </el-form-item>
                 <el-form-item class="editor-form__wide" label="组织名称" prop="orgName">
@@ -176,18 +175,17 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="orgOpen = false">取 消</el-button>
-          <el-button type="primary" @click="submitOrgForm">保存组织</el-button>
+          <el-button type="primary" :loading="orgSubmitLoading" @click="submitOrgForm">保存组织</el-button>
         </div>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="contactOpen" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--contact">
-      <template #header>
+    <el-dialog v-model="contactOpen" :aria-label="contactTitle" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--contact">
+      <template #header="{ titleId, titleClass }">
         <div class="editor-hero editor-hero--contact">
           <div class="editor-hero__icon">人</div>
           <div class="editor-hero__copy">
-            <span class="editor-hero__eyebrow">人员编辑工作卡</span>
-            <h3>{{ contactTitle }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ contactTitle }}</h3>
             <p>{{ contactDialogLead }}</p>
           </div>
           <div class="editor-hero__chips">
@@ -241,8 +239,8 @@
                 </el-form-item>
                 <el-form-item label="联系人级别" prop="isPrimary">
                   <el-radio-group v-model="contactForm.isPrimary">
-                    <el-radio label="0">普通联系人</el-radio>
-                    <el-radio label="1">主联系人</el-radio>
+                    <el-radio value="0">普通联系人</el-radio>
+                    <el-radio value="1">主联系人</el-radio>
                   </el-radio-group>
                 </el-form-item>
               </el-form>
@@ -266,7 +264,7 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="contactOpen = false">取 消</el-button>
-          <el-button type="primary" @click="submitContactForm">保存人员</el-button>
+          <el-button type="primary" :loading="contactSubmitLoading" @click="submitContactForm">保存人员</el-button>
         </div>
       </template>
     </el-dialog>
@@ -280,7 +278,7 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="contactRoleOpen = false">取 消</el-button>
-          <el-button type="primary" @click="submitContactRole">保存角色</el-button>
+          <el-button type="primary" :loading="roleSubmitLoading" @click="submitContactRole">保存角色</el-button>
         </div>
       </template>
     </el-dialog>
@@ -298,6 +296,9 @@ const { proxy } = getCurrentInstance()
 const { support_contact_role } = proxy.useDict('support_contact_role')
 const orgLoading = ref(false)
 const contactLoading = ref(false)
+const orgSubmitLoading = ref(false)
+const contactSubmitLoading = ref(false)
+const roleSubmitLoading = ref(false)
 const orgList = ref([])
 const contactList = ref([])
 const orgTotal = ref(0)
@@ -388,9 +389,10 @@ function createContactRoleValue() {
 
 function submitContactRole() {
   proxy.$refs.contactRoleRef.validate((valid) => {
-    if (!valid) return
+    if (!valid || roleSubmitLoading.value) return
     const dictLabel = (contactRoleForm.value.dictLabel || '').trim()
     const dictValue = createContactRoleValue()
+    roleSubmitLoading.value = true
     addData({
       dictSort: support_contact_role.value.length + 1,
       dictLabel,
@@ -403,6 +405,8 @@ function submitContactRole() {
       contactRoleOpen.value = false
       await refreshContactRoles()
       contactForm.value.roleType = dictValue
+    }).finally(() => {
+      roleSubmitLoading.value = false
     })
   })
 }
@@ -493,10 +497,11 @@ function openContactOrgEdit() {
 
 function submitOrgForm() {
   proxy.$refs.orgRef.validate((valid) => {
-    if (!valid) return
+    if (!valid || orgSubmitLoading.value) return
     const previousOrgIds = new Set(orgList.value.map((item) => item.orgId))
     const savedOrgId = orgForm.value.orgId
     const source = orgFormSource.value
+    orgSubmitLoading.value = true
     const req = orgForm.value.orgId ? updateOrg(orgForm.value) : addOrg(orgForm.value)
     req.then(async () => {
       proxy.$modal.msgSuccess(orgForm.value.orgId ? '修改成功' : '新增成功')
@@ -513,6 +518,8 @@ function submitOrgForm() {
         }
       }
       orgFormSource.value = null
+    }).finally(() => {
+      orgSubmitLoading.value = false
     })
   })
 }
@@ -559,13 +566,16 @@ function handleContactEdit(row) {
 
 function submitContactForm() {
   proxy.$refs.contactRef.validate((valid) => {
-    if (!valid) return
+    if (!valid || contactSubmitLoading.value) return
     contactForm.value.orgId = currentOrg.value.orgId
+    contactSubmitLoading.value = true
     const req = contactForm.value.contactId ? updateContact(contactForm.value) : addContact(contactForm.value)
     req.then(() => {
       proxy.$modal.msgSuccess(contactForm.value.contactId ? '修改成功' : '新增成功')
       contactOpen.value = false
       getContactList()
+    }).finally(() => {
+      contactSubmitLoading.value = false
     })
   })
 }
@@ -612,7 +622,7 @@ getOrgList()
 
 .support-editor-dialog :deep(.el-dialog) {
   overflow: hidden;
-  border-radius: 30px;
+  border-radius: 14px;
   background: var(--surface-muted);
 }
 
@@ -643,11 +653,11 @@ getOrgList()
 }
 
 .editor-hero--org {
-  background: linear-gradient(135deg, #eef6ff 0%, #f8fbff 54%, #f3f8ff 100%);
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 54%, var(--el-color-primary-light-9) 100%);
 }
 
 .editor-hero--contact {
-  background: linear-gradient(135deg, #eff6ff 0%, #f8fbff 48%, #f3f8ff 100%);
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 48%, var(--el-color-primary-light-9) 100%);
 }
 
 .editor-hero__icon {
@@ -656,25 +666,18 @@ getOrgList()
   justify-content: center;
   width: 54px;
   height: 54px;
-  border-radius: 20px;
+  border-radius: 14px;
   font-size: 22px;
   font-weight: 700;
   color: var(--app-heading);
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(212, 224, 238, 0.9);
-  box-shadow: 0 12px 28px rgba(22, 50, 79, 0.08);
+  background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-border) 90%, transparent);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--el-color-primary) 8%, transparent);
 }
 
 .editor-hero__copy {
   display: grid;
   gap: 6px;
-}
-
-.editor-hero__eyebrow {
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--app-muted);
 }
 
 .editor-hero__copy h3 {
@@ -711,21 +714,21 @@ getOrgList()
 }
 
 .editor-chip--contact {
-  color: #3d6fa6;
+  color: var(--app-text);
   background: var(--surface-subtle);
   border-color: var(--surface-border);
 }
 
 .editor-chip--org {
-  color: #2f6fb3;
+  color: var(--el-color-primary);
   background: var(--surface-subtle);
   border-color: var(--surface-border);
 }
 
 .editor-chip--ghost {
   color: var(--app-muted);
-  background: rgba(255, 255, 255, 0.76);
-  border-color: rgba(214, 225, 237, 0.92);
+  background: color-mix(in srgb, var(--surface-strong) 76%, transparent);
+  border-color: color-mix(in srgb, var(--surface-border) 92%, transparent);
 }
 
 .editor-shell {
@@ -746,10 +749,10 @@ getOrgList()
 
 .editor-section {
   padding: 18px;
-  border-radius: 24px;
+  border-radius: 14px;
   border: 1px solid var(--surface-border);
   background: var(--surface-strong);
-  box-shadow: 0 16px 36px rgba(22, 50, 79, 0.05);
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--el-color-primary) 5%, transparent);
 }
 
 .editor-section__head {
@@ -785,7 +788,7 @@ getOrgList()
 .editor-form :deep(.el-form-item__label) {
   padding-bottom: 8px;
   font-weight: 600;
-  color: #60748a;
+  color: var(--app-text);
 }
 
 .role-config-actions {
@@ -820,7 +823,7 @@ getOrgList()
 .editor-form :deep(.el-select__wrapper) {
   border-radius: 16px;
   background: var(--surface-muted);
-  box-shadow: 0 0 0 1px #dfe8f1 inset;
+  box-shadow: 0 0 0 1px var(--surface-border) inset;
 }
 
 .editor-form :deep(.el-radio-group) {
@@ -834,23 +837,23 @@ getOrgList()
   gap: 12px;
   min-height: 100%;
   padding: 18px;
-  border-radius: 24px;
+  border-radius: 14px;
   border: 1px solid var(--surface-border);
 }
 
 .editor-preview-card--org {
-  background: linear-gradient(180deg, #f2f8ff 0%, #fbfdff 100%);
+  background: linear-gradient(180deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
 }
 
 .editor-preview-card--contact {
-  background: linear-gradient(180deg, #f2f7ff 0%, #fbfdff 100%);
+  background: linear-gradient(180deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
 }
 
 .editor-preview-card__eyebrow {
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #6d8197;
+  color: var(--app-text);
 }
 
 .editor-preview-card strong {
@@ -863,7 +866,7 @@ getOrgList()
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
-  color: #6f8298;
+  color: var(--app-text);
 }
 
 .editor-preview-card__meta {
@@ -878,8 +881,8 @@ getOrgList()
   min-height: 32px;
   padding: 0 10px;
   border-radius: 999px;
-  border: 1px solid rgba(216, 228, 238, 0.95);
-  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid color-mix(in srgb, var(--surface-border) 95%, transparent);
+  background: color-mix(in srgb, var(--surface-strong) 80%, transparent);
   color: var(--app-muted);
   font-size: 12px;
 }

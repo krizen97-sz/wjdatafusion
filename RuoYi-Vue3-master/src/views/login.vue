@@ -214,7 +214,7 @@ getCookie()
   grid-template-columns: minmax(460px, 46vw) minmax(420px, 1fr);
   overflow: hidden;
   background: var(--surface-muted);
-  color: #172235;
+  color: var(--app-heading);
 }
 
 .auth-panel {
@@ -246,7 +246,7 @@ getCookie()
   span {
     display: block;
     margin-top: 12px;
-    color: #6b788b;
+    color: var(--app-text);
     font-size: 14px;
     line-height: 1.4;
   }
@@ -266,7 +266,7 @@ getCookie()
 .auth-field-label {
   display: block;
   margin-bottom: 8px;
-  color: #263446;
+  color: var(--app-heading);
   font-size: 14px;
   font-weight: 650;
 }
@@ -278,24 +278,24 @@ getCookie()
     min-height: 48px;
     border-radius: 14px !important;
     background: var(--surface-strong) !important;
-    box-shadow: 0 0 0 1px #dde5ef inset !important;
+    box-shadow: 0 0 0 1px var(--surface-border) inset !important;
     transition: background 0.24s ease, box-shadow 0.24s ease, transform 0.24s ease;
 
     &:hover {
-      box-shadow: 0 0 0 1px #b9cbe0 inset !important;
+      box-shadow: 0 0 0 1px var(--surface-border) inset !important;
     }
 
     &:focus-within {
       transform: translateY(-1px);
-      box-shadow: 0 0 0 1px #2d7ef7 inset, 0 0 0 4px rgba(45, 126, 247, 0.12) !important;
+      box-shadow: 0 0 0 1px var(--el-color-primary) inset, 0 0 0 4px color-mix(in srgb, var(--el-color-primary) 12%, transparent) !important;
     }
   }
 
   :deep(input) {
-    color: #1d2b3d !important;
+    color: var(--app-heading) !important;
 
     &::placeholder {
-      color: #a0adbc;
+      color: var(--app-muted);
     }
   }
 }
@@ -303,7 +303,7 @@ getCookie()
 .input-icon {
   width: 16px;
   height: 16px;
-  color: #8392a5;
+  color: var(--app-muted);
 }
 
 .password-toggle {
@@ -315,13 +315,13 @@ getCookie()
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: #8392a5;
+  color: var(--app-muted);
   cursor: pointer;
   transition: color 0.2s ease, background 0.2s ease;
 
   &:hover {
-    color: #2d7ef7;
-    background: rgba(45, 126, 247, 0.08);
+    color: var(--el-color-primary);
+    background: color-mix(in srgb, var(--el-color-primary) 8%, transparent);
   }
 }
 
@@ -335,7 +335,7 @@ getCookie()
 .captcha-image {
   height: 48px;
   padding: 0;
-  border: 1px solid #dde5ef;
+  border: 1px solid var(--surface-border);
   border-radius: 14px;
   background: var(--surface-strong);
   overflow: hidden;
@@ -343,8 +343,8 @@ getCookie()
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 
   &:hover {
-    border-color: #2d7ef7;
-    box-shadow: 0 0 0 4px rgba(45, 126, 247, 0.1);
+    border-color: var(--el-color-primary-light-5);
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--el-color-primary) 10%, transparent);
     transform: translateY(-1px);
   }
 
@@ -365,12 +365,12 @@ getCookie()
   font-size: 14px;
 
   :deep(.el-checkbox__label) {
-    color: #617083;
+    color: var(--app-text);
   }
 
   :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
-    background-color: #2d7ef7;
-    border-color: #2d7ef7;
+    background-color: var(--el-color-primary);
+    border-color: var(--el-color-primary-light-5);
   }
 }
 
@@ -379,10 +379,10 @@ getCookie()
   width: 100%;
   height: 50px;
   border: 0;
-  border-radius: 999px;
+  border-radius: 14px;
   overflow: hidden;
-  background: #111827;
-  color: #ffffff;
+  background: var(--el-color-primary);
+  color: var(--el-color-white);
   font-size: 16px;
   font-weight: 760;
   cursor: pointer;
@@ -390,7 +390,7 @@ getCookie()
 
   &:hover:not(:disabled) {
     transform: translateY(-2px);
-    box-shadow: 0 18px 34px rgba(17, 24, 39, 0.22);
+    box-shadow: 0 18px 34px color-mix(in srgb, var(--el-color-primary) 22%, transparent);
 
     .submit-label {
       opacity: 0;
@@ -423,7 +423,7 @@ getCookie()
 .submit-hover {
   opacity: 0;
   transform: translateY(18px);
-  background: #2d7ef7;
+  background: var(--el-color-primary-dark-2);
 }
 
 .auth-copyright {
@@ -433,7 +433,7 @@ getCookie()
   left: 32px;
   width: min(560px, 100%);
   margin: 0 auto;
-  color: #8b98a8;
+  color: var(--app-muted);
   text-align: center;
   font-size: 13px;
   line-height: 1.7;
@@ -443,9 +443,22 @@ getCookie()
   .auth-page *,
   .auth-page *::before,
   .auth-page *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .interactive-submit:hover:not(:disabled) {
+    transform: none;
+
+    .submit-label {
+      opacity: 1;
+      transform: none;
+    }
+
+    .submit-hover {
+      opacity: 0;
+      transform: none;
+    }
   }
 }
 
@@ -454,9 +467,7 @@ getCookie()
     display: block;
     min-height: 100vh;
     overflow-y: auto;
-    background:
-      linear-gradient(90deg, rgba(45, 126, 247, 0.05) 1px, transparent 1px) 0 0 / 36px 36px,
-      linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
+    background: var(--surface-muted);
   }
 
   .auth-panel {

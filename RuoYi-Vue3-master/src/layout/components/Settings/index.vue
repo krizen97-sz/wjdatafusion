@@ -1,22 +1,25 @@
 <template>
-  <el-drawer v-model="showSettings" :withHeader="false" :lock-scroll="false" direction="rtl" size="300px">
+  <el-drawer v-model="showSettings" :lock-scroll="false" direction="rtl" size="300px" class="settings-drawer">
+    <template #header="{ titleId, titleClass }">
+      <span :id="titleId" :class="titleClass">布局设置</span>
+    </template>
     <div class="setting-drawer-title">
       <h3 class="drawer-title">菜单导航设置</h3>
     </div>
     <div class="nav-wrap">
       <el-tooltip content="左侧菜单" placement="bottom">
-        <div class="item left" @click="handleNavType(1)" :class="{ activeItem: navType == 1 }">
+        <div class="item left" role="radio" tabindex="0" aria-label="左侧菜单" :aria-checked="navType == 1" @click="handleNavType(1)" @keydown.enter.prevent="handleNavType(1)" @keydown.space.prevent="handleNavType(1)" :class="{ activeItem: navType == 1 }">
           <b></b><b></b>
         </div>
       </el-tooltip>
 
       <el-tooltip content="混合菜单" placement="bottom">
-        <div class="item mix" @click="handleNavType(2)" :class="{ activeItem: navType == 2 }">
+        <div class="item mix" role="radio" tabindex="0" aria-label="混合菜单" :aria-checked="navType == 2" @click="handleNavType(2)" @keydown.enter.prevent="handleNavType(2)" @keydown.space.prevent="handleNavType(2)" :class="{ activeItem: navType == 2 }">
           <b></b><b></b>
         </div>
       </el-tooltip>
       <el-tooltip content="顶部菜单" placement="bottom">
-        <div class="item top" @click="handleNavType(3)" :class="{ activeItem: navType == 3 }">
+        <div class="item top" role="radio" tabindex="0" aria-label="顶部菜单" :aria-checked="navType == 3" @click="handleNavType(3)" @keydown.enter.prevent="handleNavType(3)" @keydown.space.prevent="handleNavType(3)" :class="{ activeItem: navType == 3 }">
           <b></b><b></b>
         </div>
       </el-tooltip>
@@ -33,8 +36,8 @@
       />
     </div>
     <div class="setting-drawer-block-checbox">
-      <div class="setting-drawer-block-checbox-item" @click="handleTheme('theme-dark')">
-        <img src="@/assets/images/dark.svg" alt="dark" />
+      <div class="setting-drawer-block-checbox-item" role="radio" tabindex="0" aria-label="深色侧栏" :aria-checked="sideTheme === 'theme-dark'" @click="handleTheme('theme-dark')" @keydown.enter.prevent="handleTheme('theme-dark')" @keydown.space.prevent="handleTheme('theme-dark')">
+        <img src="@/assets/images/dark.svg" alt="深色侧栏预览" />
         <div v-if="sideTheme === 'theme-dark'" class="setting-drawer-block-checbox-selectIcon" style="display: block;">
           <i aria-label="图标: check" class="anticon anticon-check">
             <svg viewBox="64 64 896 896" data-icon="check" width="1em" height="1em" :fill="theme" aria-hidden="true" focusable="false" class>
@@ -43,8 +46,8 @@
           </i>
         </div>
       </div>
-      <div class="setting-drawer-block-checbox-item" @click="handleTheme('theme-light')">
-        <img src="@/assets/images/light.svg" alt="light" />
+      <div class="setting-drawer-block-checbox-item" role="radio" tabindex="0" aria-label="浅色侧栏" :aria-checked="sideTheme === 'theme-light'" @click="handleTheme('theme-light')" @keydown.enter.prevent="handleTheme('theme-light')" @keydown.space.prevent="handleTheme('theme-light')">
+        <img src="@/assets/images/light.svg" alt="浅色侧栏预览" />
         <div v-if="sideTheme === 'theme-light'" class="setting-drawer-block-checbox-selectIcon" style="display: block;">
           <i aria-label="图标: check" class="anticon anticon-check">
             <svg viewBox="64 64 896 896" data-icon="check" width="1em" height="1em" :fill="theme" aria-hidden="true" focusable="false" class>
@@ -218,6 +221,17 @@ defineExpose({
 </script>
 
 <style lang='scss' scoped>
+:global(.settings-drawer .el-drawer__header) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .setting-drawer-title {
   margin-bottom: 12px;
   color: var(--el-text-color-primary, rgba(0, 0, 0, 0.85));

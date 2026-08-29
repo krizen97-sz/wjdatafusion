@@ -137,11 +137,11 @@ async function loadRecords() {
   flex: 0 0 36px;
   place-items: center;
   border-radius: 6px;
-  background: #1677ff;
-  color: #fff;
+  background: var(--el-color-primary);
+  color: var(--el-color-white);
   font-weight: 750;
   &.is-xls,
-  &.is-xlsx { background: #15803d; }
+  &.is-xlsx { background: var(--el-color-success); }
 }
 
 .record-tabs { margin-top: 14px; }
@@ -154,21 +154,21 @@ async function loadRecords() {
   align-items: flex-start;
   gap: 11px;
   padding: 14px 0;
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid var(--surface-muted);
 
-  &.is-current { background: linear-gradient(90deg, rgba(21, 128, 61, 0.045), transparent 75%); }
+  &.is-current { background: linear-gradient(90deg, color-mix(in srgb, var(--el-color-success) 5%, transparent), transparent 75%); }
 }
 
 .version-dot {
   width: 10px;
   height: 10px;
   margin-top: 5px;
-  border: 2px solid #1677ff;
+  border: 2px solid var(--el-color-primary);
   border-radius: 50%;
   background: var(--surface-strong);
 }
 
-.is-current .version-dot { border-color: #15803d; background: #dcfce7; }
+.is-current .version-dot { border-color: var(--el-color-success); background: var(--el-color-success-light-9); }
 .version-copy { min-width: 0; }
 .version-title { display: flex; align-items: center; gap: 7px; }
 .version-copy > span,
@@ -181,7 +181,7 @@ async function loadRecords() {
   margin: 2px 0 8px;
   padding: 3px;
   border-radius: 7px;
-  background: #f2f4f7;
+  background: var(--surface-muted);
 
   button {
     flex: 1;
@@ -195,7 +195,7 @@ async function loadRecords() {
   }
   button:hover,
   button:focus-visible,
-  button.is-active { outline: none; background: var(--surface-strong); color: #0f5eba; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08); }
+  button.is-active { outline: none; background: var(--surface-strong); color: var(--el-color-primary); box-shadow: 0 1px 2px color-mix(in srgb, var(--app-heading) 8%, transparent); }
 }
 
 .operation-item {
@@ -203,7 +203,7 @@ async function loadRecords() {
   align-items: flex-start;
   gap: 11px;
   padding: 13px 0;
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid var(--surface-muted);
   > div { min-width: 0; flex: 1; }
   strong,
   span,
@@ -221,7 +221,7 @@ async function loadRecords() {
   place-items: center;
   border-radius: 6px;
   background: var(--surface-subtle);
-  color: #0f5eba;
+  color: var(--el-color-primary);
 }
 
 @media (max-width: 640px) {

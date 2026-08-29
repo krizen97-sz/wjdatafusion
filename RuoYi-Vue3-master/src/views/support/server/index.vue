@@ -53,13 +53,12 @@
       @pagination="getList"
     />
 
-    <el-dialog v-model="open" width="780px" append-to-body class="support-editor-dialog support-editor-dialog--server">
-      <template #header>
+    <el-dialog v-model="open" :aria-label="title" width="780px" append-to-body class="support-editor-dialog support-editor-dialog--server">
+      <template #header="{ titleId, titleClass }">
         <div class="editor-hero editor-hero--server">
           <div class="editor-hero__icon">服</div>
           <div class="editor-hero__copy">
-            <span class="editor-hero__eyebrow">服务器编辑工作卡</span>
-            <h3>{{ title }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ title }}</h3>
             <p>{{ serverDialogLead }}</p>
           </div>
           <div class="editor-hero__chips">
@@ -85,8 +84,8 @@
                 </el-form-item>
                 <el-form-item label="运行状态" prop="status">
                   <el-radio-group v-model="form.status">
-                    <el-radio label="0">正常</el-radio>
-                    <el-radio label="1">停用</el-radio>
+                    <el-radio value="0">正常</el-radio>
+                    <el-radio value="1">停用</el-radio>
                   </el-radio-group>
                 </el-form-item>
                 <el-form-item class="editor-form__wide" label="服务器名称" prop="serverName">
@@ -128,7 +127,7 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="cancel">取 消</el-button>
-          <el-button type="primary" @click="submitForm">保存服务器</el-button>
+        <el-button type="primary" :loading="serverSubmitLoading" @click="submitForm">保存服务器</el-button>
         </div>
       </template>
     </el-dialog>
@@ -140,6 +139,7 @@ import { listServer, getServer, addServer, updateServer, delServer, viewServerPl
 
 const { proxy } = getCurrentInstance()
 const loading = ref(false)
+const serverSubmitLoading = ref(false)
 const showSearch = ref(true)
 const total = ref(0)
 const serverList = ref([])
@@ -230,16 +230,19 @@ function cancel() { open.value = false; reset() }
 
 function submitForm() {
   proxy.$refs.serverRef.validate((valid) => {
-    if (!valid) return
+    if (!valid || serverSubmitLoading.value) return
     if (!validateSshPort(form.value.sshPort)) {
       proxy.$modal.msgWarning('SSH端口范围必须在1-65535之间')
       return
     }
+    serverSubmitLoading.value = true
     const req = form.value.serverId ? updateServer(form.value) : addServer(form.value)
     req.then(() => {
       proxy.$modal.msgSuccess(form.value.serverId ? '修改成功' : '新增成功')
       open.value = false
       getList()
+    }).finally(() => {
+      serverSubmitLoading.value = false
     })
   })
 }
@@ -268,7 +271,7 @@ getList()
 <style scoped>
 .support-editor-dialog :deep(.el-dialog) {
   overflow: hidden;
-  border-radius: 30px;
+  border-radius: 14px;
   background: var(--surface-muted);
 }
 
@@ -296,7 +299,7 @@ getList()
   gap: 16px;
   padding: 24px;
   border-bottom: 1px solid var(--surface-border);
-  background: linear-gradient(135deg, #edf6ff 0%, #f6fbff 54%, #eef7ff 100%);
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 54%, var(--el-color-primary-light-9) 100%);
 }
 
 .editor-hero__icon {
@@ -305,25 +308,18 @@ getList()
   justify-content: center;
   width: 54px;
   height: 54px;
-  border-radius: 20px;
+  border-radius: 14px;
   font-size: 22px;
   font-weight: 700;
   color: var(--app-heading);
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(212, 224, 238, 0.9);
-  box-shadow: 0 12px 28px rgba(22, 50, 79, 0.08);
+  background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-border) 90%, transparent);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--el-color-primary) 8%, transparent);
 }
 
 .editor-hero__copy {
   display: grid;
   gap: 6px;
-}
-
-.editor-hero__eyebrow {
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--app-muted);
 }
 
 .editor-hero__copy h3 {
@@ -360,15 +356,15 @@ getList()
 }
 
 .editor-chip--server {
-  color: #1c6d78;
-  background: #e7f7f8;
-  border-color: #cbe8eb;
+  color: var(--el-color-info);
+  background: var(--el-color-info-light-9);
+  border-color: var(--surface-border);
 }
 
 .editor-chip--ghost {
   color: var(--app-muted);
-  background: rgba(255, 255, 255, 0.76);
-  border-color: rgba(214, 225, 237, 0.92);
+  background: color-mix(in srgb, var(--surface-strong) 76%, transparent);
+  border-color: color-mix(in srgb, var(--surface-border) 92%, transparent);
 }
 
 .editor-shell {
@@ -389,10 +385,10 @@ getList()
 
 .editor-section {
   padding: 18px;
-  border-radius: 24px;
+  border-radius: 14px;
   border: 1px solid var(--surface-border);
   background: var(--surface-strong);
-  box-shadow: 0 16px 36px rgba(22, 50, 79, 0.05);
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--el-color-primary) 5%, transparent);
 }
 
 .editor-section__head {
@@ -428,7 +424,7 @@ getList()
 .editor-form :deep(.el-form-item__label) {
   padding-bottom: 8px;
   font-weight: 600;
-  color: #60748a;
+  color: var(--app-text);
 }
 
 .editor-form :deep(.el-input__wrapper),
@@ -436,7 +432,7 @@ getList()
 .editor-form :deep(.el-input-number .el-input__wrapper) {
   border-radius: 16px;
   background: var(--surface-muted);
-  box-shadow: 0 0 0 1px #dfe8f1 inset;
+  box-shadow: 0 0 0 1px var(--surface-border) inset;
 }
 
 .editor-form :deep(.el-radio-group) {
@@ -454,16 +450,16 @@ getList()
   gap: 12px;
   min-height: 100%;
   padding: 18px;
-  border-radius: 24px;
+  border-radius: 14px;
   border: 1px solid var(--surface-border);
-  background: linear-gradient(180deg, #eef8ff 0%, #f8fcff 100%);
+  background: linear-gradient(180deg, var(--el-color-info-light-9) 0%, var(--el-color-primary-light-9) 100%);
 }
 
 .editor-preview-card__eyebrow {
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #6d8197;
+  color: var(--app-text);
 }
 
 .editor-preview-card strong {
@@ -476,7 +472,7 @@ getList()
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
-  color: #6f8298;
+  color: var(--app-text);
 }
 
 .editor-preview-card__meta {
@@ -491,8 +487,8 @@ getList()
   min-height: 32px;
   padding: 0 10px;
   border-radius: 999px;
-  border: 1px solid rgba(216, 228, 238, 0.95);
-  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid color-mix(in srgb, var(--surface-border) 95%, transparent);
+  background: color-mix(in srgb, var(--surface-strong) 80%, transparent);
   color: var(--app-muted);
   font-size: 12px;
 }

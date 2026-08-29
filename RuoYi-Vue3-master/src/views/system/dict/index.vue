@@ -126,7 +126,7 @@
          <el-table-column label="操作" align="center" width="160" class-name="small-padding fixed-width">
             <template #default="scope">
                <el-button link type="primary" icon="Edit" @click="handleUpdate(scope.row)" v-hasPermi="['system:dict:edit']">修改</el-button>
-               <el-button link type="primary" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['system:dict:remove']">删除</el-button>
+               <el-button link type="danger" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['system:dict:remove']">删除</el-button>
             </template>
          </el-table-column>
       </el-table>
@@ -171,8 +171,8 @@
          </el-form>
          <template #footer>
             <div class="dialog-footer">
-               <el-button type="primary" @click="submitForm">确 定</el-button>
                <el-button @click="cancel">取 消</el-button>
+               <el-button type="primary" :loading="submitLoading" @click="submitForm">确 定</el-button>
             </div>
          </template>
       </el-dialog>
@@ -189,6 +189,7 @@ const { sys_normal_disable } = proxy.useDict("sys_normal_disable")
 const typeList = ref([])
 const open = ref(false)
 const loading = ref(true)
+const submitLoading = ref(false)
 const showSearch = ref(true)
 const ids = ref([])
 const single = ref(true)
@@ -283,21 +284,17 @@ function handleUpdate(row) {
 /** 提交按钮 */
 function submitForm() {
   proxy.$refs["dictRef"].validate(valid => {
-    if (valid) {
-      if (form.value.dictId != undefined) {
-        updateType(form.value).then(response => {
-          proxy.$modal.msgSuccess("修改成功")
-          open.value = false
-          getList()
-        })
-      } else {
-        addType(form.value).then(response => {
-          proxy.$modal.msgSuccess("新增成功")
-          open.value = false
-          getList()
-        })
-      }
-    }
+    if (!valid || submitLoading.value) return
+    const isUpdate = form.value.dictId != undefined
+    submitLoading.value = true
+    const request = isUpdate ? updateType(form.value) : addType(form.value)
+    request.then(() => {
+      proxy.$modal.msgSuccess(isUpdate ? "修改成功" : "新增成功")
+      open.value = false
+      getList()
+    }).finally(() => {
+      submitLoading.value = false
+    })
   })
 }
 

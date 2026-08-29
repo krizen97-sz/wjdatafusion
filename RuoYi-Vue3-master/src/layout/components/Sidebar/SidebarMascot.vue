@@ -14,7 +14,12 @@
         { 'is-refreshing': bubbleRefreshing },
         `is-${bubbleVariant}`
       ]"
+      role="button"
+      tabindex="0"
+      aria-label="切换看板娘提示"
       @click.stop="handleBubbleClick"
+      @keydown.enter.prevent.stop="handleBubbleClick"
+      @keydown.space.prevent.stop="handleBubbleClick"
     >
       <span class="mascot-bubble__text">{{ activeMessage }}</span>
       <span class="mascot-bubble__spark" aria-hidden="true" />

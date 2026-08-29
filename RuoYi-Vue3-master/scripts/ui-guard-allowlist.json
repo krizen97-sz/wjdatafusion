@@ -5,6 +5,10 @@
     "hardcodedColorCount": 4,
     "hardcodedColorUnique": 3,
     "hardcodedMetricCount": 8,
+    "spacingUniqueCount": 13,
+    "fontSizeUniqueCount": 9,
+    "radiusUniqueCount": 8,
+    "shadowUniqueCount": 5,
     "absoluteCount": 4
   },
   "approvedDependencies": {
@@ -88,6 +92,141 @@
       ],
       "linePattern": "data-ui-guard=[\\\"'](?:diagram|flow|map)[\\\"']",
       "reason": "UIX-004 allows explicitly marked topology media, never Canvas-rendered forms, buttons, or tables.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-002-inspection-density",
+      "rule": "hardcoded-shape-spacing",
+      "paths": [
+        "src/views/support/autoInspection/cockpit.vue",
+        "src/views/support/autoInspection/index.vue"
+      ],
+      "reason": "UIX-002 preserves verified operations-dashboard and inspection-configuration information density; standard controls remain native Element Plus.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-003-ipam-density",
+      "rule": "hardcoded-shape-spacing",
+      "paths": [
+        "src/views/ipam/index.vue",
+        "src/views/ipam/overview/index.vue"
+      ],
+      "reason": "UIX-003 preserves IP grid and dashboard spatial scales required by address visualization.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-003-ipam-palette",
+      "rule": "hardcoded-colors",
+      "paths": [
+        "src/views/ipam/overview/index.vue",
+        "src/views/ipam/components/IpamHudIcon.vue"
+      ],
+      "reason": "UIX-003 retains the isolated HUD/chart palette; it does not style standard forms or tables.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-003-ipam-positioning",
+      "rule": "absolute-layout",
+      "paths": [
+        "src/views/ipam/overview/index.vue"
+      ],
+      "reason": "UIX-003 allows bounded chart/HUD overlays, not ordinary page layout.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-003-ipam-controls",
+      "rule": "custom-core-control-style",
+      "paths": [
+        "src/views/ipam/overview/index.vue"
+      ],
+      "reason": "UIX-003 keeps the isolated dark command-deck surface while preserving Element Plus button behavior and accessibility.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-004-site-density",
+      "rule": "hardcoded-shape-spacing",
+      "paths": [
+        "src/views/support/site/index.vue",
+        "src/views/support/site/SiteConfigDialog.vue"
+      ],
+      "reason": "UIX-004 preserves topology, physical-location, and overview spatial scales; standard Dialog radius and controls were normalized separately.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-004-topology-palette",
+      "rule": "hardcoded-colors",
+      "paths": [
+        "src/views/support/site/SiteConfigDialog.vue"
+      ],
+      "reason": "UIX-004 retains the topology and equipment-location palette with existing explicit dark-mode overrides.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-004-topology-positioning",
+      "rule": "absolute-layout",
+      "paths": [
+        "src/views/support/site/SiteConfigDialog.vue"
+      ],
+      "reason": "UIX-004 allows bounded connector and canvas positioning, never ordinary form layout.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-004-canvas-dialog",
+      "rule": "custom-core-control-style",
+      "paths": [
+        "src/views/support/site/SiteConfigDialog.vue"
+      ],
+      "reason": "UIX-004 allows the full-screen topology dialog surface; ordinary support editor Dialogs were normalized to 14px.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-007-form-builder-palette",
+      "rule": "hardcoded-colors",
+      "paths": [
+        "src/views/tool/build/index.vue",
+        "src/views/tool/build/RightPanel.vue"
+      ],
+      "reason": "UIX-007 isolates the form-generator editor palette from business pages.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-007-form-builder-positioning",
+      "rule": "absolute-layout",
+      "paths": [
+        "src/views/tool/build/index.vue"
+      ],
+      "reason": "UIX-007 allows drag-canvas positioning inside the form generator only.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-008-home-density",
+      "rule": "hardcoded-shape-spacing",
+      "paths": [
+        "src/views/index.vue"
+      ],
+      "reason": "UIX-008 preserves the role-aware operations home layout and does not define CRUD page structure.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-009-version-density",
+      "rule": "hardcoded-shape-spacing",
+      "paths": [
+        "src/views/support/version/index.vue"
+      ],
+      "reason": "UIX-009 preserves the version tree and long-form release-detail reading hierarchy; the CSS chevron was replaced with ArrowRight.",
       "owner": "frontend-governance",
       "expires": null
     }

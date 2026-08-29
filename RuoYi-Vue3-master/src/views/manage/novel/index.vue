@@ -75,7 +75,7 @@
         <template #default="scope">
           <el-button link type="primary" icon="View" @click="handleShow(scope.row)">展示</el-button>
           <el-button link type="primary" icon="Edit" @click="handleUpdate(scope.row)" v-hasPermi="['manage:novel:edit']">修改</el-button>
-          <el-button link type="primary" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['manage:novel:remove']">删除</el-button>
+          <el-button link type="danger" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['manage:novel:remove']">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -106,8 +106,8 @@
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button type="primary" @click="submitForm">确 定</el-button>
           <el-button @click="cancel">取 消</el-button>
+          <el-button type="primary" :loading="submitLoading" @click="submitForm">确 定</el-button>
         </div>
       </template>
     </el-dialog>
@@ -153,6 +153,7 @@ const { proxy } = getCurrentInstance()
 const novelList = ref([])
 const open = ref(false)
 const loading = ref(true)
+const submitLoading = ref(false)
 const showSearch = ref(true)
 const ids = ref([])
 const single = ref(true)
@@ -266,21 +267,17 @@ function handleShow(row) {
 /** 提交按钮 */
 function submitForm() {
   proxy.$refs["novelRef"].validate(valid => {
-    if (valid) {
-      if (form.value.id != null) {
-        updateNovel(form.value).then(response => {
-          proxy.$modal.msgSuccess("修改成功")
-          open.value = false
-          getList()
-        })
-      } else {
-        addNovel(form.value).then(response => {
-          proxy.$modal.msgSuccess("新增成功")
-          open.value = false
-          getList()
-        })
-      }
-    }
+    if (!valid || submitLoading.value) return
+    const isUpdate = form.value.id != null
+    submitLoading.value = true
+    const request = isUpdate ? updateNovel(form.value) : addNovel(form.value)
+    request.then(() => {
+      proxy.$modal.msgSuccess(isUpdate ? "修改成功" : "新增成功")
+      open.value = false
+      getList()
+    }).finally(() => {
+      submitLoading.value = false
+    })
   })
 }
 
@@ -314,8 +311,8 @@ getList()
 
 .preview-hero {
   padding: 18px 22px 14px;
-  background: linear-gradient(135deg, #f8fbff 0%, #eef5ff 100%);
-  border: 1px solid #e7eef9;
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 10px;
 }
 
@@ -324,7 +321,7 @@ getList()
   font-size: 24px;
   line-height: 1.3;
   font-weight: 700;
-  color: #1f2d3d;
+  color: var(--app-heading);
   letter-spacing: 0.2px;
 }
 
@@ -333,18 +330,18 @@ getList()
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #5f6b7a;
+  color: var(--app-text);
   font-size: 13px;
 }
 
 .meta-divider {
-  color: #b7c2d0;
+  color: var(--app-muted);
 }
 
 .preview-info {
   margin-top: 14px;
   padding: 14px 16px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--surface-border);
   border-radius: 10px;
   background: var(--surface-muted);
 }
@@ -352,12 +349,12 @@ getList()
 .info-label,
 .content-label {
   font-size: 13px;
-  color: #7d8ca3;
+  color: var(--app-muted);
   margin-bottom: 8px;
 }
 
 .info-value {
-  color: #303133;
+  color: var(--app-heading);
   line-height: 1.7;
   word-break: break-word;
 }
@@ -365,14 +362,14 @@ getList()
 .preview-content-wrap {
   margin-top: 14px;
   padding: 14px 16px;
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--surface-border);
   border-radius: 10px;
   background: var(--surface-strong);
 }
 
 .novel-content {
   line-height: 1.7;
-  color: #2f3b4b;
+  color: var(--app-heading);
   word-break: break-word;
   animation: contentEnter 0.2s ease-out;
 }
@@ -388,23 +385,23 @@ getList()
 .novel-content :deep(h5),
 .novel-content :deep(h6) {
   margin: 18px 0 10px;
-  color: #1f2d3d;
+  color: var(--app-heading);
   line-height: 1.35;
 }
 
 .novel-content :deep(blockquote) {
   margin: 14px 0;
   padding: 10px 14px;
-  border-left: 3px solid #409eff;
+  border-left: 1px solid var(--surface-border);
   background: var(--surface-muted);
-  color: #4b5563;
+  color: var(--app-text);
 }
 
 .novel-content :deep(pre) {
   overflow: auto;
   padding: 12px;
   border-radius: 8px;
-  background: #f5f7fa;
+  background: var(--surface-strong);
 }
 
 .novel-content :deep(table) {
@@ -414,7 +411,7 @@ getList()
 
 .novel-content :deep(td),
 .novel-content :deep(th) {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--surface-border);
   padding: 8px 10px;
 }
 

@@ -10,6 +10,8 @@
               link
               type="primary"
               icon="Refresh"
+              aria-label="刷新缓存列表"
+              title="刷新缓存列表"
               @click="refreshCacheNames()"
             ></el-button>
           </template>
@@ -50,8 +52,10 @@
               <template #default="scope">
                 <el-button
                   link
-                  type="primary"
+                  type="danger"
                   icon="Delete"
+                  aria-label="清理缓存名称"
+                  title="清理缓存名称"
                   @click="handleClearCacheName(scope.row)"
                 ></el-button>
               </template>
@@ -69,6 +73,8 @@
               link
               type="primary"
               icon="Refresh"
+              aria-label="刷新缓存键名"
+              title="刷新缓存键名"
               @click="refreshCacheKeys()"
             ></el-button>
           </template>
@@ -101,8 +107,10 @@
               <template #default="scope">
                 <el-button
                   link
-                  type="primary"
+                  type="danger"
                   icon="Delete"
+                  aria-label="清理缓存键名"
+                  title="清理缓存键名"
                   @click="handleClearCacheKey(scope.row)"
                 ></el-button>
               </template>

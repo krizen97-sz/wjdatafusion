@@ -116,7 +116,7 @@
          <el-table-column label="操作" align="center" width="150" class-name="small-padding fixed-width">
             <template #default="scope">
                <el-button link type="primary" icon="Edit" @click="handleUpdate(scope.row)" v-hasPermi="['system:config:edit']" >修改</el-button>
-               <el-button link type="primary" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['system:config:remove']">删除</el-button>
+               <el-button link type="danger" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['system:config:remove']">删除</el-button>
             </template>
          </el-table-column>
       </el-table>
@@ -156,8 +156,8 @@
          </el-form>
          <template #footer>
             <div class="dialog-footer">
-               <el-button type="primary" @click="submitForm">确 定</el-button>
                <el-button @click="cancel">取 消</el-button>
+               <el-button type="primary" :loading="submitLoading" @click="submitForm">确 定</el-button>
             </div>
          </template>
       </el-dialog>
@@ -173,6 +173,7 @@ const { sys_yes_no } = proxy.useDict("sys_yes_no")
 const configList = ref([])
 const open = ref(false)
 const loading = ref(true)
+const submitLoading = ref(false)
 const showSearch = ref(true)
 const ids = ref([])
 const single = ref(true)
@@ -269,21 +270,17 @@ function handleUpdate(row) {
 /** 提交按钮 */
 function submitForm() {
   proxy.$refs["configRef"].validate(valid => {
-    if (valid) {
-      if (form.value.configId != undefined) {
-        updateConfig(form.value).then(response => {
-          proxy.$modal.msgSuccess("修改成功")
-          open.value = false
-          getList()
-        })
-      } else {
-        addConfig(form.value).then(response => {
-          proxy.$modal.msgSuccess("新增成功")
-          open.value = false
-          getList()
-        })
-      }
-    }
+    if (!valid || submitLoading.value) return
+    const isUpdate = form.value.configId != undefined
+    submitLoading.value = true
+    const request = isUpdate ? updateConfig(form.value) : addConfig(form.value)
+    request.then(() => {
+      proxy.$modal.msgSuccess(isUpdate ? "修改成功" : "新增成功")
+      open.value = false
+      getList()
+    }).finally(() => {
+      submitLoading.value = false
+    })
   })
 }
 

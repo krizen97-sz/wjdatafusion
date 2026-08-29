@@ -53,8 +53,8 @@
       </el-row>
       <template #footer>
          <div class="dialog-footer">
-            <el-button type="primary" @click="handleSelectUser">确 定</el-button>
             <el-button @click="visible = false">取 消</el-button>
+            <el-button type="primary" :loading="selectLoading" @click="handleSelectUser">确 定</el-button>
          </div>
       </template>
    </el-dialog>
@@ -74,6 +74,7 @@ const { sys_normal_disable } = proxy.useDict("sys_normal_disable")
 
 const userList = ref([])
 const visible = ref(false)
+const selectLoading = ref(false)
 const total = ref(0)
 const userIds = ref([])
 
@@ -131,10 +132,14 @@ function handleSelectUser() {
     proxy.$modal.msgError("请选择要分配的用户")
     return
   }
+  if (selectLoading.value) return
+  selectLoading.value = true
   authUserSelectAll({ roleId: roleId, userIds: uIds }).then(res => {
     proxy.$modal.msgSuccess(res.msg)
     visible.value = false
     emit("ok")
+  }).finally(() => {
+    selectLoading.value = false
   })
 }
 

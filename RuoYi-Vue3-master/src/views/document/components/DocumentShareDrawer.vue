@@ -289,22 +289,22 @@ async function save() {
   flex: 0 0 36px;
   place-items: center;
   border-radius: 6px;
-  color: #fff;
-  background: #1677ff;
+  color: var(--el-color-white);
+  background: var(--el-color-primary);
   font-weight: 750;
 
   &.is-xls,
   &.is-xlsx {
-    background: #15803d;
+    background: var(--el-color-success);
   }
 
   &.is-zip,
   &.is-rar {
-    background: #7c3aed;
+    background: var(--el-color-primary);
   }
 
   &.is-pdf {
-    background: #c2413b;
+    background: var(--el-color-danger);
   }
 }
 
@@ -332,7 +332,7 @@ async function save() {
 
 .member-list,
 .candidate-list {
-  border-top: 1px solid #edf0f4;
+  border-top: 1px solid var(--surface-muted);
 }
 
 .candidate-row {
@@ -342,7 +342,7 @@ async function save() {
   align-items: center;
   gap: 10px;
   border: 0;
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid var(--surface-muted);
   background: transparent;
   color: inherit;
   text-align: left;
@@ -354,9 +354,9 @@ async function save() {
   align-items: center;
   gap: 10px;
   padding: 11px 2px 12px;
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid var(--surface-muted);
 
-  &.is-expired { background: linear-gradient(90deg, rgba(220, 38, 38, 0.045), transparent 78%); }
+  &.is-expired { background: linear-gradient(90deg, color-mix(in srgb, var(--el-color-danger) 5%, transparent), transparent 78%); }
 }
 
 .candidate-row {
@@ -370,7 +370,7 @@ async function save() {
   }
 
   > .el-icon {
-    color: #1677ff;
+    color: var(--el-color-primary);
   }
 }
 
@@ -384,9 +384,9 @@ async function save() {
     bottom: 1px;
     width: 9px;
     height: 9px;
-    border: 2px solid #fff;
+    border: 2px solid var(--surface-border);
     border-radius: 50%;
-    background: #15803d;
+    background: var(--el-color-success);
   }
 }
 
@@ -433,8 +433,8 @@ async function save() {
   font-size: 12px;
   white-space: nowrap;
 
-  &.is-success { color: #15803d; }
-  &.is-danger { color: #b42318; }
+  &.is-success { color: var(--el-color-success); }
+  &.is-danger { color: var(--el-color-danger); }
 }
 
 .candidate-section .el-input {

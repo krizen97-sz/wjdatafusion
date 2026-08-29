@@ -1,14 +1,14 @@
 <template>
   <div class="icon-dialog">
-    <el-dialog v-model="value" width="980px" :close-on-click-modal="false" :modal-append-to-body="false" @open="onOpen"
+    <el-dialog v-model="value" aria-label="选择图标" width="980px" :close-on-click-modal="false" :modal-append-to-body="false" @open="onOpen"
       @close="onClose">
       <template #header="{ close, titleId, titleClass }">
-        选择图标
+        <span :id="titleId" :class="titleClass">选择图标</span>
         <el-input v-model="key" size="small" :style="{ width: '260px' }" placeholder="请输入图标名称" prefix-icon="Search"
           clearable />
       </template>
-      <ul class="icon-ul">
-        <li v-for="icon in iconList" :key="icon" :class="active === icon ? 'active-item' : ''" @click="onSelect(icon)">
+      <ul class="icon-ul" role="listbox" aria-label="可选图标">
+        <li v-for="icon in iconList" :key="icon" role="option" tabindex="0" :aria-selected="active === icon" :aria-label="`选择图标 ${icon}`" :class="active === icon ? 'active-item' : ''" @click="onSelect(icon)" @keydown.enter.prevent="onSelect(icon)" @keydown.space.prevent="onSelect(icon)">
           <div>
             <el-icon :size="30">
               <component :is="icon" />

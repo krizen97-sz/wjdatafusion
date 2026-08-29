@@ -256,7 +256,7 @@
         <el-form-item label="空间名称" required><el-input v-model="spaceDialog.form.spaceName" maxlength="100" /></el-form-item>
         <el-form-item label="空间说明"><el-input v-model="spaceDialog.form.description" type="textarea" :rows="3" maxlength="500" /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="spaceDialog.open = false">取消</el-button><el-button type="primary" @click="saveSpace">保存</el-button></template>
+      <template #footer><el-button @click="spaceDialog.open = false">取消</el-button><el-button type="primary" :loading="loading.spaceSave" @click="saveSpace">保存</el-button></template>
     </el-dialog>
 
     <el-dialog v-model="folderDialog.open" :title="folderDialog.mode === 'create' ? '新建知识目录' : '编辑知识目录'" width="480px" append-to-body>
@@ -264,7 +264,7 @@
         <el-form-item label="目录名称" required><el-input v-model="folderDialog.form.title" maxlength="100" /></el-form-item>
         <el-form-item label="上级目录"><el-tree-select v-model="folderDialog.form.parentId" :data="folderSelectTree" node-key="pageId" :props="{ label: 'title', children: 'children' }" check-strictly clearable placeholder="根目录" /></el-form-item>
       </el-form>
-      <template #footer><el-button @click="folderDialog.open = false">取消</el-button><el-button type="primary" @click="saveFolder">保存</el-button></template>
+      <template #footer><el-button @click="folderDialog.open = false">取消</el-button><el-button type="primary" :loading="loading.folderSave" @click="saveFolder">保存</el-button></template>
     </el-dialog>
 
     <KnowledgeDocumentSelector v-model="documentSelectorOpen" :selected-documents="editorDocuments" @confirm="applySelectedDocuments" />
@@ -322,7 +322,7 @@ const historyOpen = ref(false)
 const documentSelectorOpen = ref(false)
 const navigationDrawerOpen = ref(false)
 const outlineDrawerOpen = ref(false)
-const loading = reactive({ spaces: false, tree: false, detail: false, search: false, save: false })
+const loading = reactive({ spaces: false, tree: false, detail: false, search: false, save: false, spaceSave: false, folderSave: false })
 
 const editorForm = reactive({ spaceId: null, parentId: null, title: '', summary: '', content: '', tagNames: [], documentIds: [], expectedVersion: null, changeNote: '' })
 const editorDocuments = ref([])
@@ -640,14 +640,20 @@ function handleSpaceCommand(command) {
 
 async function saveSpace() {
   if (!spaceDialog.form.spaceName.trim()) return proxy.$modal.msgWarning('空间名称不能为空')
-  const request = spaceDialog.mode === 'create' ? createKnowledgeSpace(spaceDialog.form) : updateKnowledgeSpace(spaceDialog.form.spaceId, spaceDialog.form)
-  const response = await request
-  spaceDialog.open = false
-  const spacesResponse = await listKnowledgeSpaces()
-  spaces.value = spacesResponse.data || []
-  currentSpaceId.value = Number(response.data?.spaceId || currentSpaceId.value)
-  await loadTree({ selectFirst: true, keepSelection: false })
-  proxy.$modal.msgSuccess('知识空间已保存')
+  if (loading.spaceSave) return
+  loading.spaceSave = true
+  try {
+    const request = spaceDialog.mode === 'create' ? createKnowledgeSpace(spaceDialog.form) : updateKnowledgeSpace(spaceDialog.form.spaceId, spaceDialog.form)
+    const response = await request
+    spaceDialog.open = false
+    const spacesResponse = await listKnowledgeSpaces()
+    spaces.value = spacesResponse.data || []
+    currentSpaceId.value = Number(response.data?.spaceId || currentSpaceId.value)
+    await loadTree({ selectFirst: true, keepSelection: false })
+    proxy.$modal.msgSuccess('知识空间已保存')
+  } finally {
+    loading.spaceSave = false
+  }
 }
 
 function handleFolderCommand(command, folder) {
@@ -666,11 +672,17 @@ function openFolderDialog(folder, parentId) {
 
 async function saveFolder() {
   if (!folderDialog.form.title.trim()) return proxy.$modal.msgWarning('目录名称不能为空')
-  if (folderDialog.mode === 'create') await createKnowledgeFolder(folderDialog.form)
-  else await updateKnowledgeFolder(folderDialog.form.pageId, folderDialog.form)
-  folderDialog.open = false
-  await loadTree({ keepSelection: true })
-  proxy.$modal.msgSuccess('知识目录已保存')
+  if (loading.folderSave) return
+  loading.folderSave = true
+  try {
+    if (folderDialog.mode === 'create') await createKnowledgeFolder(folderDialog.form)
+    else await updateKnowledgeFolder(folderDialog.form.pageId, folderDialog.form)
+    folderDialog.open = false
+    await loadTree({ keepSelection: true })
+    proxy.$modal.msgSuccess('知识目录已保存')
+  } finally {
+    loading.folderSave = false
+  }
 }
 
 async function removeFolder(folder) {

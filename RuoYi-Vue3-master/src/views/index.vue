@@ -7,7 +7,6 @@
     <template v-else-if="isDatafusionUser">
       <section class="fusion-hero">
         <div class="fusion-hero__copy">
-          <span class="fusion-eyebrow">Datafusion Workspace</span>
           <h2>{{ greetingText }}，{{ displayName }}</h2>
           <p>这里汇总你经手的现场、全站最新修改和常用工作入口，帮助你更快回到正在维护的现场配置。</p>
           <div class="fusion-hero__actions">
@@ -43,7 +42,6 @@
         <div class="fusion-panel fusion-panel--sites" v-loading="dashboardLoading">
           <div class="fusion-panel__head">
             <div>
-              <span class="fusion-eyebrow">My Sites</span>
               <h3>我经手的现场</h3>
             </div>
             <el-input
@@ -62,7 +60,7 @@
                   <span class="fusion-site-card__code">{{ site.siteCode || '未生成编码' }}</span>
                   <h4>{{ site.siteName }}</h4>
                 </div>
-                <el-tag :type="site.status === '0' ? 'success' : 'info'" effect="plain">
+                <el-tag :type="site.status === '0' ? 'success' : 'danger'" effect="plain">
                   {{ site.status === '0' ? '正常' : '停用' }}
                 </el-tag>
               </div>
@@ -92,7 +90,6 @@
         <aside class="fusion-panel fusion-panel--changes" v-loading="dashboardLoading">
           <div class="fusion-panel__head fusion-panel__head--compact">
             <div>
-              <span class="fusion-eyebrow">Latest Changes</span>
               <h3>全站最新修改</h3>
             </div>
           </div>
@@ -119,7 +116,6 @@
       <section class="fusion-panel fusion-table-panel">
         <div class="fusion-panel__head">
           <div>
-            <span class="fusion-eyebrow">Site Table</span>
             <h3>我的现场简表</h3>
           </div>
         </div>
@@ -145,9 +141,9 @@
         </el-table>
       </section>
 
-      <el-dialog v-model="changeDetailOpen" width="640px" append-to-body class="fusion-change-dialog">
-        <template #header>
-          <div class="fusion-dialog-head">
+      <el-dialog v-model="changeDetailOpen" :aria-label="activeChange.summary || '现场操作详情'" width="640px" append-to-body class="fusion-change-dialog">
+        <template #header="{ titleId, titleClass }">
+          <div :id="titleId" :class="titleClass" class="fusion-dialog-head">
             <span>{{ getActionLabel(activeChange.actionType) }}</span>
             <strong>{{ activeChange.summary || '操作详情' }}</strong>
           </div>
@@ -169,7 +165,6 @@
     <template v-else>
       <section class="hero">
         <div class="hero__content">
-          <p class="hero__eyebrow">My Workspace</p>
           <h2>{{ greetingText }}，{{ displayName }}</h2>
           <p class="hero__desc">
             这里优先展示你当前账号的工作信息、角色能力和常用入口。平台会根据你的权限范围，自动收起与你当前职责无关的应用信息。
@@ -442,8 +437,8 @@ function formatDateTime(value) {
   margin-top: 8px;
   padding: 32px;
   border-radius: 16px;
-  background: linear-gradient(135deg, #f8fbff 0%, #ecf4ff 100%);
-  border: 1px solid rgba(114, 169, 241, 0.24);
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
+  border: 1px solid color-mix(in srgb, var(--el-color-primary-light-5) 24%, transparent);
 }
 
 .vehiclealarm-home h2 {
@@ -458,14 +453,14 @@ function formatDateTime(value) {
   gap: 18px;
   padding: 24px;
   border-radius: 16px;
-  border: 1px solid #dce9f6;
-  background: linear-gradient(135deg, #f7fbff 0%, #eef8f4 100%);
+  border: 1px solid var(--el-color-primary-light-9);
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--surface-muted) 100%);
 }
 
 .fusion-hero__copy h2,
 .fusion-panel h3 {
   margin: 0;
-  color: #173452;
+  color: var(--el-color-primary);
 }
 
 .fusion-hero__copy h2 {
@@ -475,17 +470,8 @@ function formatDateTime(value) {
 .fusion-hero__copy p {
   max-width: 720px;
   margin: 12px 0 0;
-  color: #60788f;
+  color: var(--app-text);
   line-height: 1.8;
-}
-
-.fusion-eyebrow {
-  display: inline-flex;
-  margin-bottom: 8px;
-  color: #2f7cf6;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0;
 }
 
 .fusion-hero__actions {
@@ -505,8 +491,8 @@ function formatDateTime(value) {
   min-height: 98px;
   padding: 16px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid #d8e8ef;
+  background: color-mix(in srgb, var(--surface-strong) 86%, transparent);
+  border: 1px solid var(--surface-border);
 }
 
 .fusion-stat span {
@@ -516,17 +502,17 @@ function formatDateTime(value) {
 .fusion-stat strong {
   display: block;
   margin-top: 10px;
-  color: #1d6f63;
+  color: var(--el-color-success);
   font-size: 30px;
 }
 
 .fusion-stat--hot strong {
-  color: #c56b18;
+  color: var(--el-color-warning);
 }
 
 .fusion-error {
   margin: 12px 0 0;
-  color: #cf3f3f;
+  color: var(--el-color-danger);
 }
 
 .fusion-main {
@@ -539,9 +525,9 @@ function formatDateTime(value) {
 .fusion-panel {
   padding: 18px;
   border-radius: 14px;
-  border: 1px solid #dce9f6;
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 12px 32px rgba(55, 93, 145, 0.06);
+  border: 1px solid var(--el-color-primary-light-9);
+  background: color-mix(in srgb, var(--surface-strong) 92%, transparent);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--app-text) 6%, transparent);
 }
 
 .fusion-panel__head {
@@ -570,7 +556,7 @@ function formatDateTime(value) {
   min-height: 240px;
   padding: 16px;
   border-radius: 12px;
-  border: 1px solid #dce8ef;
+  border: 1px solid var(--surface-border);
   background: var(--surface-muted);
 }
 
@@ -581,19 +567,19 @@ function formatDateTime(value) {
 }
 
 .fusion-site-card__code {
-  color: #5f7c96;
+  color: var(--app-text);
   font-size: 13px;
 }
 
 .fusion-site-card h4 {
   margin: 6px 0 0;
-  color: #143a5f;
+  color: var(--el-color-primary);
   font-size: 18px;
 }
 
 .fusion-site-card__region {
   margin: 12px 0 0;
-  color: #6c8196;
+  color: var(--app-text);
 }
 
 .fusion-site-card__metrics {
@@ -606,8 +592,8 @@ function formatDateTime(value) {
 .fusion-site-card__metrics span {
   padding: 8px 10px;
   border-radius: 8px;
-  color: #245b53;
-  background: #edf8f3;
+  color: var(--app-heading);
+  background: var(--surface-muted);
 }
 
 .fusion-site-card__last {
@@ -615,22 +601,22 @@ function formatDateTime(value) {
   gap: 5px;
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid #edf3f8;
+  border-top: 1px solid var(--surface-muted);
 }
 
 .fusion-site-card__last span {
-  color: #2f7cf6;
+  color: var(--el-color-primary);
   font-weight: 700;
 }
 
 .fusion-site-card__last strong {
-  color: #253f59;
+  color: var(--app-heading);
   font-weight: 600;
 }
 
 .fusion-site-card__last em,
 .fusion-change-item small {
-  color: #7b90a6;
+  color: var(--app-muted);
   font-style: normal;
 }
 
@@ -652,7 +638,7 @@ function formatDateTime(value) {
   gap: 6px;
   width: 100%;
   padding: 12px;
-  border: 1px solid #e0ebf4;
+  border: 1px solid var(--surface-border);
   border-radius: 10px;
   background: var(--surface-muted);
   text-align: left;
@@ -660,17 +646,17 @@ function formatDateTime(value) {
 }
 
 .fusion-change-item:hover {
-  border-color: #95bdf5;
+  border-color: var(--el-color-primary-light-7);
   background: var(--surface-muted);
 }
 
 .fusion-change-item strong {
-  color: #203d59;
+  color: var(--app-heading);
   line-height: 1.5;
 }
 
 .fusion-change-item em {
-  color: #55708b;
+  color: var(--app-text);
   font-style: normal;
 }
 
@@ -678,24 +664,24 @@ function formatDateTime(value) {
   width: fit-content;
   padding: 2px 8px;
   border-radius: 999px;
-  color: #2f7cf6;
+  color: var(--el-color-primary);
   background: var(--surface-subtle);
   font-size: 12px;
 }
 
 .fusion-change-item__badge.is-insert {
-  color: #1f8a60;
-  background: #eaf8f1;
+  color: var(--el-color-success);
+  background: var(--el-color-success-light-9);
 }
 
 .fusion-change-item__badge.is-update {
-  color: #b86c12;
-  background: #fff4e7;
+  color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
 }
 
 .fusion-change-item__badge.is-delete {
-  color: #c84040;
-  background: #fff0f0;
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
 }
 
 .fusion-table-panel {
@@ -703,7 +689,7 @@ function formatDateTime(value) {
 }
 
 .fusion-table {
-  border: 1px solid #edf3fb;
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 10px;
 }
 
@@ -713,12 +699,12 @@ function formatDateTime(value) {
 }
 
 .fusion-dialog-head span {
-  color: #2f7cf6;
+  color: var(--el-color-primary);
   font-size: 13px;
 }
 
 .fusion-dialog-head strong {
-  color: #173452;
+  color: var(--el-color-primary);
   font-size: 18px;
 }
 
@@ -728,9 +714,9 @@ function formatDateTime(value) {
   overflow: auto;
   padding: 14px;
   border-radius: 10px;
-  color: #243c54;
+  color: var(--app-heading);
   background: var(--surface-muted);
-  border: 1px solid #e3edf6;
+  border: 1px solid var(--el-color-primary-light-9);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -742,17 +728,8 @@ function formatDateTime(value) {
   margin-bottom: 20px;
   padding: 28px;
   border-radius: 16px;
-  background: linear-gradient(135deg, #f8fbff 0%, #eef5ff 48%, #f8fbff 100%);
-  border: 1px solid rgba(112, 162, 255, 0.18);
-}
-
-.hero__eyebrow,
-.module-section__eyebrow {
-  margin: 0 0 10px;
-  font-size: 12px;
-  letter-spacing: 0;
-  text-transform: uppercase;
-  color: #6f87a8;
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 48%, var(--el-color-primary-light-9) 100%);
+  border: 1px solid color-mix(in srgb, var(--el-color-primary-light-5) 18%, transparent);
 }
 
 .hero h2,
@@ -770,7 +747,7 @@ function formatDateTime(value) {
   margin: 16px 0 0;
   font-size: 15px;
   line-height: 1.9;
-  color: #56708e;
+  color: var(--app-text);
 }
 
 .hero__meta,
@@ -795,27 +772,27 @@ function formatDateTime(value) {
   justify-content: space-between;
   padding: 22px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(126, 166, 231, 0.22);
-  box-shadow: 0 14px 40px rgba(54, 93, 145, 0.08);
+  background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--el-color-primary-light-5) 22%, transparent);
+  box-shadow: 0 14px 40px color-mix(in srgb, var(--app-text) 8%, transparent);
 }
 
 .hero__panel-title,
 .profile-line__label {
   font-size: 13px;
-  color: #69819d;
+  color: var(--app-text);
 }
 
 .hero__panel-value {
   margin-top: 8px;
   font-size: 32px;
   font-weight: 600;
-  color: #1d3d63;
+  color: var(--el-color-primary);
 }
 
 .hero__panel-subtitle {
   margin-top: 10px;
-  color: #6d84a1;
+  color: var(--app-muted);
 }
 
 .hero__panel-list {
@@ -831,7 +808,7 @@ function formatDateTime(value) {
   padding: 0 14px;
   border-radius: 999px;
   background: var(--surface-subtle);
-  color: #456381;
+  color: var(--app-text);
 }
 
 .overview-row {
@@ -844,15 +821,15 @@ function formatDateTime(value) {
 }
 
 .overview-card :deep(.el-card__header) {
-  border-bottom: 1px solid #edf3fb;
+  border-bottom: 1px solid var(--el-color-primary-light-9);
   font-weight: 600;
-  color: #213d5b;
+  color: var(--app-heading);
 }
 
 .overview-card__body,
 .overview-list,
 .quick-links {
-  color: #58718e;
+  color: var(--app-text);
   line-height: 1.9;
 }
 

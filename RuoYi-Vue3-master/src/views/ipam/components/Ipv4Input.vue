@@ -127,24 +127,24 @@ function handlePaste(event) {
   max-width: 100%;
   min-height: 32px;
   padding: 0 10px;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--surface-border);
   border-radius: 4px;
   background: var(--surface-strong);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
 .ipv4-input:focus-within {
-  border-color: #409eff;
-  box-shadow: 0 0 0 1px #409eff inset;
+  border-color: var(--el-color-primary-light-5);
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset;
 }
 
 .ipv4-input.has-invalid {
-  border-color: #f56c6c;
+  border-color: var(--el-color-danger-light-5);
 }
 
 .ipv4-input.is-disabled {
-  background: #f5f7fa;
-  color: #a8abb2;
+  background: var(--surface-strong);
+  color: var(--app-muted);
 }
 
 .ipv4-input input {
@@ -154,7 +154,7 @@ function handlePaste(event) {
   border: 0;
   outline: 0;
   background: transparent;
-  color: #303133;
+  color: var(--app-heading);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 14px;
   line-height: 30px;
@@ -162,16 +162,16 @@ function handlePaste(event) {
 }
 
 .ipv4-input input::placeholder {
-  color: #c0c4cc;
+  color: var(--app-muted);
 }
 
 .ipv4-input input:disabled {
-  color: #a8abb2;
+  color: var(--app-muted);
   cursor: not-allowed;
 }
 
 .ipv4-input span {
-  color: #606266;
+  color: var(--app-text);
   font-weight: 650;
   text-align: center;
 }

@@ -318,7 +318,7 @@
             <header><strong>今日最新巡检</strong></header>
             <el-empty v-if="!dashboardRecentRecords.length" description="暂无记录" :image-size="64" />
             <div v-else class="dashboard-drawer__list">
-              <button v-for="item in dashboardRecentRecords" :key="item.recordId" @click="handleRecordDetail(item)">
+              <button type="button" v-for="item in dashboardRecentRecords" :key="item.recordId" @click="handleRecordDetail(item)">
                 <span :class="`status-dot status-dot--${item.resultStatus}`"></span>
                 <strong>{{ item.templateName || '未命名模板' }}</strong>
                 <em>{{ item.inspectionTime || '-' }}</em>
@@ -329,7 +329,7 @@
             <header><strong>今日异常子项</strong></header>
             <el-empty v-if="!dashboardAbnormalTargets.length" description="暂无异常" :image-size="64" />
             <div v-else class="dashboard-drawer__list">
-              <button v-for="item in dashboardAbnormalTargets" :key="`${item.recordId}-${item.resultId}`" @click="handleRecordDetail(item)">
+              <button type="button" v-for="item in dashboardAbnormalTargets" :key="`${item.recordId}-${item.resultId}`" @click="handleRecordDetail(item)">
                 <span :class="`status-dot status-dot--${item.resultStatus}`"></span>
                 <strong>{{ item.stepName || '未命名步骤' }} / {{ item.targetName || '未命名子项' }}</strong>
                 <em>{{ item.actualText || item.errorMessage || '-' }}</em>
@@ -458,9 +458,9 @@
       </div>
     </el-drawer>
 
-    <el-dialog v-model="reportExportOpen" width="560px" append-to-body class="auto-dialog report-export-dialog">
-      <template #header>
-        <div class="dialog-title">
+    <el-dialog v-model="reportExportOpen" aria-label="巡检报告导出" width="560px" append-to-body class="auto-dialog report-export-dialog">
+      <template #header="{ titleId, titleClass }">
+        <div :id="titleId" :class="titleClass" class="dialog-title">
           <span>巡检报告导出</span>
           <strong>生成自动化巡检周报</strong>
         </div>
@@ -509,24 +509,32 @@
     <section v-show="activeTab === 'config'" class="auto-content-section auto-content-section--config">
       <div class="config-shell">
         <header class="config-commandbar">
-          <div class="config-switcher" role="tablist" aria-label="巡检配置区域">
-            <button role="tab" :aria-selected="configTab === 'template'" :class="{ active: configTab === 'template' }" @click="switchConfigTab('template')">
-              <el-icon><Files /></el-icon>
-              <span class="config-switcher__copy">
-                <strong>模板编排</strong>
-                <small>定义检查步骤、目标和判定规则</small>
-              </span>
-              <em>{{ templateTotal || 0 }}</em>
-            </button>
-            <button role="tab" :aria-selected="configTab === 'plan'" :class="{ active: configTab === 'plan' }" @click="switchConfigTab('plan')">
-              <el-icon><CalendarIcon /></el-icon>
-              <span class="config-switcher__copy">
-                <strong>执行计划</strong>
-                <small>选择模板并安排自动执行周期</small>
-              </span>
-              <em>{{ planTotal || 0 }}</em>
-            </button>
-          </div>
+          <el-tabs :model-value="configTab" class="config-switcher" aria-label="巡检配置区域" @tab-change="switchConfigTab">
+            <el-tab-pane name="template">
+              <template #label>
+                <span class="config-switcher__label">
+                  <el-icon><Files /></el-icon>
+                  <span class="config-switcher__copy">
+                    <strong>模板编排</strong>
+                    <small>定义检查步骤、目标和判定规则</small>
+                  </span>
+                  <em>{{ templateTotal || 0 }}</em>
+                </span>
+              </template>
+            </el-tab-pane>
+            <el-tab-pane name="plan">
+              <template #label>
+                <span class="config-switcher__label">
+                  <el-icon><CalendarIcon /></el-icon>
+                  <span class="config-switcher__copy">
+                    <strong>执行计划</strong>
+                    <small>选择模板并安排自动执行周期</small>
+                  </span>
+                  <em>{{ planTotal || 0 }}</em>
+                </span>
+              </template>
+            </el-tab-pane>
+          </el-tabs>
           <el-button class="config-guide-button" plain icon="QuestionFilled" @click="openOperationGuide">操作指引</el-button>
         </header>
 
@@ -568,7 +576,7 @@
             <template #default="scope">{{ scope.row.stepCount || 0 }}</template>
           </el-table-column>
           <el-table-column label="状态" width="80" align="center">
-            <template #default="scope"><el-tag size="small" :type="scope.row.status === '1' ? 'info' : 'success'">{{ scope.row.status === '1' ? '停用' : '正常' }}</el-tag></template>
+            <template #default="scope"><el-tag size="small" :type="scope.row.status === '1' ? 'danger' : 'success'">{{ scope.row.status === '1' ? '停用' : '正常' }}</el-tag></template>
           </el-table-column>
           <el-table-column label="更新时间" prop="updateTime" width="150" align="center" />
           <el-table-column label="操作" width="280" align="center">
@@ -670,8 +678,8 @@
       </div>
     </section>
 
-    <el-dialog v-model="targetDialogOpen" width="860px" append-to-body class="auto-dialog target-dialog">
-      <template #header><div class="dialog-title"><span>{{ targetForm.targetId ? '编辑目标' : '新增目标' }}</span><strong>巡检目标</strong></div></template>
+    <el-dialog v-model="targetDialogOpen" :aria-label="targetForm.targetId ? '编辑巡检目标' : '新增巡检目标'" width="860px" append-to-body class="auto-dialog target-dialog">
+      <template #header="{ titleId, titleClass }"><div :id="titleId" :class="titleClass" class="dialog-title"><span>{{ targetForm.targetId ? '编辑目标' : '新增目标' }}</span><strong>巡检目标</strong></div></template>
       <el-form ref="targetRef" :model="targetForm" :rules="targetRules" label-position="top" label-width="auto" class="inspection-standard-form">
         <div class="target-form-layout">
           <section class="target-section">
@@ -873,8 +881,8 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="templateDialogOpen" width="1280px" append-to-body class="template-dialog template-flow-dialog">
-      <template #header><div class="dialog-title"><span>{{ templateForm.templateId ? '编辑模板' : '新增模板' }}</span><strong>步骤式巡检模板</strong></div></template>
+    <el-dialog v-model="templateDialogOpen" :aria-label="templateForm.templateId ? '编辑巡检模板' : '新增巡检模板'" width="1280px" append-to-body class="template-dialog template-flow-dialog">
+      <template #header="{ titleId, titleClass }"><div :id="titleId" :class="titleClass" class="dialog-title"><span>{{ templateForm.templateId ? '编辑模板' : '新增模板' }}</span><strong>步骤式巡检模板</strong></div></template>
       <el-form ref="templateRef" :model="templateForm" :rules="templateRules" label-position="top" label-width="auto" class="inspection-standard-form template-editor-form">
         <el-row :gutter="16">
           <el-col :span="10"><el-form-item label="模板名称" prop="templateName"><el-input v-model="templateForm.templateName" placeholder="例如：TIM每日巡检" /></el-form-item></el-col>
@@ -933,8 +941,8 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="stepDialogOpen" width="1160px" append-to-body class="template-dialog step-dialog">
-      <template #header><div class="dialog-title"><span>{{ stepEditingIndex === null ? '新增步骤配置' : '编辑步骤配置' }}</span><strong>{{ currentStepTool?.toolName || '巡检步骤' }}</strong></div></template>
+    <el-dialog v-model="stepDialogOpen" :aria-label="stepEditingIndex === null ? '新增巡检步骤配置' : '编辑巡检步骤配置'" width="1160px" append-to-body class="template-dialog step-dialog">
+      <template #header="{ titleId, titleClass }"><div :id="titleId" :class="titleClass" class="dialog-title"><span>{{ stepEditingIndex === null ? '新增步骤配置' : '编辑步骤配置' }}</span><strong>{{ currentStepTool?.toolName || '巡检步骤' }}</strong></div></template>
       <el-form ref="stepRef" :model="stepDraft" label-position="top" label-width="auto" class="inspection-standard-form step-workspace-form">
         <section class="step-identity-bar">
           <el-form-item label="步骤名称" required class="step-identity-bar__name">
@@ -1050,7 +1058,7 @@
                     <el-select v-model="item.operator" placeholder="判断方式">
                       <el-option v-for="option in getApiAssertionOperators(item.type)" :key="option.value" :label="option.label" :value="option.value" />
                     </el-select>
-                    <el-button class="api-assertion-delete" link type="danger" icon="Delete" :disabled="stepDraft.target.apiConfig.assertions.length <= 1" @click="removeApiAssertion(index)" />
+                    <el-button class="api-assertion-delete" link type="danger" icon="Delete" aria-label="删除断言" title="删除断言" :disabled="stepDraft.target.apiConfig.assertions.length <= 1" @click="removeApiAssertion(index)" />
                   </div>
                   <div
                     class="api-assertion-fields"
@@ -1278,7 +1286,7 @@
                       <el-input v-model="item.value" :show-password="item.sensitive" placeholder="参数值，支持 ${today}" />
                       <div class="api-config-row__actions">
                         <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
-                        <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('queryParams', index)" />
+                        <el-button link type="danger" icon="Delete" aria-label="删除查询参数" title="删除查询参数" @click="removeApiConfigItem('queryParams', index)" />
                       </div>
                     </div>
                     <span v-if="!stepDraft.target.apiConfig.queryParams.length" class="api-inline-empty">无 Query 参数可留空</span>
@@ -1294,7 +1302,7 @@
                       <el-input v-model="item.value" :show-password="item.sensitive" placeholder="Header值" />
                       <div class="api-config-row__actions">
                         <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
-                        <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('headers', index)" />
+                        <el-button link type="danger" icon="Delete" aria-label="删除请求头" title="删除请求头" @click="removeApiConfigItem('headers', index)" />
                       </div>
                     </div>
                     <span v-if="!stepDraft.target.apiConfig.headers.length" class="api-inline-empty">无 Header 可留空</span>
@@ -1310,7 +1318,7 @@
                       <el-input v-model="item.value" :show-password="item.sensitive" placeholder="Cookie值" />
                       <div class="api-config-row__actions">
                         <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
-                        <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('cookies', index)" />
+                        <el-button link type="danger" icon="Delete" aria-label="删除 Cookie" title="删除 Cookie" @click="removeApiConfigItem('cookies', index)" />
                       </div>
                     </div>
                     <span v-if="!stepDraft.target.apiConfig.cookies.length" class="api-inline-empty">无 Cookie 可留空</span>
@@ -1349,7 +1357,7 @@
                         <el-input v-model="item.value" :show-password="item.sensitive" placeholder="字段值" />
                         <div class="api-config-row__actions">
                           <el-checkbox v-model="item.sensitive">敏感</el-checkbox>
-                          <el-button link type="danger" icon="Delete" @click="removeApiConfigItem('formParams', index)" />
+                          <el-button link type="danger" icon="Delete" aria-label="删除表单参数" title="删除表单参数" @click="removeApiConfigItem('formParams', index)" />
                         </div>
                       </div>
                     </div>
@@ -1741,9 +1749,9 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="toolPickerOpen" width="980px" append-to-body class="auto-dialog tool-picker-dialog">
-      <template #header>
-        <div class="dialog-title">
+    <el-dialog v-model="toolPickerOpen" :aria-label="toolPickerDialogTitle || '巡检工具箱'" width="980px" append-to-body class="auto-dialog tool-picker-dialog">
+      <template #header="{ titleId, titleClass }">
+        <div :id="titleId" :class="titleClass" class="dialog-title">
           <span>巡检工具箱</span>
           <strong>{{ toolPickerDialogTitle }}</strong>
         </div>
@@ -1825,9 +1833,9 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="bigDataServerSelectOpen" width="1040px" append-to-body class="auto-dialog asset-transfer-dialog">
-      <template #header>
-        <div class="dialog-title">
+    <el-dialog v-model="bigDataServerSelectOpen" :aria-label="serverAssetPickerTitle || '选择现场服务器'" width="1040px" append-to-body class="auto-dialog asset-transfer-dialog">
+      <template #header="{ titleId, titleClass }">
+        <div :id="titleId" :class="titleClass" class="dialog-title">
           <span>从现场管理服务器中选择</span>
           <strong>{{ serverAssetPickerTitle }}</strong>
         </div>
@@ -1902,8 +1910,8 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="planDialogOpen" width="860px" append-to-body class="auto-dialog">
-      <template #header><div class="dialog-title"><span>{{ planForm.planId ? '编辑计划' : '新增计划' }}</span><strong>可视化执行周期</strong></div></template>
+    <el-dialog v-model="planDialogOpen" :aria-label="planForm.planId ? '编辑巡检计划' : '新增巡检计划'" width="860px" append-to-body class="auto-dialog">
+      <template #header="{ titleId, titleClass }"><div :id="titleId" :class="titleClass" class="dialog-title"><span>{{ planForm.planId ? '编辑计划' : '新增计划' }}</span><strong>可视化执行周期</strong></div></template>
       <el-form ref="planRef" :model="planForm" :rules="planRules" label-position="top" label-width="auto" class="inspection-standard-form plan-editor-form">
         <section class="plan-mode-section">
           <el-form-item label="运行模式">
@@ -1988,7 +1996,7 @@
     </el-dialog>
 
     <el-drawer v-model="detailOpen" size="78%" append-to-body class="detail-drawer inspection-detail-drawer">
-      <template #header><div class="dialog-title"><span>巡检详情</span><strong>{{ detail.inspectionTime || '-' }}</strong></div></template>
+      <template #header="{ titleId, titleClass }"><div :id="titleId" :class="titleClass" class="dialog-title"><span>巡检详情</span><strong>{{ detail.inspectionTime || '-' }}</strong></div></template>
       <div class="inspection-detail-hero">
         <div>
           <span>自动化巡检报告</span>
@@ -2080,8 +2088,8 @@
     </el-drawer>
 
     <el-drawer v-model="healthSampleDrawerOpen" size="1280px" append-to-body class="health-sample-drawer">
-      <template #header>
-        <div class="dialog-title">
+      <template #header="{ titleId, titleClass }">
+        <div :id="titleId" :class="titleClass" class="dialog-title">
           <span>高频每日检测</span>
           <strong>{{ healthSampleContext.date }} · {{ healthSampleContext.planName || '当日全部计划' }}</strong>
         </div>
@@ -6536,7 +6544,7 @@ function resultTagType(value) {
 
   span {
     padding: 6px 8px;
-    border: 1px solid #d6e4f5;
+    border: 1px solid var(--el-color-primary-light-9);
     border-radius: 7px;
     background: var(--surface-strong);
     text-align: center;
@@ -6649,12 +6657,12 @@ function resultTagType(value) {
 }
 
 .dashboard-brief--1 {
-  border-color: #cfeadc;
+  border-color: var(--el-color-success-light-7);
   background: var(--el-color-success-light-9);
 }
 
 .dashboard-brief--2 {
-  border-color: #ffd6d6;
+  border-color: var(--el-color-danger-light-9);
   background: var(--el-color-danger-light-9);
 }
 
@@ -6799,15 +6807,15 @@ function resultTagType(value) {
     width: 7px;
     height: 7px;
     border-radius: 2px;
-    background: #a8b5c5;
+    background: var(--app-muted);
   }
 
   .is-normal i {
-    background: #45ad6f;
+    background: var(--el-color-success);
   }
 
   .is-abnormal i {
-    background: #eb6262;
+    background: var(--el-color-danger);
   }
 }
 
@@ -6816,7 +6824,7 @@ function resultTagType(value) {
   gap: 14px;
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid #e3ecf7;
+  border-top: 1px solid var(--surface-muted);
 }
 
 .record-board--primary {
@@ -7229,7 +7237,7 @@ function resultTagType(value) {
   }
 
   &.has-abnormal strong {
-    color: #c45656;
+    color: var(--el-color-danger);
   }
 }
 
@@ -7248,7 +7256,7 @@ function resultTagType(value) {
 
   .has-abnormal {
     background: var(--el-color-danger-light-9);
-    color: #c45656;
+    color: var(--el-color-danger);
   }
 }
 
@@ -7260,7 +7268,7 @@ function resultTagType(value) {
   padding: 18px 20px;
   border: 1px solid var(--surface-border);
   border-radius: 10px;
-  background: linear-gradient(135deg, #f8fbff 0%, #eef7ff 100%);
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
 
   h3 {
     margin: 6px 0;
@@ -7270,19 +7278,19 @@ function resultTagType(value) {
 
   p {
     margin: 0;
-    color: #647c96;
+    color: var(--app-text);
     line-height: 1.6;
   }
 }
 
 .dashboard-status--2 {
-  border-color: #ffd8d8;
-  background: linear-gradient(135deg, var(--el-color-danger-light-9) 0%, #fff1f1 100%);
+  border-color: var(--el-color-danger-light-9);
+  background: linear-gradient(135deg, var(--el-color-danger-light-9) 0%, var(--el-color-danger-light-9) 100%);
 }
 
 .dashboard-status--1 {
-  border-color: #ccebd8;
-  background: linear-gradient(135deg, #f8fffb 0%, #edf9f1 100%);
+  border-color: var(--el-color-success-light-7);
+  background: linear-gradient(135deg, var(--el-color-success-light-9) 0%, var(--el-color-success-light-9) 100%);
 }
 
 .dashboard-status__eyebrow {
@@ -7301,9 +7309,9 @@ function resultTagType(value) {
     gap: 3px;
     min-height: 72px;
     padding: 12px;
-    border: 1px solid #dfeaf7;
+    border: 1px solid var(--el-color-primary-light-9);
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.82);
+    background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
   }
 
   strong {
@@ -7386,17 +7394,17 @@ function resultTagType(value) {
 }
 
 .trend-day--1 {
-  border-color: #cfebdc;
-  background: #f3fbf6;
+  border-color: var(--el-color-success-light-7);
+  background: var(--el-color-success-light-9);
 }
 
 .trend-day--2 {
-  border-color: #ffd8d8;
+  border-color: var(--el-color-danger-light-9);
   background: var(--el-color-danger-light-9);
 
   strong,
   em {
-    color: #c45656;
+    color: var(--el-color-danger);
   }
 }
 
@@ -7412,7 +7420,7 @@ function resultTagType(value) {
   align-items: center;
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #e5edf7;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
   background: var(--surface-muted);
   text-align: left;
@@ -7446,11 +7454,11 @@ function resultTagType(value) {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #a8b5c5;
+  background: var(--app-muted);
 }
 
 .status-dot--1 {
-  background: #43b36f;
+  background: var(--el-color-success);
 }
 
 .status-dot--2 {
@@ -7458,7 +7466,7 @@ function resultTagType(value) {
 }
 
 .status-dot--3 {
-  background: #a8b5c5;
+  background: var(--app-muted);
 }
 
 .status-dot--4 {
@@ -7506,16 +7514,16 @@ function resultTagType(value) {
 }
 
 .dashboard-drawer__summary--1 div:first-child {
-  border-color: #cfeadc;
+  border-color: var(--el-color-success-light-7);
   background: var(--el-color-success-light-9);
 }
 
 .dashboard-drawer__summary--2 div:first-child {
-  border-color: #ffd6d6;
+  border-color: var(--el-color-danger-light-9);
   background: var(--el-color-danger-light-9);
 
   strong {
-    color: #c45656;
+    color: var(--el-color-danger);
   }
 }
 
@@ -7563,11 +7571,11 @@ function resultTagType(value) {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #c0c4cc;
+  background: var(--app-muted);
 }
 
 .calendar-legend-dot--1 {
-  background: #67c23a;
+  background: var(--el-color-success);
 }
 
 .calendar-legend-dot--2 {
@@ -7575,7 +7583,7 @@ function resultTagType(value) {
 }
 
 .calendar-legend-dot--3 {
-  background: #a8b5c5;
+  background: var(--app-muted);
 }
 
 .dashboard-calendar-weekdays,
@@ -7611,7 +7619,7 @@ function resultTagType(value) {
   align-content: center;
   min-width: 0;
   padding: 7px;
-  border: 1px solid #e4edf8;
+  border: 1px solid var(--surface-border);
   background: var(--surface-muted);
   text-align: left;
   cursor: default;
@@ -7643,21 +7651,21 @@ function resultTagType(value) {
 }
 
 .dashboard-calendar-day--1 {
-  border-color: #cfebdc;
+  border-color: var(--el-color-success-light-7);
   background: var(--el-color-success-light-9);
 
   small {
-    color: #3b9d61;
+    color: var(--el-color-success);
   }
 }
 
 .dashboard-calendar-day--2 {
-  border-color: #ffd6d6;
+  border-color: var(--el-color-danger-light-9);
   background: var(--el-color-danger-light-9);
 
   strong,
   small {
-    color: #c45656;
+    color: var(--el-color-danger);
   }
 }
 
@@ -7666,7 +7674,7 @@ function resultTagType(value) {
 }
 
 .dashboard-calendar-day.is-today {
-  box-shadow: inset 0 0 0 2px rgba(47, 128, 237, 0.22);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--el-color-primary) 22%, transparent);
 }
 
 .dashboard-calendar-day.is-future {
@@ -7746,14 +7754,14 @@ function resultTagType(value) {
   align-items: center;
   width: 100%;
   padding: 9px 10px;
-  border: 1px solid #e6eef8;
+  border: 1px solid var(--surface-border);
   border-radius: 7px;
   background: var(--surface-muted);
   text-align: left;
   cursor: pointer;
 
   &:hover {
-    border-color: #9bc8ff;
+    border-color: var(--el-color-primary-light-7);
     background: var(--surface-muted);
   }
 
@@ -7814,7 +7822,7 @@ function resultTagType(value) {
   justify-content: space-between;
   gap: 14px;
   padding: 14px;
-  border: 1px solid #cfe3ff;
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 8px;
   background: var(--surface-subtle);
 
@@ -7862,7 +7870,7 @@ function resultTagType(value) {
       height: 36px;
       line-height: 36px;
       border-radius: 50%;
-      background: #e8f3ff;
+      background: var(--el-color-primary-light-9);
       color: var(--el-color-primary);
       text-align: center;
       font-weight: 800;
@@ -7982,7 +7990,7 @@ function resultTagType(value) {
   display: grid;
   gap: 8px;
   padding: 12px;
-  border: 1px solid #e5edf7;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
   background: var(--surface-muted);
 
@@ -8008,14 +8016,14 @@ function resultTagType(value) {
   height: 8px;
   overflow: hidden;
   border-radius: 999px;
-  background: #edf3fa;
+  background: var(--surface-muted);
 
   span {
     display: block;
     height: 100%;
     max-width: 100%;
     border-radius: inherit;
-    background: linear-gradient(90deg, var(--el-color-primary), #67c23a);
+    background: linear-gradient(90deg, var(--el-color-primary), var(--el-color-success));
   }
 }
 
@@ -8030,7 +8038,7 @@ function resultTagType(value) {
   gap: 10px;
   align-items: start;
   padding: 12px;
-  border: 1px solid #ffd8d8;
+  border: 1px solid var(--el-color-danger-light-9);
   border-radius: 8px;
   background: var(--el-color-danger-light-9);
 
@@ -8040,7 +8048,7 @@ function resultTagType(value) {
     line-height: 28px;
     border-radius: 50%;
     background: var(--el-color-danger-light-9);
-    color: #c45656;
+    color: var(--el-color-danger);
     text-align: center;
     font-weight: 700;
   }
@@ -8064,13 +8072,13 @@ function resultTagType(value) {
 
   p {
     margin: 6px 0 0;
-    color: #c45656;
+    color: var(--el-color-danger);
     line-height: 1.5;
     word-break: break-word;
   }
 
   label {
-    color: #c45656;
+    color: var(--el-color-danger);
     font-weight: 700;
     white-space: nowrap;
   }
@@ -8093,66 +8101,50 @@ function resultTagType(value) {
 }
 
 .config-switcher {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(230px, 320px));
-  align-items: end;
   min-width: 0;
+  max-width: 660px;
 
-  button {
-    position: relative;
+  :deep(.el-tabs__header) {
+    margin: 0;
+  }
+
+  :deep(.el-tabs__content) {
+    display: none;
+  }
+
+  :deep(.el-tabs__item) {
+    height: 58px;
+    padding: 0 18px;
+  }
+
+  em {
+    min-width: 26px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: var(--surface-subtle);
+    color: var(--app-muted);
+    font-size: 11px;
+    font-style: normal;
+    text-align: center;
+  }
+
+  :deep(.el-tabs__item.is-active) em {
+    background: var(--el-color-primary-light-8);
+    color: var(--el-color-primary);
+  }
+}
+
+.config-switcher__label {
     display: grid;
     grid-template-columns: 28px minmax(0, 1fr) auto;
     align-items: center;
     gap: 10px;
-    min-height: 58px;
-    padding: 8px 14px 10px;
-    border: 0;
-    border-bottom: 2px solid transparent;
-    border-radius: 6px 6px 0 0;
-    background: transparent;
-    color: var(--app-text);
+    min-width: 230px;
     text-align: left;
-    cursor: pointer;
-    transition: color 180ms ease-out, background-color 180ms ease-out, border-color 180ms ease-out;
-
-    &:hover {
-      background: var(--surface-hover);
-      color: var(--el-color-primary);
-    }
-
-    &:focus-visible {
-      outline: 2px solid rgba(64, 158, 255, .4);
-      outline-offset: -2px;
-    }
-
-    &.active {
-      border-bottom-color: var(--el-color-primary);
-      background: var(--surface-subtle);
-      color: var(--el-color-primary);
-    }
 
     .el-icon {
       font-size: 20px;
     }
-
-    em {
-      min-width: 26px;
-      padding: 3px 7px;
-      border-radius: 999px;
-      background: var(--surface-subtle);
-      color: var(--app-muted);
-      font-size: 11px;
-      font-style: normal;
-      text-align: center;
-    }
-
-    &.active {
-      em {
-        background: var(--el-color-primary-light-8);
-        color: var(--el-color-primary);
-      }
-    }
-  }
 }
 
 .config-switcher__copy {
@@ -8193,13 +8185,13 @@ function resultTagType(value) {
   align-items: center;
   gap: 5px;
   padding: 4px 9px;
-  border: 1px solid #9bc8ff;
+  border: 1px solid var(--el-color-primary-light-7);
   border-radius: 999px;
   background: var(--surface-subtle);
   color: var(--el-color-primary);
   font-size: 12px;
   font-weight: 700;
-  box-shadow: 0 6px 16px rgba(47, 128, 237, 0.12);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--el-color-primary) 12%, transparent);
 }
 
 .guide-page-badge--flow {
@@ -8289,7 +8281,7 @@ function resultTagType(value) {
     gap: 4px;
     min-height: 68px;
     padding: 12px 14px;
-    border: 1px solid #e0eaf6;
+    border: 1px solid var(--surface-border);
     border-radius: 8px;
     background: var(--surface-muted);
   }
@@ -8437,7 +8429,7 @@ function resultTagType(value) {
   width: 100%;
   min-height: 40px;
   padding: 8px 12px;
-  border: 1px solid #d7e5f6;
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 8px;
   background: var(--surface-strong);
   cursor: pointer;
@@ -8496,7 +8488,7 @@ function resultTagType(value) {
 .tool-picker-list,
 .tool-picker-detail {
   min-height: 0;
-  border: 1px solid #e1eaf6;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
   background: var(--surface-muted);
 }
@@ -8526,8 +8518,8 @@ function resultTagType(value) {
   background: var(--surface-strong);
 
   &.active {
-    border-color: #9bc8ff;
-    box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.08);
+    border-color: var(--el-color-primary-light-7);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--el-color-primary) 8%, transparent);
   }
 }
 
@@ -8548,7 +8540,7 @@ function resultTagType(value) {
   }
 
   .el-icon {
-    color: #6f8cad;
+    color: var(--app-muted);
     transition: transform 0.18s ease;
     transform: rotate(90deg);
 
@@ -8573,7 +8565,7 @@ function resultTagType(value) {
 
   em {
     overflow: hidden;
-    color: #71879f;
+    color: var(--app-muted);
     font-size: 12px;
     font-style: normal;
     text-overflow: ellipsis;
@@ -8597,7 +8589,7 @@ function resultTagType(value) {
   gap: 6px;
   margin: 0 8px 8px 18px;
   padding-left: 10px;
-  border-left: 1px dashed #cbdcf0;
+  border-left: 1px dashed var(--surface-border);
 }
 
 .tool-picker-tool {
@@ -8608,7 +8600,7 @@ function resultTagType(value) {
   gap: 10px;
   width: 100%;
   padding: 9px 10px;
-  border: 1px solid #e0eaf5;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
   background: var(--surface-strong);
   cursor: pointer;
@@ -8619,7 +8611,7 @@ function resultTagType(value) {
     top: 50%;
     left: -11px;
     width: 10px;
-    border-top: 1px dashed #cbdcf0;
+    border-top: 1px dashed var(--surface-border);
     content: '';
   }
 
@@ -8646,7 +8638,7 @@ function resultTagType(value) {
   em {
     display: -webkit-box;
     overflow: hidden;
-    color: #71879f;
+    color: var(--app-muted);
     font-size: 12px;
     font-style: normal;
     line-height: 1.4;
@@ -8668,7 +8660,7 @@ function resultTagType(value) {
   justify-content: space-between;
   gap: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #e4edf7;
+  border-bottom: 1px solid var(--surface-muted);
 
   h3 {
     margin: 10px 0 6px;
@@ -8678,7 +8670,7 @@ function resultTagType(value) {
 
   p {
     margin: 0;
-    color: #6f86a1;
+    color: var(--app-muted);
     line-height: 1.6;
   }
 }
@@ -8726,27 +8718,27 @@ function resultTagType(value) {
 
   p {
     margin: 0;
-    color: #617890;
+    color: var(--app-text);
     line-height: 1.7;
   }
 
   ul {
     margin: 0;
     padding-left: 18px;
-    color: #617890;
+    color: var(--app-text);
     line-height: 1.8;
   }
 }
 
 .tool-guide-example {
-  border-color: #cfe3ff;
+  border-color: var(--el-color-primary-light-9);
   background: var(--surface-muted);
 }
 
 .placeholder-panel {
   min-height: 58px;
   padding: 8px 10px;
-  border: 1px dashed #cfe0f3;
+  border: 1px dashed var(--surface-border);
   border-radius: 8px;
   background: var(--surface-strong);
 
@@ -8791,7 +8783,7 @@ function resultTagType(value) {
 
       em {
         overflow: hidden;
-        color: #7288a3;
+        color: var(--app-muted);
         font-size: 12px;
         font-style: normal;
         text-overflow: ellipsis;
@@ -8807,7 +8799,7 @@ function resultTagType(value) {
   gap: 4px;
 
   span {
-    color: #6e83a0;
+    color: var(--app-muted);
     font-size: 13px;
   }
 
@@ -8895,7 +8887,7 @@ function resultTagType(value) {
     display: grid;
     grid-template-columns: 28px 1fr;
     gap: 2px 8px;
-    border: 1px solid #dbe7f5;
+    border: 1px solid var(--surface-border);
     border-radius: 8px;
     background: var(--surface-strong);
     padding: 10px;
@@ -8904,7 +8896,7 @@ function resultTagType(value) {
 
     &.active {
       border-color: var(--el-color-primary);
-      box-shadow: 0 0 0 2px rgba(64, 158, 255, .12);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--el-color-primary) 12%, transparent);
     }
 
     span {
@@ -8949,7 +8941,7 @@ function resultTagType(value) {
 
   label {
     display: block;
-    color: #51677f;
+    color: var(--app-text);
     font-weight: 600;
     margin-bottom: 14px;
 
@@ -8977,7 +8969,7 @@ function resultTagType(value) {
     justify-content: flex-start;
     width: auto !important;
     margin-bottom: 6px;
-    color: #51677f;
+    color: var(--app-text);
     font-weight: 600;
   }
 
@@ -9055,14 +9047,14 @@ function resultTagType(value) {
     gap: 6px;
     min-width: 0;
     padding: 12px 14px;
-    border: 1px solid #d8e8ff;
+    border: 1px solid var(--el-color-primary-light-9);
     border-radius: 8px;
     background: var(--surface-muted);
   }
 
   label {
     margin: 0;
-    color: #5b7390;
+    color: var(--app-text);
     font-size: 12px;
     font-weight: 700;
   }
@@ -9073,7 +9065,7 @@ function resultTagType(value) {
   }
 
   em {
-    color: #6d839c;
+    color: var(--app-text);
     font-size: 12px;
     font-style: normal;
     line-height: 1.45;
@@ -9092,14 +9084,14 @@ function resultTagType(value) {
     gap: 8px;
     min-height: 30px;
     padding: 5px 9px;
-    border: 1px solid #d8e8ff;
+    border: 1px solid var(--el-color-primary-light-9);
     border-radius: 7px;
     background: var(--surface-muted);
   }
 
   label {
     margin: 0;
-    color: #5b7390;
+    color: var(--app-text);
     font-size: 12px;
     font-weight: 700;
   }
@@ -9162,7 +9154,7 @@ function resultTagType(value) {
     }
 
     span {
-      color: #6f849c;
+      color: var(--app-muted);
       font-size: 12px;
       line-height: 1.25;
     }
@@ -9192,7 +9184,7 @@ function resultTagType(value) {
     gap: 3px;
     min-height: 18px;
     margin: 0;
-    color: #51677f;
+    color: var(--app-text);
     font-size: 13px;
     font-weight: 700;
     line-height: 1.2;
@@ -9251,12 +9243,12 @@ function resultTagType(value) {
   flex-wrap: wrap;
   gap: 6px;
   padding: 6px 8px;
-  border: 1px dashed #cfe0f3;
+  border: 1px dashed var(--surface-border);
   border-radius: 8px;
   background: var(--surface-strong);
 
   span {
-    color: #5b7390;
+    color: var(--app-text);
     font-size: 12px;
     font-weight: 700;
   }
@@ -9308,7 +9300,7 @@ function resultTagType(value) {
   min-width: 0;
   overflow: hidden;
   padding: 8px;
-  border: 1px solid #e5eef8;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
   background: var(--surface-strong);
 
@@ -9332,7 +9324,7 @@ function resultTagType(value) {
 	  }
 
   > span {
-    color: #6f849c;
+    color: var(--app-muted);
     font-size: 12px;
     font-weight: 600;
   }
@@ -9378,7 +9370,7 @@ function resultTagType(value) {
   gap: 8px;
   min-width: 0;
   padding: 8px;
-  border: 1px solid #e5eef8;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
   background: var(--surface-strong);
 }
@@ -9407,7 +9399,7 @@ function resultTagType(value) {
   display: inline-flex;
   align-items: center;
   min-height: 32px;
-  color: #8a9bb0;
+  color: var(--app-muted);
   font-size: 12px;
 }
 
@@ -9476,7 +9468,7 @@ function resultTagType(value) {
   display: inline-flex;
   align-items: center;
   min-height: 28px;
-  color: #8a9bb0;
+  color: var(--app-muted);
   font-size: 12px;
   line-height: 1.3;
 }
@@ -9546,7 +9538,7 @@ function resultTagType(value) {
 
 .credential-source-tip {
   margin: 4px 0 0;
-  color: #7a8da3;
+  color: var(--app-muted);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -9643,7 +9635,7 @@ function resultTagType(value) {
     width: 34px;
     height: 34px;
     line-height: 32px;
-    border: 1px solid #cfe3fb;
+    border: 1px solid var(--el-color-primary-light-9);
     border-radius: 50%;
     background: var(--surface-subtle);
     color: var(--el-color-primary);
@@ -9657,7 +9649,7 @@ function resultTagType(value) {
   min-height: 0;
   overflow-y: auto;
   padding: 8px;
-  border: 1px solid #e6eef8;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
   background: var(--surface-strong);
 }
@@ -9689,7 +9681,7 @@ function resultTagType(value) {
   }
 
   em {
-    color: #8797aa;
+    color: var(--app-muted);
     font-style: normal;
     font-size: 12px;
   }
@@ -9720,7 +9712,7 @@ function resultTagType(value) {
   justify-content: space-between;
   gap: 10px;
   padding: 10px;
-  border: 1px solid #e3edf8;
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 8px;
   background: var(--surface-strong);
 
@@ -9773,7 +9765,7 @@ function resultTagType(value) {
   justify-content: space-between;
   gap: 14px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #edf3fa;
+  border-bottom: 1px solid var(--surface-muted);
 
   div:first-child {
     display: grid;
@@ -9838,7 +9830,7 @@ function resultTagType(value) {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   padding: 12px;
-  border: 1px solid #e6eef8;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
   background: var(--surface-muted);
 
@@ -9885,7 +9877,7 @@ function resultTagType(value) {
   gap: 14px;
   align-items: start;
   padding: 12px 14px;
-  border: 1px solid #dde8f4;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
   background: var(--surface-muted);
 
@@ -9899,7 +9891,7 @@ function resultTagType(value) {
     justify-content: flex-start;
     width: auto !important;
     margin-bottom: 5px;
-    color: #526a84;
+    color: var(--app-text);
     font-size: 12px;
     font-weight: 700;
     line-height: 18px;
@@ -9943,7 +9935,7 @@ function resultTagType(value) {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border: 1px solid #dce7f3;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
   background: var(--surface-strong);
 }
@@ -9954,7 +9946,7 @@ function resultTagType(value) {
   gap: 6px;
   min-height: 0;
   padding: 14px 10px;
-  border-right: 1px solid #e1eaf4;
+  border-right: 1px solid var(--surface-muted);
   background: var(--surface-muted);
 
   > button {
@@ -9967,7 +9959,7 @@ function resultTagType(value) {
     border: 1px solid transparent;
     border-radius: 7px;
     background: transparent;
-    color: #5c7189;
+    color: var(--app-text);
     text-align: left;
     cursor: pointer;
     transition: background-color 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
@@ -9976,8 +9968,8 @@ function resultTagType(value) {
       width: 28px;
       height: 28px;
       border-radius: 7px;
-      background: #e8eef5;
-      color: #56718d;
+      background: var(--surface-muted);
+      color: var(--app-text);
       font-size: 16px;
     }
 
@@ -10000,26 +9992,26 @@ function resultTagType(value) {
     }
 
     em {
-      color: #8294a8;
+      color: var(--app-muted);
       font-size: 11px;
       font-style: normal;
     }
 
     &:hover,
     &:focus-visible {
-      border-color: #d4e4f6;
+      border-color: var(--el-color-primary-light-9);
       background: var(--surface-strong);
       color: var(--el-color-primary);
       outline: none;
     }
 
     &.active {
-      border-color: #bcd8f7;
+      border-color: var(--el-color-primary-light-7);
       background: var(--surface-subtle);
       color: var(--el-color-primary);
 
       > .el-icon:first-child {
-        background: #d8ebff;
+        background: var(--el-color-primary-light-9);
         color: var(--el-color-primary);
       }
 
@@ -10042,7 +10034,7 @@ function resultTagType(value) {
   }
 
   span {
-    color: #8496aa;
+    color: var(--app-muted);
     font-size: 11px;
   }
 }
@@ -10078,7 +10070,7 @@ function resultTagType(value) {
     min-height: 52px;
     margin: -18px 0 16px;
     padding: 17px 0 10px;
-    border-bottom: 1px solid #e8eef5;
+    border-bottom: 1px solid var(--surface-muted);
     background: var(--surface-strong);
   }
 
@@ -10105,7 +10097,7 @@ function resultTagType(value) {
   width: 100%;
 
   > span {
-    color: #7a8da3;
+    color: var(--app-muted);
     font-size: 12px;
   }
 
@@ -10209,7 +10201,7 @@ function resultTagType(value) {
   grid-column: 1 / -1;
 
   small {
-    color: #74869b;
+    color: var(--app-muted);
     line-height: 1.45;
   }
 }
@@ -10234,7 +10226,7 @@ function resultTagType(value) {
   }
 
   > span {
-    color: #72859d;
+    color: var(--app-muted);
     font-size: 12px;
   }
 }
@@ -10245,7 +10237,7 @@ function resultTagType(value) {
   gap: 12px;
   width: 100%;
   padding: 12px;
-  border: 1px solid #dfe8f2;
+  border: 1px solid var(--surface-border);
   border-radius: 6px;
   background: var(--surface-muted);
 }
@@ -10295,7 +10287,7 @@ function resultTagType(value) {
   align-items: center;
   gap: 12px;
   padding: 15px 16px;
-  border: 1px solid #dce6f2;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
   background: var(--surface-strong);
 
@@ -10311,16 +10303,16 @@ function resultTagType(value) {
 
   p {
     margin: 0;
-    color: #6e8198;
+    color: var(--app-text);
     line-height: 1.45;
   }
 
   &.is-passed {
-    border-color: #c9e8d0;
+    border-color: var(--el-color-success-light-7);
   }
 
   &.is-failed {
-    border-color: #f1cccc;
+    border-color: var(--el-color-danger-light-7);
   }
 }
 
@@ -10334,13 +10326,13 @@ function resultTagType(value) {
     gap: 5px;
     min-width: 0;
     padding: 11px 12px;
-    border: 1px solid #e0e8f2;
+    border: 1px solid var(--surface-border);
     border-radius: 8px;
     background: var(--surface-strong);
   }
 
   label {
-    color: #7a8ba0;
+    color: var(--app-muted);
     font-size: 12px;
   }
 
@@ -10357,7 +10349,7 @@ function resultTagType(value) {
   display: grid;
   gap: 12px;
   padding: 14px;
-  border: 1px solid #dde7f2;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
   background: var(--surface-strong);
 
@@ -10372,7 +10364,7 @@ function resultTagType(value) {
     }
 
     span {
-      color: #7a8ca1;
+      color: var(--app-muted);
       font-size: 12px;
     }
   }
@@ -10390,7 +10382,7 @@ function resultTagType(value) {
   }
 
   dt {
-    color: #7b8da2;
+    color: var(--app-muted);
   }
 
   dd {
@@ -10416,7 +10408,7 @@ function resultTagType(value) {
     }
 
     span {
-      color: #7a8ca1;
+      color: var(--app-muted);
       font-size: 12px;
     }
   }
@@ -10428,7 +10420,7 @@ function resultTagType(value) {
     max-width: 100%;
     min-height: 30px;
     padding: 5px 9px;
-    border: 1px solid #d5e3f2;
+    border: 1px solid var(--surface-border);
     border-radius: 6px;
     background: var(--surface-muted);
     color: var(--el-color-primary);
@@ -10437,7 +10429,7 @@ function resultTagType(value) {
 
     &:hover,
     &:focus-visible {
-      border-color: #75aae2;
+      border-color: var(--el-color-primary-light-5);
       background: var(--surface-subtle);
       outline: none;
     }
@@ -10449,7 +10441,7 @@ function resultTagType(value) {
     }
 
     em {
-      color: #7e91a6;
+      color: var(--app-muted);
       font-size: 11px;
       font-style: normal;
     }
@@ -10461,7 +10453,7 @@ function resultTagType(value) {
   gap: 6px;
 
   label {
-    color: #62778f;
+    color: var(--app-text);
     font-size: 12px;
     font-weight: 700;
   }
@@ -10471,7 +10463,7 @@ function resultTagType(value) {
     margin: 0;
     overflow: auto;
     padding: 11px 12px;
-    border: 1px solid #e1e8f0;
+    border: 1px solid var(--surface-border);
     border-radius: 6px;
     background: var(--surface-muted);
     color: var(--app-heading);
@@ -10485,7 +10477,7 @@ function resultTagType(value) {
 
 .target-preview__detail {
   margin: 0;
-  color: #526a84;
+  color: var(--app-text);
   line-height: 1.65;
   overflow-wrap: anywhere;
 }
@@ -10508,13 +10500,13 @@ function resultTagType(value) {
   justify-content: space-between;
   gap: 18px;
   padding: 18px 20px;
-  border: 1px solid #dbe8f6;
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 10px;
   background: var(--surface-strong);
   margin-bottom: 12px;
 
   span {
-    color: #6f86a1;
+    color: var(--app-muted);
     font-size: 12px;
     font-weight: 600;
   }
@@ -10543,7 +10535,7 @@ function resultTagType(value) {
     gap: 4px;
     min-height: 68px;
     padding: 12px;
-    border: 1px solid #e0eaf6;
+    border: 1px solid var(--surface-border);
     border-radius: 8px;
     background: var(--surface-strong);
   }
@@ -10565,7 +10557,7 @@ function resultTagType(value) {
 
 .detail-section {
   padding: 14px;
-  border: 1px solid #e0eaf6;
+  border: 1px solid var(--surface-border);
   border-radius: 10px;
   background: var(--surface-strong);
   margin-bottom: 12px;
@@ -10618,7 +10610,7 @@ function resultTagType(value) {
   gap: 12px;
   align-items: center;
   padding: 14px 16px;
-  border-bottom: 1px solid #e6eef8;
+  border-bottom: 1px solid var(--surface-muted);
   background: var(--surface-muted);
 
   > div:nth-child(2) {
@@ -10787,7 +10779,7 @@ function resultTagType(value) {
   background: var(--el-color-danger-light-9);
 
   p {
-    color: #c45656;
+    color: var(--el-color-danger);
   }
 }
 
@@ -10973,13 +10965,13 @@ function resultTagType(value) {
   }
 
   .config-switcher {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: none;
     width: 100%;
+  }
 
-    button {
-      grid-template-columns: 24px minmax(0, 1fr) auto;
-      padding-inline: 10px;
-    }
+  .config-switcher__label {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    min-width: 210px;
   }
 
   .config-guide-button {
@@ -11018,8 +11010,12 @@ function resultTagType(value) {
     border-left: 0;
   }
 
-  .config-switcher {
-    grid-template-columns: 1fr;
+  .config-switcher__label {
+    min-width: 168px;
+  }
+
+  .config-switcher__copy small {
+    display: none;
   }
 }
 

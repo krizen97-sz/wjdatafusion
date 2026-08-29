@@ -15,7 +15,7 @@
             :group="{ name: 'componentsGroup', pull: 'clone', put: false }" :clone="cloneComponent"
             draggable=".components-item" :sort="false" @end="onEnd" item-key="label">
             <template #item="{ element, index }">
-              <div :key="index" class="components-item" @click="addComponent(element)">
+              <div :key="index" class="components-item" role="button" tabindex="0" :aria-label="`添加${element.label}`" @click="addComponent(element)" @keydown.enter.prevent="addComponent(element)" @keydown.space.prevent="addComponent(element)">
                 <div class="components-body">
                   <svg-icon :icon-class="element.tagIcon" />
                   {{ element.label }}
@@ -30,7 +30,7 @@
             :group="{ name: 'componentsGroup', pull: 'clone', put: false }" :clone="cloneComponent"
             draggable=".components-item" :sort="false" @end="onEnd" item-key="label">
             <template #item="{ element, index }">
-              <div :key="index" class="components-item" @click="addComponent(element)">
+              <div :key="index" class="components-item" role="button" tabindex="0" :aria-label="`添加${element.label}`" @click="addComponent(element)" @keydown.enter.prevent="addComponent(element)" @keydown.space.prevent="addComponent(element)">
                 <div class="components-body">
                   <svg-icon :icon-class="element.tagIcon" />
                   {{ element.label }}
@@ -45,7 +45,7 @@
             :group="{ name: 'componentsGroup', pull: 'clone', put: false }" :clone="cloneComponent"
             draggable=".components-item" :sort="false" @end="onEnd" item-key="label">
             <template #item="{ element, index }">
-              <div :key="index" class="components-item" @click="addComponent(element)">
+              <div :key="index" class="components-item" role="button" tabindex="0" :aria-label="`添加${element.label}`" @click="addComponent(element)" @keydown.enter.prevent="addComponent(element)" @keydown.space.prevent="addComponent(element)">
                 <div class="components-body">
                   <svg-icon :icon-class="element.tagIcon" />
                   {{ element.label }}

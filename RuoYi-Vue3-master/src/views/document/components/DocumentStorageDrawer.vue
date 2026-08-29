@@ -134,7 +134,7 @@ async function saveRow(row) {
 
   strong, span { display: block; }
   strong { font-size: 18px; }
-  span { color: #596579; font-size: 13px; }
+  span { color: var(--app-text); font-size: 13px; }
   div span { margin-top: 3px; }
 }
 .storage-table { min-width: 0; }
@@ -154,7 +154,7 @@ async function saveRow(row) {
 }
 .storage-table-row {
   min-height: 78px;
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid var(--surface-muted);
 }
 .storage-user,
 .storage-usage,
@@ -167,12 +167,12 @@ async function saveRow(row) {
 .storage-usage small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .storage-user small,
 .storage-usage small { margin-top: 2px; color: var(--app-muted); font-size: 12px; }
-.storage-user em { margin-left: 4px; color: #b45309; font-size: 11px; font-style: normal; font-weight: 650; }
+.storage-user em { margin-left: 4px; color: var(--el-color-warning); font-size: 11px; font-style: normal; font-weight: 650; }
 .storage-usage .el-progress { margin-top: 8px; }
 .storage-limit-field { position: relative; display: flex; align-items: center; }
 .storage-limit-field .el-input-number { width: 100%; }
 .storage-limit-field small { position: absolute; right: 28px; color: var(--app-muted); pointer-events: none; }
-.storage-policy-note { margin: 16px 2px 0; color: #596579; font-size: 12px; line-height: 1.7; }
+.storage-policy-note { margin: 16px 2px 0; color: var(--app-text); font-size: 12px; line-height: 1.7; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 
 @media (max-width: 760px) {

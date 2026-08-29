@@ -94,7 +94,7 @@
           <div class="support-table-action">
             <el-button link type="primary" icon="Setting" @click="handleConfig(scope.row)">配置信息</el-button>
             <el-button link type="primary" icon="Edit" @click="handleUpdate(scope.row)" v-hasPermi="['support:site:edit']">修改</el-button>
-            <el-button link type="primary" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['support:site:remove']">删除</el-button>
+            <el-button link type="danger" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['support:site:remove']">删除</el-button>
           </div>
         </template>
       </el-table-column>
@@ -108,13 +108,12 @@
       @pagination="getList"
     />
 
-    <el-dialog v-model="open" width="1200px" append-to-body class="support-editor-dialog support-editor-dialog--site">
-      <template #header>
+    <el-dialog v-model="open" :aria-label="title" width="1200px" append-to-body class="support-editor-dialog support-editor-dialog--site">
+      <template #header="{ titleId, titleClass }">
         <div class="editor-hero editor-hero--site">
           <div class="editor-hero__icon">现</div>
           <div class="editor-hero__copy">
-            <span class="editor-hero__eyebrow">现场编辑工作卡</span>
-            <h3>{{ title }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ title }}</h3>
             <p>{{ siteDialogLead }}</p>
           </div>
           <div class="editor-hero__chips">
@@ -140,8 +139,8 @@
                 </el-form-item>
                 <el-form-item label="运行状态" prop="status">
                   <el-radio-group v-model="form.status">
-                    <el-radio label="0">正常</el-radio>
-                    <el-radio label="1">停用</el-radio>
+                    <el-radio value="0">正常</el-radio>
+                    <el-radio value="1">停用</el-radio>
                   </el-radio-group>
                 </el-form-item>
                 <el-form-item class="editor-form__wide" label="行政区" prop="regionCodes">
@@ -192,7 +191,7 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="cancel">取 消</el-button>
-          <el-button type="primary" @click="submitForm">保存现场</el-button>
+          <el-button type="primary" :loading="siteSubmitLoading" @click="submitForm">保存现场</el-button>
         </div>
       </template>
     </el-dialog>
@@ -279,7 +278,12 @@
                   v-for="platform in overviewPlatformTree"
                   :key="platform.platformId"
                   class="overview-platform-card overview-platform-card--clickable"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="`进入工作台并定位到 ${platform.platformName}`"
                   @click="openOverviewConfigFocus({ type: 'platform', platformId: platform.platformId })"
+                  @keydown.enter.prevent="openOverviewConfigFocus({ type: 'platform', platformId: platform.platformId })"
+                  @keydown.space.prevent="openOverviewConfigFocus({ type: 'platform', platformId: platform.platformId })"
                   :title="`点击进入工作台并定位到 ${platform.platformName}`"
                 >
                   <div class="overview-platform-card__head">
@@ -297,7 +301,12 @@
                       v-for="sub in platform.children || []"
                       :key="sub.platformId"
                       class="overview-sub-chip"
+                      role="button"
+                      tabindex="0"
+                      :aria-label="`进入工作台并定位到 ${sub.platformName}`"
                       @click.stop="openOverviewConfigFocus({ type: 'platform', platformId: sub.platformId })"
+                      @keydown.enter.prevent.stop="openOverviewConfigFocus({ type: 'platform', platformId: sub.platformId })"
+                      @keydown.space.prevent.stop="openOverviewConfigFocus({ type: 'platform', platformId: sub.platformId })"
                       :title="`点击进入工作台并定位到 ${sub.platformName}`"
                     >
                       {{ sub.platformName }}
@@ -329,7 +338,12 @@
                   v-for="server in overviewServers"
                   :key="server.serverId"
                   class="overview-resource-card overview-resource-card--server overview-resource-card--clickable"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="`进入工作台并定位到 ${server.serverName}`"
                   @click="openOverviewConfigFocus({ type: 'server', serverId: server.serverId })"
+                  @keydown.enter.prevent="openOverviewConfigFocus({ type: 'server', serverId: server.serverId })"
+                  @keydown.space.prevent="openOverviewConfigFocus({ type: 'server', serverId: server.serverId })"
                   :title="`点击进入工作台并定位到 ${server.serverName}`"
                 >
                   <div class="overview-resource-card__main">
@@ -366,7 +380,12 @@
                   v-for="org in overviewOrgs"
                   :key="org.orgId"
                   class="overview-resource-card overview-resource-card--org overview-resource-card--clickable"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="`进入工作台并定位到 ${org.orgName}`"
                   @click="openOverviewConfigFocus({ type: 'org', orgId: org.orgId })"
+                  @keydown.enter.prevent="openOverviewConfigFocus({ type: 'org', orgId: org.orgId })"
+                  @keydown.space.prevent="openOverviewConfigFocus({ type: 'org', orgId: org.orgId })"
                   :title="`点击进入工作台并定位到 ${org.orgName}`"
                 >
                   <div class="overview-resource-card__main">
@@ -405,6 +424,7 @@ const route = useRoute()
 const { sys_normal_disable } = proxy.useDict('sys_normal_disable')
 
 const loading = ref(false)
+const siteSubmitLoading = ref(false)
 const showSearch = ref(true)
 const total = ref(0)
 const siteList = ref([])
@@ -767,16 +787,19 @@ function openOverviewConfigFocus(focusRequest) {
 
 function submitForm() {
   proxy.$refs.siteRef.validate((valid) => {
-    if (!valid) return
+    if (!valid || siteSubmitLoading.value) return
     syncRegionFields()
     const payload = { ...form.value }
     delete payload.regionCodes
     delete payload.siteCodePreview
+    siteSubmitLoading.value = true
     const req = payload.siteId ? updateSite(payload) : addSite(payload)
     req.then(() => {
       proxy.$modal.msgSuccess(payload.siteId ? '修改成功' : '新增成功')
       open.value = false
       getList()
+    }).finally(() => {
+      siteSubmitLoading.value = false
     })
   })
 }
@@ -897,9 +920,9 @@ getList()
   gap: 16px;
   margin: -6px 0 16px;
   padding: 14px 18px;
-  border: 1px solid #d7e6f4;
-  border-radius: 18px;
-  background: linear-gradient(135deg, rgba(236, 245, 255, 0.92) 0%, rgba(245, 250, 255, 0.96) 100%);
+  border: 1px solid var(--el-color-primary-light-9);
+  border-radius: 14px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--el-color-primary-light-9) 92%, transparent) 0%, color-mix(in srgb, var(--el-color-primary-light-9) 96%, transparent) 100%);
 }
 
 .site-filter-banner__content {
@@ -914,17 +937,17 @@ getList()
   font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.08em;
-  color: #6b87a5;
+  color: var(--app-muted);
 }
 
 .site-filter-banner__content strong {
   font-size: 15px;
-  color: #173a5e;
+  color: var(--el-color-primary);
 }
 
 .site-filter-banner__hint {
   font-size: 13px;
-  color: #6f869d;
+  color: var(--app-muted);
 }
 
 .site-region-cell {
@@ -939,8 +962,8 @@ getList()
   min-height: 28px;
   padding: 0 10px;
   border-radius: 999px;
-  background: #eff5fb;
-  color: #476884;
+  background: var(--el-color-primary-light-9);
+  color: var(--app-text);
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
@@ -948,14 +971,14 @@ getList()
 }
 
 .site-region-chip:hover {
-  background: #dfeefe;
-  color: #1f5ea8;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
   transform: translateY(-1px);
 }
 
 .site-region-chip.is-active {
-  background: #1f5ea8;
-  color: #ffffff;
+  background: var(--el-color-primary);
+  color: var(--el-color-white);
 }
 
 .site-import-dialog__lead {
@@ -963,13 +986,13 @@ getList()
   gap: 6px;
   margin-bottom: 16px;
   padding: 14px 16px;
-  border: 1px solid #dce8f5;
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 8px;
-  background: linear-gradient(135deg, #f2f8ff 0%, #f7fbff 100%);
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
 }
 
 .site-import-dialog__lead strong {
-  color: #173a5e;
+  color: var(--el-color-primary);
   font-size: 15px;
 }
 
@@ -981,7 +1004,7 @@ getList()
 
 .support-editor-dialog :deep(.el-dialog) {
   overflow: hidden;
-  border-radius: 30px;
+  border-radius: 14px;
   background: var(--surface-muted);
 }
 
@@ -1012,7 +1035,7 @@ getList()
 }
 
 .editor-hero--site {
-  background: linear-gradient(135deg, #ecf5ff 0%, #f7fbff 52%, #eef8f5 100%);
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 52%, var(--surface-muted) 100%);
 }
 
 .editor-hero__icon {
@@ -1021,25 +1044,18 @@ getList()
   justify-content: center;
   width: 54px;
   height: 54px;
-  border-radius: 20px;
+  border-radius: 14px;
   font-size: 22px;
   font-weight: 700;
   color: var(--app-heading);
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(212, 224, 238, 0.9);
-  box-shadow: 0 12px 28px rgba(22, 50, 79, 0.08);
+  background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-border) 90%, transparent);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--el-color-primary) 8%, transparent);
 }
 
 .editor-hero__copy {
   display: grid;
   gap: 6px;
-}
-
-.editor-hero__eyebrow {
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--app-muted);
 }
 
 .editor-hero__copy h3 {
@@ -1076,15 +1092,15 @@ getList()
 }
 
 .editor-chip--site {
-  color: #1f5ea8;
+  color: var(--el-color-primary);
   background: var(--surface-subtle);
-  border-color: #d3e3f7;
+  border-color: var(--el-color-primary-light-9);
 }
 
 .editor-chip--ghost {
   color: var(--app-muted);
-  background: rgba(255, 255, 255, 0.76);
-  border-color: rgba(214, 225, 237, 0.92);
+  background: color-mix(in srgb, var(--surface-strong) 76%, transparent);
+  border-color: color-mix(in srgb, var(--surface-border) 92%, transparent);
 }
 
 .editor-shell {
@@ -1105,10 +1121,10 @@ getList()
 
 .editor-section {
   padding: 18px;
-  border-radius: 24px;
+  border-radius: 14px;
   border: 1px solid var(--surface-border);
   background: var(--surface-strong);
-  box-shadow: 0 16px 36px rgba(22, 50, 79, 0.05);
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--el-color-primary) 5%, transparent);
 }
 
 .editor-section__head {
@@ -1144,14 +1160,14 @@ getList()
 .editor-form :deep(.el-form-item__label) {
   padding-bottom: 8px;
   font-weight: 600;
-  color: #60748a;
+  color: var(--app-text);
 }
 
 .editor-form :deep(.el-input__wrapper),
 .editor-form :deep(.el-textarea__inner) {
   border-radius: 16px;
   background: var(--surface-muted);
-  box-shadow: 0 0 0 1px #dfe8f1 inset;
+  box-shadow: 0 0 0 1px var(--surface-border) inset;
 }
 
 .editor-cascader {
@@ -1162,7 +1178,7 @@ getList()
   min-width: 68px;
   text-align: center;
   font-size: 12px;
-  color: #58789a;
+  color: var(--app-text);
 }
 
 .editor-form :deep(.el-radio-group) {
@@ -1176,20 +1192,20 @@ getList()
   gap: 12px;
   min-height: 100%;
   padding: 18px;
-  border-radius: 24px;
+  border-radius: 14px;
   border: 1px solid var(--surface-border);
-  background: linear-gradient(180deg, #eef7ff 0%, #f8fcff 100%);
+  background: linear-gradient(180deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
 }
 
 .editor-preview-card--site {
-  background: linear-gradient(180deg, #eef7ff 0%, #f9fcff 100%);
+  background: linear-gradient(180deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
 }
 
 .editor-preview-card__eyebrow {
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #6d8197;
+  color: var(--app-text);
 }
 
 .editor-preview-card strong {
@@ -1202,7 +1218,7 @@ getList()
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
-  color: #6f8298;
+  color: var(--app-text);
 }
 
 .editor-preview-card__meta {
@@ -1217,8 +1233,8 @@ getList()
   min-height: 32px;
   padding: 0 10px;
   border-radius: 999px;
-  border: 1px solid rgba(216, 228, 238, 0.95);
-  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid color-mix(in srgb, var(--surface-border) 95%, transparent);
+  background: color-mix(in srgb, var(--surface-strong) 80%, transparent);
   color: var(--app-muted);
   font-size: 12px;
 }
@@ -1241,7 +1257,7 @@ getList()
 
 .site-overview-dialog :deep(.el-dialog) {
   overflow: hidden;
-  border-radius: 30px;
+  border-radius: 14px;
   background: var(--surface-muted);
 }
 
@@ -1273,8 +1289,8 @@ getList()
   display: grid;
   gap: 14px;
   padding: 22px 24px;
-  border-radius: 26px;
-  background: linear-gradient(135deg, #edf5ff 0%, #f7fbff 54%, #eef7ff 100%);
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 54%, var(--el-color-primary-light-9) 100%);
   border: 1px solid var(--surface-border);
 }
 
@@ -1302,7 +1318,7 @@ getList()
   max-width: 72ch;
   font-size: 13px;
   line-height: 1.7;
-  color: #6a7f95;
+  color: var(--app-text);
 }
 
 .overview-hero-panel__chips {
@@ -1314,11 +1330,11 @@ getList()
 .overview-hero-panel__hint {
   font-size: 12px;
   line-height: 1.6;
-  color: #5f7893;
+  color: var(--app-text);
   padding: 10px 12px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.68);
-  border: 1px solid rgba(214, 225, 237, 0.9);
+  background: color-mix(in srgb, var(--surface-strong) 68%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-border) 90%, transparent);
 }
 
 .overview-chip {
@@ -1333,15 +1349,15 @@ getList()
 }
 
 .overview-chip--site {
-  color: #1f5ea8;
+  color: var(--el-color-primary);
   background: var(--surface-subtle);
-  border-color: #d5e4f9;
+  border-color: var(--el-color-primary-light-9);
 }
 
 .overview-chip--ghost {
   color: var(--app-muted);
-  background: rgba(255, 255, 255, 0.78);
-  border-color: rgba(214, 225, 237, 0.92);
+  background: color-mix(in srgb, var(--surface-strong) 78%, transparent);
+  border-color: color-mix(in srgb, var(--surface-border) 92%, transparent);
 }
 
 .overview-stat-grid {
@@ -1354,10 +1370,10 @@ getList()
   display: grid;
   gap: 8px;
   padding: 18px;
-  border-radius: 22px;
+  border-radius: 14px;
   border: 1px solid var(--surface-border);
   background: var(--surface-strong);
-  box-shadow: 0 14px 32px rgba(22, 50, 79, 0.05);
+  box-shadow: 0 14px 32px color-mix(in srgb, var(--el-color-primary) 5%, transparent);
 }
 
 .overview-stat-card__label {
@@ -1387,10 +1403,10 @@ getList()
   gap: 14px;
   min-height: 0;
   padding: 18px;
-  border-radius: 24px;
+  border-radius: 14px;
   border: 1px solid var(--surface-border);
   background: var(--surface-strong);
-  box-shadow: 0 16px 34px rgba(22, 50, 79, 0.05);
+  box-shadow: 0 16px 34px color-mix(in srgb, var(--el-color-primary) 5%, transparent);
 }
 
 .overview-panel__head {
@@ -1406,7 +1422,7 @@ getList()
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: #6b8097;
+  color: var(--app-text);
 }
 
 .overview-panel__head strong {
@@ -1418,7 +1434,7 @@ getList()
   margin: 6px 0 0;
   font-size: 12px;
   line-height: 1.6;
-  color: #718399;
+  color: var(--app-muted);
 }
 
 .overview-panel__meta {
@@ -1433,16 +1449,16 @@ getList()
   min-height: 30px;
   padding: 0 10px;
   border-radius: 999px;
-  background: #f4f8fb;
-  border: 1px solid #dee8f2;
-  color: #557089;
+  background: var(--surface-strong);
+  border: 1px solid var(--surface-border);
+  color: var(--app-text);
   font-size: 12px;
 }
 
 .overview-panel__guide {
-  color: #1f5ea8;
+  color: var(--el-color-primary);
   background: var(--surface-subtle) !important;
-  border-color: #d5e4f9 !important;
+  border-color: var(--el-color-primary-light-9) !important;
 }
 
 .overview-platform-stack,
@@ -1461,13 +1477,13 @@ getList()
   display: grid;
   gap: 12px;
   padding: 14px;
-  border-radius: 18px;
-  border: 1px solid #e2eaf4;
+  border-radius: 14px;
+  border: 1px solid var(--surface-border);
   transition: 0.2s ease;
 }
 
 .overview-platform-card {
-  background: linear-gradient(180deg, #f6fbff 0%, #fbfdff 100%);
+  background: linear-gradient(180deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
 }
 
 .overview-platform-card--clickable,
@@ -1477,8 +1493,8 @@ getList()
 
 .overview-platform-card--clickable:hover,
 .overview-resource-card--clickable:hover {
-  border-color: #c9dced;
-  box-shadow: 0 16px 30px rgba(22, 50, 79, 0.08);
+  border-color: var(--el-color-primary-light-7);
+  box-shadow: 0 16px 30px color-mix(in srgb, var(--el-color-primary) 8%, transparent);
   transform: translateY(-1px);
 }
 
@@ -1516,8 +1532,8 @@ getList()
   padding: 0 10px;
   border-radius: 999px;
   background: var(--surface-subtle);
-  border: 1px solid #d3e2f6;
-  color: #1f5fa9;
+  border: 1px solid var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -1529,9 +1545,9 @@ getList()
   min-height: 28px;
   padding: 0 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px dashed #cddcec;
-  color: #5a7692;
+  background: color-mix(in srgb, var(--surface-strong) 90%, transparent);
+  border: 1px dashed var(--surface-border);
+  color: var(--app-text);
   font-size: 11px;
   font-weight: 600;
 }
@@ -1549,8 +1565,8 @@ getList()
   padding: 0 12px;
   border-radius: 999px;
   background: var(--surface-subtle);
-  border: 1px solid #efdebf;
-  color: #91601d;
+  border: 1px solid var(--el-color-warning-light-7);
+  color: var(--el-color-warning);
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -1558,22 +1574,22 @@ getList()
 }
 
 .overview-sub-chip:hover {
-  border-color: #e4c98e;
+  border-color: var(--el-color-warning-light-7);
   background: var(--surface-subtle);
 }
 
 .overview-sub-chip--ghost {
-  background: #f5f7fa;
-  border-color: #e3e8ef;
-  color: #8191a4;
+  background: var(--surface-strong);
+  border-color: var(--surface-border);
+  color: var(--app-muted);
 }
 
 .overview-resource-card--server {
-  background: linear-gradient(180deg, #f4fbff 0%, #fbfdff 100%);
+  background: linear-gradient(180deg, var(--el-color-info-light-9) 0%, var(--el-color-primary-light-9) 100%);
 }
 
 .overview-resource-card--org {
-  background: linear-gradient(180deg, #f3f8ff 0%, #fbfdff 100%);
+  background: linear-gradient(180deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
 }
 
 .overview-resource-card__meta {
@@ -1588,9 +1604,9 @@ getList()
   min-height: 28px;
   padding: 0 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.86);
-  border: 1px solid #dde7f1;
-  color: #506981;
+  background: color-mix(in srgb, var(--surface-strong) 86%, transparent);
+  border: 1px solid var(--surface-border);
+  color: var(--app-text);
   font-size: 12px;
 }
 
@@ -1602,10 +1618,10 @@ getList()
   min-height: 160px;
   padding: 18px;
   text-align: center;
-  border-radius: 20px;
-  border: 1px dashed #d8e3ee;
+  border-radius: 14px;
+  border: 1px dashed var(--surface-border);
   background: var(--surface-muted);
-  color: #7b8ca1;
+  color: var(--app-muted);
 }
 
 .overview-empty-state strong {

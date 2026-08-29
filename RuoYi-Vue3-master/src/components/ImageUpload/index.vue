@@ -41,6 +41,7 @@
     >
       <img
         :src="dialogImageUrl"
+        alt="上传图片预览"
         style="display: block; max-width: 100%; margin: 0 auto"
       />
     </el-dialog>

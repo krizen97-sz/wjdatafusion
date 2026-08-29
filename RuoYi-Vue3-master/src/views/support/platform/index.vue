@@ -80,13 +80,12 @@
       @pagination="getList"
     />
 
-    <el-dialog v-model="open" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--platform">
-      <template #header>
+    <el-dialog v-model="open" :aria-label="title" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--platform">
+      <template #header="{ titleId, titleClass }">
         <div class="editor-hero editor-hero--platform">
           <div class="editor-hero__icon">平</div>
           <div class="editor-hero__copy">
-            <span class="editor-hero__eyebrow">平台编辑工作卡</span>
-            <h3>{{ title }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ title }}</h3>
             <p>{{ platformDialogLead }}</p>
           </div>
           <div class="editor-hero__chips">
@@ -117,8 +116,8 @@
                 </el-form-item>
                 <el-form-item label="运行状态" prop="status">
                   <el-radio-group v-model="form.status">
-                    <el-radio label="0">正常</el-radio>
-                    <el-radio label="1">停用</el-radio>
+                    <el-radio value="0">正常</el-radio>
+                    <el-radio value="1">停用</el-radio>
                   </el-radio-group>
                 </el-form-item>
                 <el-form-item class="editor-form__wide" label="平台名称" prop="platformName">
@@ -126,8 +125,8 @@
                 </el-form-item>
                 <el-form-item label="平台级别" prop="platformLevel">
                   <el-radio-group v-model="form.platformLevel">
-                    <el-radio label="MAIN">主平台</el-radio>
-                    <el-radio label="SUB">子平台</el-radio>
+                    <el-radio value="MAIN">主平台</el-radio>
+                    <el-radio value="SUB">子平台</el-radio>
                   </el-radio-group>
                 </el-form-item>
                 <el-form-item v-if="form.platformLevel === 'MAIN'" label="网络环境" prop="networkEnv">
@@ -169,7 +168,7 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="cancel">取 消</el-button>
-          <el-button type="primary" @click="submitForm">保存平台</el-button>
+          <el-button type="primary" :loading="platformSubmitLoading" @click="submitForm">保存平台</el-button>
         </div>
       </template>
     </el-dialog>
@@ -265,13 +264,12 @@
       </el-table>
     </el-dialog>
 
-    <el-dialog v-model="endpointFormOpen" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--page">
-      <template #header>
+    <el-dialog v-model="endpointFormOpen" :aria-label="endpointTitle" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--page">
+      <template #header="{ titleId, titleClass }">
         <div class="editor-hero editor-hero--page">
           <div class="editor-hero__icon">页</div>
           <div class="editor-hero__copy">
-            <span class="editor-hero__eyebrow">页面编辑工作卡</span>
-            <h3>{{ endpointTitle }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ endpointTitle }}</h3>
             <p>{{ endpointDialogLead }}</p>
           </div>
           <div class="editor-hero__chips">
@@ -323,7 +321,7 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="endpointFormOpen = false">取 消</el-button>
-          <el-button type="primary" @click="submitEndpointForm">保存页面</el-button>
+          <el-button type="primary" :loading="endpointSubmitLoading" @click="submitEndpointForm">保存页面</el-button>
         </div>
       </template>
     </el-dialog>
@@ -340,6 +338,8 @@ const { proxy } = getCurrentInstance()
 const { support_network_env } = proxy.useDict('support_network_env')
 
 const loading = ref(false)
+const platformSubmitLoading = ref(false)
+const endpointSubmitLoading = ref(false)
 const showSearch = ref(true)
 const total = ref(0)
 const platformList = ref([])
@@ -546,7 +546,7 @@ function cancel() {
 
 function submitForm() {
   proxy.$refs.platformRef.validate((valid) => {
-    if (!valid) return
+    if (!valid || platformSubmitLoading.value) return
     if (form.value.platformLevel === 'MAIN') {
       if (!form.value.networkEnv) {
         proxy.$modal.msgWarning('请选择网络环境')
@@ -556,11 +556,14 @@ function submitForm() {
     } else {
       form.value.networkEnv = null
     }
+    platformSubmitLoading.value = true
     const req = form.value.platformId ? updatePlatform(form.value) : addPlatform(form.value)
     req.then(() => {
       proxy.$modal.msgSuccess(form.value.platformId ? '修改成功' : '新增成功')
       open.value = false
       getList()
+    }).finally(() => {
+      platformSubmitLoading.value = false
     })
   })
 }
@@ -666,13 +669,16 @@ function handleEndpointEdit(row) {
 
 function submitEndpointForm() {
   proxy.$refs.endpointRef.validate((valid) => {
-    if (!valid) return
+    if (!valid || endpointSubmitLoading.value) return
     endpointForm.value.subPlatformId = currentPlatform.value.platformId
+    endpointSubmitLoading.value = true
     const req = endpointForm.value.endpointId ? updateEndpoint(endpointForm.value) : addEndpoint(endpointForm.value)
     req.then(() => {
       proxy.$modal.msgSuccess(endpointForm.value.endpointId ? '修改成功' : '新增成功')
       endpointFormOpen.value = false
       getEndpointList()
+    }).finally(() => {
+      endpointSubmitLoading.value = false
     })
   })
 }
@@ -725,49 +731,49 @@ getList()
 }
 
 .contact-option-line__org {
-  color: #6f8399;
+  color: var(--app-text);
   font-size: 12px;
 }
 
 .support-table :deep(.network-env-tag--police) {
-  color: #155eef !important;
-  background: #eaf1ff !important;
-  border-color: #b8cdfd !important;
+  color: var(--el-color-primary) !important;
+  background: var(--el-color-primary-light-9) !important;
+  border-color: var(--el-color-primary-light-7) !important;
 }
 
 .support-table :deep(.network-env-tag--image) {
-  color: #047481 !important;
-  background: #e7f8fa !important;
-  border-color: #a8e4ea !important;
+  color: var(--el-color-info) !important;
+  background: var(--el-color-info-light-9) !important;
+  border-color: var(--el-color-info-light-7) !important;
 }
 
 .support-table :deep(.network-env-tag--government) {
-  color: #b54708 !important;
-  background: #fff4e5 !important;
-  border-color: #ffd49a !important;
+  color: var(--el-color-warning) !important;
+  background: var(--el-color-warning-light-9) !important;
+  border-color: var(--el-color-warning-light-7) !important;
 }
 
 .support-table :deep(.network-env-tag--secondary) {
   color: var(--app-muted) !important;
-  background: #f2f4f7 !important;
-  border-color: #d0d5dd !important;
+  background: var(--surface-muted) !important;
+  border-color: var(--surface-border) !important;
 }
 
 .support-table :deep(.network-env-tag--party) {
-  color: #c01048 !important;
-  background: #fff0f3 !important;
-  border-color: #ffb3c7 !important;
+  color: var(--el-color-danger) !important;
+  background: var(--el-color-danger-light-9) !important;
+  border-color: var(--el-color-danger-light-7) !important;
 }
 
 .support-table :deep(.network-env-tag--private) {
-  color: #6941c6 !important;
-  background: #f4f0ff !important;
-  border-color: #d9ccff !important;
+  color: var(--el-color-success) !important;
+  background: var(--el-color-success-light-9) !important;
+  border-color: var(--el-color-success-light-7) !important;
 }
 
 .support-editor-dialog :deep(.el-dialog) {
   overflow: hidden;
-  border-radius: 30px;
+  border-radius: 14px;
   background: var(--surface-muted);
 }
 
@@ -798,11 +804,11 @@ getList()
 }
 
 .editor-hero--platform {
-  background: linear-gradient(135deg, #edf5ff 0%, #f7fbff 56%, #eef7ff 100%);
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 56%, var(--el-color-primary-light-9) 100%);
 }
 
 .editor-hero--page {
-  background: linear-gradient(135deg, #eef6ff 0%, #f8fbff 52%, #f3f8ff 100%);
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 52%, var(--el-color-primary-light-9) 100%);
 }
 
 .editor-hero__icon {
@@ -811,25 +817,18 @@ getList()
   justify-content: center;
   width: 54px;
   height: 54px;
-  border-radius: 20px;
+  border-radius: 14px;
   font-size: 22px;
   font-weight: 700;
   color: var(--app-heading);
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(212, 224, 238, 0.9);
-  box-shadow: 0 12px 28px rgba(22, 50, 79, 0.08);
+  background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--surface-border) 90%, transparent);
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--app-heading) 8%, transparent);
 }
 
 .editor-hero__copy {
   display: grid;
   gap: 6px;
-}
-
-.editor-hero__eyebrow {
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--app-muted);
 }
 
 .editor-hero__copy h3 {
@@ -866,27 +865,27 @@ getList()
 }
 
 .editor-chip--main {
-  color: #165bb8;
+  color: var(--el-color-primary);
   background: var(--surface-subtle);
-  border-color: #cfe1fa;
+  border-color: var(--el-color-primary-light-9);
 }
 
 .editor-chip--sub {
-  color: #2e6eb3;
+  color: var(--app-text);
   background: var(--surface-subtle);
-  border-color: #cfe0fb;
+  border-color: var(--el-color-primary-light-9);
 }
 
 .editor-chip--page {
-  color: #2d6eb0;
+  color: var(--app-text);
   background: var(--surface-subtle);
-  border-color: #efd6b2;
+  border-color: var(--el-color-warning-light-7);
 }
 
 .editor-chip--ghost {
   color: var(--app-muted);
-  background: rgba(255, 255, 255, 0.76);
-  border-color: rgba(214, 225, 237, 0.92);
+  background: color-mix(in srgb, var(--surface-strong) 76%, transparent);
+  border-color: color-mix(in srgb, var(--surface-border) 92%, transparent);
 }
 
 .editor-chip--network {
@@ -913,10 +912,10 @@ getList()
 
 .editor-section {
   padding: 18px;
-  border-radius: 24px;
+  border-radius: 14px;
   border: 1px solid var(--surface-border);
   background: var(--surface-strong);
-  box-shadow: 0 16px 36px rgba(22, 50, 79, 0.05);
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--app-heading) 5%, transparent);
 }
 
 .editor-section__head {
@@ -952,7 +951,7 @@ getList()
 .editor-form :deep(.el-form-item__label) {
   padding-bottom: 8px;
   font-weight: 600;
-  color: #60748a;
+  color: var(--app-text);
 }
 
 .editor-form :deep(.el-input__wrapper),
@@ -962,7 +961,7 @@ getList()
 .editor-form :deep(.el-input-number .el-input__wrapper) {
   border-radius: 16px;
   background: var(--surface-muted);
-  box-shadow: 0 0 0 1px #dfe8f1 inset;
+  box-shadow: 0 0 0 1px var(--surface-border) inset;
 }
 
 .editor-form :deep(.el-radio-group) {
@@ -980,102 +979,102 @@ getList()
   gap: 12px;
   min-height: 100%;
   padding: 18px;
-  border-radius: 24px;
+  border-radius: 14px;
   border: 1px solid var(--surface-border);
 }
 
 .editor-preview-card--platform {
-  background: var(--network-card-bg, linear-gradient(180deg, #f1f7ff 0%, #f9fbff 100%));
+  background: var(--network-card-bg, linear-gradient(180deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%));
   border-color: var(--network-border, var(--surface-border));
-  box-shadow: 0 18px 42px var(--network-shadow, rgba(22, 50, 79, 0.06));
+  box-shadow: 0 18px 42px var(--network-shadow, color-mix(in srgb, var(--app-heading) 6%, transparent));
 }
 
 .editor-preview-card--page {
-  background: linear-gradient(180deg, #f3f8ff 0%, #fbfdff 100%);
+  background: linear-gradient(180deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
 }
 
 .network-env--police {
-  --network-text: #155eef;
-  --network-muted: #426fb4;
-  --network-bg: #eaf1ff;
-  --network-border: #b8cdfd;
-  --network-card-bg: linear-gradient(180deg, #eaf1ff 0%, #f8fbff 100%);
-  --network-shadow: rgba(21, 94, 239, 0.12);
+  --network-text: var(--el-color-primary);
+  --network-muted: var(--app-text);
+  --network-bg: var(--el-color-primary-light-9);
+  --network-border: var(--el-color-primary-light-7);
+  --network-card-bg: linear-gradient(180deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
+  --network-shadow: color-mix(in srgb, var(--el-color-primary) 12%, transparent);
 }
 
 .network-env--image {
-  --network-text: #047481;
-  --network-muted: #367b83;
-  --network-bg: #e7f8fa;
-  --network-border: #a8e4ea;
-  --network-card-bg: linear-gradient(180deg, #e7f8fa 0%, #f8feff 100%);
-  --network-shadow: rgba(4, 116, 129, 0.12);
+  --network-text: var(--el-color-info);
+  --network-muted: var(--el-color-info);
+  --network-bg: var(--el-color-info-light-9);
+  --network-border: var(--el-color-info-light-7);
+  --network-card-bg: linear-gradient(180deg, var(--el-color-info-light-9) 0%, var(--el-color-info-light-9) 100%);
+  --network-shadow: color-mix(in srgb, var(--el-color-info) 12%, transparent);
 }
 
 .network-env--government {
-  --network-text: #b54708;
-  --network-muted: #8f5c1d;
-  --network-bg: #fff4e5;
-  --network-border: #ffd49a;
-  --network-card-bg: linear-gradient(180deg, #fff4e5 0%, #fffdf7 100%);
-  --network-shadow: rgba(181, 71, 8, 0.12);
+  --network-text: var(--el-color-warning);
+  --network-muted: var(--el-color-warning);
+  --network-bg: var(--el-color-warning-light-9);
+  --network-border: var(--el-color-warning-light-7);
+  --network-card-bg: linear-gradient(180deg, var(--el-color-warning-light-9) 0%, var(--el-color-warning-light-9) 100%);
+  --network-shadow: color-mix(in srgb, var(--el-color-warning) 12%, transparent);
 }
 
 .network-env--secondary {
-  --network-text: #475467;
-  --network-muted: #667085;
-  --network-bg: #f2f4f7;
-  --network-border: #d0d5dd;
-  --network-card-bg: linear-gradient(180deg, #f2f4f7 0%, #fcfcfd 100%);
-  --network-shadow: rgba(71, 84, 103, 0.12);
+  --network-text: var(--app-text);
+  --network-muted: var(--app-text);
+  --network-bg: var(--surface-muted);
+  --network-border: var(--surface-border);
+  --network-card-bg: linear-gradient(180deg, var(--surface-muted) 0%, var(--surface-strong) 100%);
+  --network-shadow: color-mix(in srgb, var(--app-text) 12%, transparent);
 }
 
 .network-env--party {
-  --network-text: #c01048;
-  --network-muted: #9f2a4d;
-  --network-bg: #fff0f3;
-  --network-border: #ffb3c7;
-  --network-card-bg: linear-gradient(180deg, #fff0f3 0%, #fffbfc 100%);
-  --network-shadow: rgba(192, 16, 72, 0.13);
+  --network-text: var(--el-color-danger);
+  --network-muted: var(--el-color-danger);
+  --network-bg: var(--el-color-danger-light-9);
+  --network-border: var(--el-color-danger-light-7);
+  --network-card-bg: linear-gradient(180deg, var(--el-color-danger-light-9) 0%, var(--el-color-danger-light-9) 100%);
+  --network-shadow: color-mix(in srgb, var(--el-color-danger) 13%, transparent);
 }
 
 .network-env--private {
-  --network-text: #6941c6;
-  --network-muted: #7655b6;
-  --network-bg: #f4f0ff;
-  --network-border: #d9ccff;
-  --network-card-bg: linear-gradient(180deg, #f4f0ff 0%, #fbfaff 100%);
-  --network-shadow: rgba(105, 65, 198, 0.12);
+  --network-text: var(--el-color-success);
+  --network-muted: var(--el-color-success);
+  --network-bg: var(--el-color-success-light-9);
+  --network-border: var(--el-color-success-light-7);
+  --network-card-bg: linear-gradient(180deg, var(--el-color-success-light-9) 0%, var(--el-color-success-light-9) 100%);
+  --network-shadow: color-mix(in srgb, var(--el-color-success) 12%, transparent);
 }
 
 .network-env--custom,
 .network-env--empty {
-  --network-text: #0e7090;
-  --network-muted: #417a8d;
-  --network-bg: #ecfdff;
-  --network-border: #a5f0fc;
-  --network-card-bg: linear-gradient(180deg, #ecfdff 0%, #f8feff 100%);
-  --network-shadow: rgba(14, 112, 144, 0.11);
+  --network-text: var(--el-color-info);
+  --network-muted: var(--el-color-info);
+  --network-bg: var(--el-color-info-light-9);
+  --network-border: var(--el-color-info-light-7);
+  --network-card-bg: linear-gradient(180deg, var(--el-color-info-light-9) 0%, var(--el-color-info-light-9) 100%);
+  --network-shadow: color-mix(in srgb, var(--el-color-info) 11%, transparent);
 }
 
 .editor-preview-card__eyebrow {
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--network-muted, #6d8197);
+  color: var(--network-muted, var(--app-text));
 }
 
 .editor-preview-card strong {
   font-size: 24px;
   line-height: 1.12;
-  color: var(--network-text, #16324f);
+  color: var(--network-text, var(--app-heading));
 }
 
 .editor-preview-card p {
   margin: 0;
   font-size: 13px;
   line-height: 1.6;
-  color: #6f8298;
+  color: var(--app-text);
 }
 
 .editor-preview-card__meta {
@@ -1090,8 +1089,8 @@ getList()
   min-height: 32px;
   padding: 0 10px;
   border-radius: 999px;
-  border: 1px solid rgba(216, 228, 238, 0.95);
-  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid color-mix(in srgb, var(--surface-border) 95%, transparent);
+  background: color-mix(in srgb, var(--surface-strong) 80%, transparent);
   color: var(--app-muted);
   font-size: 12px;
 }

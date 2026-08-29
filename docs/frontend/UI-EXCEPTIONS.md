@@ -19,11 +19,14 @@
 | 编号 | 范围 | 允许的特例 | 仍然禁止 | 状态 |
 | --- | --- | --- | --- | --- |
 | UIX-001 | `src/components/AuthScene/index.vue` | 登录 / 注册认证侧的本地 Vue/SCSS 动画；第三方视觉来源由 `CAREERCOMPASS_NOTICE.txt` 留存 | 不得扩散到普通业务页；不得恢复 Firebase、React、Tailwind、远程图片依赖 | 保留现状 |
-| UIX-002 | `src/views/support/autoInspection/cockpit.vue` | ECharts 健康度与趋势可视化，颜色读取现有主题变量 | 按钮、Tag、空态、错误、表格和图标仍用 Element Plus；不得手写操作 SVG | 保留现状 |
-| UIX-003 | `src/views/ipam/overview/index.vue` | IP 地址占用与统计可视化；图表媒介可按登记使用 SVG / Canvas | 不得用 Canvas 模拟表格、表单或分页 | 保留现状 |
-| UIX-004 | `src/views/support/site/SiteConfigDialog.vue` | 现场关系拓扑、连接线、节点布局和设备位置等专业可视结构 | 普通编辑、状态、按钮、Dialog、Drawer 和图标不得自绘；不把拓扑视觉推广为 CRUD 标准 | 保留现状，优先渐进拆分 |
+| UIX-002 | `src/views/support/autoInspection/{cockpit.vue,index.vue,components/InspectionFlowCanvas.vue}` | ECharts 健康度、巡检证据密集布局与步骤流程图；普通配置 Tabs 已改为 Element Plus | 按钮、Tag、空态、错误、表格和图标仍用 Element Plus；不得手写操作 SVG | 已复核 |
+| UIX-003 | `src/views/ipam/{index.vue,overview/index.vue,components/IpamHudIcon.vue}` | IP 地址占用、网段工作流和 HUD 可视化；图表媒介可按登记使用 SVG / Canvas | 不得用 Canvas 模拟表格、表单或分页 | 已复核 |
+| UIX-004 | `src/views/support/site/{index.vue,SiteConfigDialog.vue}` | 现场概览、关系拓扑、连接线、节点布局和设备位置等专业可视结构；全局暗色覆盖已存在 | 普通编辑、状态、按钮、Dialog、Drawer 和图标不得自绘；不把拓扑视觉推广为 CRUD 标准 | 已复核，优先渐进拆分 |
 | UIX-005 | `src/views/ipam/workbook` | 已安装 `@revolist/vue3-datagrid` 用于 Excel 式大规模 IP 编辑 | 普通管理列表继续用 `el-table`；不得为其他页面默认引入 RevoGrid | 保留现状 |
 | UIX-006 | `src/views/document/workspace/index.vue` | 文件夹树、拖拽移动、列表/网格切换、撤销反馈等文件工作区交互 | 普通 CRUD 不复制文件卡片、颜色选择或自定义原生按钮体系 | 保留现状 |
+| UIX-007 | `src/views/tool/build` | 表单生成器的拖拽画布、属性编辑器和代码预览 | 不得将编辑器定位方式、色板或控件覆盖复制到业务页面 | 已复核 |
+| UIX-008 | `src/views/index.vue` | 按权限展示的现场工作台、变化摘要与快捷入口 | 不推广统计卡/工作台密度到普通列表页 | 已复核 |
+| UIX-009 | `src/views/support/version/index.vue` | 版本树、变更详情和脚本清单的 Read 型密集布局 | 折叠图标必须使用正式图标；普通表格/弹窗仍遵循全局规范 | 已复核 |
 
 这些登记只解释现有业务特例，不自动放行新代码。UI Guard 对新增内联 SVG
 或 Canvas 仍要求同时命中精确路径和 `data-ui-guard="chart|map|diagram|flow"`

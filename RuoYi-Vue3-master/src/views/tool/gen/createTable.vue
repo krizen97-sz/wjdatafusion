@@ -5,8 +5,8 @@
     <el-input type="textarea" :rows="10" placeholder="请输入文本" v-model="content"></el-input>
     <template #footer>
       <div class="dialog-footer">
-        <el-button type="primary" @click="handleImportTable">确 定</el-button>
         <el-button @click="visible = false">取 消</el-button>
+        <el-button type="primary" :loading="importLoading" @click="handleImportTable">确 定</el-button>
       </div>
     </template>
   </el-dialog>
@@ -17,6 +17,7 @@ import { createTable } from "@/api/tool/gen"
 
 const visible = ref(false)
 const content = ref("")
+const importLoading = ref(false)
 const { proxy } = getCurrentInstance()
 const emit = defineEmits(["ok"])
 
@@ -31,12 +32,16 @@ function handleImportTable() {
     proxy.$modal.msgError("请输入建表语句")
     return
   }
+  if (importLoading.value) return
+  importLoading.value = true
   createTable({ sql: content.value, tplWebType: 'element-plus' }).then(res => {
     proxy.$modal.msgSuccess(res.msg)
     if (res.code === 200) {
       visible.value = false
       emit("ok")
     }
+  }).finally(() => {
+    importLoading.value = false
   })
 }
 

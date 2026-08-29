@@ -14,28 +14,36 @@
       >
         <svg-icon v-if="tagsIcon && tag.meta && tag.meta.icon && tag.meta.icon !== '#'" :icon-class="tag.meta.icon" />
         {{ tag.title }}
-        <span v-if="!isAffix(tag)" @click.prevent.stop="closeSelectedTag(tag)">
+        <span
+          v-if="!isAffix(tag)"
+          role="button"
+          tabindex="0"
+          :aria-label="`关闭页签：${tag.title}`"
+          @click.prevent.stop="closeSelectedTag(tag)"
+          @keydown.enter.prevent.stop="closeSelectedTag(tag)"
+          @keydown.space.prevent.stop="closeSelectedTag(tag)"
+        >
           <close class="el-icon-close" style="width: 1em; height: 1em;vertical-align: middle;" />
         </span>
       </router-link>
     </scroll-pane>
-    <ul v-show="visible" :style="{ left: left + 'px', top: top + 'px' }" class="contextmenu">
-      <li @click="refreshSelectedTag(selectedTag)">
+    <ul v-show="visible" role="menu" :style="{ left: left + 'px', top: top + 'px' }" class="contextmenu">
+      <li role="menuitem" tabindex="0" @click="refreshSelectedTag(selectedTag)" @keydown.enter.prevent="refreshSelectedTag(selectedTag)" @keydown.space.prevent="refreshSelectedTag(selectedTag)">
         <refresh-right style="width: 1em; height: 1em;" /> 刷新页面
       </li>
-      <li v-if="!isAffix(selectedTag)" @click="closeSelectedTag(selectedTag)">
+      <li v-if="!isAffix(selectedTag)" role="menuitem" tabindex="0" @click="closeSelectedTag(selectedTag)" @keydown.enter.prevent="closeSelectedTag(selectedTag)" @keydown.space.prevent="closeSelectedTag(selectedTag)">
         <close style="width: 1em; height: 1em;" /> 关闭当前
       </li>
-      <li @click="closeOthersTags">
+      <li role="menuitem" tabindex="0" @click="closeOthersTags" @keydown.enter.prevent="closeOthersTags" @keydown.space.prevent="closeOthersTags">
         <circle-close style="width: 1em; height: 1em;" /> 关闭其他
       </li>
-      <li v-if="!isFirstView()" @click="closeLeftTags">
+      <li v-if="!isFirstView()" role="menuitem" tabindex="0" @click="closeLeftTags" @keydown.enter.prevent="closeLeftTags" @keydown.space.prevent="closeLeftTags">
         <back style="width: 1em; height: 1em;" /> 关闭左侧
       </li>
-      <li v-if="!isLastView()" @click="closeRightTags">
+      <li v-if="!isLastView()" role="menuitem" tabindex="0" @click="closeRightTags" @keydown.enter.prevent="closeRightTags" @keydown.space.prevent="closeRightTags">
         <right style="width: 1em; height: 1em;" /> 关闭右侧
       </li>
-      <li @click="closeAllTags(selectedTag)">
+      <li role="menuitem" tabindex="0" @click="closeAllTags(selectedTag)" @keydown.enter.prevent="closeAllTags(selectedTag)" @keydown.space.prevent="closeAllTags(selectedTag)">
         <circle-close style="width: 1em; height: 1em;" /> 全部关闭
       </li>
     </ul>

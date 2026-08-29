@@ -4,7 +4,7 @@
 
   .main-container {
     min-height: 100%;
-    transition: margin-left .28s;
+    transition: none;
     margin-left: vars.$base-sidebar-width;
     position: relative;
   }
@@ -14,7 +14,7 @@
   }
 
   .sidebar-container {
-    transition: width 0.28s;
+    transition: none;
     width: vars.$base-sidebar-width !important;
     height: 100%;
     position: fixed;
@@ -24,12 +24,12 @@
     left: 0;
     z-index: 1001;
     overflow: hidden;
-    -webkit-box-shadow: 8px 0 28px rgba(61, 101, 147, 0.08);
-    box-shadow: 8px 0 28px rgba(61, 101, 147, 0.08);
+    -webkit-box-shadow: 8px 0 28px color-mix(in srgb, var(--app-heading) 8%, transparent);
+    box-shadow: 8px 0 28px color-mix(in srgb, var(--app-heading) 8%, transparent);
 
     // reset element-ui css
     .horizontal-collapse-transition {
-      transition: 0s width ease-in-out, 0s padding-left ease-in-out, 0s padding-right ease-in-out;
+      transition: none;
     }
 
     .scrollbar-wrapper {
@@ -223,7 +223,7 @@
     overflow-y: auto;
 
     &::-webkit-scrollbar-track-piece {
-      background: #d3dce6;
+      background: var(--surface-border);
     }
 
     &::-webkit-scrollbar {
@@ -231,7 +231,7 @@
     }
 
     &::-webkit-scrollbar-thumb {
-      background: #99a9bf;
+      background: var(--app-muted);
       border-radius: 20px;
     }
   }

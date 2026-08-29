@@ -43,8 +43,8 @@
     </el-row>
     <template #footer>
       <div class="dialog-footer">
-        <el-button type="primary" @click="handleImportTable">确 定</el-button>
         <el-button @click="visible = false">取 消</el-button>
+        <el-button type="primary" :loading="importLoading" @click="handleImportTable">确 定</el-button>
       </div>
     </template>
   </el-dialog>
@@ -55,6 +55,7 @@ import { listDbTable, importTable } from "@/api/tool/gen"
 
 const total = ref(0)
 const visible = ref(false)
+const importLoading = ref(false)
 const tables = ref([])
 const dbTableList = ref([])
 const { proxy } = getCurrentInstance()
@@ -111,12 +112,16 @@ function handleImportTable() {
     proxy.$modal.msgError("请选择要导入的表")
     return
   }
+  if (importLoading.value) return
+  importLoading.value = true
   importTable({ tables: tableNames, tplWebType: 'element-plus' }).then(res => {
     proxy.$modal.msgSuccess(res.msg)
     if (res.code === 200) {
       visible.value = false
       emit("ok")
     }
+  }).finally(() => {
+    importLoading.value = false
   })
 }
 

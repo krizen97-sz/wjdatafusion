@@ -244,7 +244,7 @@ const ringStyle = computed(() => {
   .ipam-hud-icon__core,
   .ipam-hud-icon__beacon {
     animation: none !important;
-    transition-duration: 0.01ms !important;
+    transition: none !important;
   }
 }
 </style>

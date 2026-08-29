@@ -111,19 +111,19 @@
          <el-table-column label="操作" align="center" width="200" class-name="small-padding fixed-width">
             <template #default="scope">
                <el-tooltip content="修改" placement="top">
-                  <el-button link type="primary" icon="Edit" @click="handleUpdate(scope.row)" v-hasPermi="['monitor:job:edit']"></el-button>
+                <el-button link type="primary" icon="Edit" :aria-label="`修改任务 ${scope.row.jobName}`" @click="handleUpdate(scope.row)" v-hasPermi="['monitor:job:edit']"></el-button>
                </el-tooltip>
                <el-tooltip content="删除" placement="top">
-                  <el-button link type="primary" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['monitor:job:remove']"></el-button>
+                <el-button link type="danger" icon="Delete" :aria-label="`删除任务 ${scope.row.jobName}`" @click="handleDelete(scope.row)" v-hasPermi="['monitor:job:remove']"></el-button>
                </el-tooltip>
                <el-tooltip content="执行一次" placement="top">
-                  <el-button link type="primary" icon="CaretRight" @click="handleRun(scope.row)" v-hasPermi="['monitor:job:changeStatus']"></el-button>
+                <el-button link type="primary" icon="CaretRight" :aria-label="`执行任务 ${scope.row.jobName}`" @click="handleRun(scope.row)" v-hasPermi="['monitor:job:changeStatus']"></el-button>
                </el-tooltip>
                <el-tooltip content="任务详细" placement="top">
-                  <el-button link type="primary" icon="View" @click="handleView(scope.row)" v-hasPermi="['monitor:job:query']"></el-button>
+                <el-button link type="primary" icon="View" :aria-label="`查看任务 ${scope.row.jobName}`" @click="handleView(scope.row)" v-hasPermi="['monitor:job:query']"></el-button>
                </el-tooltip>
                <el-tooltip content="调度日志" placement="top">
-                  <el-button link type="primary" icon="Operation" @click="handleJobLog(scope.row)" v-hasPermi="['monitor:job:query']"></el-button>
+                <el-button link type="primary" icon="Operation" :aria-label="`查看任务日志 ${scope.row.jobName}`" @click="handleJobLog(scope.row)" v-hasPermi="['monitor:job:query']"></el-button>
                </el-tooltip>
             </template>
          </el-table-column>
@@ -222,8 +222,8 @@
          </el-form>
          <template #footer>
             <div class="dialog-footer">
-               <el-button type="primary" @click="submitForm">确 定</el-button>
                <el-button @click="cancel">取 消</el-button>
+               <el-button type="primary" :loading="submitLoading" @click="submitForm">确 定</el-button>
             </div>
          </template>
       </el-dialog>
@@ -295,6 +295,7 @@ const { sys_job_group, sys_job_status } = proxy.useDict("sys_job_group", "sys_jo
 const jobList = ref([])
 const open = ref(false)
 const loading = ref(true)
+const submitLoading = ref(false)
 const showSearch = ref(true)
 const ids = ref([])
 const single = ref(true)
@@ -462,21 +463,17 @@ function handleUpdate(row) {
 /** 提交按钮 */
 function submitForm() {
   proxy.$refs["jobRef"].validate(valid => {
-    if (valid) {
-      if (form.value.jobId != undefined) {
-        updateJob(form.value).then(response => {
-          proxy.$modal.msgSuccess("修改成功")
-          open.value = false
-          getList()
-        })
-      } else {
-        addJob(form.value).then(response => {
-          proxy.$modal.msgSuccess("新增成功")
-          open.value = false
-          getList()
-        })
-      }
-    }
+    if (!valid || submitLoading.value) return
+    const isUpdate = form.value.jobId != undefined
+    submitLoading.value = true
+    const request = isUpdate ? updateJob(form.value) : addJob(form.value)
+    request.then(() => {
+      proxy.$modal.msgSuccess(isUpdate ? "修改成功" : "新增成功")
+      open.value = false
+      getList()
+    }).finally(() => {
+      submitLoading.value = false
+    })
   })
 }
 

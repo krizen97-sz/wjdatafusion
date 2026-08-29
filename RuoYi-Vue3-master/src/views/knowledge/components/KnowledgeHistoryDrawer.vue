@@ -1,8 +1,8 @@
 <template>
   <el-drawer v-model="open" size="820px" append-to-body destroy-on-close>
-    <template #header>
+    <template #header="{ titleId, titleClass }">
       <div class="knowledge-history-heading">
-        <strong>修改记录</strong>
+        <strong :id="titleId" :class="titleClass">修改记录</strong>
         <el-text type="info" size="small">{{ page?.title }} · 当前 V{{ page?.contentVersion || 1 }}</el-text>
       </div>
     </template>

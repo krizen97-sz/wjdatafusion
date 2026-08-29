@@ -2,7 +2,6 @@
   <div class="app-container tim-page">
     <section class="tim-hero">
       <div>
-        <span class="tim-hero__eyebrow">TIM系统巡检</span>
         <h2>可配置巡检中心</h2>
         <p>7项巡检可单独启停，检测目标、阈值和超时时间实时生效。手动巡检和定时巡检都会读取最新配置。</p>
       </div>
@@ -214,8 +213,8 @@
     </el-tabs>
 
     <el-drawer v-model="targetDrawerOpen" size="72%" append-to-body class="target-drawer">
-      <template #header>
-        <div class="drawer-title">
+      <template #header="{ titleId, titleClass }">
+        <div :id="titleId" :class="titleClass" class="drawer-title">
           <span>目标配置</span>
           <strong>{{ currentConfig?.itemName || '巡检项' }}</strong>
         </div>
@@ -233,7 +232,7 @@
           <template #default="scope">{{ formatTargetAddress(scope.row) }}</template>
         </el-table-column>
         <el-table-column label="状态" width="90" align="center">
-          <template #default="scope"><el-tag size="small" :type="scope.row.status === '1' ? 'info' : 'success'">{{ scope.row.status === '1' ? '停用' : '正常' }}</el-tag></template>
+          <template #default="scope"><el-tag size="small" :type="scope.row.status === '1' ? 'danger' : 'success'">{{ scope.row.status === '1' ? '停用' : '正常' }}</el-tag></template>
         </el-table-column>
         <el-table-column label="操作" fixed="right" width="260" align="center">
           <template #default="scope">
@@ -253,9 +252,9 @@
       />
     </el-drawer>
 
-    <el-dialog v-model="targetDialogOpen" width="760px" append-to-body class="target-dialog">
-      <template #header>
-        <div class="dialog-title">
+    <el-dialog v-model="targetDialogOpen" :aria-label="targetForm.targetId ? '编辑巡检目标' : '新增巡检目标'" width="760px" append-to-body class="target-dialog">
+      <template #header="{ titleId, titleClass }">
+        <div :id="titleId" :class="titleClass" class="dialog-title">
           <span>{{ targetForm.targetId ? '编辑目标' : '新增目标' }}</span>
           <strong>{{ currentConfig?.itemName }}</strong>
         </div>
@@ -266,8 +265,8 @@
         </el-form-item>
         <el-form-item label="运行状态" prop="status">
           <el-radio-group v-model="targetForm.status">
-            <el-radio label="0">正常</el-radio>
-            <el-radio label="1">停用</el-radio>
+            <el-radio value="0">正常</el-radio>
+            <el-radio value="1">停用</el-radio>
           </el-radio-group>
         </el-form-item>
 
@@ -353,13 +352,13 @@
       <template #footer>
         <el-button @click="targetDialogOpen = false">取消</el-button>
         <el-button :loading="targetTestLoading" @click="submitAndTestTarget">测试连接</el-button>
-        <el-button type="primary" @click="submitTarget">保存目标</el-button>
+        <el-button type="primary" :loading="targetSaving" @click="submitTarget">保存目标</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="planDialogOpen" width="1080px" append-to-body class="plan-dialog">
-      <template #header>
-        <div class="dialog-title">
+    <el-dialog v-model="planDialogOpen" :aria-label="planForm.planId ? '编辑巡检计划' : '新增巡检计划'" width="1080px" append-to-body class="plan-dialog">
+      <template #header="{ titleId, titleClass }">
+        <div :id="titleId" :class="titleClass" class="dialog-title">
           <span>{{ planForm.planId ? '编辑巡检计划' : '新增巡检计划' }}</span>
           <strong>{{ planForm.planName || '按计划自动执行TIM巡检' }}</strong>
         </div>
@@ -382,8 +381,8 @@
           </el-form-item>
           <el-form-item label="计划状态" prop="status">
             <el-radio-group v-model="planForm.status">
-              <el-radio label="0">启用</el-radio>
-              <el-radio label="1">暂停</el-radio>
+              <el-radio value="0">启用</el-radio>
+              <el-radio value="1">暂停</el-radio>
             </el-radio-group>
           </el-form-item>
           <el-form-item label="备注" class="plan-basic-grid__wide">
@@ -417,7 +416,7 @@
                 <strong>{{ item.itemName }}</strong>
                 <em>{{ getItemTypeLabel(item.itemType) }} · {{ item.targetIds?.length || 0 }} 个目标</em>
               </span>
-              <el-tag size="small" :type="item.enabledFlag === 'Y' ? 'success' : 'info'">{{ item.enabledFlag === 'Y' ? '启用' : '关闭' }}</el-tag>
+              <el-tag size="small" :type="item.enabledFlag === 'Y' ? 'success' : 'danger'">{{ item.enabledFlag === 'Y' ? '启用' : '关闭' }}</el-tag>
             </button>
           </aside>
 
@@ -495,9 +494,9 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="detailOpen" width="980px" append-to-body class="detail-dialog">
-      <template #header>
-        <div class="dialog-title">
+    <el-dialog v-model="detailOpen" aria-label="巡检详情" width="980px" append-to-body class="detail-dialog">
+      <template #header="{ titleId, titleClass }">
+        <div :id="titleId" :class="titleClass" class="dialog-title">
           <span>巡检详情</span>
           <strong>{{ detail.inspection?.inspectionTime }}</strong>
         </div>
@@ -574,6 +573,7 @@ const targetLoading = ref(false)
 const planLoading = ref(false)
 const runLoading = ref(false)
 const targetTestLoading = ref(false)
+const targetSaving = ref(false)
 const planSaving = ref(false)
 const showSearch = ref(true)
 const total = ref(0)
@@ -774,13 +774,16 @@ function handleUpdateTarget(row) {
 
 function submitTarget() {
   proxy.$refs.targetRef.validate((valid) => {
-    if (!valid) return
+    if (!valid || targetSaving.value) return
+    targetSaving.value = true
     const req = targetForm.value.targetId ? updateTimInspectionTarget(targetForm.value) : addTimInspectionTarget(targetForm.value)
     req.then(() => {
       proxy.$modal.msgSuccess('目标已保存')
       targetDialogOpen.value = false
       getTargetList()
       getConfigList()
+    }).finally(() => {
+      targetSaving.value = false
     })
   })
 }
@@ -1080,15 +1083,9 @@ getPlanList()
   justify-content: space-between;
   gap: 18px;
   padding: 20px 24px;
-  border: 1px solid #dbe7f3;
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 8px;
-  background: linear-gradient(135deg, #f4f9ff 0%, #ffffff 100%);
-}
-
-.tim-hero__eyebrow {
-  font-size: 12px;
-  font-weight: 700;
-  color: #2f78ff;
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--surface-strong) 100%);
 }
 
 .tim-hero h2 {
@@ -1099,7 +1096,7 @@ getPlanList()
 .tim-hero p {
   margin: 0;
   max-width: 760px;
-  color: #6b7f95;
+  color: var(--app-text);
   line-height: 1.7;
 }
 
@@ -1116,7 +1113,7 @@ getPlanList()
   align-content: center;
   gap: 4px;
   padding: 12px;
-  border: 1px solid #dbe7f3;
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 8px;
   background: var(--surface-strong);
   text-align: center;
@@ -1125,19 +1122,19 @@ getPlanList()
 .tim-hero__stats strong,
 .detail-summary strong {
   font-size: 20px;
-  color: #1f6fe5;
+  color: var(--el-color-primary);
 }
 
 .tim-hero__stats em,
 .detail-summary em {
   font-style: normal;
   font-size: 12px;
-  color: #7a8da3;
+  color: var(--app-muted);
 }
 
 .tim-tabs {
   padding: 14px 16px 18px;
-  border: 1px solid #e0e9f4;
+  border: 1px solid var(--surface-border);
   border-radius: 8px;
   background: var(--surface-strong);
 }
@@ -1155,7 +1152,7 @@ getPlanList()
 }
 
 .config-card {
-  border: 1px solid #dfe9f5;
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 8px;
   background: var(--surface-strong);
   overflow: hidden;
@@ -1171,7 +1168,7 @@ getPlanList()
   align-items: center;
   padding: 14px 16px;
   background: var(--surface-muted);
-  border-bottom: 1px solid #e6eef8;
+  border-bottom: 1px solid var(--el-color-primary-light-9);
 }
 
 .config-card__head div {
@@ -1187,7 +1184,7 @@ getPlanList()
   width: 26px;
   height: 26px;
   border-radius: 50%;
-  color: #2f78ff;
+  color: var(--el-color-primary);
   background: var(--surface-subtle);
   font-weight: 700;
 }
@@ -1203,7 +1200,7 @@ getPlanList()
   display: grid;
   gap: 6px;
   font-size: 12px;
-  color: #718499;
+  color: var(--app-muted);
 }
 
 .config-card__foot {
@@ -1211,11 +1208,11 @@ getPlanList()
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
-  border-top: 1px solid #eef3f8;
+  border-top: 1px solid var(--surface-muted);
 }
 
 .config-card__foot span {
-  color: #667b91;
+  color: var(--app-text);
   font-size: 13px;
 }
 
@@ -1290,7 +1287,7 @@ getPlanList()
   justify-content: space-between;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid #dfe9f5;
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 8px;
   background: var(--surface-muted);
 }
@@ -1315,7 +1312,7 @@ getPlanList()
 .plan-section-head strong {
   font-size: 13px;
   font-weight: 400;
-  color: #6c8198;
+  color: var(--app-text);
 }
 
 .plan-editor {
@@ -1323,7 +1320,7 @@ getPlanList()
   grid-template-columns: 310px minmax(0, 1fr);
   min-height: 330px;
   max-height: calc(100vh - 410px);
-  border: 1px solid #dfe9f5;
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 8px;
   background: var(--surface-strong);
   overflow: hidden;
@@ -1335,7 +1332,7 @@ getPlanList()
   gap: 8px;
   padding: 12px;
   overflow: auto;
-  border-right: 1px solid #e7eff8;
+  border-right: 1px solid var(--el-color-primary-light-9);
   background: var(--surface-muted);
 }
 
@@ -1357,9 +1354,9 @@ getPlanList()
 
 .plan-item-option:hover,
 .plan-item-option.is-active {
-  border-color: #bcd6ff;
+  border-color: var(--el-color-primary-light-7);
   background: var(--surface-strong);
-  box-shadow: 0 4px 14px rgba(47, 120, 255, 0.08);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--el-color-primary) 8%, transparent);
 }
 
 .plan-item-option.is-disabled {
@@ -1373,7 +1370,7 @@ getPlanList()
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  color: #2f78ff;
+  color: var(--el-color-primary);
   background: var(--surface-subtle);
   font-weight: 700;
 }
@@ -1397,7 +1394,7 @@ getPlanList()
   white-space: nowrap;
   font-style: normal;
   font-size: 12px;
-  color: #7b8fa5;
+  color: var(--app-muted);
 }
 
 .plan-item-detail {
@@ -1413,7 +1410,7 @@ getPlanList()
   justify-content: space-between;
   gap: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #edf3f9;
+  border-bottom: 1px solid var(--el-color-primary-light-9);
 }
 
 .plan-item-detail__head div {
@@ -1424,7 +1421,7 @@ getPlanList()
 
 .plan-item-detail__head span {
   font-size: 12px;
-  color: #2f78ff;
+  color: var(--el-color-primary);
   font-weight: 700;
 }
 
@@ -1435,7 +1432,7 @@ getPlanList()
 
 .plan-item-detail__head em {
   font-style: normal;
-  color: #6d8299;
+  color: var(--app-text);
   font-size: 13px;
 }
 
@@ -1448,7 +1445,7 @@ getPlanList()
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px 12px;
   padding: 12px;
-  border: 1px solid #e4eef8;
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 8px;
   background: var(--surface-muted);
 }
@@ -1469,7 +1466,7 @@ getPlanList()
 .plan-field-title em {
   font-style: normal;
   font-size: 12px;
-  color: #718499;
+  color: var(--app-muted);
 }
 
 .plan-item-detail__target :deep(.el-select) {
@@ -1492,14 +1489,14 @@ getPlanList()
   gap: 4px;
   padding: 12px;
   border-radius: 8px;
-  background: #f6f9fd;
-  color: #657b92;
+  background: var(--el-color-primary-light-9);
+  color: var(--app-text);
 }
 
 .plan-item-detail__summary span {
   font-size: 12px;
   font-weight: 700;
-  color: #2f78ff;
+  color: var(--el-color-primary);
 }
 
 .plan-item-detail__summary strong {

@@ -1,6 +1,6 @@
 <template>
-  <div class="user-info-head" @click="editCropper()">
-    <img :src="options.img" title="点击上传头像" class="img-circle img-lg" />
+  <div class="user-info-head" role="button" tabindex="0" aria-label="上传当前用户头像" @click="editCropper()" @keydown.enter.prevent="editCropper()" @keydown.space.prevent="editCropper()">
+    <img :src="options.img" alt="当前用户头像" title="点击上传头像" class="img-circle img-lg" />
     <el-dialog :title="title" v-model="open" width="800px" append-to-body @opened="modalOpened" @close="closeDialog">
       <el-row>
         <el-col :xs="24" :md="12" :style="{ height: '350px' }">
@@ -19,7 +19,7 @@
         </el-col>
         <el-col :xs="24" :md="12" :style="{ height: '350px' }">
           <div class="avatar-upload-preview">
-            <img :src="options.previews.url" :style="options.previews.img" />
+            <img :src="options.previews.url" :style="options.previews.img" alt="头像裁剪预览" />
           </div>
         </el-col>
       </el-row>
@@ -39,16 +39,16 @@
           </el-upload>
         </el-col>
         <el-col :lg="{ span: 1, offset: 2 }" :md="2">
-          <el-button icon="Plus" @click="changeScale(1)"></el-button>
+          <el-button icon="Plus" aria-label="放大头像" title="放大头像" @click="changeScale(1)"></el-button>
         </el-col>
         <el-col :lg="{ span: 1, offset: 1 }" :md="2">
-          <el-button icon="Minus" @click="changeScale(-1)"></el-button>
+          <el-button icon="Minus" aria-label="缩小头像" title="缩小头像" @click="changeScale(-1)"></el-button>
         </el-col>
         <el-col :lg="{ span: 1, offset: 1 }" :md="2">
-          <el-button icon="RefreshLeft" @click="rotateLeft()"></el-button>
+          <el-button icon="RefreshLeft" aria-label="向左旋转头像" title="向左旋转头像" @click="rotateLeft()"></el-button>
         </el-col>
         <el-col :lg="{ span: 1, offset: 1 }" :md="2">
-          <el-button icon="RefreshRight" @click="rotateRight()"></el-button>
+          <el-button icon="RefreshRight" aria-label="向右旋转头像" title="向右旋转头像" @click="rotateRight()"></el-button>
         </el-col>
         <el-col :lg="{ span: 2, offset: 6 }" :md="2">
           <el-button type="primary" @click="uploadImg()">提 交</el-button>

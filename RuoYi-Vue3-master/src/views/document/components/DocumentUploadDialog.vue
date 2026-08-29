@@ -192,10 +192,10 @@ function beforeClose(done) {
   margin-bottom: 14px;
   padding: 9px 11px;
   border-radius: 7px;
-  background: #f4f7fb;
+  background: var(--surface-strong);
   color: var(--app-muted);
   font-size: 12px;
-  .el-icon { color: #1677ff; }
+  .el-icon { color: var(--el-color-primary); }
   strong { color: var(--app-heading); }
 }
 
@@ -206,12 +206,12 @@ function beforeClose(done) {
   align-items: center;
   justify-content: center;
   gap: 15px;
-  border-color: #b8c7dc;
+  border-color: var(--surface-border);
   border-radius: 8px;
   background: var(--surface-muted);
-  &:hover { border-color: #1677ff; background: var(--surface-muted); }
+  &:hover { border-color: var(--el-color-primary); background: var(--surface-muted); }
 }
-.upload-icon { color: #1677ff; font-size: 42px; }
+.upload-icon { color: var(--el-color-primary); font-size: 42px; }
 .upload-copy {
   text-align: left;
   strong,
@@ -242,12 +242,12 @@ function beforeClose(done) {
   flex: 0 0 34px;
   place-items: center;
   border-radius: 6px;
-  background: #1677ff;
-  color: #fff;
+  background: var(--el-color-primary);
+  color: var(--el-color-white);
   font-weight: 750;
-  &.is-sheet { background: #15803d; }
-  &.is-pdf { background: #c2413b; }
-  &.is-archive { background: #7c3aed; }
+  &.is-sheet { background: var(--el-color-success); }
+  &.is-pdf { background: var(--el-color-danger); }
+  &.is-archive { background: var(--el-color-primary); }
 }
 
 .validation-state {
@@ -262,8 +262,8 @@ function beforeClose(done) {
   span { display: block; }
   strong { font-size: 13px; }
   span { margin-top: 3px; font-size: 12px; line-height: 1.55; }
-  &.is-validating { background: var(--surface-subtle); color: #0f5eba; }
-  &.is-error { background: #fff2f0; color: #b42318; }
+  &.is-validating { background: var(--surface-subtle); color: var(--el-color-primary); }
+  &.is-error { background: var(--el-color-danger-light-9); color: var(--el-color-danger); }
 }
 .validation-note { margin-top: 12px; color: var(--app-muted); font-size: 12px; line-height: 1.6; }
 </style>

@@ -40,17 +40,17 @@ defineEmits(['after-edit'])
 }
 
 .ipam-spreadsheet__grid {
-  --revo-grid-primary: #1677ff;
-  --revo-grid-primary-transparent: rgba(22, 119, 255, 0.12);
+  --revo-grid-primary: var(--el-color-primary);
+  --revo-grid-primary-transparent: color-mix(in srgb, var(--el-color-primary) 12%, transparent);
   --revo-grid-background: var(--surface-strong);
-  --revo-grid-foreground: #111827;
-  --revo-grid-divider: #dfe4ea;
-  --revo-grid-header-bg: #f4f6f8;
-  --revo-grid-header-color: #374151;
-  --revo-grid-header-border: #d8dee6;
-  --revo-grid-row-hover: #f3f8ff;
-  --revo-grid-focused-bg: #eef6ff;
-  --revo-grid-cell-disabled-bg: #f7f8fa;
+  --revo-grid-foreground: var(--app-heading);
+  --revo-grid-divider: var(--surface-border);
+  --revo-grid-header-bg: var(--surface-muted);
+  --revo-grid-header-color: var(--app-text);
+  --revo-grid-header-border: var(--surface-border);
+  --revo-grid-row-hover: var(--el-color-primary-light-9);
+  --revo-grid-focused-bg: var(--el-color-primary-light-9);
+  --revo-grid-cell-disabled-bg: var(--surface-strong);
   --revo-grid-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --revo-grid-font-size: 13px;
   --revo-grid-header-font-size: 12px;
@@ -60,8 +60,8 @@ defineEmits(['after-edit'])
 }
 
 :deep(.ipam-workbook-cell.is-dirty) {
-  background: #fff7ed;
-  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.45);
+  background: var(--el-color-warning-light-9);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--el-color-warning) 45%, transparent);
 }
 
 :deep(.ipam-workbook-status) {
@@ -73,22 +73,22 @@ defineEmits(['after-edit'])
 }
 
 :deep(.ipam-workbook-status.is-reserved) {
-  color: #b45309;
-  background: #fffbeb;
+  color: var(--el-color-warning);
+  background: var(--el-color-warning-light-9);
 }
 
 :deep(.ipam-workbook-status.is-allocated) {
-  color: #1d4ed8;
+  color: var(--el-color-primary);
   background: var(--surface-subtle);
 }
 
 :deep(.ipam-workbook-status.is-issued) {
-  color: #047857;
-  background: #ecfdf5;
+  color: var(--el-color-success);
+  background: var(--el-color-success-light-9);
 }
 
 :deep(.ipam-workbook-status.is-disabled) {
-  color: #b91c1c;
-  background: #fef2f2;
+  color: var(--el-color-danger);
+  background: var(--el-color-danger-light-9);
 }
 </style>

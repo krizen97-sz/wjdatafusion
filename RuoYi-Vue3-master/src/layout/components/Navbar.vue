@@ -15,10 +15,15 @@
         <screenfull id="screenfull" class="right-menu-item hover-effect" />
 
         <el-tooltip :content="settingsStore.isDark ? '切换为浅色模式' : '切换为深色模式'" effect="dark" placement="bottom">
-          <div class="right-menu-item hover-effect theme-switch-wrapper" @click="toggleTheme">
+          <button
+            type="button"
+            class="right-menu-item hover-effect theme-switch-wrapper"
+            :aria-label="settingsStore.isDark ? '切换为浅色模式' : '切换为深色模式'"
+            @click="toggleTheme"
+          >
             <svg-icon v-if="settingsStore.isDark" icon-class="sunny" />
             <svg-icon v-if="!settingsStore.isDark" icon-class="moon" />
-          </div>
+          </button>
         </el-tooltip>
 
         <el-tooltip content="布局大小" effect="dark" placement="bottom">
@@ -27,10 +32,10 @@
       </template>
 
       <el-dropdown @command="handleCommand" class="avatar-container right-menu-item hover-effect" trigger="hover">
-        <div class="avatar-wrapper">
-          <img :src="userStore.avatar" class="user-avatar" />
+        <button type="button" class="avatar-wrapper" aria-haspopup="menu">
+          <img :src="userStore.avatar" class="user-avatar" alt="" />
           <span class="user-nickname"> {{ userStore.nickName }} </span>
-        </div>
+        </button>
         <template #dropdown>
           <el-dropdown-menu>
             <router-link to="/user/profile">
@@ -200,6 +205,9 @@ function toggleTheme(event) {
       &.theme-switch-wrapper {
         display: flex;
         align-items: center;
+        border: 0;
+        background: transparent;
+        font: inherit;
 
         svg {
           transition: transform 0.3s;
@@ -219,6 +227,11 @@ function toggleTheme(event) {
         margin-top: 10px;
         right: 8px;
         position: relative;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
 
         .user-avatar {
           cursor: pointer;

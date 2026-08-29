@@ -1,7 +1,12 @@
 <template>
-  <div>
-    <svg-icon :icon-class="isFullscreen ? 'exit-fullscreen' : 'fullscreen'" @click="toggle" />
-  </div>
+  <button
+    type="button"
+    class="screenfull-button"
+    :aria-label="isFullscreen ? '退出全屏' : '进入全屏'"
+    @click="toggle"
+  >
+    <svg-icon :icon-class="isFullscreen ? 'exit-fullscreen' : 'fullscreen'" />
+  </button>
 </template>
 
 <script setup>
@@ -11,6 +16,15 @@ const { isFullscreen, toggle } = useFullscreen()
 </script>
 
 <style lang='scss' scoped>
+.screenfull-button {
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
 .screenfull-svg {
   display: inline-block;
   cursor: pointer;

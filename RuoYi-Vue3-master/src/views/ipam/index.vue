@@ -91,7 +91,7 @@
                   <div class="network-detail__title">
                     <h3>{{ selectedNetwork.networkName }}</h3>
                     <el-tag type="primary" effect="plain">{{ selectedNetwork.policeStationName || '未分类' }}</el-tag>
-                    <el-tag :type="selectedNetwork.status === '0' ? 'success' : 'info'">{{ selectedNetwork.status === '0' ? '启用' : '停用' }}</el-tag>
+                    <el-tag :type="selectedNetwork.status === '0' ? 'success' : 'danger'">{{ selectedNetwork.status === '0' ? '启用' : '停用' }}</el-tag>
                   </div>
                   <p>{{ formatNetworkRange(selectedNetwork) }}</p>
                 </div>
@@ -275,8 +275,8 @@
         </el-form-item>
         <el-form-item label="状态" prop="status">
           <el-radio-group v-model="networkForm.status">
-            <el-radio label="0">启用</el-radio>
-            <el-radio label="1">停用</el-radio>
+            <el-radio value="0">启用</el-radio>
+            <el-radio value="1">停用</el-radio>
           </el-radio-group>
         </el-form-item>
         <div v-if="networkPreview.valid" class="preview-box">
@@ -315,7 +315,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="configFullscreen" fullscreen append-to-body destroy-on-close class="ipam-config-fullscreen" :show-close="false">
+    <el-dialog v-model="configFullscreen" title="IP分配配置全屏工作区" fullscreen append-to-body destroy-on-close class="ipam-config-fullscreen" :show-close="false">
       <IpamConfigWorkspace
         v-if="selectedSegment"
         fullscreen
@@ -489,7 +489,7 @@ function handleTabChange(name) {
 
 <style scoped>
 .ipam-page {
-  color: #1f2937;
+  color: var(--app-heading);
 }
 
 .ipam-head {
@@ -533,13 +533,13 @@ function handleTabChange(name) {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #334155;
+  color: var(--app-text);
   font-size: 13px;
 }
 
 .scenario-bar :deep(.el-segmented) {
-  --el-segmented-item-selected-bg-color: #fff;
-  --el-segmented-item-selected-color: #1d4ed8;
+  --el-segmented-item-selected-bg-color: var(--surface-strong);
+  --el-segmented-item-selected-color: var(--el-color-primary);
   min-width: 270px;
 }
 
@@ -568,7 +568,7 @@ function handleTabChange(name) {
   display: grid;
   gap: 8px;
   padding-bottom: 10px;
-  border-bottom: 1px solid #eef2f7;
+  border-bottom: 1px solid var(--surface-muted);
 }
 
 .network-search__row {
@@ -588,7 +588,7 @@ function handleTabChange(name) {
   align-items: center;
   justify-content: space-between;
   min-height: 38px;
-  color: #334155;
+  color: var(--app-text);
   font-size: 13px;
 }
 
@@ -621,20 +621,20 @@ function handleTabChange(name) {
   border-bottom: 2px solid transparent;
   border-radius: 0;
   background: var(--surface-strong);
-  color: #374151;
+  color: var(--app-text);
   text-align: left;
   cursor: pointer;
   transition: border-color 0.16s ease, background-color 0.16s ease, color 0.16s ease;
 }
 
 .workflow-step.active {
-  border-bottom-color: #2563eb;
+  border-bottom-color: var(--el-color-primary);
   background: var(--surface-muted);
-  color: #1d4ed8;
+  color: var(--el-color-primary);
 }
 
 .workflow-step:disabled {
-  color: #9ca3af;
+  color: var(--app-muted);
   cursor: not-allowed;
   opacity: 0.68;
 }
@@ -647,14 +647,14 @@ function handleTabChange(name) {
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #e5e7eb;
-  color: #4b5563;
+  background: var(--surface-muted);
+  color: var(--app-text);
   font-weight: 650;
 }
 
 .workflow-step.active .workflow-step__index {
-  background: #2563eb;
-  color: #fff;
+  background: var(--el-color-primary);
+  color: var(--el-color-white);
 }
 
 .workflow-step__copy {
@@ -755,7 +755,7 @@ function handleTabChange(name) {
 
 .network-facts strong {
   overflow-wrap: anywhere;
-  color: #1f2937;
+  color: var(--app-heading);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 14px;
 }
@@ -787,7 +787,7 @@ function handleTabChange(name) {
   display: grid;
   gap: 8px;
   margin-top: 18px;
-  color: #475569;
+  color: var(--app-text);
   font-size: 13px;
 }
 
@@ -824,7 +824,7 @@ function handleTabChange(name) {
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  color: #4b5563;
+  color: var(--app-text);
 }
 
 .legend-dot::before {
@@ -845,8 +845,8 @@ function handleTabChange(name) {
   padding: 6px 10px;
   border: 1px solid var(--surface-border);
   border-radius: 6px;
-  background: #f9fafb;
-  color: #374151;
+  background: var(--surface-strong);
+  color: var(--app-text);
   font-size: 12px;
 }
 
@@ -872,11 +872,11 @@ function handleTabChange(name) {
 
 .mini-cell.selected {
   border-color: var(--app-heading);
-  box-shadow: inset 0 0 0 1px #111827;
+  box-shadow: inset 0 0 0 1px var(--app-heading);
 }
 
 .mini-cell.active {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--el-color-primary);
   outline-offset: 1px;
 }
 
@@ -889,15 +889,15 @@ function handleTabChange(name) {
 }
 
 .sheet-table :deep(.sheet-row-readonly td) {
-  background: #fffbeb;
+  background: var(--el-color-warning-light-9);
 }
 
 .sheet-table :deep(.sheet-row-dirty td) {
-  background: #f0fdf4;
+  background: var(--el-color-success-light-9);
 }
 
 .sheet-table :deep(.sheet-row-error td) {
-  background: #fef2f2;
+  background: var(--el-color-danger-light-9);
 }
 
 .sheet-table :deep(.sheet-row-selected td) {
@@ -905,47 +905,47 @@ function handleTabChange(name) {
 }
 
 .muted {
-  color: #9ca3af;
+  color: var(--app-muted);
 }
 
 .is-free {
   background: var(--surface-muted);
-  border-color: #d1d5db;
+  border-color: var(--surface-border);
   color: var(--app-muted);
 }
 
 .is-reserved {
-  background: #fffbeb;
-  border-color: #f59e0b;
-  color: #92400e;
+  background: var(--el-color-warning-light-9);
+  border-color: var(--el-color-warning);
+  color: var(--el-color-warning);
 }
 
 .is-allocated {
   background: var(--surface-subtle);
-  border-color: #3b82f6;
-  color: #1d4ed8;
+  border-color: var(--el-color-primary-light-5);
+  color: var(--el-color-primary);
 }
 
 .is-disabled {
-  background: #fef2f2;
-  border-color: #ef4444;
-  color: #b91c1c;
+  background: var(--el-color-danger-light-9);
+  border-color: var(--el-color-danger-light-5);
+  color: var(--el-color-danger);
 }
 
 .legend-dot.is-free::before {
-  background: #94a3b8;
+  background: var(--app-muted);
 }
 
 .legend-dot.is-reserved::before {
-  background: #f59e0b;
+  background: var(--el-color-warning);
 }
 
 .legend-dot.is-allocated::before {
-  background: #3b82f6;
+  background: var(--el-color-primary);
 }
 
 .legend-dot.is-disabled::before {
-  background: #ef4444;
+  background: var(--el-color-danger);
 }
 
 .is-boundary,
@@ -971,7 +971,7 @@ function handleTabChange(name) {
 .preview-box {
   margin: 0 0 18px 110px;
   padding: 12px;
-  border: 1px solid #dbeafe;
+  border: 1px solid var(--el-color-primary-light-9);
   border-radius: 8px;
   background: var(--surface-muted);
 }
@@ -981,7 +981,7 @@ function handleTabChange(name) {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 10px;
-  color: #334155;
+  color: var(--app-text);
   font-size: 13px;
 }
 
@@ -998,7 +998,7 @@ function handleTabChange(name) {
   border: 1px solid var(--surface-border);
   border-radius: 6px;
   background: var(--surface-strong);
-  color: #475569;
+  color: var(--app-text);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
 }

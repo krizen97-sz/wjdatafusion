@@ -1,13 +1,19 @@
 <template>
   <div class="header-search">
-    <svg-icon class-name="search-icon" icon-class="search" @click.stop="click" />
+    <button type="button" class="search-trigger" aria-label="搜索菜单" @click.stop="click">
+      <svg-icon class-name="search-icon" icon-class="search" />
+    </button>
     <el-dialog
       v-model="show"
       width="600"
       @close="close"
       :show-close="false"
       append-to-body
+      class="header-search-dialog"
     >
+      <template #header="{ titleId, titleClass }">
+        <span :id="titleId" :class="titleClass">菜单搜索</span>
+      </template>
       <el-input
         v-model="search"
         ref="headerSearchSelectRef"
@@ -28,14 +34,14 @@
             <div class="left">
               <svg-icon class="menu-icon" :icon-class="item.icon" />
             </div>
-            <div class="search-info" @click="change(item)">
+            <button type="button" class="search-info" @click="change(item)">
               <div class="menu-title">
                 {{ item.title.join(" / ") }}
               </div>
               <div class="menu-path">
                 {{ item.path }}
               </div>
-            </div>
+            </button>
             <svg-icon icon-class="enter" v-show="index === activeIndex"/>
           </div>
         </el-scrollbar>
@@ -197,7 +203,27 @@ watch(searchPool, (list) => {
 </script>
 
 <style lang='scss' scoped>
+:global(.header-search-dialog .el-dialog__header) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .header-search {
+  .search-trigger {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+
   .search-icon {
     cursor: pointer;
     font-size: 18px;
@@ -233,6 +259,11 @@ watch(searchPool, (list) => {
       flex-direction: column;
       justify-content: flex-start;
       flex: 1;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      text-align: left;
+      cursor: pointer;
 
       .menu-title,
       .menu-path {

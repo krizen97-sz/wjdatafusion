@@ -304,6 +304,226 @@ function countTagValues(source, tagName, attribute, fallback = '') {
   return result
 }
 
+function lineNumberAt(source, offset) {
+  return source.slice(0, offset).split(/\r?\n/).length
+}
+
+function rangeTouchesAdded(source, start, end, addedLineNumbers) {
+  const startLine = lineNumberAt(source, start)
+  const endLine = lineNumberAt(source, end)
+  for (let line = startLine; line <= endLine; line += 1) {
+    if (addedLineNumbers.has(line)) return true
+  }
+  return false
+}
+
+function hasAccessibleName(attributes, body = '') {
+  if (/\b(?:aria-label|aria-labelledby|title)\s*=/.test(attributes)) return true
+  const visible = body
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<el-icon\b[^>]*>[\s\S]*?<\/el-icon>/gi, '')
+    .replace(/<svg-icon\b[^>]*\/?\s*>/gi, '')
+    .replace(/<[^>]+>/g, '')
+    .replace(/{{[\s\S]*?}}/g, 'dynamic-label')
+    .replace(/&nbsp;/g, ' ')
+    .trim()
+  return Boolean(visible)
+}
+
+function clickHandlerMayBeAsync(source, attributes) {
+  const expression = (attributes.match(/@click(?:\.[\w-]+)*\s*=\s*["']([^"']+)["']/) || [])[1] || ''
+  const handler = (expression.match(/^\s*([A-Za-z_$][\w$]*)/) || [])[1]
+  if (!handler) return true
+  const escaped = handler.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const patterns = [
+    new RegExp(`(?:async\\s+)?function\\s+${escaped}\\s*\\(`),
+    new RegExp(`(?:const|let)\\s+${escaped}\\s*=\\s*(?:async\\s*)?\\(`)
+  ]
+  const matches = patterns.map((pattern) => ({ pattern, match: pattern.exec(source) })).filter((item) => item.match)
+  if (!matches.length) return true
+  const start = Math.min(...matches.map((item) => item.match.index))
+  const tail = source.slice(start, start + 5000)
+  const endMatch = /\n}\s*(?=\n|<\/script>)/.exec(tail)
+  const segment = endMatch ? tail.slice(0, endMatch.index + endMatch[0].length) : tail
+  return /\basync\s+function\b|\bawait\b|\.then\s*\(|\.submit\s*\(/.test(segment)
+}
+
+function auditInteractiveMarkup({ file, source, addedLineNumbers }) {
+  const findings = []
+  const inspectMatches = (pattern, callback) => {
+    for (const match of source.matchAll(pattern)) {
+      const start = match.index || 0
+      const end = start + match[0].length
+      if (!rangeTouchesAdded(source, start, end, addedLineNumbers)) continue
+      callback(match, start)
+    }
+  }
+
+  inspectMatches(/<el-button\b((?:"[^"]*"|'[^']*'|[^"'<>])*)>([\s\S]*?)<\/el-button>/gi, (match, start) => {
+    const attributes = match[1] || ''
+    const body = match[2] || ''
+    if (!hasAccessibleName(attributes, body, source, start)) {
+      findings.push(makeFinding('warning', 'icon-button-name', file, lineNumberAt(source, start),
+        'An Element Plus button has no visible text, aria-label, title, or aria-labelledby.',
+        'Keep concise action text, or add an accurate aria-label/title for a truly icon-only control.', match[0].split(/\r?\n/)[0]))
+    }
+  })
+
+  inspectMatches(/<el-button\b((?:"[^"]*"|'[^']*'|[^"'<>])*)\/>/gi, (match, start) => {
+    const attributes = match[1] || ''
+    if (!hasAccessibleName(attributes, '', source, start)) {
+      findings.push(makeFinding('warning', 'icon-button-name', file, lineNumberAt(source, start),
+        'A self-closing Element Plus button has no accessible name.',
+        'Add an accurate aria-label or title; a visual Tooltip alone is not an accessible name.', match[0]))
+    }
+  })
+
+  inspectMatches(/<button\b((?:"[^"]*"|'[^']*'|[^"'<>])*)>([\s\S]*?)<\/button>/gi, (match, start) => {
+    const attributes = match[1] || ''
+    const body = match[2] || ''
+    const line = lineNumberAt(source, start)
+    if (!/\btype\s*=/.test(attributes)) {
+      findings.push(makeFinding('warning', 'native-button-type', file, line,
+        'A native button omits its type and may submit a surrounding form unexpectedly.',
+        'Set type="button" unless this is intentionally the form submit control.', match[0].split(/\r?\n/)[0]))
+    }
+    if (!hasAccessibleName(attributes, body, source, start)) {
+      findings.push(makeFinding('warning', 'native-button-name', file, line,
+        'A native button has no accessible name.',
+        'Add visible action text or an accurate aria-label.', match[0].split(/\r?\n/)[0]))
+    }
+  })
+
+  inspectMatches(/<(div|span|li|article)\b((?:"[^"]*"|'[^']*'|[^"'<>])*)>/gi, (match, start) => {
+    const attributes = match[2] || ''
+    if (!/(?:^|\s)@click(?:\.[\w-]+)*\s*=/.test(attributes)) return
+    if (!/\brole\s*=/.test(attributes) || !/\btabindex\s*=/.test(attributes)) {
+      findings.push(makeFinding('warning', 'nonsemantic-click-target', file, lineNumberAt(source, start),
+        `Clickable <${match[1].toLowerCase()}> content is not fully keyboard-operable.`,
+        'Use a native button/link, or provide role, tabindex, and equivalent keyboard handlers.', match[0]))
+    }
+  })
+
+  inspectMatches(/<img\b((?:"[^"]*"|'[^']*'|[^"'<>])*)>/gi, (match, start) => {
+    if (!/\balt\s*=/.test(match[1] || '')) {
+      findings.push(makeFinding('warning', 'image-alt', file, lineNumberAt(source, start),
+        'An image has no alt attribute.',
+        'Provide meaningful alt text, or alt="" for a purely decorative image.', match[0]))
+    }
+  })
+
+  inspectMatches(/<el-radio(?:-button)?\b((?:"[^"]*"|'[^']*'|[^"'<>])*)\/?\s*>/gi, (match, start) => {
+    const attributes = match[1] || ''
+    if (/\b:?label\s*=/.test(attributes) && !/\b:?value\s*=/.test(attributes)) {
+      findings.push(makeFinding('warning', 'deprecated-radio-value', file, lineNumberAt(source, start),
+        'An Element Plus Radio uses label as its bound value, which is deprecated.',
+        'Move the model value to value/:value and keep visible text in the default slot.', match[0]))
+    }
+  })
+
+  inspectMatches(/<el-(dialog|drawer)\b((?:"[^"]*"|'[^']*'|[^"'<>])*)>\s*<template\s+#header\b/gi, (match, start) => {
+    const headerStart = start + match[0].lastIndexOf('<template')
+    const headerEnd = source.indexOf('</template>', headerStart)
+    const headerBlock = source.slice(headerStart, headerEnd < 0 ? headerStart + 800 : headerEnd)
+    const exposesTitleId = /#header\s*=\s*["'][^"']*\btitleId\b[^"']*["']/.test(headerBlock)
+    const bindsTitleId = /:id\s*=\s*["']titleId["']/.test(headerBlock)
+    if (!exposesTitleId || !bindsTitleId) {
+      findings.push(makeFinding('warning', 'dialog-accessible-name', file, lineNumberAt(source, start),
+        `An Element Plus ${match[1] === 'drawer' ? 'Drawer' : 'Dialog'} custom header is not connected to titleId.`,
+        'Expose titleId/titleClass from the header slot and bind :id="titleId" to the visible title wrapper.', match[0].split(/\r?\n/)[0]))
+    }
+  })
+
+  inspectMatches(/<el-(dialog|drawer)\b((?:"[^"]*"|'[^']*'|[^"'<>])*)>/gi, (match, start) => {
+    const attributes = match[2] || ''
+    const afterOpen = source.slice(start + match[0].length, start + match[0].length + 300)
+    const hasTitle = /\b:?title\s*=/.test(attributes)
+    const hasCustomHeader = /^\s*<template\s+#header\b/.test(afterOpen)
+    if (!hasTitle && !hasCustomHeader) {
+      findings.push(makeFinding('warning', 'dialog-accessible-name', file, lineNumberAt(source, start),
+        `An Element Plus ${match[1] === 'drawer' ? 'Drawer' : 'Dialog'} has no title or connected custom header.`,
+        'Provide title/:title, or connect a custom header through titleId.', match[0].split(/\r?\n/)[0]))
+    }
+  })
+
+  inspectMatches(/<template\s+#footer\b[^>]*>([\s\S]*?)<\/template>/gi, (footerMatch, footerStart) => {
+    const body = footerMatch[1] || ''
+    const buttons = [...body.matchAll(/<el-button\b((?:"[^"]*"|'[^']*'|[^"'<>])*)>([\s\S]*?)<\/el-button>/gi)].map((match) => ({
+      attributes: match[1] || '',
+      label: (match[2] || '').replace(/<[^>]+>/g, '').replace(/{{[\s\S]*?}}/g, '动态操作').replace(/\s+/g, ''),
+      offset: footerStart + (footerMatch[0].indexOf(match[0]) || 0)
+    }))
+    const cancelIndex = buttons.findIndex((button) => /^(?:取消|关闭|返回)$/.test(button.label))
+    const confirmIndex = buttons.findIndex((button) => /(?:确定|确认|保存|提交|创建|新增|添加|修改|授权|恢复|开始导入|开始导出|生成)/.test(button.label))
+    if (confirmIndex >= 0 && cancelIndex > confirmIndex) {
+      const button = buttons[confirmIndex]
+      findings.push(makeFinding('warning', 'dialog-footer-order', file, lineNumberAt(source, button.offset),
+        'The Dialog footer places the primary confirmation before cancel/close.',
+        'Keep cancel/close first and the primary confirmation last.', button.label))
+    }
+    if (confirmIndex >= 0) {
+      const button = buttons[confirmIndex]
+      if (clickHandlerMayBeAsync(source, button.attributes) && !/\b:loading\s*=|\bloading\s*=/.test(button.attributes)) {
+        findings.push(makeFinding('warning', 'dialog-submit-loading', file, lineNumberAt(source, button.offset),
+          'A Dialog confirmation action has no loading state.',
+          'Bind the existing submit state to :loading and block duplicate submission without changing the request flow.', button.label))
+      }
+    }
+  })
+
+  return findings
+}
+
+function nearestStyleSelector(lines, index) {
+  const selectors = []
+  for (let cursor = index; cursor >= Math.max(0, index - 12); cursor -= 1) {
+    const line = lines[cursor]
+    const brace = line.indexOf('{')
+    if (brace < 0) continue
+    const selector = line.slice(0, brace).trim()
+    if (!selector) continue
+    selectors.unshift(selector)
+    if (!selector.startsWith('&')) break
+  }
+  return selectors.join(' ')
+}
+
+function styleBlockFromLine(lines, index) {
+  const block = []
+  let depth = 0
+  let started = false
+  for (let cursor = index; cursor < Math.min(lines.length, index + 100); cursor += 1) {
+    const line = lines[cursor]
+    block.push(line)
+    const opens = (line.match(/{/g) || []).length
+    const closes = (line.match(/}/g) || []).length
+    if (opens) started = true
+    depth += opens - closes
+    if (started && depth <= 0) break
+  }
+  return block.join('\n')
+}
+
+function coreStyleIsUnsafe(block) {
+  if (HARD_CODED_COLOR_PATTERN.test(block)) {
+    HARD_CODED_COLOR_PATTERN.lastIndex = 0
+    return true
+  }
+  HARD_CODED_COLOR_PATTERN.lastIndex = 0
+  for (const match of block.matchAll(/border-radius\s*:\s*(\d+(?:\.\d+)?)px/gi)) {
+    if (Number(match[1]) > 16) return true
+  }
+  for (const match of block.matchAll(/(?:^|[;{]\s*)(?:color|background(?:-color)?)\s*:\s*([^;]+)/gim)) {
+    const value = match[1].trim()
+    if (!/^(?:transparent|inherit|var\(|color-mix\()/i.test(value)) return true
+  }
+  for (const match of block.matchAll(/box-shadow\s*:\s*([^;]+)/gi)) {
+    const value = match[1].trim()
+    if (!/^none\b|^var\(|color-mix\(/i.test(value)) return true
+  }
+  return false
+}
+
 function analyzeVueFile({ file, currentContent, baseContent = '', addedLineNumbers, thresholds = {} }) {
   const findings = []
   const lines = currentContent.split(/\r?\n/)
@@ -313,15 +533,17 @@ function analyzeVueFile({ file, currentContent, baseContent = '', addedLineNumbe
   const metricHits = []
   const absoluteHits = []
   const coreStyleHits = []
-  let section = ''
+  const scriptStart = lines.findIndex((line) => /^\s*<script\b/.test(line))
+  const scriptEnd = scriptStart >= 0 ? lines.findIndex((line, index) => index > scriptStart && /^\s*<\/script>/.test(line)) : -1
+  const styleStart = lines.findIndex((line) => /^\s*<style\b/.test(line))
   let actionDepth = 0
 
   for (let index = 0; index < lines.length; index += 1) {
     const lineNumber = index + 1
     const sourceLine = lines[index]
-    if (/<template\b/.test(sourceLine)) section = 'template'
-    if (/<script\b/.test(sourceLine)) section = 'script'
-    if (/<style\b/.test(sourceLine)) section = 'style'
+    const section = styleStart >= 0 && index >= styleStart
+      ? 'style'
+      : (scriptStart >= 0 && index >= scriptStart && (scriptEnd < 0 || index <= scriptEnd) ? 'script' : 'template')
 
     const opensAction = /<(?:el-button|button|el-dropdown-item|el-link)\b/i.test(sourceLine)
       && !/\/>/.test(sourceLine)
@@ -380,12 +602,16 @@ function analyzeVueFile({ file, currentContent, baseContent = '', addedLineNumbe
         const metrics = sourceLine.match(HARD_CODED_METRIC_PATTERN) || []
         for (const metric of metrics) metricHits.push({ line: lineNumber, value: metric, sourceLine })
         if (ABSOLUTE_PATTERN.test(sourceLine)) absoluteHits.push({ line: lineNumber, sourceLine })
-        if (/(?:\.el-(?:button|tabs?|switch|badge|dialog)|\.(?:custom|page|business)[-_]?(?:button|tabs?|switch|badge))\b/i.test(sourceLine)) {
+        if (/(?:\.el-(?:button|tabs?|switch|badge|dialog)|\.(?:custom|page|business)[-_]?(?:button|tabs?|switch|badge))\b/i.test(sourceLine)
+          && coreStyleIsUnsafe(styleBlockFromLine(lines, index))) {
           coreStyleHits.push({ line: lineNumber, sourceLine })
         }
-        const styleWindow = lines.slice(Math.max(0, index - 4), Math.min(lines.length, index + 5)).join(' ')
-        if (/(?:\.\w*icon\w*|::before|::after)/i.test(styleWindow)
-          && /(?:content\s*:|border(?:-[a-z]+)?\s*:[^;]*solid|transform\s*:[^;]*rotate)/i.test(sourceLine)) {
+        const selectorContext = nearestStyleSelector(lines, index)
+        const iconNamedSelector = /\.[\w-]*(?:icon|arrow|chevron|spinner)[\w-]*/i.test(selectorContext)
+        const syntheticSelector = (iconNamedSelector || />\s*i(?:::|\b)/i.test(selectorContext))
+          && /(?:::before|::after|>\s*i(?:::|\b))/i.test(selectorContext)
+        if (syntheticSelector
+          && /(?:content\s*:|border(?:-[a-z]+)?\s*:[^;]*solid)/i.test(sourceLine)) {
           findings.push(makeFinding('warning', 'css-drawn-icon', file, lineNumber,
             'CSS appears to draw or synthesize an icon.',
             'Use an existing Element Plus icon or SvgIcon.', sourceLine))
@@ -396,9 +622,6 @@ function analyzeVueFile({ file, currentContent, baseContent = '', addedLineNumbe
     if (/<\/(?:el-button|button|el-dropdown-item|el-link)>/i.test(sourceLine)) {
       actionDepth = Math.max(0, actionDepth - 1)
     }
-    if (/<\/template>/.test(sourceLine) && section === 'template') section = ''
-    if (/<\/script>/.test(sourceLine) && section === 'script') section = ''
-    if (/<\/style>/.test(sourceLine) && section === 'style') section = ''
   }
 
   const colorThreshold = Number(thresholds.hardcodedColorCount || 4)
@@ -411,10 +634,26 @@ function analyzeVueFile({ file, currentContent, baseContent = '', addedLineNumbe
   }
 
   const metricThreshold = Number(thresholds.hardcodedMetricCount || 8)
-  if (metricHits.length >= metricThreshold) {
+  const metricGroups = { spacing: [], radius: [], shadow: [], font: [] }
+  for (const hit of metricHits) {
+    const property = (hit.value.match(/^([\w-]+)/) || [])[1] || ''
+    const numeric = (hit.value.match(/-?\d*\.?\d+(?:px|rem|em)/) || [])[0] || hit.value
+    if (property === 'border-radius') metricGroups.radius.push(numeric)
+    else if (property === 'box-shadow') metricGroups.shadow.push(numeric)
+    else if (property === 'font-size') metricGroups.font.push(numeric)
+    else metricGroups.spacing.push(numeric)
+  }
+  const uniqueCount = (values) => new Set(values).size
+  const densityReasons = [
+    ['spacing values', uniqueCount(metricGroups.spacing), Number(thresholds.spacingUniqueCount || 13)],
+    ['font sizes', uniqueCount(metricGroups.font), Number(thresholds.fontSizeUniqueCount || 9)],
+    ['radii', uniqueCount(metricGroups.radius), Number(thresholds.radiusUniqueCount || 8)],
+    ['shadows', uniqueCount(metricGroups.shadow), Number(thresholds.shadowUniqueCount || 5)]
+  ].filter(([, count, threshold]) => count >= threshold)
+  if (metricHits.length >= metricThreshold && densityReasons.length) {
     const first = metricHits[0]
     findings.push(makeFinding('warning', 'hardcoded-shape-spacing', file, first.line,
-      `${metricHits.length} added hardcoded spacing, radius, shadow, or font-size declarations need review.`,
+      `The page introduces an unusually broad visual scale: ${densityReasons.map(([label, count]) => `${count} ${label}`).join(', ')}.`,
       'Reuse the incumbent page rhythm and Element Plus/project variables; allow only content-specific dimensions.', first.sourceLine))
   }
 
@@ -463,6 +702,10 @@ function analyzeVueFile({ file, currentContent, baseContent = '', addedLineNumbe
         `The page now mixes Tab styles: ${[...currentTabs].join(', ')}.`,
         'Use one Tab visual mode within the business area.'))
     }
+  }
+
+  if (file.endsWith('.vue') && addedLineNumbers.size) {
+    findings.push(...auditInteractiveMarkup({ file, source: currentContent, addedLineNumbers }))
   }
 
   return findings
@@ -631,7 +874,9 @@ async function main() {
   for (const file of files) {
     const currentContent = readCurrentContent({ repoRoot, frontendRoot, file, staged: options.staged })
     if (!currentContent) continue
-    const baseContent = readBaseContent({ repoRoot, frontendRoot, file, base, all: options.all, staged: options.staged })
+    const baseContent = options.all && file === 'package.json'
+      ? currentContent
+      : readBaseContent({ repoRoot, frontendRoot, file, base, all: options.all, staged: options.staged })
     const addedLineNumbers = options.all
       ? new Set(currentContent.split(/\r?\n/).map((_, index) => index + 1))
       : diffAddedLineNumbers(baseContent, currentContent)

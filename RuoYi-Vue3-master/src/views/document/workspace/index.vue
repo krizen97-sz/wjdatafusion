@@ -36,7 +36,7 @@
             >
               <span><el-icon><PieChart /></el-icon>存储</span>
               <strong>{{ formatFileSize(workspaceSummary.usedSize) }}</strong>
-              <i aria-hidden="true"><b :style="{ width: `${storagePercentage}%` }" /></i>
+              <i aria-hidden="true"><b :style="{ transform: `scaleX(${storagePercentage / 100})` }" /></i>
             </button>
           </div>
           <p v-if="workspaceSummary.unfiledCount > 0" class="root-folder-note is-warning">
@@ -57,7 +57,13 @@
                   class="folder-node"
                   :class="[{ 'is-active': Number(query.folderId) === Number(data.folderId) }, dropTargetClass('FOLDER', data.folderId), folderSortClass(data)]"
                   :style="{ '--folder-color': normalizeFolderColor(data.folderColor) }"
+                  role="treeitem"
+                  tabindex="0"
+                  :aria-selected="Number(query.folderId) === Number(data.folderId)"
+                  :aria-label="`打开目录 ${data.folderName}`"
                   @click="selectFolder(data)"
+                  @keydown.enter.prevent="selectFolder(data)"
+                  @keydown.space.prevent="selectFolder(data)"
                   @dragenter.prevent.stop="enterFolderNodeDrag($event, data)"
                   @dragover.prevent.stop="enterFolderNodeDrag($event, data)"
                   @dragleave.stop="leaveFolderNodeDrag($event, data)"
@@ -279,7 +285,7 @@
                   <span class="file-mark" :class="`is-${document.fileType}`">{{ fileMarkLabel(document.fileType) }}</span>
                 </span>
                 <el-dropdown trigger="click" @command="(command) => documentCommand(command, document)">
-                  <el-button text circle><el-icon><MoreFilled /></el-icon></el-button>
+                  <el-button text circle aria-label="文档操作" title="文档操作"><el-icon><MoreFilled /></el-icon></el-button>
                   <template #dropdown><DocumentActionMenu :document="document" compact /></template>
                 </el-dropdown>
               </div>

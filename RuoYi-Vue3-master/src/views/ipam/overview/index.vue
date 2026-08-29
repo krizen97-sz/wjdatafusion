@@ -75,7 +75,7 @@
               <b :class="usagePercent >= 80 ? 'is-risk' : 'is-normal'">{{ alertNetworkCount }} 个高负载网段</b>
             </div>
             <strong>{{ usagePercent }}<i>%</i></strong>
-            <div class="metric-meter" aria-hidden="true"><span :style="{ width: `${usagePercent}%` }" /></div>
+            <div class="metric-meter" aria-hidden="true"><span :style="{ transform: `scaleX(${usagePercent / 100})` }" /></div>
             <small>{{ formatNumber(summary.occupiedCount) }} / {{ formatNumber(summary.assignableCount) }} 个可分配地址</small>
           </div>
         </article>
@@ -690,7 +690,9 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', syncFulls
   height: 100%;
   border-radius: inherit;
   background: #39a0ff;
-  transition: width 420ms cubic-bezier(0.22, 1, 0.36, 1);
+  width: 100%;
+  transform-origin: left center;
+  transition: transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .is-refreshing .metric-meter span::after {
@@ -1053,7 +1055,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', syncFulls
   .metric-meter span,
   .dashboard-panel,
   .metric-cell::after {
-    transition-duration: 0.01ms !important;
+    transition: none !important;
   }
 }
 </style>

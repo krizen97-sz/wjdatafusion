@@ -54,7 +54,7 @@
               @keyup.enter="loadAll"
             >
               <template #append>
-                <el-button icon="Search" @click="loadAll" />
+                <el-button icon="Search" aria-label="搜索现场配置" title="搜索现场配置" @click="loadAll" />
               </template>
             </el-input>
             <div class="canvas-layout-switch" role="group" aria-label="画布布局方向">
@@ -64,7 +64,7 @@
                 :class="{ 'is-active': canvasLayoutDirection === 'horizontal' }"
                 @click="handleCanvasLayoutChange('horizontal')"
               >
-                <span class="canvas-layout-switch__icon">↔</span>
+                <span class="canvas-layout-switch__icon"><el-icon><Switch /></el-icon></span>
                 <span class="canvas-layout-switch__text">
                   <strong>横向树</strong>
                   <small>现场在左</small>
@@ -76,7 +76,7 @@
                 :class="{ 'is-active': canvasLayoutDirection === 'vertical' }"
                 @click="handleCanvasLayoutChange('vertical')"
               >
-                <span class="canvas-layout-switch__icon">↕</span>
+                <span class="canvas-layout-switch__icon"><el-icon><Sort /></el-icon></span>
                 <span class="canvas-layout-switch__text">
                   <strong>纵向树</strong>
                   <small>现场在上</small>
@@ -84,10 +84,10 @@
               </button>
             </div>
             <div class="canvas-view-toolbar">
-              <button @click="zoomCanvas(-0.1)">－</button>
+              <button type="button" @click="zoomCanvas(-0.1)">－</button>
               <span>{{ Math.round(canvasScale * 100) }}%</span>
-              <button @click="zoomCanvas(0.1)">＋</button>
-              <button @click="resetCanvasView">重置视角</button>
+              <button type="button" @click="zoomCanvas(0.1)">＋</button>
+              <button type="button" @click="resetCanvasView">重置视角</button>
             </div>
             <el-button
               class="canvas-fullscreen-button"
@@ -177,7 +177,7 @@
                 </g>
               </svg>
               <div class="fusion-site-node">
-                <button
+                <button type="button"
                   class="fusion-node fusion-node--site"
                   :class="{ 'is-active': focusMode === 'site' }"
                   @click.stop="selectWorkbenchSite"
@@ -214,7 +214,7 @@
                   class="fusion-main-lane"
                   :class="{ 'is-active': isSelectedPlatform(main.platformId) }"
                 >
-                  <button
+                  <button type="button"
                     :data-fusion-main-id="main.platformId"
                     class="fusion-node fusion-node--main"
                     :class="[
@@ -233,7 +233,7 @@
                   <div class="fusion-layer fusion-layer--contact">
                     <span class="fusion-layer__label">人员层</span>
                     <div class="fusion-layer__nodes">
-                      <button
+                      <button type="button"
                         v-for="contact in getPlatformContacts(main.platformId)"
                         :key="contact.contactId"
                         class="fusion-node fusion-node--contact"
@@ -245,7 +245,7 @@
                         <strong>{{ contact.contactName }}</strong>
                         <small>{{ getRoleLabel(contact.roleType) }} · {{ contact.orgName || '未归属组织' }} · {{ getContactDisplay(contact) }}</small>
                       </button>
-                      <button class="fusion-add-node fusion-add-node--contact" @click.stop="openPlatformBindContactDialog(main)">
+                      <button type="button" class="fusion-add-node fusion-add-node--contact" @click.stop="openPlatformBindContactDialog(main)">
                         + 关联人员
                       </button>
                     </div>
@@ -259,7 +259,12 @@
                         :key="sub.platformId"
                         class="fusion-sub-node"
                         :class="{ 'is-active': isSelectedPlatform(sub.platformId) }"
+                        role="button"
+                        tabindex="0"
+                        :aria-label="`选择子平台 ${sub.platformName}`"
                         @click.stop="selectPlatform(sub)"
+                        @keydown.enter.prevent.stop="selectPlatform(sub)"
+                        @keydown.space.prevent.stop="selectPlatform(sub)"
                         @contextmenu.prevent.stop="openCanvasContextMenu($event, 'sub', sub)"
                       >
                         <div class="fusion-sub-node__head">
@@ -268,7 +273,7 @@
                           <small>{{ getEndpointCount(sub.platformId) }} 页面 · {{ getPlatformHardwareTotal(sub.platformId) }} 设备</small>
                         </div>
                         <div class="fusion-page-row">
-                          <button
+                          <button type="button"
                             v-for="endpoint in getVisibleEndpointList(sub.platformId)"
                             :key="endpoint.endpointId"
                             class="fusion-page-node"
@@ -278,30 +283,30 @@
                           >
                             {{ endpoint.endpointName || '未命名页面' }}
                           </button>
-                          <button class="fusion-page-node fusion-page-node--add" @click.stop="handleEndpointAddFor(sub)">+ 页面</button>
+                          <button type="button" class="fusion-page-node fusion-page-node--add" @click.stop="handleEndpointAddFor(sub)">+ 页面</button>
                         </div>
                         <div class="fusion-server-row">
-                          <button class="fusion-server-summary fusion-hardware-summary" @click.stop="openHardwareAssetDialog(sub)">
+                          <button type="button" class="fusion-server-summary fusion-hardware-summary" @click.stop="openHardwareAssetDialog(sub)">
                             <strong>{{ getPlatformHardwareTotal(sub.platformId) }}</strong>
                             <span>项设备</span>
                             <small>{{ getPlatformHardwareSummaryText(sub.platformId) }}</small>
                           </button>
-                          <button class="fusion-server-pill fusion-server-pill--add" @click.stop="openHardwareAssetDialog(sub)">管理设备</button>
+                          <button type="button" class="fusion-server-pill fusion-server-pill--add" @click.stop="openHardwareAssetDialog(sub)">管理设备</button>
                         </div>
                       </article>
-                      <button class="fusion-add-node" @click.stop="handlePlatformAdd(main)">+ 新增子平台</button>
+                      <button type="button" class="fusion-add-node" @click.stop="handlePlatformAdd(main)">+ 新增子平台</button>
                     </div>
                   </div>
 
                   <div class="fusion-layer fusion-layer--server">
                     <span class="fusion-layer__label">设备资产层</span>
                     <div class="fusion-layer__nodes">
-                      <button class="fusion-node fusion-node--server fusion-node--server-summary" @click.stop="openHardwareAssetDialog(main)">
+                      <button type="button" class="fusion-node fusion-node--server fusion-node--server-summary" @click.stop="openHardwareAssetDialog(main)">
                         <span>设备资产汇总</span>
                         <strong>{{ getPlatformHardwareTotal(main.platformId) }} 项</strong>
                         <small>{{ getPlatformHardwareSummaryText(main.platformId) }}</small>
                       </button>
-                      <button class="fusion-add-node" @click.stop="openHardwareAssetDialog(main)">统一管理</button>
+                      <button type="button" class="fusion-add-node" @click.stop="openHardwareAssetDialog(main)">统一管理</button>
                     </div>
                   </div>
                 </article>
@@ -330,7 +335,7 @@
               :style="{ left: canvasContextMenu.x + 'px', top: canvasContextMenu.y + 'px' }"
               @click.stop
             >
-              <button
+              <button type="button"
                 v-for="item in canvasContextMenuItems"
                 :key="item.action"
                 :class="{ 'is-danger': item.danger }"
@@ -382,7 +387,7 @@
                 <div v-if="inspectorEditOpen" class="fusion-inspector__editor">
                   <div class="fusion-inspector__editor-head">
                     <strong>属性编辑</strong>
-                    <button @click="cancelInspectorEdit">收起</button>
+                    <button type="button" @click="cancelInspectorEdit">收起</button>
                   </div>
 
                   <template v-if="inspectorEditType === 'platform'">
@@ -432,6 +437,8 @@
                           link
                           type="primary"
                           icon="View"
+                          aria-label="显示或隐藏密码"
+                          title="显示或隐藏密码"
                           :loading="isServerPasswordLoading('inspector', 'hikPassword')"
                           @click.stop="toggleServerPasswordPlain('inspector', 'hikPassword')"
                         />
@@ -446,6 +453,8 @@
                           link
                           type="primary"
                           icon="View"
+                          aria-label="显示或隐藏密码"
+                          title="显示或隐藏密码"
                           :loading="isServerPasswordLoading('inspector', 'rootPassword')"
                           @click.stop="toggleServerPasswordPlain('inspector', 'rootPassword')"
                         />
@@ -462,6 +471,8 @@
                           link
                           type="primary"
                           icon="View"
+                          aria-label="显示或隐藏密码"
+                          title="显示或隐藏密码"
                           :loading="isServerPasswordLoading('inspector', 'otherPassword')"
                           @click.stop="toggleServerPasswordPlain('inspector', 'otherPassword')"
                         />
@@ -504,8 +515,8 @@
                     <small>{{ siteMessageTotal }} 条留言</small>
                   </div>
                   <div class="site-message-board__actions">
-                    <button @click="openSiteMessageDetail">显示详情</button>
-                    <button :class="{ 'is-active': messageBarrageOpen }" @click="toggleMessageBarrage">
+                    <button type="button" @click="openSiteMessageDetail">显示详情</button>
+                    <button type="button" :class="{ 'is-active': messageBarrageOpen }" @click="toggleMessageBarrage">
                       {{ messageBarrageOpen ? '关闭弹幕' : '打开弹幕' }}
                     </button>
                   </div>
@@ -550,12 +561,12 @@
                     <strong>最近操作</strong>
                     <small>记录现场配置的增删改</small>
                   </div>
-                  <button @click="loadChangeLogs">刷新</button>
+                  <button type="button" @click="loadChangeLogs">刷新</button>
                 </div>
                 <div v-if="changeLogLoading" class="fusion-change-log__empty">正在加载操作记录...</div>
                 <div v-else-if="!changeLogList.length" class="fusion-change-log__empty">暂无操作记录</div>
                 <ul v-else class="fusion-change-log__list">
-                  <li v-for="item in changeLogList" :key="item.logId" @click="openChangeLogDetail(item)">
+                  <li v-for="item in changeLogList" :key="item.logId" role="button" tabindex="0" :aria-label="`查看操作记录：${item.summary || getChangeTargetLabel(item)}`" @click="openChangeLogDetail(item)" @keydown.enter.prevent="openChangeLogDetail(item)" @keydown.space.prevent="openChangeLogDetail(item)">
                     <span class="fusion-change-log__badge" :class="'is-' + String(item.actionType || '').toLowerCase()">
                       {{ getChangeActionLabel(item.actionType) }}
                     </span>
@@ -587,7 +598,7 @@
                   @keyup.enter="loadAll"
                 >
                   <template #append>
-                    <el-button icon="Search" @click="loadAll" />
+                    <el-button icon="Search" aria-label="搜索拓扑配置" title="搜索拓扑配置" @click="loadAll" />
                   </template>
                 </el-input>
                 <el-button link type="primary" @click="loadAll">刷新</el-button>
@@ -614,14 +625,14 @@
                         <strong>{{ platformWindowLabel }}</strong>
                       </div>
                       <div v-if="shouldCollapseMainPlatforms" class="topology-board__pager-actions">
-                        <button
+                        <button type="button"
                           class="topology-pager-nav"
                           :disabled="platformWindowStart === 0"
                           @click="stepPlatformWindow(-1)"
                         >
                           上一组
                         </button>
-                        <button
+                        <button type="button"
                           class="topology-pager-nav"
                           :disabled="platformWindowStart >= maxPlatformWindowStart"
                           @click="stepPlatformWindow(1)"
@@ -631,7 +642,7 @@
                       </div>
                     </div>
                     <div ref="pagerTrackRef" class="topology-board__pager-track">
-                      <button
+                      <button type="button"
                         v-for="(main, index) in mainPlatforms"
                         :key="main.platformId"
                         class="topology-page-chip"
@@ -651,7 +662,7 @@
                           </span>
                         </span>
                       </button>
-                      <button class="topology-page-chip topology-page-chip--add topology-root-add" @click="handlePlatformAdd()">
+                      <button type="button" class="topology-page-chip topology-page-chip--add topology-root-add" @click="handlePlatformAdd()">
                         <span class="topology-page-chip__index topology-page-chip__index--add">+</span>
                         <span class="topology-page-chip__body">
                           <span class="topology-page-chip__name">新增主平台</span>
@@ -666,7 +677,7 @@
                     <div class="topology-board__lanes">
                       <article v-for="main in visibleMainPlatforms" :key="main.platformId" class="platform-lane">
                     <div class="node-shell node-shell--main">
-                      <button
+                      <button type="button"
                         class="platform-node platform-node--main"
                         :class="{ 'is-active': isSelectedPlatform(main.platformId), 'is-spotlight': isSpotlightPlatform(main.platformId) }"
                         :data-focus-target="getFocusTargetKey('platform', main.platformId)"
@@ -681,7 +692,7 @@
                           <span>{{ getSubPlatforms(main.platformId).length }} 个子平台</span>
                         </div>
                       </button>
-                      <button class="platform-edit-entry" @click.stop="openPlatformCanvasEditor(main)">
+                      <button type="button" class="platform-edit-entry" @click.stop="openPlatformCanvasEditor(main)">
                         编辑信息
                       </button>
                       <div class="node-actions">
@@ -694,7 +705,7 @@
                       <div class="lane-track__body">
                         <div class="org-chip-row">
                           <span v-if="!getPlatformContacts(main.platformId).length" class="ghost-chip">未关联人员</span>
-                          <button
+                          <button type="button"
                             v-for="contact in getPlatformContacts(main.platformId)"
                             :key="contact.contactId"
                             class="contact-chip"
@@ -708,7 +719,7 @@
                             <span>{{ contact.orgName || '未归属组织' }}</span>
                             <span>{{ getRoleLabel(contact.roleType) }} · {{ getContactDisplay(contact) }}</span>
                           </button>
-                          <button class="lane-action-node lane-action-node--warm" @click.stop="openPlatformBindContactDialog(main)">管理人员</button>
+                          <button type="button" class="lane-action-node lane-action-node--warm" @click.stop="openPlatformBindContactDialog(main)">管理人员</button>
                         </div>
                       </div>
                     </div>
@@ -725,7 +736,7 @@
                             :data-focus-target="getFocusTargetKey('platform', sub.platformId)"
                           >
                             <div class="subplatform-card__head">
-                              <button
+                              <button type="button"
                                 class="platform-node platform-node--sub"
                                 :class="{ 'is-active': isSelectedPlatform(sub.platformId), 'is-spotlight': isSpotlightPlatform(sub.platformId) }"
                                 @click="selectPlatform(sub)"
@@ -748,7 +759,7 @@
                             <div class="subplatform-endpoint-zone">
                               <div class="subplatform-endpoint-zone__head">
                                 <span>页面</span>
-                                <button class="chip-add-button" @click.stop="handleEndpointAddFor(sub)">+ 新增页面</button>
+                                <button type="button" class="chip-add-button" @click.stop="handleEndpointAddFor(sub)">+ 新增页面</button>
                               </div>
                               <div v-if="!getVisibleEndpointList(sub.platformId).length" class="empty-state compact-empty">
                                 <span>当前子平台还没有页面。</span>
@@ -777,16 +788,16 @@
                               <div class="chip-row">
 	                                <span class="chip-row__label">设备资产</span>
 	                                <div class="chip-row__content">
-	                                  <button class="server-count-chip" @click.stop="openHardwareAssetDialog(sub)">
+	                                  <button type="button" class="server-count-chip" @click.stop="openHardwareAssetDialog(sub)">
 	                                    <strong>{{ getPlatformHardwareTotal(sub.platformId) }}</strong>
 	                                    <span>项设备</span>
 	                                  </button>
-	                                  <button class="chip-add-button" @click.stop="openHardwareAssetDialog(sub)">管理设备</button>
+	                                  <button type="button" class="chip-add-button" @click.stop="openHardwareAssetDialog(sub)">管理设备</button>
 	                                </div>
 	                              </div>
                             </div>
                           </article>
-                          <button class="platform-node platform-node--add topology-add-button" @click="handlePlatformAdd(main)">
+                          <button type="button" class="platform-node platform-node--add topology-add-button" @click="handlePlatformAdd(main)">
                             <span>+ 添加子平台</span>
                           </button>
                         </div>
@@ -797,11 +808,11 @@
                       <span class="lane-track__label">设备资产层</span>
 	                      <div class="lane-track__body">
 	                        <div class="platform-server-row">
-	                          <button class="server-count-chip server-count-chip--large" @click.stop="openHardwareAssetDialog(main)">
+	                          <button type="button" class="server-count-chip server-count-chip--large" @click.stop="openHardwareAssetDialog(main)">
 	                            <strong>{{ getPlatformHardwareTotal(main.platformId) }}</strong>
 	                            <span>项设备</span>
 	                          </button>
-	                          <button class="lane-action-node" @click.stop="openHardwareAssetDialog(main)">管理设备</button>
+	                          <button type="button" class="lane-action-node" @click.stop="openHardwareAssetDialog(main)">管理设备</button>
 	                        </div>
 	                      </div>
                     </div>
@@ -821,7 +832,7 @@
                   <article class="resource-pool">
                     <div class="resource-pool__head">
                       <span>设备资产池</span>
-                      <button class="pool-node pool-node--add" @click="openSelectedPlatformServerManager">管理选中平台设备</button>
+                      <button type="button" class="pool-node pool-node--add" @click="openSelectedPlatformServerManager">管理选中平台设备</button>
                     </div>
                     <div class="resource-pool__body">
                       <article
@@ -830,15 +841,20 @@
                         class="pool-node"
                         :class="{ 'is-active': isSelectedServer(server.serverId), 'is-spotlight': isSpotlightServer(server.serverId) }"
                         :data-focus-target="getFocusTargetKey('server', server.serverId)"
+                        role="button"
+                        tabindex="0"
+                        :aria-label="`选择服务器 ${server.serverName}`"
                         @click="selectServer(server)"
+                        @keydown.enter.prevent="selectServer(server)"
+                        @keydown.space.prevent="selectServer(server)"
                       >
                         <strong>{{ server.serverName }}</strong>
                         <span>{{ server.serverAddress }}</span>
                         <small>所属 {{ getServerBindCount(server.serverId) }} 个子平台</small>
                         <div class="pool-node__actions">
-                          <span class="pool-link" @click.stop="handleServerEdit(server)">编辑</span>
-                          <span class="pool-link" v-if="canViewPlain" @click.stop="handleServerPlain(server)">显示密码</span>
-                          <span class="pool-link pool-link--danger" @click.stop="handleServerDelete(server)">删除服务器</span>
+                          <span class="pool-link" role="button" tabindex="0" :aria-label="`编辑服务器 ${server.serverName}`" @click.stop="handleServerEdit(server)" @keydown.enter.prevent.stop="handleServerEdit(server)" @keydown.space.prevent.stop="handleServerEdit(server)">编辑</span>
+                          <span class="pool-link" v-if="canViewPlain" role="button" tabindex="0" :aria-label="`显示服务器 ${server.serverName} 的密码`" @click.stop="handleServerPlain(server)" @keydown.enter.prevent.stop="handleServerPlain(server)" @keydown.space.prevent.stop="handleServerPlain(server)">显示密码</span>
+                          <span class="pool-link pool-link--danger" role="button" tabindex="0" :aria-label="`删除服务器 ${server.serverName}`" @click.stop="handleServerDelete(server)" @keydown.enter.prevent.stop="handleServerDelete(server)" @keydown.space.prevent.stop="handleServerDelete(server)">删除服务器</span>
                         </div>
                         <div v-if="isSelectedServer(server.serverId)" class="pool-node__relations">
                           <span class="reuse-tag" v-for="platform in getServerRelatedPlatforms(server.serverId)" :key="platform.platformId">
@@ -870,7 +886,7 @@
                       @keyup.enter="loadOrgs"
                     >
                       <template #append>
-                        <el-button icon="Search" @click="loadOrgs" />
+                        <el-button icon="Search" aria-label="搜索组织" title="搜索组织" @click="loadOrgs" />
                       </template>
                     </el-input>
                     <el-button link type="primary" @click="loadOrgs">刷新</el-button>
@@ -884,7 +900,7 @@
                       <span>{{ orgList.length }} 个组织</span>
                     </div>
                     <div class="organization-studio__rail-list">
-                      <button
+                      <button type="button"
                         v-for="org in orgList"
                         :key="org.orgId"
                         class="org-directory-card"
@@ -1021,7 +1037,7 @@
                             </div>
                           </div>
                           <div v-if="selectedOrgRelatedPlatforms.length" class="organization-platform-list">
-                            <button
+                            <button type="button"
                               v-for="platform in selectedOrgRelatedPlatforms"
                               :key="platform.platformId"
                               class="organization-platform-chip"
@@ -1057,25 +1073,26 @@
 
     <el-dialog
       v-model="platformCanvasOpen"
+      :aria-label="canvasRootPlatform?.platformName ? `${canvasRootPlatform.platformName} 平台编辑画布` : '平台编辑画布'"
       width="1180px"
       top="4vh"
       append-to-body
       class="platform-canvas-dialog"
       @closed="closePlatformCanvas"
     >
-      <template #header>
+      <template #header="{ titleId, titleClass }">
         <div class="canvas-editor-hero">
           <div>
             <span class="canvas-editor-hero__eyebrow">平台编辑画布</span>
-            <h3>{{ canvasRootPlatform?.platformName || '未选择主平台' }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ canvasRootPlatform?.platformName || '未选择主平台' }}</h3>
             <p>在画布空白处或节点上右键，可以新增和维护子平台、服务器、人员，并实时查看关联关系。</p>
           </div>
           <div class="canvas-editor-hero__actions">
             <div class="canvas-view-toolbar">
-              <button @click="zoomCanvas(-0.1)">－</button>
+              <button type="button" @click="zoomCanvas(-0.1)">－</button>
               <span>{{ Math.round(canvasScale * 100) }}%</span>
-              <button @click="zoomCanvas(0.1)">＋</button>
-              <button @click="resetCanvasView">重置视角</button>
+              <button type="button" @click="zoomCanvas(0.1)">＋</button>
+              <button type="button" @click="resetCanvasView">重置视角</button>
             </div>
             <el-button plain @click="handlePlatformEdit(canvasRootPlatform)">编辑主平台</el-button>
             <el-button type="primary" plain @click="openCanvasContextMenuFromButton($event)">右键菜单</el-button>
@@ -1086,7 +1103,11 @@
         v-if="canvasRootPlatform"
         :key="'platform-canvas-' + canvasRootPlatform.platformId + '-' + topologyRenderKey"
         class="platform-canvas"
+        role="region"
+        tabindex="0"
+        :aria-label="`${canvasRootPlatform.platformName} 平台拓扑画布`"
         @click="closeCanvasContextMenu"
+        @keydown.esc="closeCanvasContextMenu"
         @contextmenu.prevent="openCanvasContextMenu($event, 'main', canvasRootPlatform)"
       >
         <section
@@ -1097,7 +1118,7 @@
         >
           <div class="platform-canvas__transform" :style="canvasTransformStyle">
             <div class="canvas-node-row canvas-node-row--root">
-              <button
+              <button type="button"
                 class="canvas-node canvas-node--main"
                 :class="{ 'is-active': isSelectedPlatform(canvasRootPlatform.platformId) }"
                 @click.stop="selectPlatform(canvasRootPlatform)"
@@ -1115,7 +1136,7 @@
                 <small>与主平台直接关联</small>
               </div>
               <div class="canvas-layer__body">
-                <button
+                <button type="button"
                   v-for="contact in canvasRootContacts"
                   :key="contact.contactId"
                   class="canvas-person-node"
@@ -1126,7 +1147,7 @@
                   <strong>{{ contact.contactName }}</strong>
                   <small>{{ getRoleLabel(contact.roleType) }} · {{ contact.orgName || '未归属组织' }} · {{ getContactDisplay(contact) }}</small>
                 </button>
-                <button
+                <button type="button"
                   class="canvas-add-node canvas-add-node--warm"
                   @click.stop="openPlatformBindContactDialog(canvasRootPlatform)"
                   @contextmenu.prevent.stop="openCanvasContextMenu($event, 'main', canvasRootPlatform)"
@@ -1146,7 +1167,12 @@
                   v-for="sub in canvasSubPlatforms"
                   :key="sub.platformId"
                   class="canvas-sub-card"
+                  role="button"
+                  tabindex="0"
+                  :aria-label="`选择子平台 ${sub.platformName}`"
                   @click.stop="selectPlatform(sub)"
+                  @keydown.enter.prevent.stop="selectPlatform(sub)"
+                  @keydown.space.prevent.stop="selectPlatform(sub)"
                   @contextmenu.prevent.stop="openCanvasContextMenu($event, 'sub', sub)"
                 >
                   <div class="canvas-sub-card__head">
@@ -1160,7 +1186,7 @@
                   <div class="canvas-sub-card__section">
                     <span class="canvas-sub-card__label">页面</span>
                     <div class="canvas-mini-list">
-                      <button
+                      <button type="button"
                         v-for="endpoint in getVisibleEndpointList(sub.platformId)"
                         :key="endpoint.endpointId"
                         class="canvas-page-pill"
@@ -1169,20 +1195,20 @@
                         <strong>{{ endpoint.endpointName || '未命名页面' }}</strong>
                         <small>{{ endpoint.accessUrl }}</small>
                       </button>
-                      <button class="canvas-page-pill canvas-page-pill--add" @click.stop="handleEndpointAddFor(sub)">+ 新增页面</button>
+                      <button type="button" class="canvas-page-pill canvas-page-pill--add" @click.stop="handleEndpointAddFor(sub)">+ 新增页面</button>
                     </div>
                   </div>
 	                  <div class="canvas-sub-card__section">
 	                    <span class="canvas-sub-card__label">设备资产</span>
 	                    <div class="canvas-mini-list">
-	                      <button class="canvas-server-pill canvas-server-pill--summary" @click.stop="openHardwareAssetDialog(sub)">
+	                      <button type="button" class="canvas-server-pill canvas-server-pill--summary" @click.stop="openHardwareAssetDialog(sub)">
 	                        {{ getPlatformHardwareTotal(sub.platformId) }} 项设备
 	                      </button>
-	                      <button class="canvas-server-pill canvas-server-pill--add" @click.stop="openHardwareAssetDialog(sub)">管理设备</button>
+	                      <button type="button" class="canvas-server-pill canvas-server-pill--add" @click.stop="openHardwareAssetDialog(sub)">管理设备</button>
 	                    </div>
 	                  </div>
                 </article>
-                <button
+                <button type="button"
                   class="canvas-add-node"
                   @click.stop="handlePlatformAdd(canvasRootPlatform)"
                   @contextmenu.prevent.stop="openCanvasContextMenu($event, 'main', canvasRootPlatform)"
@@ -1198,7 +1224,7 @@
                 <small>统一查看服务器和硬件设备</small>
 	              </div>
 	              <div class="canvas-layer__body">
-	                <button
+	                <button type="button"
 	                  class="canvas-add-node canvas-add-node--server-summary"
 	                  @click.stop="openHardwareAssetDialog(canvasRootPlatform)"
 	                  @contextmenu.prevent.stop="openCanvasContextMenu($event, 'main', canvasRootPlatform)"
@@ -1216,7 +1242,7 @@
           :style="{ left: canvasContextMenu.x + 'px', top: canvasContextMenu.y + 'px' }"
           @click.stop
         >
-          <button
+          <button type="button"
             v-for="item in canvasContextMenuItems"
             :key="item.action"
             :class="{ 'is-danger': item.danger }"
@@ -1237,12 +1263,12 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="hardwareAssetDialogOpen" width="1180px" append-to-body class="support-hardware-asset-dialog">
-      <template #header>
+    <el-dialog v-model="hardwareAssetDialogOpen" :aria-label="hardwareAssetDialogTitle" width="1180px" append-to-body class="support-hardware-asset-dialog">
+      <template #header="{ titleId, titleClass }">
         <div class="transfer-dialog-hero transfer-dialog-hero--hardware">
           <div class="transfer-dialog-hero__copy">
             <span class="transfer-dialog-hero__eyebrow">设备资产清单</span>
-            <h3>{{ hardwareAssetDialogTitle }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ hardwareAssetDialogTitle }}</h3>
             <p>统一查看和维护现场设备资产，新增、筛选、导出、删除和批量录入都从同一入口完成。</p>
           </div>
           <div class="server-manager-hero__stats">
@@ -1372,7 +1398,7 @@
             </el-table-column>
             <el-table-column label="状态" width="78">
               <template #default="{ row }">
-                <el-tag :type="row.status === '1' ? 'info' : 'success'" size="small">{{ getStatusLabel(row.status) }}</el-tag>
+                <el-tag :type="row.status === '1' ? 'danger' : 'success'" size="small">{{ getStatusLabel(row.status) }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="250" fixed="right">
@@ -1574,9 +1600,9 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="serverCredentialDialogOpen" width="860px" append-to-body class="server-credential-dialog">
-      <template #header>
-        <div class="dialog-title">
+    <el-dialog v-model="serverCredentialDialogOpen" :aria-label="serverCredentialServer?.serverName ? `${serverCredentialServer.serverName} 服务器凭据档案` : '服务器凭据档案'" width="860px" append-to-body class="server-credential-dialog">
+      <template #header="{ titleId, titleClass }">
+        <div :id="titleId" :class="titleClass" class="dialog-title">
           <span>服务器凭据档案</span>
           <strong>{{ serverCredentialServer?.serverName || serverCredentialServer?.serverAddress || '未选择服务器' }}</strong>
         </div>
@@ -1601,7 +1627,7 @@
           </el-table-column>
           <el-table-column label="状态" width="80">
             <template #default="{ row }">
-              <el-tag :type="row.status === '1' ? 'info' : 'success'" size="small">{{ getStatusLabel(row.status) }}</el-tag>
+              <el-tag :type="row.status === '1' ? 'danger' : 'success'" size="small">{{ getStatusLabel(row.status) }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="210" fixed="right">
@@ -1634,8 +1660,8 @@
         </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="serverCredentialForm.status">
-            <el-radio label="0">正常</el-radio>
-            <el-radio label="1">停用</el-radio>
+            <el-radio value="0">正常</el-radio>
+            <el-radio value="1">停用</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="默认凭据">
@@ -1647,7 +1673,7 @@
       </el-form>
       <template #footer>
         <el-button @click="serverCredentialFormOpen = false">取消</el-button>
-        <el-button type="primary" @click="submitServerCredentialForm">保存</el-button>
+        <el-button type="primary" :loading="dialogSaving.credential" @click="submitServerCredentialForm">保存</el-button>
       </template>
     </el-dialog>
 
@@ -1705,8 +1731,8 @@
             </el-form-item>
             <el-form-item label="运行状态">
               <el-radio-group v-model="hardwareAssetForm.status">
-                <el-radio label="0">正常</el-radio>
-                <el-radio label="1">停用</el-radio>
+                <el-radio value="0">正常</el-radio>
+                <el-radio value="1">停用</el-radio>
               </el-radio-group>
             </el-form-item>
             <el-form-item label="MAC地址">
@@ -1830,7 +1856,7 @@
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="hardwareAssetFormOpen = false">取消</el-button>
-          <el-button type="primary" @click="submitHardwareAssetForm">保存</el-button>
+          <el-button type="primary" :loading="dialogSaving.hardware" @click="submitHardwareAssetForm">保存</el-button>
         </div>
       </template>
     </el-dialog>
@@ -1965,7 +1991,7 @@
       <template #footer>
         <el-button v-if="locationRoomForm.roomId" type="danger" plain @click="removeLocationRoom">删除</el-button>
         <el-button @click="locationRoomFormOpen = false">取消</el-button>
-        <el-button type="primary" @click="submitLocationRoom">保存</el-button>
+        <el-button type="primary" :loading="dialogSaving.room" @click="submitLocationRoom">保存</el-button>
       </template>
     </el-dialog>
 
@@ -1984,16 +2010,16 @@
       <template #footer>
         <el-button v-if="locationCabinetForm.cabinetId" type="danger" plain @click="removeLocationCabinet">删除</el-button>
         <el-button @click="locationCabinetFormOpen = false">取消</el-button>
-        <el-button type="primary" @click="submitLocationCabinet">保存</el-button>
+        <el-button type="primary" :loading="dialogSaving.cabinet" @click="submitLocationCabinet">保存</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="bindServerDialogOpen" width="1120px" append-to-body class="support-server-manager-dialog">
-      <template #header>
+    <el-dialog v-model="bindServerDialogOpen" :aria-label="bindServerDialogTitle" width="1120px" append-to-body class="support-server-manager-dialog">
+      <template #header="{ titleId, titleClass }">
         <div class="transfer-dialog-hero transfer-dialog-hero--server">
           <div class="transfer-dialog-hero__copy">
             <span class="transfer-dialog-hero__eyebrow">服务器管理</span>
-            <h3>{{ bindServerDialogTitle }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ bindServerDialogTitle }}</h3>
             <p>{{ serverManagerLead }}</p>
           </div>
           <div class="server-manager-hero__stats">
@@ -2066,8 +2092,8 @@
             <div class="server-manager-form__grid">
               <el-form-item label="运行状态">
                 <el-radio-group v-model="serverQuickForm.status">
-                  <el-radio label="0">正常</el-radio>
-                  <el-radio label="1">停用</el-radio>
+                  <el-radio value="0">正常</el-radio>
+                  <el-radio value="1">停用</el-radio>
                 </el-radio-group>
               </el-form-item>
             </div>
@@ -2220,16 +2246,17 @@
 
     <el-dialog
       v-model="serverBatchConfirmOpen"
+      aria-label="服务器批量添加确认"
       width="1180px"
       append-to-body
       class="support-server-batch-dialog"
       @closed="resetServerBatchConfirm"
     >
-      <template #header>
+      <template #header="{ titleId, titleClass }">
         <div class="transfer-dialog-hero transfer-dialog-hero--server">
           <div class="transfer-dialog-hero__copy">
             <span class="transfer-dialog-hero__eyebrow">批量添加确认</span>
-            <h3>服务器清单校验</h3>
+            <h3 :id="titleId" :class="titleClass">服务器清单校验</h3>
             <p>确认清单后才会保存到数据库；已存在的服务器会标出归属子平台，并由你决定是否复用绑定。</p>
           </div>
           <div class="server-batch-confirm-stats">
@@ -2369,7 +2396,7 @@
           <span>{{ serverBatchConfirmFooterText }}</span>
           <div>
             <el-button @click="serverBatchConfirmOpen = false">取消</el-button>
-            <el-button type="primary" :disabled="!serverBatchConfirmRows.length" @click="confirmServerBatchAdd">
+            <el-button type="primary" :loading="serverBatchConfirmSaving" :disabled="!serverBatchConfirmRows.length" @click="confirmServerBatchAdd">
               确认添加
             </el-button>
           </div>
@@ -2416,18 +2443,18 @@
           <span>导入不会直接保存，解析后仍需在确认清单中核对。</span>
           <div>
             <el-button @click="serverImportDialogOpen = false">取消</el-button>
-            <el-button type="primary" @click="submitServerImport">解析并确认</el-button>
+            <el-button type="primary" :loading="dialogSaving.serverImport" @click="submitServerImport">解析并确认</el-button>
           </div>
         </div>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="bindContactDialogOpen" width="980px" append-to-body class="support-transfer-dialog support-transfer-dialog--contact">
-      <template #header>
+    <el-dialog v-model="bindContactDialogOpen" :aria-label="bindContactDialogTitle" width="980px" append-to-body class="support-transfer-dialog support-transfer-dialog--contact">
+      <template #header="{ titleId, titleClass }">
         <div class="transfer-dialog-hero transfer-dialog-hero--contact">
           <div class="transfer-dialog-hero__copy">
             <span class="transfer-dialog-hero__eyebrow">关系配置</span>
-            <h3>{{ bindContactDialogTitle }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ bindContactDialogTitle }}</h3>
             <p>左侧是联系人池，右侧是当前主平台已关联人员。组织和联系人新增入口统一放在顶部，穿梭区只负责选择关系。</p>
           </div>
           <div class="transfer-dialog-hero__actions">
@@ -2480,18 +2507,18 @@
       <template #footer>
         <div class="transfer-dialog-footer">
           <el-button @click="bindContactDialogOpen = false">取 消</el-button>
-          <el-button type="primary" @click="submitBindContact">保存关联</el-button>
+          <el-button type="primary" :loading="dialogSaving.bindContact" @click="submitBindContact">保存关联</el-button>
         </div>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="platformFormOpen" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--platform">
-      <template #header>
+    <el-dialog v-model="platformFormOpen" :aria-label="platformTitle" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--platform">
+      <template #header="{ titleId, titleClass }">
         <div class="editor-hero editor-hero--platform">
           <div class="editor-hero__icon">平</div>
           <div class="editor-hero__copy">
             <span class="editor-hero__eyebrow">平台编辑工作卡</span>
-            <h3>{{ platformTitle }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ platformTitle }}</h3>
             <p>{{ platformDialogLead }}</p>
           </div>
           <div class="editor-hero__chips">
@@ -2524,14 +2551,14 @@
                 </el-form-item>
                 <el-form-item label="平台级别" prop="platformLevel">
                   <el-radio-group v-model="platformForm.platformLevel">
-                    <el-radio label="MAIN">主平台</el-radio>
-                    <el-radio label="SUB">子平台</el-radio>
+                    <el-radio value="MAIN">主平台</el-radio>
+                    <el-radio value="SUB">子平台</el-radio>
                   </el-radio-group>
                 </el-form-item>
                 <el-form-item label="运行状态" prop="status">
                   <el-radio-group v-model="platformForm.status">
-                    <el-radio label="0">正常</el-radio>
-                    <el-radio label="1">停用</el-radio>
+                    <el-radio value="0">正常</el-radio>
+                    <el-radio value="1">停用</el-radio>
                   </el-radio-group>
                 </el-form-item>
                 <el-form-item v-if="platformForm.platformLevel === 'MAIN'" class="editor-form__wide" label="网络环境" prop="networkEnv">
@@ -2569,18 +2596,18 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="platformFormOpen = false">取 消</el-button>
-          <el-button type="primary" @click="submitPlatformForm">保存平台</el-button>
+          <el-button type="primary" :loading="dialogSaving.platform" @click="submitPlatformForm">保存平台</el-button>
         </div>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="endpointFormOpen" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--page">
-      <template #header>
+    <el-dialog v-model="endpointFormOpen" :aria-label="endpointTitle" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--page">
+      <template #header="{ titleId, titleClass }">
         <div class="editor-hero editor-hero--page">
           <div class="editor-hero__icon">页</div>
           <div class="editor-hero__copy">
             <span class="editor-hero__eyebrow">页面编辑工作卡</span>
-            <h3>{{ endpointTitle }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ endpointTitle }}</h3>
             <p>{{ endpointDialogLead }}</p>
           </div>
           <div class="editor-hero__chips">
@@ -2632,18 +2659,18 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="endpointFormOpen = false">取 消</el-button>
-          <el-button type="primary" @click="submitEndpointForm">保存页面</el-button>
+          <el-button type="primary" :loading="dialogSaving.endpoint" @click="submitEndpointForm">保存页面</el-button>
         </div>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="serverFormOpen" width="780px" append-to-body class="support-editor-dialog support-editor-dialog--server">
-      <template #header>
+    <el-dialog v-model="serverFormOpen" :aria-label="serverTitle" width="780px" append-to-body class="support-editor-dialog support-editor-dialog--server">
+      <template #header="{ titleId, titleClass }">
         <div class="editor-hero editor-hero--server">
           <div class="editor-hero__icon">服</div>
           <div class="editor-hero__copy">
             <span class="editor-hero__eyebrow">服务器编辑工作卡</span>
-            <h3>{{ serverTitle }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ serverTitle }}</h3>
             <p>{{ serverDialogLead }}</p>
           </div>
           <div class="editor-hero__chips">
@@ -2669,8 +2696,8 @@
                 </el-form-item>
                 <el-form-item label="运行状态" prop="status">
                   <el-radio-group v-model="serverForm.status">
-                    <el-radio label="0">正常</el-radio>
-                    <el-radio label="1">停用</el-radio>
+                    <el-radio value="0">正常</el-radio>
+                    <el-radio value="1">停用</el-radio>
                   </el-radio-group>
                 </el-form-item>
                 <el-form-item class="editor-form__wide" label="服务器地址" prop="serverAddress">
@@ -2691,6 +2718,8 @@
                         link
                         type="primary"
                         icon="View"
+                          aria-label="显示或隐藏密码"
+                          title="显示或隐藏密码"
                         :loading="isServerPasswordLoading('form', 'hikPassword')"
                         @click.stop="toggleServerPasswordPlain('form', 'hikPassword')"
                       />
@@ -2706,6 +2735,8 @@
                         link
                         type="primary"
                         icon="View"
+                          aria-label="显示或隐藏密码"
+                          title="显示或隐藏密码"
                         :loading="isServerPasswordLoading('form', 'rootPassword')"
                         @click.stop="toggleServerPasswordPlain('form', 'rootPassword')"
                       />
@@ -2724,6 +2755,8 @@
                         link
                         type="primary"
                         icon="View"
+                          aria-label="显示或隐藏密码"
+                          title="显示或隐藏密码"
                         :loading="isServerPasswordLoading('form', 'otherPassword')"
                         @click.stop="toggleServerPasswordPlain('form', 'otherPassword')"
                       />
@@ -2760,18 +2793,18 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="serverFormOpen = false">取 消</el-button>
-          <el-button type="primary" @click="submitServerForm">保存服务器</el-button>
+          <el-button type="primary" :loading="dialogSaving.server" @click="submitServerForm">保存服务器</el-button>
         </div>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="orgFormOpen" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--org">
-      <template #header>
+    <el-dialog v-model="orgFormOpen" :aria-label="orgTitle" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--org">
+      <template #header="{ titleId, titleClass }">
         <div class="editor-hero editor-hero--org">
           <div class="editor-hero__icon">组</div>
           <div class="editor-hero__copy">
             <span class="editor-hero__eyebrow">组织编辑工作卡</span>
-            <h3>{{ orgTitle }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ orgTitle }}</h3>
             <p>{{ orgDialogLead }}</p>
           </div>
           <div class="editor-hero__chips">
@@ -2801,8 +2834,8 @@
                 </el-form-item>
                 <el-form-item label="状态" prop="status">
                   <el-radio-group v-model="orgForm.status">
-                    <el-radio label="0">正常</el-radio>
-                    <el-radio label="1">停用</el-radio>
+                    <el-radio value="0">正常</el-radio>
+                    <el-radio value="1">停用</el-radio>
                   </el-radio-group>
                 </el-form-item>
                 <el-form-item class="editor-form__wide" label="组织名称" prop="orgName">
@@ -2831,18 +2864,18 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="orgFormOpen = false">取 消</el-button>
-          <el-button type="primary" @click="submitOrgForm">保存组织</el-button>
+          <el-button type="primary" :loading="dialogSaving.org" @click="submitOrgForm">保存组织</el-button>
         </div>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="contactFormOpen" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--contact">
-      <template #header>
+    <el-dialog v-model="contactFormOpen" :aria-label="contactTitle" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--contact">
+      <template #header="{ titleId, titleClass }">
         <div class="editor-hero editor-hero--contact">
           <div class="editor-hero__icon">人</div>
           <div class="editor-hero__copy">
             <span class="editor-hero__eyebrow">人员编辑工作卡</span>
-            <h3>{{ contactTitle }}</h3>
+            <h3 :id="titleId" :class="titleClass">{{ contactTitle }}</h3>
             <p>{{ contactDialogLead }}</p>
           </div>
           <div class="editor-hero__chips">
@@ -2901,8 +2934,8 @@
                 </el-form-item>
                 <el-form-item class="editor-form__wide" label="联系人级别" prop="isPrimary">
                   <el-radio-group v-model="contactForm.isPrimary">
-                    <el-radio label="0">普通联系人</el-radio>
-                    <el-radio label="1">主联系人</el-radio>
+                    <el-radio value="0">普通联系人</el-radio>
+                    <el-radio value="1">主联系人</el-radio>
                   </el-radio-group>
                 </el-form-item>
               </el-form>
@@ -2926,7 +2959,7 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="contactFormOpen = false">取 消</el-button>
-          <el-button type="primary" @click="submitContactForm">保存人员</el-button>
+          <el-button type="primary" :loading="dialogSaving.contact" @click="submitContactForm">保存人员</el-button>
         </div>
       </template>
     </el-dialog>
@@ -2940,7 +2973,7 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="contactRoleOpen = false">取 消</el-button>
-          <el-button type="primary" @click="submitContactRole">保存角色</el-button>
+          <el-button type="primary" :loading="dialogSaving.role" @click="submitContactRole">保存角色</el-button>
         </div>
       </template>
     </el-dialog>
@@ -2997,7 +3030,7 @@
             @clear="resetSiteMessageSearch"
           >
             <template #append>
-              <el-button icon="Search" @click="handleSiteMessageSearch" />
+              <el-button icon="Search" aria-label="搜索留言" title="搜索留言" @click="handleSiteMessageSearch" />
             </template>
           </el-input>
           <el-button plain @click="loadSiteMessageDetail">刷新</el-button>
@@ -3121,6 +3154,30 @@ let siteMessagePollTimer = null
 let siteMessagePollingBusy = false
 
 const platformLoading = ref(false)
+const dialogSaving = reactive({
+  platform: false,
+  endpoint: false,
+  server: false,
+  credential: false,
+  hardware: false,
+  room: false,
+  cabinet: false,
+  serverImport: false,
+  bindContact: false,
+  org: false,
+  contact: false,
+  role: false
+})
+
+function runDialogSave(key, task) {
+  if (dialogSaving[key]) return Promise.resolve()
+  dialogSaving[key] = true
+  return Promise.resolve()
+    .then(task)
+    .finally(() => {
+      dialogSaving[key] = false
+    })
+}
 const platformList = ref([])
 const platformQuery = reactive({ platformName: null })
 const selectedPlatformId = ref(null)
@@ -5737,7 +5794,7 @@ function submitContactRole() {
     if (!valid) return
     const dictLabel = (contactRoleForm.value.dictLabel || '').trim()
     const dictValue = createContactRoleValue()
-    addData({
+    runDialogSave('role', () => addData({
       dictSort: support_contact_role.value.length + 1,
       dictLabel,
       dictValue,
@@ -5752,7 +5809,7 @@ function submitContactRole() {
       if (inspectorEditType.value === 'contact') {
         inspectorDraft.value.roleType = dictValue
       }
-    })
+    }))
   })
 }
 
@@ -6038,12 +6095,12 @@ function submitPlatformForm() {
 	      platformForm.value.networkEnv = null
 	    }
     const req = platformForm.value.platformId ? updatePlatform(platformForm.value) : addPlatform(platformForm.value)
-    req.then(async () => {
+    runDialogSave('platform', () => req.then(async () => {
       proxy.$modal.msgSuccess(platformForm.value.platformId ? '修改成功' : '新增成功')
       platformFormOpen.value = false
       await loadPlatforms()
       await reconcilePlatformTreeAfterUpsert(platformDraft, previousPlatformIds)
-    })
+    }))
   })
 }
 
@@ -6177,36 +6234,38 @@ async function submitServerImport() {
     proxy.$modal.msgWarning('请先选择 xlsx 模板文件')
     return
   }
-  let rows = []
-  try {
-    const res = await previewServerImport(serverImportFile.value)
-    rows = res.data || []
-  } catch (error) {
-    return
-  }
-  if (!rows.length) {
-    proxy.$modal.msgWarning('导入文件中没有可解析的服务器数据')
-    return
-  }
-  const drafts = rows.map((row) => {
-    const rawUsername = String(row.osUsername || '').trim()
-    const normalizedUsername = normalizeFixedServerUsername(rawUsername)
-    const fixedUsername = [SERVER_FIXED_LOGIN_HIK, SERVER_FIXED_LOGIN_ROOT].includes(normalizedUsername) ? normalizedUsername : ''
-    return {
-      siteId: props.site.siteId,
-      serverName: String(row.serverName || '').trim() || `服务器-${normalizeServerAddress(row.serverAddress)}`,
-      serverAddress: normalizeServerAddress(row.serverAddress),
-      sshPort: normalizeSshPort(row.sshPort),
-      osType: row.osType || null,
-      hikPassword: fixedUsername === SERVER_FIXED_LOGIN_HIK ? row.osPassword || null : null,
-      rootPassword: fixedUsername === SERVER_FIXED_LOGIN_ROOT ? row.osPassword || null : null,
-      otherUsername: rawUsername && !fixedUsername ? rawUsername : null,
-      otherPassword: rawUsername && !fixedUsername ? row.osPassword || null : null,
-      status: normalizeServerStatus(row.status)
+  await runDialogSave('serverImport', async () => {
+    let rows = []
+    try {
+      const res = await previewServerImport(serverImportFile.value)
+      rows = res.data || []
+    } catch (error) {
+      return
     }
+    if (!rows.length) {
+      proxy.$modal.msgWarning('导入文件中没有可解析的服务器数据')
+      return
+    }
+    const drafts = rows.map((row) => {
+      const rawUsername = String(row.osUsername || '').trim()
+      const normalizedUsername = normalizeFixedServerUsername(rawUsername)
+      const fixedUsername = [SERVER_FIXED_LOGIN_HIK, SERVER_FIXED_LOGIN_ROOT].includes(normalizedUsername) ? normalizedUsername : ''
+      return {
+        siteId: props.site.siteId,
+        serverName: String(row.serverName || '').trim() || `服务器-${normalizeServerAddress(row.serverAddress)}`,
+        serverAddress: normalizeServerAddress(row.serverAddress),
+        sshPort: normalizeSshPort(row.sshPort),
+        osType: row.osType || null,
+        hikPassword: fixedUsername === SERVER_FIXED_LOGIN_HIK ? row.osPassword || null : null,
+        rootPassword: fixedUsername === SERVER_FIXED_LOGIN_ROOT ? row.osPassword || null : null,
+        otherUsername: rawUsername && !fixedUsername ? rawUsername : null,
+        otherPassword: rawUsername && !fixedUsername ? row.osPassword || null : null,
+        status: normalizeServerStatus(row.status)
+      }
+    })
+    serverImportDialogOpen.value = false
+    await openServerBatchConfirm(drafts, serverImportTargetPlatformId.value)
   })
-  serverImportDialogOpen.value = false
-  await openServerBatchConfirm(drafts, serverImportTargetPlatformId.value)
 }
 
 function normalizeServerStatus(value) {
@@ -6648,14 +6707,14 @@ function submitBindContact() {
     bindContactDialogOpen.value = false
     return
   }
-  Promise.all([
+  runDialogSave('bindContact', () => Promise.all([
     ...addIds.map((contactId) => bindContact({ platformId: selectedPlatform.value.platformId, contactId })),
     ...removeIds.map((contactId) => unbindContact({ platformId: selectedPlatform.value.platformId, contactId }))
   ]).then(async () => {
     proxy.$modal.msgSuccess('人员关联已更新')
     bindContactDialogOpen.value = false
     await loadPlatforms()
-  })
+  }))
 }
 
 function handlePlatformDelete(row) {
@@ -6763,12 +6822,12 @@ function submitEndpointForm() {
     if (!valid) return
     endpointForm.value.subPlatformId = selectedPlatform.value.platformId
     const req = endpointForm.value.endpointId ? updateEndpoint(endpointForm.value) : addEndpoint(endpointForm.value)
-    req.then(async () => {
+    runDialogSave('endpoint', () => req.then(async () => {
       proxy.$modal.msgSuccess(endpointForm.value.endpointId ? '修改成功' : '新增成功')
       endpointFormOpen.value = false
       await loadSelectedPlatformContext()
       await refreshEndpointMap()
-    })
+    }))
   })
 }
 
@@ -6865,13 +6924,13 @@ function submitServerForm() {
     }
     serverForm.value.siteId = props.site.siteId
     const req = serverForm.value.serverId ? updateServer(serverForm.value) : addServer(serverForm.value)
-    req.then(async () => {
+    runDialogSave('server', () => req.then(async () => {
       proxy.$modal.msgSuccess(serverForm.value.serverId ? '修改成功' : '新增成功')
       serverFormOpen.value = false
       await loadServers()
       await loadPlatforms()
       rebuildTopologyTree()
-    })
+    }))
   })
 }
 
@@ -6939,12 +6998,12 @@ function submitServerCredentialForm() {
     const req = serverCredentialForm.value.credentialId
       ? updateServerCredential(serverCredentialForm.value)
       : addServerCredential(serverCredentialForm.value)
-    req.then(async () => {
+    runDialogSave('credential', () => req.then(async () => {
       proxy.$modal.msgSuccess(serverCredentialForm.value.credentialId ? '修改成功' : '新增成功')
       serverCredentialFormOpen.value = false
       await loadServerCredentials()
       await loadChangeLogs()
-    })
+    }))
   })
 }
 
@@ -7197,11 +7256,13 @@ async function submitLocationRoom() {
     proxy.$modal.msgError('请填写机房名称')
     return
   }
-  const req = locationRoomForm.value.roomId ? updateEquipmentRoom(locationRoomForm.value) : addEquipmentRoom(locationRoomForm.value)
-  await req
-  proxy.$modal.msgSuccess('保存成功')
-  locationRoomFormOpen.value = false
-  await loadEquipmentLocationLayout()
+  await runDialogSave('room', async () => {
+    const req = locationRoomForm.value.roomId ? updateEquipmentRoom(locationRoomForm.value) : addEquipmentRoom(locationRoomForm.value)
+    await req
+    proxy.$modal.msgSuccess('保存成功')
+    locationRoomFormOpen.value = false
+    await loadEquipmentLocationLayout()
+  })
 }
 
 async function removeLocationRoom() {
@@ -7233,15 +7294,17 @@ async function submitLocationCabinet() {
     proxy.$modal.msgError('请填写机柜编号')
     return
   }
-  const req = locationCabinetForm.value.cabinetId ? updateEquipmentCabinet(locationCabinetForm.value) : addEquipmentCabinet(locationCabinetForm.value)
-  await req
-  proxy.$modal.msgSuccess('保存成功')
-  locationCabinetFormOpen.value = false
-  await loadEquipmentLocationLayout()
-  const savedCabinet = selectedRoomCabinets.value.find((item) => item.cabinetNo === locationCabinetForm.value.cabinetNo)
-  if (savedCabinet) {
-    selectedLocationCabinetId.value = savedCabinet.cabinetId
-  }
+  await runDialogSave('cabinet', async () => {
+    const req = locationCabinetForm.value.cabinetId ? updateEquipmentCabinet(locationCabinetForm.value) : addEquipmentCabinet(locationCabinetForm.value)
+    await req
+    proxy.$modal.msgSuccess('保存成功')
+    locationCabinetFormOpen.value = false
+    await loadEquipmentLocationLayout()
+    const savedCabinet = selectedRoomCabinets.value.find((item) => item.cabinetNo === locationCabinetForm.value.cabinetNo)
+    if (savedCabinet) {
+      selectedLocationCabinetId.value = savedCabinet.cabinetId
+    }
+  })
 }
 
 async function removeLocationCabinet() {
@@ -7371,13 +7434,13 @@ function submitHardwareAssetForm() {
     if (!valid) return
     hardwareAssetForm.value.siteId = props.site.siteId
     const req = hardwareAssetForm.value.assetId ? updateHardwareAsset(hardwareAssetForm.value) : addHardwareAsset(hardwareAssetForm.value)
-    req.then(async () => {
+    runDialogSave('hardware', () => req.then(async () => {
       proxy.$modal.msgSuccess(hardwareAssetForm.value.assetId ? '修改成功' : '新增成功')
       hardwareAssetFormOpen.value = false
       await loadHardwareAssets()
       await loadChangeLogs()
       rebuildTopologyTree()
-    })
+    }))
   })
 }
 
@@ -7571,7 +7634,7 @@ function submitOrgForm() {
     const savedOrgId = orgForm.value.orgId
     const source = orgFormSource.value
     const req = orgForm.value.orgId ? updateOrg(orgForm.value) : addOrg(orgForm.value)
-    req.then(async () => {
+    runDialogSave('org', () => req.then(async () => {
       proxy.$modal.msgSuccess(orgForm.value.orgId ? '修改成功' : '新增成功')
       orgFormOpen.value = false
       await loadOrgs()
@@ -7592,7 +7655,7 @@ function submitOrgForm() {
         bindContactIds.value = draftBindContactIds.filter((id) => validIds.has(id))
       }
       orgFormSource.value = null
-    })
+    }))
   })
 }
 
@@ -7658,14 +7721,14 @@ function submitContactForm() {
     if (!valid) return
     contactForm.value.params = { ...(contactForm.value.params || {}), siteId: props.site.siteId }
     const req = contactForm.value.contactId ? updateContact(contactForm.value) : addContact(contactForm.value)
-    req.then(async () => {
+    runDialogSave('contact', () => req.then(async () => {
       proxy.$modal.msgSuccess(contactForm.value.contactId ? '修改成功' : '新增成功')
       contactFormOpen.value = false
       currentOrg.value = orgList.value.find((item) => item.orgId === contactForm.value.orgId) || currentOrg.value
       await loadContactPool()
       await loadContacts()
       await loadPlatforms()
-    })
+    }))
   })
 }
 
@@ -11959,7 +12022,7 @@ onBeforeUnmount(() => {
 .server-credential-form-dialog :deep(.el-dialog) {
   overflow: hidden;
   max-width: calc(100vw - 24px);
-  border-radius: 30px;
+  border-radius: 14px;
   background: var(--surface-muted);
 }
 
@@ -13623,7 +13686,7 @@ onBeforeUnmount(() => {
 
 .support-editor-dialog :deep(.el-dialog) {
   overflow: hidden;
-  border-radius: 30px;
+  border-radius: 14px;
   background: var(--surface-muted);
 }
 

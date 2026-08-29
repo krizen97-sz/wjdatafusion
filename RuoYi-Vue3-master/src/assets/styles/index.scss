@@ -3,7 +3,6 @@
 @use './transition.scss';
 @use './element-ui.scss';
 @use './sidebar.scss';
-@use './btn.scss';
 @use './ruoyi.scss';
 @use './support.scss';
 @use './platform-theme.scss';
@@ -64,6 +63,14 @@ div:focus {
   outline: none;
 }
 
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--el-color-primary);
+  outline-offset: 2px;
+}
+
 .fr {
   float: right;
 }
@@ -119,11 +126,11 @@ aside {
   -moz-osx-font-smoothing: grayscale;
 
   a {
-    color: #337ab7;
+    color: var(--el-color-primary);
     cursor: pointer;
 
     &:hover {
-      color: rgb(32, 160, 255);
+      color: var(--el-color-primary-light-3);
     }
   }
 }
@@ -177,14 +184,14 @@ html.dark {
 
     &:hover .svg-icon {
       transform: translateX(2px) scale(1.08);
-      filter: drop-shadow(0 0 10px rgba(45, 126, 247, 0.26));
+      filter: drop-shadow(0 0 10px color-mix(in srgb, var(--el-color-primary) 26%, transparent));
     }
   }
 
   .el-menu-item.is-active .svg-icon,
   .el-sub-menu.is-active > .el-sub-menu__title .svg-icon {
     transform: scale(1.08);
-    filter: drop-shadow(0 0 12px rgba(45, 126, 247, 0.32));
+    filter: drop-shadow(0 0 12px color-mix(in srgb, var(--el-color-primary) 32%, transparent));
   }
 }
 
@@ -214,7 +221,7 @@ html.dark {
 .right-menu-item.hover-effect:hover .el-icon,
 .tags-view-item:hover .svg-icon {
   transform: translateY(-1px) scale(1.08);
-  filter: drop-shadow(0 0 8px rgba(45, 126, 247, 0.24));
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--el-color-primary) 24%, transparent));
 }
 
 @keyframes icon-micro-pop {
@@ -257,29 +264,29 @@ html.dark {
   text-align: right;
   padding-right: 20px;
   transition: 600ms ease position;
-  background: linear-gradient(90deg, #5aa9ff 0%, #2d7ef7 100%);
+  background: var(--el-color-primary);
 
   .subtitle {
     font-size: 20px;
-    color: #fff;
+    color: var(--el-color-white);
   }
 
   &.draft {
-    background: #d0d0d0;
+    background: var(--surface-border);
   }
 
   &.deleted {
-    background: #d0d0d0;
+    background: var(--surface-border);
   }
 }
 
 .link-type,
 .link-type:focus {
-  color: #337ab7;
+  color: var(--el-color-primary);
   cursor: pointer;
 
   &:hover {
-    color: rgb(32, 160, 255);
+    color: var(--el-color-primary-light-3);
   }
 }
 

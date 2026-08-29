@@ -157,7 +157,7 @@ function closePreview() {
   height: 100vh;
   overflow: hidden;
   flex-direction: column;
-  background: #eef1f5;
+  background: var(--surface-muted);
   color: var(--app-heading);
 }
 
@@ -168,9 +168,9 @@ function closePreview() {
   align-items: center;
   gap: 10px;
   padding: 0 16px;
-  border-bottom: 1px solid #d8dee8;
+  border-bottom: 1px solid var(--surface-border);
   background: var(--surface-strong);
-  box-shadow: 0 1px 4px rgba(16, 24, 40, 0.06);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--app-heading) 6%, transparent);
 }
 
 .back-button { margin-left: -7px; }
@@ -181,8 +181,8 @@ function closePreview() {
   flex: 0 0 34px;
   place-items: center;
   border-radius: 7px;
-  background: #c2413b;
-  color: #fff;
+  background: var(--el-color-danger);
+  color: var(--el-color-white);
   font-weight: 750;
 }
 .preview-title {
@@ -200,7 +200,7 @@ function closePreview() {
   height: 100%;
   border: 0;
   opacity: 0;
-  background: #e5e8ed;
+  background: var(--surface-muted);
   transition: opacity 160ms ease;
   &.is-ready { opacity: 1; }
 }
@@ -214,7 +214,7 @@ function closePreview() {
   justify-content: center;
   gap: 10px;
   flex-direction: column;
-  background: #f6f8fb;
+  background: var(--surface-strong);
   color: var(--app-muted);
   text-align: center;
   strong { color: var(--app-heading); font-size: 16px; }
@@ -228,13 +228,13 @@ function closePreview() {
   height: 46px;
   place-items: center;
   border-radius: 50%;
-  background: #eaf2ff;
-  color: #1677ff;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
   font-size: 24px;
 }
-.preview-state.is-error .error-mark { background: #fff0ee; color: #c2413b; }
+.preview-state.is-error .error-mark { background: var(--el-color-danger-light-9); color: var(--el-color-danger); }
 .preview-state.is-error > div { margin-top: 8px; }
-.viewer-loading { background: #eef1f5; }
+.viewer-loading { background: var(--surface-muted); }
 
 .preview-footer {
   display: flex;
@@ -244,7 +244,7 @@ function closePreview() {
   justify-content: space-between;
   gap: 16px;
   padding: 0 16px;
-  border-top: 1px solid #d8dee8;
+  border-top: 1px solid var(--surface-border);
   background: var(--surface-strong);
   color: var(--app-muted);
   font-size: 11px;

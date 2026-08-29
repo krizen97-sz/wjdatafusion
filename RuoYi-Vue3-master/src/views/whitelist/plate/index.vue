@@ -55,7 +55,7 @@
             @change="handleStatusChange(scope.row)"
             v-hasPermi="['whitelist:plate:edit']"
           />
-          <el-tag v-if="!hasPermi(['whitelist:plate:edit'])" :type="scope.row.statusFlag === 2 ? 'success' : 'info'">
+          <el-tag v-if="!hasPermi(['whitelist:plate:edit'])" :type="scope.row.statusFlag === 2 ? 'success' : 'danger'">
             {{ scope.row.statusFlag === 2 ? '启用' : '停用' }}
           </el-tag>
         </template>
@@ -77,8 +77,8 @@
         </el-form-item>
         <el-form-item label="状态" prop="statusFlag">
           <el-radio-group v-model="form.statusFlag">
-            <el-radio :label="2">启用</el-radio>
-            <el-radio :label="1">停用</el-radio>
+            <el-radio :value="2">启用</el-radio>
+            <el-radio :value="1">停用</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
@@ -87,8 +87,8 @@
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button type="primary" @click="submitForm">确 定</el-button>
           <el-button @click="cancel">取 消</el-button>
+          <el-button type="primary" :loading="submitLoading" @click="submitForm">确 定</el-button>
         </div>
       </template>
     </el-dialog>
@@ -122,8 +122,8 @@
       </el-upload>
       <template #footer>
         <div class="dialog-footer">
-          <el-button type="primary" @click="submitFileForm">确 定</el-button>
           <el-button @click="upload.open = false">取 消</el-button>
+          <el-button type="primary" :loading="upload.isUploading" @click="submitFileForm">确 定</el-button>
         </div>
       </template>
     </el-dialog>
@@ -156,6 +156,7 @@ function validateVehiclePlate(rule, value, callback) {
 const plateList = ref([])
 const open = ref(false)
 const loading = ref(false)
+const submitLoading = ref(false)
 const showSearch = ref(true)
 const ids = ref([])
 const single = ref(true)
@@ -249,13 +250,16 @@ function handleUpdate(row) {
 
 function submitForm() {
   proxy.$refs.plateRef.validate((valid) => {
-    if (!valid) return
+    if (!valid || submitLoading.value) return
     form.value.vehiclePlate = form.value.vehiclePlate?.trim()?.toUpperCase()
+    submitLoading.value = true
     const request = form.value.originalVehiclePlate ? updatePlate(form.value) : addPlate(form.value)
     request.then(() => {
       proxy.$modal.msgSuccess(form.value.originalVehiclePlate ? '修改成功' : '新增成功')
       open.value = false
       getList()
+    }).finally(() => {
+      submitLoading.value = false
     })
   })
 }

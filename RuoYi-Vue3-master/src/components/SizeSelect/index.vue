@@ -1,9 +1,9 @@
 <template>
   <div>
     <el-dropdown trigger="click" @command="handleSetSize">
-      <div class="size-icon--style">
+      <button type="button" class="size-icon--style" aria-label="调整布局大小" aria-haspopup="menu">
         <svg-icon class-name="size-icon" icon-class="size" />
-      </div>
+      </button>
       <template #dropdown>
         <el-dropdown-menu>
           <el-dropdown-item v-for="item of sizeOptions" :key="item.value" :disabled="size === item.value" :command="item.value">
@@ -36,8 +36,12 @@ function handleSetSize(size) {
 
 <style lang='scss' scoped>
 .size-icon--style {
+  border: 0;
+  background: transparent;
+  color: inherit;
   font-size: 18px;
   line-height: 50px;
   padding-right: 7px;
+  cursor: pointer;
 }
 </style>

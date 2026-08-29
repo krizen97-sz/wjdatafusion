@@ -56,7 +56,8 @@
 - 图标系统：`src/assets/icons`、`IconSelect`、`SvgIcon`、`iconRegistry.js`
 - 系统菜单中的通用图标选择入口及图标离线导入脚本
 - 平台前端设计规范与图标库使用文档
-- 不包含具体业务模块页面；业务页面中的图标替换仍归对应业务模块
+- 普通任务不包含具体业务模块页面；业务页面中的单模块改动仍归对应业务模块
+- 用户明确授权“全前端设计治理”时，可在同一 `platform-ui` 工作树中治理 `src/views`、`src/components`、`src/layout` 和 `src/assets/styles`，但不得改动 API、路由契约、权限字符、字段语义、后端或数据库，并须附全量 Guard、构建和浏览器审计证据
 
 ### 自动化巡检
 

@@ -82,7 +82,22 @@
 .el-popover,
 .el-dropdown-menu,
 .el-message-box {
-  --el-border-color-lighter: rgba(149, 183, 223, 0.24);
+  --el-border-color-lighter: color-mix(in srgb, var(--surface-border) 76%, transparent);
+}
+
+.el-dialog:not(.is-fullscreen) {
+  max-width: calc(100vw - 32px);
+}
+
+.el-drawer {
+  max-width: 100vw;
+}
+
+.dialog-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .el-dialog.scrollbar .el-dialog__body {
@@ -139,6 +154,23 @@
 
 /* 移动端适配 */
 @media (max-width: 768px) {
+  .app-container {
+    padding: 12px;
+  }
+
+  .el-dialog:not(.is-fullscreen) {
+    max-width: calc(100vw - 24px) !important;
+    margin-top: 4vh !important;
+  }
+
+  .el-drawer {
+    max-width: 100vw;
+  }
+
+  .dialog-footer {
+    gap: 6px;
+  }
+
   .pagination-container {
     .el-pagination {
       > .el-pagination__jump {
@@ -154,8 +186,8 @@
 /* tree border */
 .tree-border {
   margin-top: 5px;
-  border: 1px solid var(--el-border-color-light, #e5e6e7);
-  background: var(--el-bg-color, #FFFFFF) none;
+  border: 1px solid var(--el-border-color-light);
+  background: var(--el-bg-color) none;
   border-radius:4px;
   width: 100%;
 }
@@ -179,7 +211,7 @@
 /** 表格更多操作下拉样式 */
 .el-table .el-dropdown-link {
   cursor: pointer;
-  color: #409EFF;
+  color: var(--el-color-primary);
   margin-left: 10px;
 }
 
@@ -219,7 +251,7 @@
 .el-card__header {
   padding: 14px 15px 7px !important;
   min-height: 40px;
-  border-bottom: 1px solid rgba(149, 183, 223, 0.2);
+  border-bottom: 1px solid color-mix(in srgb, var(--surface-border) 80%, transparent);
 }
 
 .el-card__body {
@@ -233,38 +265,38 @@
 /* button color */
 .el-button--cyan.is-active,
 .el-button--cyan:active {
-  background: #20B2AA;
-  border-color: #20B2AA;
-  color: #FFFFFF;
+  background: var(--el-color-info-dark-2);
+  border-color: var(--el-color-info-dark-2);
+  color: var(--el-color-white);
 }
 
 .el-button--cyan:focus,
 .el-button--cyan:hover {
-  background: #48D1CC;
-  border-color: #48D1CC;
-  color: #FFFFFF;
+  background: var(--el-color-info-light-3);
+  border-color: var(--el-color-info-light-3);
+  color: var(--el-color-white);
 }
 
 .el-button--cyan {
-  background-color: #20B2AA;
-  border-color: #20B2AA;
-  color: #FFFFFF;
+  background-color: var(--el-color-info);
+  border-color: var(--el-color-info);
+  color: var(--el-color-white);
 }
 
 .el-card {
-  border-radius: 18px !important;
+  border-radius: 14px !important;
   border: 1px solid var(--surface-border) !important;
   box-shadow: var(--surface-shadow) !important;
   background: var(--surface-bg) !important;
 }
 
 .el-button--primary {
-  --el-button-bg-color: #2d7ef7;
-  --el-button-border-color: #2d7ef7;
-  --el-button-hover-bg-color: #4a92fb;
-  --el-button-hover-border-color: #4a92fb;
-  --el-button-active-bg-color: #1f69d8;
-  --el-button-active-border-color: #1f69d8;
+  --el-button-bg-color: var(--el-color-primary);
+  --el-button-border-color: var(--el-color-primary);
+  --el-button-hover-bg-color: var(--el-color-primary-light-3);
+  --el-button-hover-border-color: var(--el-color-primary-light-3);
+  --el-button-active-bg-color: var(--el-color-primary-dark-2);
+  --el-button-active-border-color: var(--el-color-primary-dark-2);
 }
 
 .el-button--default,
@@ -284,7 +316,7 @@
 
 /* text color */
 .text-navy {
-  color: #1ab394;
+  color: var(--el-color-success);
 }
 
 .text-primary {
@@ -292,23 +324,23 @@
 }
 
 .text-success {
-  color: #1c84c6;
+  color: var(--el-color-success);
 }
 
 .text-info {
-  color: #23c6c8;
+  color: var(--el-color-info);
 }
 
 .text-warning {
-  color: #f8ac59;
+  color: var(--el-color-warning);
 }
 
 .text-danger {
-  color: #ed5565;
+  color: var(--el-color-danger);
 }
 
 .text-muted {
-  color: #888888;
+  color: var(--app-muted);
 }
 
 /* image */
@@ -335,8 +367,8 @@
 /* 拖拽列样式 */
 .sortable-ghost{
   opacity: .8;
-  color: #fff!important;
-  background: #42b983!important;
+  color: var(--el-color-white) !important;
+  background: var(--el-color-success) !important;
 }
 
 /* 表格右侧工具栏样式 */
@@ -386,7 +418,7 @@ html.dark {
     --el-table-bg-color: var(--surface-strong);
     --el-table-tr-bg-color: var(--surface-strong);
     --el-table-header-bg-color: var(--surface-muted);
-    --el-table-row-hover-bg-color: rgba(45, 126, 247, 0.12);
+    --el-table-row-hover-bg-color: color-mix(in srgb, var(--el-color-primary) 12%, transparent);
     --el-table-border-color: var(--surface-border);
     color: var(--app-text);
   }

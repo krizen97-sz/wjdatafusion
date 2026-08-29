@@ -142,7 +142,7 @@ function occupiedCount(network) {
 
 .network-tree {
   background: transparent;
-  color: #334155;
+  color: var(--app-text);
 }
 
 .network-tree :deep(.el-tree-node__content) {
@@ -179,12 +179,12 @@ function occupiedCount(network) {
 }
 
 .station-node__icon {
-  color: #2563eb;
+  color: var(--el-color-primary);
 }
 
 .station-node__name {
   overflow: hidden;
-  color: #1e293b;
+  color: var(--app-heading);
   font-size: 13px;
   font-weight: 650;
   text-overflow: ellipsis;
@@ -206,7 +206,7 @@ function occupiedCount(network) {
   min-height: 64px;
   padding: 7px 4px 7px 9px;
   border-left: 3px solid transparent;
-  border-bottom: 1px solid #eef2f7;
+  border-bottom: 1px solid var(--surface-muted);
   border-radius: 5px;
   background: var(--surface-strong);
   line-height: 1.3;
@@ -218,7 +218,7 @@ function occupiedCount(network) {
 }
 
 .network-node.is-selected {
-  border-left-color: #2563eb;
+  border-left-color: var(--el-color-primary);
   background: var(--surface-subtle);
 }
 
@@ -247,7 +247,7 @@ function occupiedCount(network) {
 
 .network-node__status {
   flex: 0 0 auto;
-  color: #15803d;
+  color: var(--el-color-success);
   font-size: 11px;
 }
 
@@ -257,7 +257,7 @@ function occupiedCount(network) {
 
 .network-node__range {
   overflow: hidden;
-  color: #2563eb;
+  color: var(--el-color-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   text-overflow: ellipsis;

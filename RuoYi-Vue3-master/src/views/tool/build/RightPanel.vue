@@ -56,9 +56,9 @@
           </el-form-item>
           <el-form-item v-if="activeData.align !== undefined" label="垂直排列">
             <el-radio-group v-model="activeData.align">
-              <el-radio-button label="top" />
-              <el-radio-button label="middle" />
-              <el-radio-button label="bottom" />
+              <el-radio-button value="top">top</el-radio-button>
+              <el-radio-button value="middle">middle</el-radio-button>
+              <el-radio-button value="bottom">bottom</el-radio-button>
             </el-radio-group>
           </el-form-item>
           <el-form-item v-if="activeData.labelWidth !== undefined" label="标签宽度">
@@ -126,10 +126,10 @@
           </el-form-item>
           <el-form-item v-if="activeData.tag === 'el-input-number'" label="按钮位置">
             <el-radio-group v-model="activeData['controls-position']">
-              <el-radio-button label="">
+              <el-radio-button value="">
                 默认
               </el-radio-button>
-              <el-radio-button label="right">
+              <el-radio-button value="right">
                 右侧
               </el-radio-button>
             </el-radio-group>
@@ -189,13 +189,13 @@
           </el-form-item>
           <el-form-item v-if="activeData['list-type'] !== undefined" label="列表类型">
             <el-radio-group v-model="activeData['list-type']" size="small">
-              <el-radio-button label="text">
+              <el-radio-button value="text">
                 text
               </el-radio-button>
-              <el-radio-button label="picture">
+              <el-radio-button value="picture">
                 picture
               </el-radio-button>
-              <el-radio-button label="picture-card">
+              <el-radio-button value="picture-card">
                 picture-card
               </el-radio-button>
             </el-radio-group>
@@ -225,7 +225,7 @@
                   <el-input v-model="element.label" placeholder="选项名" size="small" />
                   <el-input placeholder="选项值" size="small" :value="element.value"
                     @input="setOptionValue(element, $event)" />
-                  <div class="close-btn select-line-icon" @click="activeData.options.splice(index, 1)">
+                  <div class="close-btn select-line-icon" role="button" tabindex="0" :aria-label="`删除选项 ${index + 1}`" @click="activeData.options.splice(index, 1)" @keydown.enter.prevent="activeData.options.splice(index, 1)" @keydown.space.prevent="activeData.options.splice(index, 1)">
                     <el-icon>
                       <Remove />
                     </el-icon>
@@ -246,10 +246,10 @@
             <el-divider>选项</el-divider>
             <el-form-item label="数据类型">
               <el-radio-group v-model="activeData.dataType" size="small">
-                <el-radio-button label="dynamic">
+                <el-radio-button value="dynamic">
                   动态数据
                 </el-radio-button>
-                <el-radio-button label="static">
+                <el-radio-button value="static">
                   静态数据
                 </el-radio-button>
               </el-radio-group>
@@ -280,10 +280,10 @@
 
           <el-form-item v-if="activeData.optionType !== undefined" label="选项样式">
             <el-radio-group v-model="activeData.optionType">
-              <el-radio-button label="default">
+              <el-radio-button value="default">
                 默认
               </el-radio-button>
-              <el-radio-button label="button">
+              <el-radio-button value="button">
                 按钮
               </el-radio-button>
             </el-radio-group>
@@ -325,13 +325,13 @@
               activeData.border ||
               activeData.tag === 'el-color-picker')" label="选项尺寸">
             <el-radio-group v-model="activeData.size">
-              <el-radio-button label="large">
+              <el-radio-button value="large">
                 较大
               </el-radio-button>
-              <el-radio-button label="default">
+              <el-radio-button value="default">
                 默认
               </el-radio-button>
-              <el-radio-button label="small">
+              <el-radio-button value="small">
                 较小
               </el-radio-button>
             </el-radio-group>
@@ -394,7 +394,7 @@
           <template v-if="activeData.layout === 'colFormItem'">
             <el-divider>正则校验</el-divider>
             <div v-for="(item, index) in activeData.regList" :key="index" class="reg-item">
-              <span class="close-btn" @click="activeData.regList.splice(index, 1)">
+              <span class="close-btn" role="button" tabindex="0" :aria-label="`删除正则校验 ${index + 1}`" @click="activeData.regList.splice(index, 1)" @keydown.enter.prevent="activeData.regList.splice(index, 1)" @keydown.space.prevent="activeData.regList.splice(index, 1)">
                 <el-icon>
                   <Close />
                 </el-icon>
@@ -427,16 +427,16 @@
           </el-form-item>
           <el-form-item label="表单尺寸">
             <el-radio-group v-model="formConf.size">
-              <el-radio-button label="large" value="较大" />
-              <el-radio-button label="default" value="默认" />
-              <el-radio-button label="small" value="较小" />
+              <el-radio-button value="large">较大</el-radio-button>
+              <el-radio-button value="default">默认</el-radio-button>
+              <el-radio-button value="small">较小</el-radio-button>
             </el-radio-group>
           </el-form-item>
           <el-form-item label="标签对齐">
             <el-radio-group v-model="formConf.labelPosition">
-              <el-radio-button label="left" value="左对齐" />
-              <el-radio-button label="right" value="右对齐" />
-              <el-radio-button label="top" value="顶部对齐" />
+              <el-radio-button value="left">左对齐</el-radio-button>
+              <el-radio-button value="right">右对齐</el-radio-button>
+              <el-radio-button value="top">顶部对齐</el-radio-button>
             </el-radio-group>
           </el-form-item>
           <el-form-item label="标签宽度">

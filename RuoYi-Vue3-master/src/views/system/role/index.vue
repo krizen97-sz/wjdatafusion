@@ -116,16 +116,16 @@
          <el-table-column label="操作" align="center" class-name="small-padding fixed-width">
             <template #default="scope">
               <el-tooltip content="修改" placement="top" v-if="scope.row.roleId !== 1">
-                <el-button link type="primary" icon="Edit" @click="handleUpdate(scope.row)" v-hasPermi="['system:role:edit']"></el-button>
+                <el-button link type="primary" icon="Edit" :aria-label="`修改角色 ${scope.row.roleName}`" @click="handleUpdate(scope.row)" v-hasPermi="['system:role:edit']"></el-button>
               </el-tooltip>
               <el-tooltip content="删除" placement="top" v-if="scope.row.roleId !== 1">
-                <el-button link type="primary" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['system:role:remove']"></el-button>
+                <el-button link type="danger" icon="Delete" :aria-label="`删除角色 ${scope.row.roleName}`" @click="handleDelete(scope.row)" v-hasPermi="['system:role:remove']"></el-button>
               </el-tooltip>
               <el-tooltip content="数据权限" placement="top" v-if="scope.row.roleId !== 1">
-                <el-button link type="primary" icon="CircleCheck" @click="handleDataScope(scope.row)" v-hasPermi="['system:role:edit']"></el-button>
+                <el-button link type="primary" icon="CircleCheck" :aria-label="`设置数据权限 ${scope.row.roleName}`" @click="handleDataScope(scope.row)" v-hasPermi="['system:role:edit']"></el-button>
               </el-tooltip>
               <el-tooltip content="分配用户" placement="top" v-if="scope.row.roleId !== 1">
-                <el-button link type="primary" icon="User" @click="handleAuthUser(scope.row)" v-hasPermi="['system:role:edit']"></el-button>
+                <el-button link type="primary" icon="User" :aria-label="`分配角色用户 ${scope.row.roleName}`" @click="handleAuthUser(scope.row)" v-hasPermi="['system:role:edit']"></el-button>
               </el-tooltip>
             </template>
          </el-table-column>
@@ -189,8 +189,8 @@
          </el-form>
          <template #footer>
             <div class="dialog-footer">
-               <el-button type="primary" @click="submitForm">确 定</el-button>
                <el-button @click="cancel">取 消</el-button>
+               <el-button type="primary" :loading="submitLoading" @click="submitForm">确 定</el-button>
             </div>
          </template>
       </el-dialog>
@@ -233,8 +233,8 @@
          </el-form>
          <template #footer>
             <div class="dialog-footer">
-               <el-button type="primary" @click="submitDataScope">确 定</el-button>
                <el-button @click="cancelDataScope">取 消</el-button>
+               <el-button type="primary" :loading="submitLoading" @click="submitDataScope">确 定</el-button>
             </div>
          </template>
       </el-dialog>
@@ -252,6 +252,7 @@ const { sys_normal_disable } = proxy.useDict("sys_normal_disable")
 const roleList = ref([])
 const open = ref(false)
 const loading = ref(true)
+const submitLoading = ref(false)
 const showSearch = ref(true)
 const ids = ref([])
 const single = ref(true)
@@ -509,23 +510,18 @@ function getMenuAllCheckedKeys() {
 /** 提交按钮 */
 function submitForm() {
   proxy.$refs["roleRef"].validate(valid => {
-    if (valid) {
-      if (form.value.roleId != undefined) {
-        form.value.menuIds = getMenuAllCheckedKeys()
-        updateRole(form.value).then(() => {
-          proxy.$modal.msgSuccess("修改成功")
-          open.value = false
-          getList()
-        })
-      } else {
-        form.value.menuIds = getMenuAllCheckedKeys()
-        addRole(form.value).then(() => {
-          proxy.$modal.msgSuccess("新增成功")
-          open.value = false
-          getList()
-        })
-      }
-    }
+    if (!valid || submitLoading.value) return
+    const isUpdate = form.value.roleId != undefined
+    form.value.menuIds = getMenuAllCheckedKeys()
+    submitLoading.value = true
+    const request = isUpdate ? updateRole(form.value) : addRole(form.value)
+    request.then(() => {
+      proxy.$modal.msgSuccess(isUpdate ? "修改成功" : "新增成功")
+      open.value = false
+      getList()
+    }).finally(() => {
+      submitLoading.value = false
+    })
   })
 }
 
@@ -564,14 +560,16 @@ function handleDataScope(row) {
 
 /** 提交按钮（数据权限） */
 function submitDataScope() {
-  if (form.value.roleId != undefined) {
-    form.value.deptIds = getDeptAllCheckedKeys()
-    dataScope(form.value).then(() => {
-      proxy.$modal.msgSuccess("修改成功")
-      openDataScope.value = false
-      getList()
-    })
-  }
+  if (form.value.roleId == undefined || submitLoading.value) return
+  form.value.deptIds = getDeptAllCheckedKeys()
+  submitLoading.value = true
+  dataScope(form.value).then(() => {
+    proxy.$modal.msgSuccess("修改成功")
+    openDataScope.value = false
+    getList()
+  }).finally(() => {
+    submitLoading.value = false
+  })
 }
 
 /** 取消按钮（数据权限）*/

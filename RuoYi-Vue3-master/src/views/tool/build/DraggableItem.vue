@@ -16,10 +16,10 @@
         </template>
       </draggable>
     </el-row>
-    <span class="drawing-item-copy" title="复制" @click.stop="copyItem(element)">
+    <span class="drawing-item-copy" role="button" tabindex="0" title="复制" aria-label="复制组件" @click.stop="copyItem(element)" @keydown.enter.prevent.stop="copyItem(element)" @keydown.space.prevent.stop="copyItem(element)">
       <el-icon><CopyDocument /></el-icon>
     </span>
-    <span class="drawing-item-delete" title="删除" @click.stop="deleteItem(index)">
+    <span class="drawing-item-delete" role="button" tabindex="0" title="删除" aria-label="删除组件" @click.stop="deleteItem(index)" @keydown.enter.prevent.stop="deleteItem(index)" @keydown.space.prevent.stop="deleteItem(index)">
       <el-icon><Delete /></el-icon>
     </span>
   </el-col>

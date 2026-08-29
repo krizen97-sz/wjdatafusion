@@ -437,15 +437,6 @@ onBeforeUnmount(() => {
   color: #ffffff;
   background: linear-gradient(145deg, #9ca3af 0%, #6b7280 48%, #4b5563 100%);
 
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background:
-      linear-gradient(90deg, rgba(255, 255, 255, 0.08) 1px, transparent 1px) 0 0 / 20px 20px,
-      linear-gradient(0deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px) 0 0 / 20px 20px;
-    pointer-events: none;
-  }
 }
 
 .auth-brand,
@@ -496,7 +487,7 @@ onBeforeUnmount(() => {
   position: absolute;
   bottom: 0;
   transform-origin: bottom center;
-  transition: transform 0.7s ease-in-out, height 0.7s ease-in-out;
+  transition: transform 0.7s ease-in-out;
   animation: character-breathe 5.8s ease-in-out infinite;
   will-change: transform, bottom;
 }
@@ -551,7 +542,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   border-radius: 999px;
   background: var(--surface-strong);
-  transition: height 0.15s ease, transform 0.1s ease-out;
+  transition: transform 0.1s ease-out;
 
   i {
     width: 7px;
@@ -599,9 +590,8 @@ onBeforeUnmount(() => {
   .auth-scene *,
   .auth-scene *::before,
   .auth-scene *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    animation: none !important;
+    transition: none !important;
   }
 }
 
