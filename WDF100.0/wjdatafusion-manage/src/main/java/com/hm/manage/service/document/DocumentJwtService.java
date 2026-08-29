@@ -62,7 +62,8 @@ public class DocumentJwtService
         {
             throw new ServiceException("编辑器签名格式无效");
         }
-        if (!MessageDigest.isEqual(hmac(signingInput), actual))
+        if (!parts[2].equals(ENCODER.encodeToString(actual))
+            || !MessageDigest.isEqual(hmac(signingInput), actual))
         {
             throw new ServiceException("编辑器签名校验失败");
         }

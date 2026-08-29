@@ -1,5 +1,24 @@
 export const releaseNotes = [
   {
+    version: 'v3.16.1',
+    submitTime: '2026-08-29 17:29:42',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '文档 JWT 签名规范校验与 Maven 打包修复',
+    summary: '修复 Maven 打包时 DocumentJwtServiceTest 偶发失败的问题，并拒绝文本被修改但仍可解码为同一签名字节的非规范 Base64URL 签名。',
+    changes: [
+      '确认失败用例位于DocumentJwtServiceTest，而非自动化巡检：原测试只替换JWT签名最后一个字符，受Base64URL末尾未使用位影响，部分替换结果仍会解码为相同签名字节。',
+      'DocumentJwtService校验签名前先检查签名段是否为规范Base64URL编码，再进行常量时间HMAC比较；现有正常JWT、密钥配置和接口调用方式保持不变。',
+      '篡改测试改为修改JWT有效载荷首字符，确保稳定触发HMAC校验失败，不再依赖随机签名末尾字符。',
+      '新增非规范签名编码回归测试，构造文本不同但解码字节完全相同的签名别名，确认服务端明确拒绝。',
+      '重新执行文档JWT专项测试、后端全量测试和Maven package，确保IDE与命令行打包均不再出现随机测试失败。'
+    ],
+    scope: ['文档管理', 'OnlyOffice', 'JWT', 'Maven打包', '自动化测试', '安全校验', '版本记录'],
+    database: '无数据库结构或业务数据修改。',
+    scripts: []
+  },
+  {
     version: 'v3.16.0',
     submitTime: '2026-08-29 17:05:29',
     level: 'minor',
