@@ -48,6 +48,19 @@ test('a multi-plan day stays abnormal while any plan remains abnormal', () => {
   assert.equal(group.plans[0].planName, '数据库')
 })
 
+test('routine and frequent views use native tabs with restorable route state', () => {
+  assert.ok(workspaceSource.includes('<strong>巡检总览</strong>'))
+  assert.ok(workspaceSource.includes('统一查看例行执行记录与高频每日健康'))
+  assert.ok(workspaceSource.includes('<el-tabs v-model="recordViewMode" class="record-view-tabs" @tab-change="handleRecordViewChange">'))
+  assert.ok(workspaceSource.includes('<el-tab-pane :name="PLAN_MODE_ROUTINE">'))
+  assert.ok(workspaceSource.includes('<el-tab-pane :name="PLAN_MODE_FREQUENT">'))
+  assert.ok(workspaceSource.includes("route.query.view === 'frequent' ? PLAN_MODE_FREQUENT : PLAN_MODE_ROUTINE"))
+  assert.ok(workspaceSource.includes("const nextView = mode === PLAN_MODE_FREQUENT ? 'frequent' : 'routine'"))
+  assert.ok(workspaceSource.includes('router.replace({ path: route.path, query: nextQuery })'))
+  assert.ok(!workspaceSource.includes('<el-segmented v-model="recordViewMode"'))
+  assert.ok(!workspaceSource.includes('recordViewOptions'))
+})
+
 test('workspace exposes plan mode, daily health and activity tools', () => {
   for (const marker of ['PLAN_MODE_ROUTINE', 'PLAN_MODE_FREQUENT', 'ContinuousHealthPanel', 'TOOL_KAFKA_TOPIC_ACTIVITY', 'TOOL_KAFKA_CONSUMER_PROGRESS', 'TOOL_MQTT_TOPIC_ACTIVITY']) {
     assert.ok(workspaceSource.includes(marker), `missing high-frequency workspace marker: ${marker}`)

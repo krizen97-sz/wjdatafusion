@@ -4,15 +4,33 @@
       <section class="record-board record-board--primary">
         <header class="record-board__head">
           <div>
-            <strong>{{ recordViewMode === PLAN_MODE_FREQUENT ? '高频健康监测' : '巡检记录' }}</strong>
-            <span>{{ recordViewMode === PLAN_MODE_FREQUENT ? '按天汇总分钟级采样，异常日期优先保留并支持下钻。' : '按日期归集当天结果，异常记录优先显示，便于值守人员逐日回看。' }}</span>
+            <strong>巡检总览</strong>
+            <span>统一查看例行执行记录与高频每日健康</span>
           </div>
           <div class="record-board__actions">
-            <el-segmented v-model="recordViewMode" :options="recordViewOptions" />
             <el-button type="primary" plain icon="DataAnalysis" @click="openCockpit">巡检驾驶舱</el-button>
             <el-button icon="Refresh" @click="refreshCurrentRecordView">刷新</el-button>
           </div>
         </header>
+
+        <el-tabs v-model="recordViewMode" class="record-view-tabs" @tab-change="handleRecordViewChange">
+          <el-tab-pane :name="PLAN_MODE_ROUTINE">
+            <template #label>
+              <span class="record-view-tab-label">
+                例行巡检记录
+                <small>{{ recordTotal }}条</small>
+              </span>
+            </template>
+          </el-tab-pane>
+          <el-tab-pane :name="PLAN_MODE_FREQUENT">
+            <template #label>
+              <span class="record-view-tab-label">
+                高频每日健康
+                <small :class="`is-${dashboardHealthOverview.frequentStatus || '3'}`">{{ formatResult(dashboardHealthOverview.frequentStatus) }}</small>
+              </span>
+            </template>
+          </el-tab-pane>
+        </el-tabs>
 
         <section class="unified-health-strip" :class="`is-${dashboardHealthOverview.status || '3'}`">
           <div class="unified-health-strip__score">
@@ -2337,11 +2355,7 @@ const abnormalChartRef = ref(null)
 const recordLoading = ref(false)
 const recordList = ref([])
 const recordTotal = ref(0)
-const recordViewMode = ref(PLAN_MODE_ROUTINE)
-const recordViewOptions = [
-  { label: '例行巡检记录', value: PLAN_MODE_ROUTINE },
-  { label: '高频每日健康', value: PLAN_MODE_FREQUENT }
-]
+const recordViewMode = ref(route.query.view === 'frequent' ? PLAN_MODE_FREQUENT : PLAN_MODE_ROUTINE)
 const recordQuery = ref({ pageNum: 1, pageSize: 20, templateId: undefined, planId: undefined, sourceType: '', resultStatus: '', runMode: PLAN_MODE_ROUTINE })
 const dailyHealthLoading = ref(false)
 const dailyHealthRows = ref([])
@@ -3055,6 +3069,11 @@ watch(configTab, () => {
 watch(recordViewMode, (mode) => {
   if (!applyingOverviewDeepLink.value && mode === PLAN_MODE_FREQUENT) getDailyHealth()
 })
+watch(() => route.query.view, (view) => {
+  if (applyingOverviewDeepLink.value) return
+  const nextMode = view === 'frequent' ? PLAN_MODE_FREQUENT : PLAN_MODE_ROUTINE
+  if (recordViewMode.value !== nextMode) recordViewMode.value = nextMode
+})
 watch([dailyHealthMonth, dailyHealthPlanId], () => {
   if (!applyingOverviewDeepLink.value && recordViewMode.value === PLAN_MODE_FREQUENT) getDailyHealth()
 })
@@ -3134,6 +3153,17 @@ function switchConfigTab(tab) {
   configTab.value = tab
   if (activeTab.value !== 'config') activeTab.value = 'config'
   navigateAutoInspection('config', tab)
+}
+
+function handleRecordViewChange(mode) {
+  const nextView = mode === PLAN_MODE_FREQUENT ? 'frequent' : 'routine'
+  if (route.query.view === nextView) return
+  const nextQuery = { ...route.query, view: nextView }
+  delete nextQuery.date
+  delete nextQuery.openSamples
+  delete nextQuery.recordId
+  delete nextQuery.planId
+  router.replace({ path: route.path, query: nextQuery })
 }
 
 function navigateAutoInspection(tab, config = configTab.value) {
@@ -6820,10 +6850,36 @@ function resultTagType(value) {
   gap: 8px;
 }
 
-.record-board__actions :deep(.el-segmented) {
-  --el-segmented-item-selected-bg-color: var(--surface-strong);
-  --el-segmented-item-selected-color: var(--el-color-primary);
-  min-width: 270px;
+.record-view-tabs :deep(.el-tabs__header) {
+  margin: 0;
+}
+
+.record-view-tabs :deep(.el-tabs__content) {
+  display: none;
+}
+
+.record-view-tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.record-view-tab-label small {
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.record-view-tab-label small.is-1 {
+  color: var(--health-normal);
+}
+
+.record-view-tab-label small.is-2 {
+  color: var(--health-danger);
+}
+
+.record-view-tab-label small.is-4 {
+  color: var(--health-warning);
 }
 
 .health-sample-summary {
