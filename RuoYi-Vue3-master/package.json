@@ -7,9 +7,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "ui:guard": "node scripts/ui-guard.mjs",
+    "test:ui-guard": "node --test scripts/__tests__/ui-guard.test.mjs",
     "test:icons": "node --test src/components/IconSelect/__tests__/menuIconLibrary.test.js",
     "test:ipam": "node --test src/views/ipam/__tests__/*.test.js",
     "test:knowledge": "node --test src/views/knowledge/__tests__/*.test.js",
+    "verify:frontend": "npm run ui:guard && npm run test:ui-guard && npm run test:icons && npm run test:ipam && npm run test:knowledge && npm run build:prod",
     "build:prod": "vite build",
     "build:stage": "vite build --mode staging",
     "preview": "vite preview"

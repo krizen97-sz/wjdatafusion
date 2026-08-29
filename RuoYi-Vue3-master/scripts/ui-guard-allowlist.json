@@ -1,0 +1,95 @@
+{
+  "version": 1,
+  "description": "Narrow, auditable exceptions for RYNEW UI Guard. Paths are relative to RuoYi-Vue3-master.",
+  "thresholds": {
+    "hardcodedColorCount": 4,
+    "hardcodedColorUnique": 3,
+    "hardcodedMetricCount": 8,
+    "absoluteCount": 4
+  },
+  "approvedDependencies": {
+    "frameworks": [
+      "element-plus"
+    ],
+    "icons": [
+      "@element-plus/icons-vue",
+      "vite-plugin-svg-icons"
+    ],
+    "runtimeUi": [
+      "@revolist/vue3-datagrid",
+      "@vueup/vue-quill",
+      "echarts",
+      "splitpanes",
+      "vue-cropper",
+      "vuedraggable"
+    ]
+  },
+  "entries": [
+    {
+      "id": "UIX-002-chart-svg",
+      "rule": "business-inline-svg",
+      "paths": [
+        "src/views/support/autoInspection/cockpit.vue"
+      ],
+      "linePattern": "data-ui-guard=[\\\"'](?:chart|diagram)[\\\"']",
+      "reason": "UIX-002 allows explicitly marked inspection data visualization only; operation icons remain prohibited.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-002-chart-canvas",
+      "rule": "canvas-ui-simulation",
+      "paths": [
+        "src/views/support/autoInspection/cockpit.vue"
+      ],
+      "linePattern": "data-ui-guard=[\\\"']chart[\\\"']",
+      "reason": "UIX-002 allows explicitly marked inspection charts; Canvas cannot simulate controls or tables.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-003-ipam-visualization",
+      "rule": "business-inline-svg",
+      "paths": [
+        "src/views/ipam/overview/index.vue"
+      ],
+      "linePattern": "data-ui-guard=[\\\"'](?:chart|map|diagram)[\\\"']",
+      "reason": "UIX-003 allows explicitly marked IPAM data visualization only.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-003-ipam-canvas",
+      "rule": "canvas-ui-simulation",
+      "paths": [
+        "src/views/ipam/overview/index.vue"
+      ],
+      "linePattern": "data-ui-guard=[\\\"'](?:chart|map)[\\\"']",
+      "reason": "UIX-003 allows explicitly marked IPAM charts or maps, never ordinary management UI.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-004-topology-svg",
+      "rule": "business-inline-svg",
+      "paths": [
+        "src/views/support/site/SiteConfigDialog.vue"
+      ],
+      "linePattern": "data-ui-guard=[\\\"'](?:diagram|flow|map)[\\\"']",
+      "reason": "UIX-004 allows explicitly marked topology or connection visualization; standard operation icons use the catalog.",
+      "owner": "frontend-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-004-topology-canvas",
+      "rule": "canvas-ui-simulation",
+      "paths": [
+        "src/views/support/site/SiteConfigDialog.vue"
+      ],
+      "linePattern": "data-ui-guard=[\\\"'](?:diagram|flow|map)[\\\"']",
+      "reason": "UIX-004 allows explicitly marked topology media, never Canvas-rendered forms, buttons, or tables.",
+      "owner": "frontend-governance",
+      "expires": null
+    }
+  ]
+}

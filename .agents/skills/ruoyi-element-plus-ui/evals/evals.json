@@ -1,0 +1,33 @@
+{
+  "skill_name": "ruoyi-element-plus-ui",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "在 RuoYi-Vue3-master 新增一个设备管理页。产品原型里有胶囊式设备类型切换、渐变的新建设备按钮、绿色在线圆点、自绘开关、列表和右侧详情抽屉。先不要改代码，请给出编码前的组件复用计划和原型适配表，并说明会查哪两个现有页面。",
+      "expected_output": "Reads the project governance, produces both required tables, maps the prototype to existing RuoYi and Element Plus components, cites at least two current files, and rejects custom pills, gradients, switches, and icons without discarding the business information architecture.",
+      "files": [],
+      "expectations": [
+        "The response contains a component reuse plan table with page need, existing implementation, chosen component, reference file, and custom-work decision.",
+        "The response contains a prototype adaptation table with prototype region, product intent, prototype expression, project mapping, reference page, and adaptation explanation.",
+        "The response cites at least two real current repository reference files under RuoYi-Vue3-master/src/views.",
+        "The response maps the switch, status, list/pagination, detail drawer, primary action, and capsule-like switcher to existing RuoYi or Element Plus capabilities instead of custom equivalents.",
+        "The response explicitly preserves business intent and information architecture while adapting visual language rather than promising pixel reproduction.",
+        "The response does not recommend a second UI framework, a second icon library, StatusPill-like duplication, inline SVG, or CSS-drawn controls."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "审查一个准备加入 RYNEW 的 Vue 页面方案：它打算用内联 SVG 画编辑和删除图标，用 div 手写 Tabs 与 Switch，用 StatusPill.vue 显示状态，再通过 absolute 按原型坐标排版。不要修改仓库，请输出审查结论、替换映射、验证命令和允许例外的边界。",
+      "expected_output": "Flags every prohibited pattern, maps each to current project or Element Plus capabilities, distinguishes genuine visualization exceptions from ordinary UI, and includes ui:guard plus relevant verification without inventing lint or typecheck commands.",
+      "files": [],
+      "expectations": [
+        "The review explicitly flags inline SVG operation icons, hand-written div Tabs, hand-written div Switch, StatusPill.vue, and coordinate-based absolute layout.",
+        "The replacement mapping uses @element-plus/icons-vue or SvgIcon, el-tabs or a semantic selector, el-switch, DictTag or el-tag, and normal grid/flex flow.",
+        "The response names npm run ui:guard and npm run verify:frontend and does not claim nonexistent lint or typecheck commands ran successfully.",
+        "The exception boundary is limited to genuine chart, map, topology, diagram, flow, or similar visualization media and keeps ordinary operation icons and controls prohibited.",
+        "The response requires the UI exception ledger and narrow allowlist rather than a blanket path bypass.",
+        "The response states that the review does not modify business code."
+      ]
+    }
+  ]
+}
