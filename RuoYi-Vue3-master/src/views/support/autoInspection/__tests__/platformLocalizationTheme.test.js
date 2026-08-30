@@ -31,6 +31,59 @@ test('route loading and error pages use local platform presentation', () => {
   assert.ok(!forbidden.includes('401.gif'))
 })
 
+test('all loading surfaces use the platform mark instead of circular upstream spinners', () => {
+  const bootstrap = read('index.html')
+  const theme = read('src/assets/styles/platform-theme.scss')
+  const loadingUtility = read('src/utils/platformLoading.js')
+  const modal = read('src/plugins/modal.js')
+  const request = read('src/utils/request.js')
+  const download = read('src/plugins/download.js')
+  const routeProgress = read('src/utils/routeProgress.js')
+  const documentLoadingSources = [
+    read('src/views/document/editor/index.vue'),
+    read('src/views/document/preview/index.vue'),
+    read('src/views/document/components/DocumentUploadDialog.vue')
+  ]
+
+  assert.ok(bootstrap.includes('platform-bootstrap-loader'))
+  assert.ok(bootstrap.includes('/favicon.svg'))
+  assert.ok(bootstrap.includes('prefers-reduced-motion: reduce'))
+  assert.ok(!bootstrap.includes('loader-section'))
+  assert.ok(!bootstrap.includes('#7171C6'))
+  assert.ok(!bootstrap.includes('@keyframes spin'))
+
+  assert.ok(theme.includes("url('../logo/platform-logo.svg')"))
+  assert.ok(theme.includes('.platform-loading-mark'))
+  assert.ok(theme.includes('.el-button.is-loading'))
+  assert.ok(theme.includes('platform-loading-line'))
+  assert.ok(!theme.includes('platform-loading-spin'))
+
+  assert.ok(loadingUtility.includes('ElLoading.service'))
+  for (const source of [modal, request, download]) {
+    assert.ok(source.includes('openPlatformLoading'))
+    assert.ok(!source.includes('ElLoading.service'))
+    assert.ok(!source.includes('rgba(0, 0, 0, 0.7)'))
+  }
+  assert.ok(modal.includes('loadingDepth'))
+  assert.ok(routeProgress.includes('completionTimer'))
+  assert.ok(routeProgress.includes('clearTimeout(completionTimer)'))
+
+  for (const source of documentLoadingSources) {
+    assert.ok(source.includes('platform-loading-mark'))
+    assert.ok(!source.includes('<Loading />'))
+  }
+})
+
+test('version summary uses one aligned Element Plus description surface', () => {
+  const versionCenter = read('src/views/support/version/index.vue')
+
+  assert.ok(versionCenter.includes('<el-descriptions'))
+  assert.ok(versionCenter.includes('aria-label="版本摘要"'))
+  assert.ok(versionCenter.includes('summaryColumnCount'))
+  assert.ok(versionCenter.includes('latestReleaseSummaryValue'))
+  assert.ok(!versionCenter.includes('align-items: baseline'))
+})
+
 test('global theme contract includes complete light and dark semantic surfaces', () => {
   const variables = read('src/assets/styles/variables.module.scss')
   const theme = read('src/assets/styles/platform-theme.scss')

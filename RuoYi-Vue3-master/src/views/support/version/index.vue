@@ -4,24 +4,27 @@
       <div class="version-hero__copy">
         <h2>{{ pageTitle }}</h2>
       </div>
-      <div class="version-hero__meta">
-        <span>
-          <strong>{{ latestReleaseDisplay }}</strong>
-          <em>{{ modulePreset ? '当前模块版本' : '当前版本' }}</em>
-        </span>
-        <span>
-          <strong>{{ scopedReleaseNotes.length }}</strong>
-          <em>版本记录</em>
-        </span>
-        <span>
-          <strong>{{ sqlReleaseCount }}</strong>
-          <em>涉及脚本</em>
-        </span>
-        <span>
-          <strong>{{ majorReleaseCount }}</strong>
-          <em>大版本</em>
-        </span>
-      </div>
+      <el-descriptions
+        class="version-hero__meta"
+        :column="summaryColumnCount"
+        direction="vertical"
+        border
+        size="small"
+        aria-label="版本摘要"
+      >
+        <el-descriptions-item :label="modulePreset ? modulePreset.versionPrefix : '当前版本'">
+          <span class="version-summary-value">{{ latestReleaseSummaryValue }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="版本记录">
+          <span class="version-summary-value">{{ scopedReleaseNotes.length }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="涉及脚本">
+          <span class="version-summary-value">{{ sqlReleaseCount }}</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="大版本">
+          <span class="version-summary-value">{{ majorReleaseCount }}</span>
+        </el-descriptions-item>
+      </el-descriptions>
     </section>
 
     <section class="version-workspace">
@@ -207,9 +210,11 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { useWindowSize } from '@vueuse/core'
 import { releaseNotes } from './releaseNotes'
 
 const route = useRoute()
+const { width: viewportWidth } = useWindowSize()
 const activeVersion = ref('')
 const keyword = ref('')
 const categoryFilter = ref('ALL')
@@ -244,6 +249,14 @@ const scopedReleaseNotes = computed(() => {
 })
 const latestRelease = computed(() => filteredReleaseNotes.value[0] || scopedReleaseNotes.value[0] || normalizedReleaseNotes.value[0])
 const latestReleaseDisplay = computed(() => getReleaseDisplayVersion(latestRelease.value))
+const latestReleaseSummaryValue = computed(() => {
+  const prefix = modulePreset.value?.versionPrefix
+  if (prefix && latestReleaseDisplay.value.startsWith(prefix)) {
+    return latestReleaseDisplay.value.slice(prefix.length).trim()
+  }
+  return latestReleaseDisplay.value
+})
+const summaryColumnCount = computed(() => viewportWidth.value <= 680 ? 2 : 4)
 const majorReleaseCount = computed(() => groupReleaseNotes(scopedReleaseNotes.value).length)
 const sqlReleaseCount = computed(() => scopedReleaseNotes.value.filter((item) => item.scripts && item.scripts.length).length)
 const activeGroupKey = computed(() => activeRelease.value?.majorVersion || '')
@@ -751,36 +764,56 @@ function getPrimaryModule(entry) {
 }
 
 .version-hero__meta {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  min-width: 0;
-}
-
-.version-hero__meta span {
-  display: inline-flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 6px;
-  min-width: 88px;
-  min-height: 38px;
-  padding: 0 11px;
-  border: 1px solid color-mix(in srgb, var(--el-color-primary-light-5) 56%, transparent);
+  width: min(720px, 100%);
+  min-width: 560px;
+  flex: 0 1 720px;
+  align-self: stretch;
+  overflow: hidden;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--surface-strong) 86%, transparent);
 }
 
-.version-hero__meta strong {
-  color: var(--el-color-primary);
-  font-size: 18px;
-  line-height: 1;
+.version-hero__meta :deep(.el-descriptions__body) {
+  height: 100%;
+  background: transparent;
 }
 
-.version-hero__meta em {
+.version-hero__meta :deep(.el-descriptions__table) {
+  height: 100%;
+  table-layout: fixed;
+}
+
+.version-hero__meta :deep(.el-descriptions__label.el-descriptions__cell) {
+  height: 28px;
+  padding: 6px 10px;
+  background: var(--surface-muted);
   color: var(--app-muted);
   font-size: 12px;
-  font-style: normal;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.version-hero__meta :deep(.el-descriptions__content.el-descriptions__cell) {
+  height: 38px;
+  padding: 6px 10px;
+  background: var(--surface-strong);
+  text-align: center;
+  vertical-align: middle;
+}
+
+.version-summary-value {
+  display: flex;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  color: var(--el-color-primary);
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .version-workspace {
@@ -1454,7 +1487,9 @@ function getPrimaryModule(entry) {
   }
 
   .version-hero__meta {
-    justify-content: flex-start;
+    width: 100%;
+    min-width: 0;
+    flex: none;
   }
 
   .version-list-panel {
@@ -1468,10 +1503,6 @@ function getPrimaryModule(entry) {
 }
 
 @media (max-width: 680px) {
-  .version-hero__meta {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .version-detail {
     padding: 14px;
   }

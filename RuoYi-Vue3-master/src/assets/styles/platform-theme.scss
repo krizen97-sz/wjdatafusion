@@ -36,34 +36,85 @@
   backdrop-filter: blur(2px);
 }
 
+.el-loading-spinner {
+  top: 50%;
+  margin-top: 0;
+  transform: translateY(-50%);
+}
+
 .el-loading-spinner .circular {
-  display: none;
+  display: none !important;
 }
 
 .el-loading-spinner::before {
   display: block;
-  width: 30px;
-  height: 30px;
-  margin: 0 auto 10px;
-  border: 3px solid var(--surface-border-strong);
-  border-top-color: var(--el-color-primary);
-  border-right-color: var(--el-color-primary-light-3);
-  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  margin: 0 auto;
+  background: url('../logo/platform-logo.svg') center / contain no-repeat;
   content: '';
-  animation: platform-loading-spin 720ms linear infinite;
+  filter: drop-shadow(0 8px 14px color-mix(in srgb, var(--el-color-primary) 18%, transparent));
+  animation: platform-loading-breathe 1.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.el-loading-spinner::after {
+  display: block;
+  width: 72px;
+  height: 3px;
+  margin: 10px auto 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--el-color-primary-light-3), var(--el-color-primary), var(--el-color-primary-light-3));
+  content: '';
+  transform-origin: center;
+  animation: platform-loading-line 1.05s ease-in-out infinite;
 }
 
 .el-loading-spinner .el-loading-text {
+  margin-top: 10px;
   color: var(--app-muted);
   font-size: 13px;
 }
 
-.platform-loading-mask .el-loading-spinner::after {
-  display: block;
+.platform-loading-mask .el-loading-spinner .el-loading-text {
   color: var(--app-heading);
-  content: '华东信息融合平台';
-  font-size: 12px;
-  font-weight: 600;
+  font-weight: 650;
+}
+
+.platform-loading-mark {
+  --platform-loading-size: 32px;
+  display: inline-block;
+  width: var(--platform-loading-size);
+  height: var(--platform-loading-size);
+  flex: 0 0 var(--platform-loading-size);
+  background: url('../logo/platform-logo.svg') center / contain no-repeat;
+  filter: drop-shadow(0 5px 10px color-mix(in srgb, var(--el-color-primary) 16%, transparent));
+  vertical-align: middle;
+  animation: platform-loading-breathe 1.2s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+}
+
+.platform-loading-mark.is-small {
+  --platform-loading-size: 16px;
+}
+
+.platform-loading-mark.is-large {
+  --platform-loading-size: 46px;
+}
+
+.el-button.is-loading > .el-icon.is-loading {
+  animation: none;
+}
+
+.el-button.is-loading > .el-icon.is-loading svg {
+  display: none;
+}
+
+.el-button.is-loading > .el-icon.is-loading::before {
+  display: block;
+  width: 15px;
+  height: 15px;
+  background: url('../logo/platform-logo.svg') center / contain no-repeat;
+  content: '';
+  animation: platform-loading-breathe 1.05s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 }
 
 .el-dialog,
@@ -113,8 +164,14 @@
   color: var(--app-muted);
 }
 
-@keyframes platform-loading-spin {
-  to { transform: rotate(360deg); }
+@keyframes platform-loading-breathe {
+  0%, 100% { opacity: 0.72; transform: scale(0.92); }
+  50% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes platform-loading-line {
+  0%, 100% { opacity: 0.42; transform: scaleX(0.3); }
+  50% { opacity: 1; transform: scaleX(1); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -123,7 +180,10 @@
     transition: none;
   }
 
-  .el-loading-spinner::before {
+  .el-loading-spinner::before,
+  .el-loading-spinner::after,
+  .platform-loading-mark,
+  .el-button.is-loading > .el-icon.is-loading::before {
     animation: none;
   }
 }

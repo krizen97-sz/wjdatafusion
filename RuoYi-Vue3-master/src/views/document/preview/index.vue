@@ -20,7 +20,7 @@
 
     <main class="preview-stage">
       <div v-if="loading" class="preview-state" role="status">
-        <span class="loading-ring"><el-icon class="is-loading"><Loading /></el-icon></span>
+        <span class="platform-loading-mark is-large" aria-hidden="true"></span>
         <strong>正在安全加载 PDF</strong>
         <span>{{ loadingDescription }}</span>
         <el-progress v-if="downloadProgress > 0" :percentage="downloadProgress" :stroke-width="5" :show-text="false" />
@@ -43,7 +43,7 @@
           @load="viewerReady = true"
         />
         <div v-if="!viewerReady" class="viewer-loading" role="status">
-          <el-icon class="is-loading"><Loading /></el-icon><span>正在打开 PDF 阅读器…</span>
+          <span class="platform-loading-mark is-small" aria-hidden="true"></span><span>正在打开 PDF 阅读器…</span>
         </div>
       </template>
     </main>
@@ -218,10 +218,9 @@ function closePreview() {
   color: var(--app-muted);
   text-align: center;
   strong { color: var(--app-heading); font-size: 16px; }
-  > span:not(.loading-ring, .error-mark) { max-width: 560px; line-height: 1.65; }
+  > span:not(.platform-loading-mark, .error-mark) { max-width: 560px; line-height: 1.65; }
   :deep(.el-progress) { width: min(360px, 70vw); margin-top: 4px; }
 }
-.loading-ring,
 .error-mark {
   display: grid;
   width: 46px;

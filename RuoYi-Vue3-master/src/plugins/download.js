@@ -1,9 +1,10 @@
 ﻿import axios from 'axios'
-import { ElLoading, ElMessage } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { saveAs } from 'file-saver'
 import { getToken } from '@/utils/auth'
 import errorCode from '@/utils/errorCode'
 import { blobValidate } from '@/utils/ruoyi'
+import { openPlatformLoading } from '@/utils/platformLoading'
 
 const baseURL = import.meta.env.VITE_APP_BASE_API
 let downloadLoadingInstance
@@ -45,7 +46,7 @@ export default {
   },
   zip(url, name) {
     var url = baseURL + url
-    downloadLoadingInstance = ElLoading.service({ text: "正在下载数据，请稍候", background: "rgba(0, 0, 0, 0.7)", })
+    downloadLoadingInstance = openPlatformLoading({ text: "正在准备下载，请稍候" })
     axios({
       method: 'get',
       url: url,
@@ -76,4 +77,3 @@ export default {
     ElMessage.error(errMsg)
   }
 }
-

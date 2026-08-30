@@ -229,6 +229,10 @@ default、card、border-card，也不要用 `div` 和绝对定位下划线模拟
 ## 11. 加载、空、错误与结果状态
 
 - 列表和局部容器：`v-loading`，并确保遮罩只覆盖所属区域。
+- `v-loading`、按钮 `loading`、全屏阻塞和首屏启动统一使用平台 Logo 与
+  线性脉冲反馈；不得恢复若依三层圆环、Element Plus 圆形图标或页面级自制
+  转圈动画。全屏服务统一通过 `openPlatformLoading`，禁止业务代码直接创建
+  `ElLoading.service` 或写死黑色遮罩。
 - 首次加载且结构占位能减少跳动时：`el-skeleton`；当前仓库尚无标准用例，
   新增前先确认确有价值。
 - 空数据：`el-empty`，业务允许创建时提供一个明确下一步按钮。

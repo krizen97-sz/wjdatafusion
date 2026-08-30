@@ -67,7 +67,8 @@
 | 短确认 | `proxy.$modal.confirm` / `ElMessageBox` | `src/views/system/role/index.vue` |
 | 普通反馈 | `proxy.$modal.msgSuccess/msgWarning/msgError` / `ElMessage` | 多个 RuoYi 页面 |
 | 重要通知 | `ElNotification` | 当前无统一页面示例，谨慎使用 |
-| 局部加载 | `v-loading` | 43 个页面/组件已有使用 |
+| 局部加载 | `v-loading` + 全局平台 Logo 脉冲样式 | 保留 Element Plus 遮罩逻辑，不在业务页自制转圈 |
+| 全屏加载 | `openPlatformLoading` | 下载、监控和全局阻塞任务统一入口 |
 | 空数据 | `el-empty` | `src/views/document/workspace/index.vue` |
 | 页面级结果 | `el-result` | 当前无稳定页面示例；不要另建 Result 组件 |
 | 首屏结构占位 | `el-skeleton` | 当前无稳定页面示例；有必要再使用官方组件 |

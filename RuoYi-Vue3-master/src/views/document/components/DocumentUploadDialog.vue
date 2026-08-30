@@ -50,7 +50,7 @@
       </div>
 
       <div v-if="validating" class="validation-state is-validating" role="status">
-        <el-icon class="is-loading"><Loading /></el-icon>
+        <span class="platform-loading-mark is-small" aria-hidden="true"></span>
         <div><strong>文件校验中</strong><span>{{ validationProgress }}</span></div>
       </div>
       <div v-else-if="errorMessage" class="validation-state is-error" role="alert">
@@ -258,6 +258,7 @@ function beforeClose(done) {
   padding: 11px;
   border-radius: 7px;
   .el-icon { margin-top: 2px; font-size: 18px; }
+  .platform-loading-mark { margin-top: 2px; }
   strong,
   span { display: block; }
   strong { font-size: 13px; }

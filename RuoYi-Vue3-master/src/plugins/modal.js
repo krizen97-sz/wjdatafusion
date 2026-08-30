@@ -1,6 +1,8 @@
-import { ElMessage, ElMessageBox, ElNotification, ElLoading } from 'element-plus'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
+import { openPlatformLoading } from '@/utils/platformLoading'
 
 let loadingInstance
+let loadingDepth = 0
 
 export default {
   // 消息提示
@@ -69,15 +71,17 @@ export default {
   },
   // 打开遮罩层
   loading(content) {
-    loadingInstance = ElLoading.service({
-      lock: true,
-      text: content,
-      customClass: 'platform-loading-mask',
-      background: 'var(--loading-mask-bg)',
-    })
+    loadingDepth += 1
+    if (!loadingInstance) {
+      loadingInstance = openPlatformLoading({ text: content })
+    } else {
+      loadingInstance.setText?.(content)
+    }
   },
   // 关闭遮罩层
   closeLoading() {
+    loadingDepth = Math.max(0, loadingDepth - 1)
+    if (loadingDepth > 0) return
     loadingInstance?.close()
     loadingInstance = undefined
   }

@@ -1,6 +1,7 @@
 const PROGRESS_ID = 'platform-route-progress'
 
 let progressTimer
+let completionTimer
 let currentProgress = 0
 
 function ensureProgressElement() {
@@ -12,6 +13,9 @@ function ensureProgressElement() {
   element.className = 'platform-route-progress'
   element.setAttribute('role', 'progressbar')
   element.setAttribute('aria-label', '页面正在加载')
+  element.setAttribute('aria-valuemin', '0')
+  element.setAttribute('aria-valuemax', '100')
+  element.setAttribute('aria-hidden', 'true')
   element.innerHTML = '<span class="platform-route-progress__bar"></span>'
   document.body.appendChild(element)
   return element
@@ -26,7 +30,9 @@ function updateProgress(value) {
 
 export function startRouteProgress() {
   window.clearInterval(progressTimer)
+  window.clearTimeout(completionTimer)
   const element = ensureProgressElement()
+  element.setAttribute('aria-hidden', 'false')
   element.classList.remove('is-complete')
   element.classList.add('is-active')
   updateProgress(18)
@@ -38,12 +44,14 @@ export function startRouteProgress() {
 
 export function finishRouteProgress() {
   window.clearInterval(progressTimer)
+  window.clearTimeout(completionTimer)
   const element = document.getElementById(PROGRESS_ID)
   if (!element) return
   updateProgress(100)
   element.classList.add('is-complete')
-  window.setTimeout(() => {
+  completionTimer = window.setTimeout(() => {
     element.classList.remove('is-active', 'is-complete')
     updateProgress(0)
+    element.setAttribute('aria-hidden', 'true')
   }, 220)
 }

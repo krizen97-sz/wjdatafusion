@@ -16,7 +16,7 @@
         :title="saveState.type === 'error' && permission === 'EDIT' ? '点击重新保存' : saveState.label"
         @click="retryServerSave"
       >
-        <el-icon v-if="saveState.type === 'syncing'" class="is-loading"><Loading /></el-icon>
+        <span v-if="saveState.type === 'syncing'" class="platform-loading-mark is-small" aria-hidden="true"></span>
         <el-icon v-else-if="saveState.type === 'error'"><WarningFilled /></el-icon>
         <el-icon v-else-if="saveState.type === 'view'"><View /></el-icon>
         <el-icon v-else><CircleCheckFilled /></el-icon>
@@ -35,7 +35,7 @@
 
     <main class="editor-stage">
       <div v-if="loading" class="editor-placeholder">
-        <el-icon class="is-loading"><Loading /></el-icon>
+        <span class="platform-loading-mark is-large" aria-hidden="true"></span>
         <strong>正在连接内网编辑器</strong>
         <span>文档内容不会离开当前内网环境</span>
       </div>
@@ -395,7 +395,6 @@ function closeEditor() {
 .onlyoffice-editor.is-hidden { visibility: hidden; }
 .editor-placeholder,
 .editor-error { position: absolute; z-index: 2; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; flex-direction: column; background: var(--surface-muted); color: var(--app-muted); }
-.editor-placeholder > .el-icon,
 .editor-error > .el-icon { color: var(--el-color-primary); font-size: 28px; }
 .editor-error > .el-icon { color: var(--el-color-danger); }
 .editor-placeholder strong,

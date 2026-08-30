@@ -54,6 +54,8 @@
 ### 平台通用前端
 
 - 图标系统：`src/assets/icons`、`IconSelect`、`SvgIcon`、`iconRegistry.js`
+- 平台启动页、全局 loading 服务、通用下载遮罩和路由进度：`index.html`、
+  `platformLoading.js`、`modal.js`、`download.js`、`request.js`、`routeProgress.js`
 - 系统菜单中的通用图标选择入口及图标离线导入脚本
 - 平台前端设计规范与图标库使用文档
 - 普通任务不包含具体业务模块页面；业务页面中的单模块改动仍归对应业务模块
