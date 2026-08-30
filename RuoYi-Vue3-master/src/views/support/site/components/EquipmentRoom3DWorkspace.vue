@@ -1,17 +1,17 @@
 <template>
   <section class="room3d-workspace" data-ui-guard="diagram" v-loading="loading">
     <!--
-      THESIS: 用可操作的机房数字摆放图统一物理位置与网络上联，拒绝只看模型的展示型3D。
-      OWN-WORLD: 继承若依与Element Plus中性色表面，设备类型、光口和电口只承担语义区分。
-      STORY: 运维人员先定位机房和机柜，再查看U位设备、IP与上联交换机，并可直接修正摆放和链路。
-      FIRST VIEWPORT: 左侧机房导航、中间全幅Three.js场景、右侧上下文检查器，核心操作始终留在顶部。
+      THESIS: 以设备为唯一对象，把档案、平台归属、机房位置、凭据和链路收进一张可操作的管控图。
+      OWN-WORLD: 继承若依与Element Plus中性色表面，设备类型、位置状态、光口和电口只承担语义区分。
+      STORY: 运维人员从全现场设备目录定位对象，在同一图中查看并修正平台、位置、链路和设备档案。
+      FIRST VIEWPORT: 左侧设备目录、中间全幅Three.js场景、右侧统一检查器，新增、批量和数据操作始终留在顶部。
       FORM: 既有设备管理的Operate型专业可视化扩展；使用UIX-004拓扑例外。
       FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
     -->
     <header class="room3d-header">
       <div class="room3d-heading">
-        <h2>机房三维摆放图</h2>
-        <p>{{ siteName || '当前现场' }} · 机柜、U位设备与物理上联实时联动</p>
+        <h2>现场设备统一管控图</h2>
+        <p>{{ siteName || '当前现场' }} · 设备档案、平台归属、机房位置与网络上联统一编辑</p>
       </div>
       <div class="room3d-controls">
         <span class="room3d-live-status" :class="{ 'has-error': liveSyncError }">
@@ -25,16 +25,29 @@
             :value="room.roomId"
           />
         </el-select>
+        <el-dropdown
+          v-hasPermi="['support:equipment:add', 'support:hardwareAsset:add', 'support:server:add']"
+          trigger="click"
+          @command="handleCreateCommand"
+        >
+          <el-button type="primary" icon="Plus">新增设备</el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="hardware" icon="SetUp" aria-label="新增硬件设备">新增硬件设备</el-dropdown-item>
+              <el-dropdown-item command="server" icon="Monitor" aria-label="新增服务器">新增服务器</el-dropdown-item>
+              <el-dropdown-item command="batch" icon="Files" aria-label="批量录入设备">批量录入设备</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button
-          type="primary"
           icon="Plus"
-          v-hasPermi="['support:hardwareAsset:add', 'support:hardwareAsset:edit']"
+          v-hasPermi="['support:equipment:add', 'support:equipment:edit', 'support:hardwareAsset:add', 'support:hardwareAsset:edit']"
           @click="openRoomForm()"
         >新增机房</el-button>
         <el-button
           icon="Box"
           :disabled="!selectedRoom"
-          v-hasPermi="['support:hardwareAsset:add', 'support:hardwareAsset:edit']"
+          v-hasPermi="['support:equipment:add', 'support:equipment:edit', 'support:hardwareAsset:add', 'support:hardwareAsset:edit']"
           @click="openCabinetForm()"
         >新增机柜</el-button>
         <el-dropdown v-if="canUseDataMenu" trigger="click" @command="handleDataCommand">
@@ -43,6 +56,9 @@
             <el-dropdown-menu>
               <el-dropdown-item v-if="canExportTopology" command="export" icon="Download">
                 导出机房布局
+              </el-dropdown-item>
+              <el-dropdown-item v-if="canExportEquipment" command="export-devices" icon="Document">
+                导出设备清单
               </el-dropdown-item>
               <el-dropdown-item v-if="canImportTopology" command="import" icon="Upload">
                 导入并修改
@@ -54,7 +70,7 @@
           v-model="workspaceMode"
           :options="workspaceModeOptions"
           :disabled="!selectedRoom"
-          v-hasPermi="['support:hardwareAsset:edit']"
+          v-hasPermi="['support:equipment:edit', 'support:hardwareAsset:edit']"
         />
         <label class="room3d-switch-label">
           <span>链路</span>
@@ -79,54 +95,92 @@
     </div>
 
     <div v-else class="room3d-body">
-      <aside class="room3d-room-panel">
+      <aside class="room3d-room-panel room3d-inventory">
         <div class="room3d-panel-title">
-          <strong>机房</strong>
-          <span>{{ rooms.length }} 个</span>
+          <strong>设备目录</strong>
+          <span>{{ filteredDevices.length }} / {{ devices.length }} 台</span>
         </div>
-        <el-menu
-          v-if="rooms.length"
-          :default-active="String(selectedRoomId || '')"
-          class="room3d-room-menu"
-          @select="handleRoomSelect"
-        >
-          <el-menu-item v-for="room in rooms" :key="room.roomId" :index="String(room.roomId)">
-            <div class="room3d-room-menu__content">
-              <strong>{{ room.roomName }}</strong>
-              <span>{{ getRoomCabinets(room.roomId).length }} 柜 · {{ getRoomDeviceCount(room.roomId) }} 台</span>
-            </div>
-          </el-menu-item>
-        </el-menu>
-        <el-empty v-else description="暂无机房，请先在设备位置图中新增" :image-size="72" />
-
-        <div class="room3d-unplaced">
-          <div class="room3d-panel-title room3d-panel-title--sub">
-            <strong>未上架设备</strong>
-            <span>{{ unplacedDevices.length }} 台</span>
+        <div class="room3d-inventory-filters">
+          <el-input v-model="deviceKeyword" clearable placeholder="搜索名称、IP、平台或位置" prefix-icon="Search" />
+          <el-select v-model="platformFilterId" clearable filterable placeholder="全部平台">
+            <el-option v-for="platform in platformOptions" :key="platform.platformId" :label="platform.displayName" :value="platform.platformId" />
+          </el-select>
+          <div class="room3d-inventory-filter-row">
+            <el-select v-model="assetTypeFilter" aria-label="设备类型">
+              <el-option label="全部类型" value="ALL" />
+              <el-option v-for="item in deviceLegend" :key="item.value" :label="item.label" :value="item.value" />
+            </el-select>
+            <el-select v-model="placementFilter" aria-label="上架状态">
+              <el-option label="全部位置" value="ALL" />
+              <el-option label="已上架" value="PLACED" />
+              <el-option label="未上架" value="UNPLACED" />
+            </el-select>
           </div>
-          <el-scrollbar max-height="220px">
+        </div>
+
+        <div class="room3d-selection-bar">
+          <el-checkbox
+            :model-value="allFilteredSelected"
+            :indeterminate="filteredSelectionIndeterminate"
+            @change="toggleAllFiltered"
+          >全选当前结果</el-checkbox>
+          <span v-if="selectedDeviceKeys.length">已选 {{ selectedDeviceKeys.length }} 台</span>
+        </div>
+
+        <el-scrollbar class="room3d-inventory-scroll">
+          <div v-if="filteredDevices.length" class="room3d-device-list">
             <button
-              v-for="device in unplacedDevices"
+              v-for="device in filteredDevices"
               :key="device.deviceKey"
               type="button"
-              class="room3d-unplaced-item"
+              class="room3d-device-item"
               :class="{ 'is-active': selectedDeviceKey === device.deviceKey }"
               @click="selectDevice(device)"
             >
+              <el-checkbox
+                :model-value="selectedDeviceKeys.includes(device.deviceKey)"
+                :aria-label="`选择${device.assetName || '设备'}`"
+                @click.stop
+                @change="toggleDeviceSelection(device.deviceKey, $event)"
+              />
               <i :style="{ background: getDeviceColor(device.assetType) }"></i>
-              <span>
-                <strong>{{ device.assetName || '未命名设备' }}</strong>
-                <small>{{ device.ipAddress || '未填写IP' }}</small>
+              <span class="room3d-device-item__body">
+                <span class="room3d-device-item__title">
+                  <strong>{{ device.assetName || '未命名设备' }}</strong>
+                  <small>{{ device.assetTypeLabel || device.assetType }}</small>
+                </span>
+                <small>{{ device.ipAddress || device.manageIp || '未填写IP' }}</small>
+                <small>{{ device.bindingLabel || '未归属平台' }}</small>
+                <small :class="{ 'is-unplaced': !isDevicePlaced(device) }">
+                  {{ isDevicePlaced(device) ? formatDeviceLocation(device) : '未配置机房位置' }}
+                </small>
               </span>
             </button>
-          </el-scrollbar>
+          </div>
+          <el-empty v-else description="没有符合条件的设备" :image-size="72" />
+        </el-scrollbar>
+
+        <div v-if="selectedDeviceKeys.length" class="room3d-batch-bar">
+          <el-button size="small" @click="clearDeviceSelection">取消选择</el-button>
+          <el-button
+            size="small"
+            type="danger"
+            plain
+            icon="Delete"
+            :loading="batchDeleting"
+            v-hasPermi="['support:equipment:remove', 'support:hardwareAsset:remove', 'support:server:remove']"
+            @click="removeSelectedDevices"
+          >批量删除</el-button>
         </div>
       </aside>
 
       <main class="room3d-scene-panel">
         <div class="room3d-scene-summary">
           <span><strong>{{ currentRoomCabinets.length }}</strong> 个机柜</span>
-          <span><strong>{{ currentRoomDevices.length }}</strong> 台上架设备</span>
+          <span>
+            <strong>{{ visibleCurrentRoomDevices.length }}</strong>
+            {{ visibleCurrentRoomDevices.length === currentRoomDevices.length ? '台上架设备' : `/ ${currentRoomDevices.length} 台可见` }}
+          </span>
           <span><strong>{{ currentRoomUsedU }}</strong> / {{ currentRoomCapacityU }}U</span>
           <span><strong>{{ currentRoomLinks.length }}</strong> 条可视链路</span>
           <span v-if="currentRoomCollisionCount" class="room3d-scene-summary__warning">
@@ -175,15 +229,29 @@
               <h3>{{ selectedDevice.assetName || '未命名设备' }}</h3>
             </div>
             <div class="room3d-inspector-actions">
-              <el-button link type="primary" icon="Location" v-hasPermi="['support:hardwareAsset:edit']" @click="openPlacementForm(selectedDevice)">配置位置</el-button>
-              <el-button link type="primary" @click="emit('edit-device', selectedDevice)">编辑档案</el-button>
-              <el-button v-if="isDevicePlaced(selectedDevice)" link type="danger" v-hasPermi="['support:hardwareAsset:edit']" @click="clearDevicePlacement(selectedDevice)">清空位置</el-button>
+              <el-button v-if="canManageEquipment" link type="primary" @click="emit('edit-device', selectedDevice)">编辑档案</el-button>
+              <el-dropdown v-if="canManageEquipment || canDeleteEquipment || canViewPassword" trigger="click" @command="handleSelectedDeviceCommand">
+                <el-tooltip content="更多设备操作" placement="bottom">
+                  <el-button link type="primary" icon="MoreFilled" aria-label="更多设备操作" />
+                </el-tooltip>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item v-if="canManageEquipment" command="placement" icon="Location">配置机房位置</el-dropdown-item>
+                    <el-dropdown-item v-if="selectedDevice.credentialCapable && canManageEquipment" command="credentials" icon="Key">管理服务器凭据</el-dropdown-item>
+                    <el-dropdown-item v-if="selectedDevice.credentialCapable && canViewPassword" command="password" icon="View">显示密码</el-dropdown-item>
+                    <el-dropdown-item v-if="isDevicePlaced(selectedDevice) && canManageEquipment" command="clear-placement" divided icon="Remove">清空机房位置</el-dropdown-item>
+                    <el-dropdown-item v-if="canDeleteEquipment" command="delete" divided icon="Delete">删除设备</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
           </div>
 
           <el-descriptions :column="1" size="small" border>
+            <el-descriptions-item label="设备类型">{{ selectedDevice.assetTypeLabel || selectedDevice.assetType || '-' }}</el-descriptions-item>
             <el-descriptions-item label="设备IP">{{ selectedDevice.ipAddress || '-' }}</el-descriptions-item>
             <el-descriptions-item label="管理IP">{{ selectedDevice.manageIp || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="厂商型号">{{ formatManufacturerModel(selectedDevice) }}</el-descriptions-item>
             <el-descriptions-item label="安装位置">{{ formatDeviceLocation(selectedDevice) }}</el-descriptions-item>
             <el-descriptions-item label="运行状态">
               <el-tag :type="selectedDevice.status === '1' ? 'info' : 'success'" size="small">
@@ -191,6 +259,44 @@
               </el-tag>
             </el-descriptions-item>
           </el-descriptions>
+
+          <section class="room3d-platform-section">
+            <div class="room3d-section-head">
+              <div>
+                <strong>平台归属</strong>
+                <span>{{ selectedDevice.platformBindings?.length || 0 }} 个</span>
+              </div>
+            </div>
+            <div v-if="selectedDevice.platformBindings?.length" class="room3d-platform-tags">
+              <el-tag
+                v-for="binding in selectedDevice.platformBindings"
+                :key="binding.platformId"
+                :closable="canManageEquipment"
+                :disable-transitions="true"
+                @close="unbindSelectedPlatform(binding)"
+              >{{ formatPlatformBinding(binding) }}</el-tag>
+            </div>
+            <p v-else class="room3d-platform-empty">{{ selectedDevice.bindingScope === 'PUBLIC' ? '当前为现场公共设备' : '尚未归属平台' }}</p>
+            <div v-if="canManageEquipment" class="room3d-platform-bind">
+              <el-select v-model="bindingPlatformId" clearable filterable placeholder="选择要归属的平台">
+                <el-option
+                  v-for="platform in bindablePlatformOptions"
+                  :key="platform.platformId"
+                  :label="platform.displayName"
+                  :value="platform.platformId"
+                  :disabled="selectedDevice.platformIds?.includes(platform.platformId)"
+                />
+              </el-select>
+              <el-button
+                type="primary"
+                plain
+                :disabled="!bindingPlatformId"
+                :loading="bindingSaving"
+                v-hasPermi="['support:equipment:edit', 'support:hardwareAsset:edit', 'support:platform:edit']"
+                @click="bindSelectedPlatform"
+              >归属平台</el-button>
+            </div>
+          </section>
 
           <section class="room3d-port-summary">
             <div>
@@ -215,7 +321,7 @@
                 size="small"
                 icon="Connection"
                 :disabled="!switchOptions.length"
-                v-hasPermi="['support:hardwareAsset:add', 'support:hardwareAsset:edit']"
+                v-hasPermi="['support:equipment:add', 'support:equipment:edit', 'support:hardwareAsset:add', 'support:hardwareAsset:edit']"
                 @click="openLinkForm()"
               >新增上联</el-button>
             </div>
@@ -251,8 +357,8 @@
             </div>
             <div class="room3d-inspector-actions">
               <el-button link type="primary" @click="focusCabinet(selectedCabinet.cabinetId)">聚焦</el-button>
-              <el-button link type="primary" icon="Edit" v-hasPermi="['support:hardwareAsset:edit']" @click="openCabinetForm(selectedCabinet)">编辑</el-button>
-              <el-button link type="danger" v-hasPermi="['support:hardwareAsset:remove']" @click="removeCabinet(selectedCabinet)">删除</el-button>
+              <el-button link type="primary" icon="Edit" v-hasPermi="['support:equipment:edit', 'support:hardwareAsset:edit']" @click="openCabinetForm(selectedCabinet)">编辑</el-button>
+              <el-button link type="danger" v-hasPermi="['support:equipment:remove', 'support:hardwareAsset:remove']" @click="removeCabinet(selectedCabinet)">删除</el-button>
             </div>
           </div>
           <el-descriptions :column="1" size="small" border>
@@ -295,8 +401,8 @@
               <h3>{{ selectedRoom?.roomName || '未选择机房' }}</h3>
             </div>
             <div v-if="selectedRoom" class="room3d-inspector-actions">
-              <el-button link type="primary" icon="Edit" v-hasPermi="['support:hardwareAsset:edit']" @click="openRoomForm(selectedRoom)">编辑地板</el-button>
-              <el-button link type="danger" v-hasPermi="['support:hardwareAsset:remove']" @click="removeRoom(selectedRoom)">删除</el-button>
+              <el-button link type="primary" icon="Edit" v-hasPermi="['support:equipment:edit', 'support:hardwareAsset:edit']" @click="openRoomForm(selectedRoom)">编辑地板</el-button>
+              <el-button link type="danger" v-hasPermi="['support:equipment:remove', 'support:hardwareAsset:remove']" @click="removeRoom(selectedRoom)">删除</el-button>
             </div>
           </div>
           <el-descriptions v-if="selectedRoom" :column="1" size="small" border>
@@ -554,6 +660,8 @@ import {
   addEquipmentCabinet,
   addEquipmentLink,
   addEquipmentRoom,
+  bindEquipmentPlatform,
+  deleteEquipmentBatch,
   delEquipmentCabinet,
   delEquipmentLink,
   delEquipmentRoom,
@@ -563,8 +671,10 @@ import {
   updateEquipmentCabinetLayout,
   updateEquipmentDevicePlacement,
   updateEquipmentLink,
-  updateEquipmentRoom
+  updateEquipmentRoom,
+  unbindEquipmentPlatform
 } from '@/api/support/equipmentLocation'
+import { listPlatformTree } from '@/api/support/platform'
 import {
   CABINET_DEPTH,
   CABINET_HEIGHT,
@@ -584,10 +694,21 @@ import {
 const props = defineProps({
   siteId: { type: [Number, String], required: true },
   siteName: { type: String, default: '' },
-  initialDeviceKey: { type: String, default: '' }
+  initialDeviceKey: { type: String, default: '' },
+  initialPlatformId: { type: [Number, String], default: null }
 })
 
-const emit = defineEmits(['close', 'edit-device', 'changed'])
+const emit = defineEmits([
+  'close',
+  'edit-device',
+  'add-device',
+  'add-server',
+  'batch-create',
+  'manage-credentials',
+  'view-password',
+  'export-devices',
+  'changed'
+])
 const { proxy } = getCurrentInstance()
 
 const loading = ref(false)
@@ -599,11 +720,20 @@ const rooms = ref([])
 const cabinets = ref([])
 const devices = ref([])
 const links = ref([])
+const platformTree = ref([])
 const selectedRoomId = ref(null)
 const selectedCabinetId = ref(null)
 const selectedDeviceKey = ref('')
 const showLinks = ref(true)
 const workspaceMode = ref('view')
+const deviceKeyword = ref('')
+const platformFilterId = ref(props.initialPlatformId ? Number(props.initialPlatformId) : null)
+const assetTypeFilter = ref('ALL')
+const placementFilter = ref('ALL')
+const selectedDeviceKeys = ref([])
+const batchDeleting = ref(false)
+const bindingPlatformId = ref(null)
+const bindingSaving = ref(false)
 const workspaceModeOptions = [
   { label: '浏览', value: 'view' },
   { label: '调整机柜', value: 'layout' }
@@ -664,7 +794,11 @@ const deviceLegend = [
 const selectedRoom = computed(() => rooms.value.find((room) => Number(room.roomId) === Number(selectedRoomId.value)) || null)
 const currentRoomCabinets = computed(() => cabinets.value.filter((cabinet) => Number(cabinet.roomId) === Number(selectedRoomId.value)))
 const currentRoomDevices = computed(() => devices.value.filter((device) => Number(device.roomId) === Number(selectedRoomId.value) && isDevicePlaced(device)))
-const unplacedDevices = computed(() => devices.value.filter((device) => !isDevicePlaced(device)))
+const platformOptions = computed(() => flattenPlatformTree(platformTree.value))
+const filteredDevices = computed(() => devices.value.filter(matchesDeviceFilters))
+const visibleCurrentRoomDevices = computed(() => filteredDevices.value.filter((device) =>
+  Number(device.roomId) === Number(selectedRoomId.value) && isDevicePlaced(device)
+))
 const selectedCabinet = computed(() => cabinets.value.find((cabinet) => Number(cabinet.cabinetId) === Number(selectedCabinetId.value)) || null)
 const selectedDevice = computed(() => devices.value.find((device) => device.deviceKey === selectedDeviceKey.value) || null)
 const selectedCabinetDevices = computed(() => selectedCabinet.value
@@ -673,13 +807,37 @@ const selectedCabinetDevices = computed(() => selectedCabinet.value
     .sort((a, b) => Number(b.rackUEnd || 0) - Number(a.rackUEnd || 0))
   : [])
 const selectedDeviceLinks = computed(() => selectedDevice.value ? getDeviceLinks(selectedDevice.value, links.value) : [])
-const canExportTopology = computed(() => Boolean(proxy?.$auth?.hasPermi(['support:hardwareAsset:export'])))
-const canImportTopology = computed(() => Boolean(proxy?.$auth?.hasPermiAnd([
-  'support:hardwareAsset:add',
-  'support:hardwareAsset:edit',
-  'support:hardwareAsset:remove'
+const canExportTopology = computed(() => Boolean(proxy?.$auth?.hasPermi(['support:hardwareAsset:export', 'support:equipment:export'])))
+const canExportEquipment = computed(() => Boolean(proxy?.$auth?.hasPermi(['support:equipment:export', 'support:hardwareAsset:export'])))
+const canManageEquipment = computed(() => Boolean(proxy?.$auth?.hasPermi([
+  'support:equipment:edit', 'support:hardwareAsset:edit', 'support:server:edit'
 ])))
-const canUseDataMenu = computed(() => canExportTopology.value || canImportTopology.value)
+const canDeleteEquipment = computed(() => Boolean(proxy?.$auth?.hasPermi([
+  'support:equipment:remove', 'support:hardwareAsset:remove', 'support:server:remove'
+])))
+const canViewPassword = computed(() => Boolean(proxy?.$auth?.hasPermi(['support:credential:viewPlain'])))
+const canImportTopology = computed(() => Boolean(
+  proxy?.$auth?.hasPermi(['support:equipment:edit']) ||
+  proxy?.$auth?.hasPermiAnd([
+    'support:hardwareAsset:add',
+    'support:hardwareAsset:edit',
+    'support:hardwareAsset:remove'
+  ])
+))
+const canUseDataMenu = computed(() => canExportTopology.value || canExportEquipment.value || canImportTopology.value)
+const bindablePlatformOptions = computed(() => {
+  if (!selectedDevice.value) return []
+  return selectedDevice.value.sourceType === 'SERVER'
+    ? platformOptions.value.filter((platform) => platform.platformLevel === 'SUB')
+    : platformOptions.value
+})
+const allFilteredSelected = computed(() => filteredDevices.value.length > 0 && filteredDevices.value.every((device) =>
+  selectedDeviceKeys.value.includes(device.deviceKey)
+))
+const filteredSelectionIndeterminate = computed(() => {
+  const count = filteredDevices.value.filter((device) => selectedDeviceKeys.value.includes(device.deviceKey)).length
+  return count > 0 && count < filteredDevices.value.length
+})
 const placementDevice = computed(() => devices.value.find((device) => device.deviceKey === placementDeviceKey.value) || null)
 const placementCabinetOptions = computed(() => cabinets.value.filter((cabinet) => Number(cabinet.roomId) === Number(placementForm.roomId)))
 const placementCabinet = computed(() => placementCabinetOptions.value.find((cabinet) => Number(cabinet.cabinetId) === Number(placementForm.cabinetId)) || null)
@@ -716,7 +874,7 @@ const switchOptions = computed(() => devices.value.filter((device) =>
   !(device.sourceType === linkForm.sourceType && Number(device.sourceId) === Number(linkForm.sourceId))
 ))
 const currentRoomLinks = computed(() => {
-  const keys = new Set(currentRoomDevices.value.map((device) => device.deviceKey))
+  const keys = new Set(visibleCurrentRoomDevices.value.map((device) => device.deviceKey))
   return links.value.filter((link) => keys.has(getDeviceKey(link.sourceType, link.sourceId)) && keys.has(getDeviceKey(link.targetType, link.targetId)))
 })
 const currentRoomCapacityU = computed(() => currentRoomCabinets.value.reduce((total, cabinet) => total + (Number(cabinet.uCapacity) || 45), 0))
@@ -758,6 +916,7 @@ onMounted(async () => {
   reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
   await nextTick()
   initScene()
+  await loadPlatforms()
   await loadTopology()
   startLiveSync()
 })
@@ -785,6 +944,29 @@ watch(() => props.initialDeviceKey, () => {
   initialDeviceHandledKey = ''
   focusInitialDevice()
 })
+watch(() => props.initialPlatformId, (value) => {
+  platformFilterId.value = value ? Number(value) : null
+})
+watch([deviceKeyword, platformFilterId, assetTypeFilter, placementFilter], () => {
+  if (selectedDevice.value && !matchesDeviceFilters(selectedDevice.value)) {
+    selectedDeviceKey.value = ''
+    selectedCabinetId.value = null
+  }
+  rebuildScene()
+})
+watch(selectedDeviceKey, () => {
+  bindingPlatformId.value = null
+})
+
+async function loadPlatforms() {
+  if (!props.siteId) return
+  try {
+    const response = await listPlatformTree(props.siteId)
+    platformTree.value = response.data || []
+  } catch (error) {
+    platformTree.value = []
+  }
+}
 
 async function loadTopology(options = {}) {
   if (!props.siteId) return
@@ -802,6 +984,7 @@ async function loadTopology(options = {}) {
     const nextLinks = data.links || []
     const nextSignature = JSON.stringify([nextRooms, nextCabinets, nextDevices, nextLinks])
     liveSyncError.value = false
+    loadError.value = ''
     if (silent && nextSignature === topologySignature) return
     topologySignature = nextSignature
     rooms.value = nextRooms
@@ -1006,7 +1189,7 @@ function createCabinet(cabinet, index, room) {
   frame.position.copy(body.position)
   group.add(frame)
 
-  const cabinetDevices = devices.value.filter((device) => Number(device.cabinetId) === Number(cabinet.cabinetId) && isDevicePlaced(device))
+  const cabinetDevices = filteredDevices.value.filter((device) => Number(device.cabinetId) === Number(cabinet.cabinetId) && isDevicePlaced(device))
   cabinetDevices.forEach((device) => createRackDevice(group, cabinet, device))
 
   const label = document.createElement('div')
@@ -1051,7 +1234,7 @@ function createRackDevice(group, cabinet, device) {
 }
 
 function createLinks() {
-  const visibleKeys = new Set(currentRoomDevices.value.map((device) => device.deviceKey))
+  const visibleKeys = new Set(visibleCurrentRoomDevices.value.map((device) => device.deviceKey))
   const opticalColor = new THREE.Color('#2bb7da')
   const electricalColor = new THREE.Color('#f0a83a')
   links.value.forEach((link, index) => {
@@ -1344,8 +1527,169 @@ function intersectFloor(event) {
   return raycaster.ray.intersectPlane(floorPlane, new THREE.Vector3())
 }
 
-function handleRoomSelect(index) {
-  selectedRoomId.value = Number(index)
+function flattenPlatformTree(nodes, parentName = '') {
+  const rows = []
+  ;(nodes || []).forEach((platform) => {
+    const isSub = platform.platformLevel === 'SUB'
+    const mainName = isSub ? (parentName || platform.mainPlatformName || '') : platform.platformName
+    rows.push({
+      ...platform,
+      displayName: isSub && mainName ? `${mainName} / ${platform.platformName}` : platform.platformName
+    })
+    rows.push(...flattenPlatformTree(platform.children || [], mainName))
+  })
+  return rows
+}
+
+function matchesDeviceFilters(device) {
+  if (assetTypeFilter.value !== 'ALL' && device.assetType !== assetTypeFilter.value) return false
+  if (placementFilter.value === 'PLACED' && !isDevicePlaced(device)) return false
+  if (placementFilter.value === 'UNPLACED' && isDevicePlaced(device)) return false
+  if (platformFilterId.value) {
+    const platformIds = (device.platformIds || []).map(Number)
+    const mainPlatformIds = (device.mainPlatformIds || []).map(Number)
+    if (!platformIds.includes(Number(platformFilterId.value)) && !mainPlatformIds.includes(Number(platformFilterId.value))) return false
+  }
+  const keyword = deviceKeyword.value.trim().toLowerCase()
+  if (!keyword) return true
+  return [
+    device.assetName,
+    device.assetTypeLabel,
+    device.ipAddress,
+    device.manageIp,
+    device.bindingLabel,
+    ...(device.platformNames || []),
+    device.equipmentRoom,
+    device.cabinetNo,
+    device.manufacturer,
+    device.assetModel
+  ].filter(Boolean).join(' ').toLowerCase().includes(keyword)
+}
+
+function toggleDeviceSelection(deviceKey, checked) {
+  const keys = new Set(selectedDeviceKeys.value)
+  if (checked) keys.add(deviceKey)
+  else keys.delete(deviceKey)
+  selectedDeviceKeys.value = Array.from(keys)
+}
+
+function toggleAllFiltered(checked) {
+  const keys = new Set(selectedDeviceKeys.value)
+  filteredDevices.value.forEach((device) => {
+    if (checked) keys.add(device.deviceKey)
+    else keys.delete(device.deviceKey)
+  })
+  selectedDeviceKeys.value = Array.from(keys)
+}
+
+function clearDeviceSelection() {
+  selectedDeviceKeys.value = []
+}
+
+async function removeSelectedDevices() {
+  const targets = devices.value.filter((device) => selectedDeviceKeys.value.includes(device.deviceKey))
+  if (!targets.length) return
+  await removeDevices(targets)
+}
+
+async function removeSelectedDevice() {
+  if (!selectedDevice.value) return
+  await removeDevices([selectedDevice.value])
+}
+
+async function removeDevices(targets) {
+  if (!canDeleteEquipment.value) {
+    proxy.$modal.msgWarning('当前账号没有设备删除权限')
+    return
+  }
+  const names = targets.slice(0, 3).map((device) => device.assetName || device.ipAddress || device.deviceKey).join('、')
+  const suffix = targets.length > 3 ? ` 等 ${targets.length} 台设备` : ''
+  await proxy.$modal.confirm(`确认删除 ${names}${suffix}？设备档案、机房位置和链路将一并删除。`)
+  batchDeleting.value = true
+  try {
+    await deleteEquipmentBatch({
+      siteId: Number(props.siteId),
+      devices: targets.map((device) => ({ sourceType: device.sourceType, sourceId: device.sourceId }))
+    })
+    proxy.$modal.msgSuccess(`已删除 ${targets.length} 台设备`)
+    const removedKeys = new Set(targets.map((device) => device.deviceKey))
+    selectedDeviceKeys.value = selectedDeviceKeys.value.filter((key) => !removedKeys.has(key))
+    if (removedKeys.has(selectedDeviceKey.value)) selectedDeviceKey.value = ''
+    await loadTopology()
+    emit('changed')
+  } finally {
+    batchDeleting.value = false
+  }
+}
+
+function handleCreateCommand(command) {
+  if (command === 'hardware') emit('add-device', { platformId: platformFilterId.value })
+  if (command === 'server') emit('add-server', { platformId: platformFilterId.value })
+  if (command === 'batch') emit('batch-create', { platformId: platformFilterId.value })
+}
+
+async function handleSelectedDeviceCommand(command) {
+  if (!selectedDevice.value) return
+  if (command === 'placement') openPlacementForm(selectedDevice.value)
+  if (command === 'credentials') emit('manage-credentials', selectedDevice.value)
+  if (command === 'password') emit('view-password', selectedDevice.value)
+  if (command === 'clear-placement') await clearDevicePlacement(selectedDevice.value)
+  if (command === 'delete') await removeSelectedDevice()
+}
+
+async function bindSelectedPlatform() {
+  if (!selectedDevice.value || !bindingPlatformId.value) return
+  if (!canManageEquipment.value) {
+    proxy.$modal.msgWarning('当前账号没有设备修改权限')
+    return
+  }
+  bindingSaving.value = true
+  try {
+    await bindEquipmentPlatform({
+      siteId: Number(props.siteId),
+      sourceType: selectedDevice.value.sourceType,
+      sourceId: selectedDevice.value.sourceId,
+      platformId: bindingPlatformId.value
+    })
+    proxy.$modal.msgSuccess('平台归属已更新')
+    bindingPlatformId.value = null
+    await loadTopology()
+    emit('changed')
+  } finally {
+    bindingSaving.value = false
+  }
+}
+
+async function unbindSelectedPlatform(binding) {
+  if (!selectedDevice.value || !binding?.platformId) return
+  if (!canManageEquipment.value) {
+    proxy.$modal.msgWarning('当前账号没有设备修改权限')
+    return
+  }
+  await proxy.$modal.confirm(`确认解除与 ${binding.platformName} 的归属关系？`)
+  bindingSaving.value = true
+  try {
+    await unbindEquipmentPlatform({
+      siteId: Number(props.siteId),
+      sourceType: selectedDevice.value.sourceType,
+      sourceId: selectedDevice.value.sourceId,
+      platformId: binding.platformId
+    })
+    proxy.$modal.msgSuccess('平台归属已解除')
+    await loadTopology()
+    emit('changed')
+  } finally {
+    bindingSaving.value = false
+  }
+}
+
+function formatPlatformBinding(binding) {
+  const prefix = binding.platformLevel === 'MAIN' ? '主平台' : '子平台'
+  return `${prefix} · ${binding.platformName || '-'}`
+}
+
+function formatManufacturerModel(device) {
+  return [device.manufacturer, device.assetModel].filter(Boolean).join(' / ') || '-'
 }
 
 async function selectDevice(device) {
@@ -1605,6 +1949,16 @@ function handleDataCommand(command) {
     proxy.download('/support/equipmentLocation/export', { siteId: props.siteId }, `机房设备布局_${props.siteName || '现场'}_${timestamp}.xlsx`)
     return
   }
+  if (command === 'export-devices') {
+    emit('export-devices', {
+      siteId: Number(props.siteId),
+      platformId: platformFilterId.value || undefined,
+      assetType: assetTypeFilter.value === 'ALL' ? undefined : assetTypeFilter.value,
+      assetName: deviceKeyword.value || undefined
+    })
+    return
+  }
+  if (command !== 'import') return
   importFile.value = null
   importOpen.value = true
   nextTick(() => importUploadRef.value?.clearFiles?.())
@@ -1840,6 +2194,8 @@ function disposeScene() {
   renderer = null
   labelRenderer = null
 }
+
+defineExpose({ refresh: loadTopology })
 </script>
 
 <style scoped>
@@ -1897,6 +2253,7 @@ function disposeScene() {
   justify-content: flex-end;
   gap: 8px;
   min-width: 0;
+  flex-wrap: wrap;
 }
 
 .room3d-room-select {
@@ -1944,7 +2301,7 @@ function disposeScene() {
 
 .room3d-body {
   display: grid;
-  grid-template-columns: 210px minmax(480px, 1fr) 330px;
+  grid-template-columns: 300px minmax(480px, 1fr) 340px;
   min-height: 0;
   overflow: hidden;
 }
@@ -1958,6 +2315,119 @@ function disposeScene() {
 
 .room3d-room-panel {
   border-right: 1px solid var(--el-border-color-light);
+}
+
+.room3d-inventory {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.room3d-inventory-filters {
+  display: grid;
+  gap: 8px;
+  padding: 4px 14px 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.room3d-inventory-filters :deep(.el-select) {
+  width: 100%;
+}
+
+.room3d-inventory-filter-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.room3d-selection-bar,
+.room3d-batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 14px;
+}
+
+.room3d-selection-bar {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.room3d-batch-bar {
+  border-top: 1px solid var(--el-border-color-light);
+  background: var(--el-fill-color-extra-light);
+}
+
+.room3d-inventory-scroll {
+  min-height: 0;
+}
+
+.room3d-device-list {
+  padding: 6px 8px 12px;
+}
+
+.room3d-device-item {
+  display: grid;
+  grid-template-columns: 18px 6px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+  min-height: 82px;
+  padding: 9px 7px;
+  border: 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+  color: var(--el-text-color-primary);
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.room3d-device-item:hover,
+.room3d-device-item.is-active {
+  background: var(--el-fill-color-light);
+}
+
+.room3d-device-item.is-active {
+  box-shadow: inset 3px 0 0 var(--el-color-primary);
+}
+
+.room3d-device-item > i {
+  width: 6px;
+  height: 42px;
+  margin-top: 2px;
+  border-radius: 3px;
+}
+
+.room3d-device-item__body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.room3d-device-item__title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.room3d-device-item__body strong,
+.room3d-device-item__body small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room3d-device-item__body small {
+  color: var(--el-text-color-secondary);
+  font-size: 11px;
+}
+
+.room3d-device-item__body small.is-unplaced {
+  color: var(--el-color-warning-dark-2);
 }
 
 .room3d-inspector {
@@ -1985,46 +2455,6 @@ function disposeScene() {
   font-size: 12px;
 }
 
-.room3d-panel-title--sub {
-  padding: 14px 0 8px;
-}
-
-.room3d-room-menu {
-  border-right: 0;
-}
-
-.room3d-room-menu :deep(.el-menu-item) {
-  height: 58px;
-  padding: 0 14px !important;
-  line-height: 1.35;
-}
-
-.room3d-room-menu__content {
-  display: grid;
-  gap: 4px;
-  width: 100%;
-  min-width: 0;
-}
-
-.room3d-room-menu__content strong,
-.room3d-room-menu__content span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.room3d-room-menu__content span {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-}
-
-.room3d-unplaced {
-  margin: 10px 14px 0;
-  padding-top: 4px;
-  border-top: 1px solid var(--el-border-color-lighter);
-}
-
-.room3d-unplaced-item,
 .room3d-cabinet-device {
   display: flex;
   align-items: center;
@@ -2040,13 +2470,10 @@ function disposeScene() {
   cursor: pointer;
 }
 
-.room3d-unplaced-item:hover,
-.room3d-unplaced-item.is-active,
 .room3d-cabinet-device:hover {
   background: var(--el-fill-color-light);
 }
 
-.room3d-unplaced-item i,
 .room3d-cabinet-device i {
   flex: 0 0 7px;
   width: 7px;
@@ -2054,14 +2481,11 @@ function disposeScene() {
   border-radius: 3px;
 }
 
-.room3d-unplaced-item span,
 .room3d-cabinet-device span {
   display: grid;
   min-width: 0;
 }
 
-.room3d-unplaced-item strong,
-.room3d-unplaced-item small,
 .room3d-cabinet-device strong,
 .room3d-cabinet-device small {
   overflow: hidden;
@@ -2069,7 +2493,6 @@ function disposeScene() {
   white-space: nowrap;
 }
 
-.room3d-unplaced-item small,
 .room3d-cabinet-device small {
   margin-top: 3px;
   color: var(--el-text-color-secondary);
@@ -2290,6 +2713,31 @@ function disposeScene() {
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 7px;
   background: var(--el-border-color-lighter);
+}
+
+.room3d-platform-section {
+  margin-top: 18px;
+  padding-top: 2px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+
+.room3d-platform-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.room3d-platform-empty {
+  margin: 0 0 9px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.room3d-platform-bind {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 10px;
 }
 
 .room3d-port-summary div {
@@ -2534,7 +2982,7 @@ function disposeScene() {
   }
 
   .room3d-body {
-    grid-template-columns: 176px minmax(420px, 1fr) 290px;
+    grid-template-columns: 260px minmax(420px, 1fr) 300px;
   }
 }
 
@@ -2565,38 +3013,33 @@ function disposeScene() {
   }
 
   .room3d-room-panel {
-    display: grid;
-    grid-template-columns: minmax(150px, 0.55fr) minmax(200px, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
-    height: 220px;
-    min-height: 220px;
+    height: 310px;
+    min-height: 310px;
     overflow: hidden;
     border-right: 0;
     border-bottom: 1px solid var(--el-border-color-light);
   }
 
-  .room3d-room-panel > .room3d-panel-title {
-    grid-column: 1;
-    grid-row: 1;
+  .room3d-inventory {
+    grid-template-columns: 180px minmax(260px, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr) auto;
   }
 
-  .room3d-room-panel > .room3d-room-menu,
-  .room3d-room-panel > .el-empty {
+  .room3d-inventory > .room3d-panel-title,
+  .room3d-inventory > .room3d-inventory-filters,
+  .room3d-inventory > .room3d-selection-bar,
+  .room3d-inventory > .room3d-batch-bar {
     grid-column: 1;
-    grid-row: 2;
-    min-height: 0;
-    overflow: auto;
   }
 
-  .room3d-unplaced {
+  .room3d-inventory > .room3d-inventory-scroll {
     grid-column: 2;
-    grid-row: 1 / span 2;
-    min-width: 0;
-    margin: 0;
-    padding: 0 12px;
-    overflow: hidden;
-    border-top: 0;
+    grid-row: 1 / span 4;
     border-left: 1px solid var(--el-border-color-lighter);
+  }
+
+  .room3d-inventory-filter-row {
+    grid-template-columns: 1fr;
   }
 
   .room3d-scene-panel {

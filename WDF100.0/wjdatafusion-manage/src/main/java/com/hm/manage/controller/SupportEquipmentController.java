@@ -6,7 +6,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import com.hm.common.annotation.Log;
 import com.hm.common.core.controller.BaseController;
@@ -14,6 +17,8 @@ import com.hm.common.core.domain.AjaxResult;
 import com.hm.common.enums.BusinessType;
 import com.hm.common.utils.poi.ExcelUtil;
 import com.hm.manage.domain.SupportEquipmentAsset;
+import com.hm.manage.domain.bo.SupportEquipmentBatchBo;
+import com.hm.manage.domain.bo.SupportEquipmentPlatformBindingBo;
 import com.hm.manage.service.ISupportChangeLogService;
 import com.hm.manage.service.ISupportEquipmentService;
 
@@ -44,5 +49,29 @@ public class SupportEquipmentController extends BaseController
         List<SupportEquipmentAsset> list = equipmentService.selectEquipmentAssetList(query);
         ExcelUtil<SupportEquipmentAsset> util = new ExcelUtil<>(SupportEquipmentAsset.class);
         util.exportExcel(response, list, "设备资产清单");
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:equipment:remove')")
+    @Log(title = "设备统一管理", businessType = BusinessType.DELETE)
+    @DeleteMapping("/batch")
+    public AjaxResult remove(@RequestBody SupportEquipmentBatchBo command)
+    {
+        return toAjax(equipmentService.deleteEquipmentAssets(command));
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:equipment:edit')")
+    @Log(title = "设备统一管理", businessType = BusinessType.UPDATE)
+    @PutMapping("/platform/bind")
+    public AjaxResult bindPlatform(@RequestBody SupportEquipmentPlatformBindingBo command)
+    {
+        return toAjax(equipmentService.bindPlatform(command));
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:equipment:edit')")
+    @Log(title = "设备统一管理", businessType = BusinessType.UPDATE)
+    @PutMapping("/platform/unbind")
+    public AjaxResult unbindPlatform(@RequestBody SupportEquipmentPlatformBindingBo command)
+    {
+        return toAjax(equipmentService.unbindPlatform(command));
     }
 }

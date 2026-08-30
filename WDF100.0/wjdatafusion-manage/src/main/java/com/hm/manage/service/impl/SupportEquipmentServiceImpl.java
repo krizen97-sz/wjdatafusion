@@ -1,24 +1,34 @@
 package com.hm.manage.service.impl;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import com.hm.common.exception.ServiceException;
 import com.hm.common.utils.StringUtils;
 import com.hm.manage.domain.SupportEquipmentAsset;
 import com.hm.manage.domain.SupportHardwareAsset;
 import com.hm.manage.domain.SupportPlatform;
 import com.hm.manage.domain.SupportServer;
+import com.hm.manage.domain.bo.SupportEquipmentBatchBo;
+import com.hm.manage.domain.bo.SupportEquipmentDeviceRefBo;
+import com.hm.manage.domain.bo.SupportEquipmentPlatformBindingBo;
+import com.hm.manage.domain.vo.SupportEquipmentPlatformBindingVo;
+import com.hm.manage.mapper.SupportEquipmentBindingMapper;
 import com.hm.manage.mapper.SupportHardwareAssetMapper;
-import com.hm.manage.mapper.SupportPlatformMapper;
 import com.hm.manage.mapper.SupportServerMapper;
 import com.hm.manage.service.ISupportEquipmentService;
+import com.hm.manage.service.ISupportHardwareAssetService;
+import com.hm.manage.service.ISupportPlatformService;
+import com.hm.manage.service.ISupportServerService;
 
 @Service
 public class SupportEquipmentServiceImpl implements ISupportEquipmentService
@@ -37,7 +47,16 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
     private SupportHardwareAssetMapper hardwareAssetMapper;
 
     @Autowired
-    private SupportPlatformMapper platformMapper;
+    private SupportEquipmentBindingMapper equipmentBindingMapper;
+
+    @Autowired
+    private ISupportServerService serverService;
+
+    @Autowired
+    private ISupportHardwareAssetService hardwareAssetService;
+
+    @Autowired
+    private ISupportPlatformService platformService;
 
     @Override
     public List<SupportEquipmentAsset> selectEquipmentAssetList(SupportEquipmentAsset query)
@@ -47,50 +66,110 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
         {
             return new ArrayList<>();
         }
-        List<SupportPlatform> platforms = platformMapper.selectPlatformsBySiteId(safeQuery.getSiteId());
-        Map<Long, SupportPlatform> platformMap = platforms.stream()
-            .collect(Collectors.toMap(SupportPlatform::getPlatformId, item -> item, (a, b) -> a));
-        Map<Long, List<SupportPlatform>> serverPlatformMap = buildServerPlatformMap(platforms);
+        Map<Long, List<SupportEquipmentPlatformBindingVo>> serverBindings = groupBindings(
+            equipmentBindingMapper.selectServerBindingsBySiteId(safeQuery.getSiteId()));
+        Map<Long, List<SupportEquipmentPlatformBindingVo>> hardwareBindings = groupBindings(
+            equipmentBindingMapper.selectHardwareBindingsBySiteId(safeQuery.getSiteId()));
 
         List<SupportEquipmentAsset> rows = new ArrayList<>();
-        rows.addAll(buildServerRows(safeQuery, serverPlatformMap, platformMap));
-        rows.addAll(buildHardwareRows(safeQuery));
+        rows.addAll(buildServerRows(safeQuery, serverBindings));
+        rows.addAll(buildHardwareRows(safeQuery, hardwareBindings));
         return rows.stream()
             .filter(row -> matchQuery(row, safeQuery))
             .collect(Collectors.toList());
     }
 
-    private Map<Long, List<SupportPlatform>> buildServerPlatformMap(List<SupportPlatform> platforms)
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int deleteEquipmentAssets(SupportEquipmentBatchBo command)
     {
-        Map<Long, List<SupportPlatform>> result = new HashMap<>();
-        for (SupportPlatform platform : platforms)
+        if (command == null || command.getSiteId() == null)
         {
-            if (!"SUB".equalsIgnoreCase(platform.getPlatformLevel()))
+            throw new ServiceException("现场ID不能为空");
+        }
+        if (command.getDevices() == null || command.getDevices().isEmpty())
+        {
+            throw new ServiceException("请选择需要删除的设备");
+        }
+        if (command.getDevices().size() > 500)
+        {
+            throw new ServiceException("单次最多删除500台设备");
+        }
+
+        Map<String, SupportEquipmentDeviceRefBo> uniqueRefs = new LinkedHashMap<>();
+        for (SupportEquipmentDeviceRefBo ref : command.getDevices())
+        {
+            if (ref == null || ref.getSourceId() == null)
             {
-                continue;
+                throw new ServiceException("设备来源和设备ID不能为空");
             }
-            List<SupportServer> servers = serverMapper.selectServersByPlatformId(platform.getPlatformId());
-            for (SupportServer server : servers)
+            String sourceType = normalizeSourceType(ref.getSourceType());
+            ref.setSourceType(sourceType);
+            uniqueRefs.put(sourceType + ":" + ref.getSourceId(), ref);
+        }
+
+        List<Long> serverIds = new ArrayList<>();
+        List<Long> hardwareIds = new ArrayList<>();
+        for (SupportEquipmentDeviceRefBo ref : uniqueRefs.values())
+        {
+            if (SOURCE_SERVER.equals(ref.getSourceType()))
             {
-                result.computeIfAbsent(server.getServerId(), key -> new ArrayList<>()).add(platform);
+                SupportServer server = serverService.selectSupportServerByServerId(ref.getSourceId());
+                requireSameSite(command.getSiteId(), server == null ? null : server.getSiteId());
+                serverIds.add(ref.getSourceId());
+            }
+            else
+            {
+                SupportHardwareAsset asset = hardwareAssetService.selectSupportHardwareAssetByAssetId(ref.getSourceId());
+                requireSameSite(command.getSiteId(), asset == null ? null : asset.getSiteId());
+                hardwareIds.add(ref.getSourceId());
             }
         }
-        return result;
+
+        int rows = 0;
+        if (!serverIds.isEmpty())
+        {
+            rows += serverService.deleteSupportServerByServerIds(serverIds.toArray(new Long[0]));
+        }
+        if (!hardwareIds.isEmpty())
+        {
+            rows += hardwareAssetService.deleteSupportHardwareAssetByAssetIds(hardwareIds.toArray(new Long[0]));
+        }
+        return rows;
     }
 
-    private List<SupportEquipmentAsset> buildServerRows(SupportEquipmentAsset query, Map<Long, List<SupportPlatform>> serverPlatformMap, Map<Long, SupportPlatform> platformMap)
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int bindPlatform(SupportEquipmentPlatformBindingBo command)
+    {
+        validateBindingCommand(command);
+        if (SOURCE_SERVER.equals(command.getSourceType()))
+        {
+            return platformService.bindServer(command.getPlatformId(), command.getSourceId());
+        }
+        return hardwareAssetService.bindPlatform(command.getSourceId(), command.getPlatformId());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int unbindPlatform(SupportEquipmentPlatformBindingBo command)
+    {
+        validateBindingCommand(command);
+        if (SOURCE_SERVER.equals(command.getSourceType()))
+        {
+            return platformService.unbindServer(command.getPlatformId(), command.getSourceId());
+        }
+        return hardwareAssetService.unbindPlatform(command.getSourceId(), command.getPlatformId());
+    }
+
+    private List<SupportEquipmentAsset> buildServerRows(SupportEquipmentAsset query,
+        Map<Long, List<SupportEquipmentPlatformBindingVo>> bindingMap)
     {
         SupportServer serverQuery = new SupportServer();
         serverQuery.setSiteId(query.getSiteId());
-        List<SupportServer> servers = serverMapper.selectSupportServerList(serverQuery);
-        Map<Long, SupportEquipmentAsset> rowMap = new LinkedHashMap<>();
-        for (SupportServer server : servers)
+        List<SupportEquipmentAsset> rows = new ArrayList<>();
+        for (SupportServer server : serverMapper.selectSupportServerList(serverQuery))
         {
-            List<SupportPlatform> relatedPlatforms = serverPlatformMap.getOrDefault(server.getServerId(), new ArrayList<>());
-            if (!matchPlatformScope(query, relatedPlatforms))
-            {
-                continue;
-            }
             SupportEquipmentAsset row = new SupportEquipmentAsset();
             row.setSourceType(SOURCE_SERVER);
             row.setSourceId(server.getServerId());
@@ -100,65 +179,33 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
             row.setAssetName(StringUtils.defaultIfEmpty(server.getServerName(), server.getServerAddress()));
             row.setIpAddress(server.getServerAddress());
             row.setLoginUsername(server.getOsUsername());
+            row.setEquipmentRoom(server.getEquipmentRoom());
+            row.setCabinetNo(server.getCabinetNo());
+            row.setRackUStart(server.getRackUStart());
+            row.setRackUEnd(server.getRackUEnd());
+            row.setInstallLocation(formatInstallLocation(server.getEquipmentRoom(), server.getCabinetNo(),
+                server.getRackUStart(), server.getRackUEnd(), null));
+            row.setCredentialCapable(Boolean.TRUE);
             row.setStatus(server.getStatus());
-            fillServerBinding(row, relatedPlatforms, platformMap);
-            rowMap.put(server.getServerId(), row);
+            fillBinding(row, bindingMap.get(server.getServerId()), SCOPE_UNBOUND);
+            rows.add(row);
         }
-        return new ArrayList<>(rowMap.values());
+        return rows;
     }
 
-    private void fillServerBinding(SupportEquipmentAsset row, List<SupportPlatform> relatedPlatforms, Map<Long, SupportPlatform> platformMap)
-    {
-        if (relatedPlatforms == null || relatedPlatforms.isEmpty())
-        {
-            row.setBindingScope(SCOPE_UNBOUND);
-            row.setBindingLabel("未关联子平台");
-            return;
-        }
-        SupportPlatform firstSub = relatedPlatforms.get(0);
-        SupportPlatform main = platformMap.get(firstSub.getParentPlatformId());
-        row.setPlatformId(firstSub.getPlatformId());
-        row.setPlatformName(firstSub.getPlatformName());
-        row.setMainPlatformId(main == null ? firstSub.getParentPlatformId() : main.getPlatformId());
-        row.setMainPlatformName(main == null ? null : main.getPlatformName());
-        row.setNetworkEnv(main == null ? null : main.getNetworkEnv());
-        row.setBindingScope(SCOPE_PLATFORM);
-        if (relatedPlatforms.size() == 1)
-        {
-            row.setBindingLabel("子平台 · " + firstSub.getPlatformName());
-        }
-        else
-        {
-            row.setBindingLabel("关联 " + relatedPlatforms.size() + " 个子平台");
-        }
-    }
-
-    private boolean matchPlatformScope(SupportEquipmentAsset query, List<SupportPlatform> relatedPlatforms)
-    {
-        if (query.getPlatformId() == null && query.getMainPlatformId() == null)
-        {
-            return true;
-        }
-        if (relatedPlatforms == null || relatedPlatforms.isEmpty())
-        {
-            return false;
-        }
-        if (query.getPlatformId() != null)
-        {
-            return relatedPlatforms.stream().anyMatch(platform ->
-                Objects.equals(platform.getPlatformId(), query.getPlatformId()) ||
-                Objects.equals(platform.getParentPlatformId(), query.getPlatformId()));
-        }
-        return relatedPlatforms.stream().anyMatch(platform -> Objects.equals(platform.getParentPlatformId(), query.getMainPlatformId()));
-    }
-
-    private List<SupportEquipmentAsset> buildHardwareRows(SupportEquipmentAsset query)
+    private List<SupportEquipmentAsset> buildHardwareRows(SupportEquipmentAsset query,
+        Map<Long, List<SupportEquipmentPlatformBindingVo>> bindingMap)
     {
         SupportHardwareAsset assetQuery = new SupportHardwareAsset();
         assetQuery.setSiteId(query.getSiteId());
-        List<SupportHardwareAsset> assets = hardwareAssetMapper.selectSupportHardwareAssetList(assetQuery);
+        Map<Long, SupportHardwareAsset> assets = new LinkedHashMap<>();
+        for (SupportHardwareAsset asset : hardwareAssetMapper.selectSupportHardwareAssetList(assetQuery))
+        {
+            assets.putIfAbsent(asset.getAssetId(), asset);
+        }
+
         List<SupportEquipmentAsset> rows = new ArrayList<>();
-        for (SupportHardwareAsset asset : assets)
+        for (SupportHardwareAsset asset : assets.values())
         {
             SupportEquipmentAsset row = new SupportEquipmentAsset();
             row.setSourceType(SOURCE_HARDWARE);
@@ -172,18 +219,86 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
             row.setManageIp(asset.getManageIp());
             row.setManufacturer(asset.getManufacturer());
             row.setAssetModel(asset.getAssetModel());
-            row.setInstallLocation(asset.getInstallLocation());
+            row.setEquipmentRoom(asset.getEquipmentRoom());
+            row.setCabinetNo(asset.getCabinetNo());
+            row.setRackUStart(asset.getRackUStart());
+            row.setRackUEnd(asset.getRackUEnd());
+            row.setInstallLocation(formatInstallLocation(asset.getEquipmentRoom(), asset.getCabinetNo(),
+                asset.getRackUStart(), asset.getRackUEnd(), asset.getInstallLocation()));
             row.setLoginUsername(asset.getLoginUsername());
+            row.setPortCount(asset.getPortCount());
+            row.setUplinkDevice(asset.getUplinkDevice());
+            row.setCredentialCapable(Boolean.FALSE);
             row.setStatus(asset.getStatus());
-            row.setPlatformId(asset.getPlatformId());
-            row.setPlatformName(asset.getPlatformName());
-            row.setMainPlatformId(asset.getMainPlatformId());
-            row.setMainPlatformName(asset.getMainPlatformName());
-            row.setBindingScope(asset.getPlatformId() == null ? SCOPE_PUBLIC : SCOPE_PLATFORM);
-            row.setBindingLabel(asset.getPlatformId() == null ? "现场公共资产" : resolvePlatformLevelLabel(asset.getPlatformLevel()) + " · " + asset.getPlatformName());
+            fillBinding(row, bindingMap.get(asset.getAssetId()), SCOPE_PUBLIC);
             rows.add(row);
         }
         return rows;
+    }
+
+    private void fillBinding(SupportEquipmentAsset row, List<SupportEquipmentPlatformBindingVo> sourceBindings,
+        String emptyScope)
+    {
+        List<SupportEquipmentPlatformBindingVo> bindings = sourceBindings == null
+            ? new ArrayList<>() : new ArrayList<>(sourceBindings);
+        row.setPlatformBindings(bindings);
+        row.setPlatformCount(bindings.size());
+        row.setPlatformIds(distinctLongs(bindings.stream().map(SupportEquipmentPlatformBindingVo::getPlatformId).collect(Collectors.toList())));
+        row.setMainPlatformIds(distinctLongs(bindings.stream().map(SupportEquipmentPlatformBindingVo::getMainPlatformId).collect(Collectors.toList())));
+        row.setPlatformNames(bindings.stream().map(SupportEquipmentPlatformBindingVo::getPlatformName)
+            .filter(StringUtils::isNotBlank).distinct().collect(Collectors.toList()));
+        if (bindings.isEmpty())
+        {
+            row.setBindingScope(emptyScope);
+            row.setBindingLabel(SCOPE_PUBLIC.equals(emptyScope) ? "现场公共设备" : "未归属平台");
+            return;
+        }
+
+        SupportEquipmentPlatformBindingVo first = bindings.get(0);
+        row.setPlatformId(first.getPlatformId());
+        row.setPlatformName(first.getPlatformName());
+        row.setPlatformLevel(first.getPlatformLevel());
+        row.setMainPlatformId(first.getMainPlatformId());
+        row.setMainPlatformName(first.getMainPlatformName());
+        if (StringUtils.isBlank(row.getNetworkEnv()))
+        {
+            row.setNetworkEnv(first.getNetworkEnv());
+        }
+        row.setBindingScope(SCOPE_PLATFORM);
+        row.setBindingLabel(bindings.size() == 1
+            ? resolvePlatformLevelLabel(first.getPlatformLevel()) + " · " + first.getPlatformName()
+            : "关联 " + bindings.size() + " 个平台");
+    }
+
+    private Map<Long, List<SupportEquipmentPlatformBindingVo>> groupBindings(List<SupportEquipmentPlatformBindingVo> bindings)
+    {
+        Map<Long, List<SupportEquipmentPlatformBindingVo>> result = new LinkedHashMap<>();
+        if (bindings == null)
+        {
+            return result;
+        }
+        for (SupportEquipmentPlatformBindingVo binding : bindings)
+        {
+            if (binding == null || binding.getSourceId() == null)
+            {
+                continue;
+            }
+            result.computeIfAbsent(binding.getSourceId(), key -> new ArrayList<>()).add(binding);
+        }
+        return result;
+    }
+
+    private List<Long> distinctLongs(List<Long> values)
+    {
+        Set<Long> unique = new LinkedHashSet<>();
+        for (Long value : values)
+        {
+            if (value != null)
+            {
+                unique.add(value);
+            }
+        }
+        return new ArrayList<>(unique);
     }
 
     private boolean matchQuery(SupportEquipmentAsset row, SupportEquipmentAsset query)
@@ -209,17 +324,17 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
             return false;
         }
         if (query.getPlatformId() != null &&
-            !Objects.equals(row.getPlatformId(), query.getPlatformId()) &&
-            !Objects.equals(row.getMainPlatformId(), query.getPlatformId()))
+            !row.getPlatformIds().contains(query.getPlatformId()) &&
+            !row.getMainPlatformIds().contains(query.getPlatformId()))
         {
             return false;
         }
         if (query.getMainPlatformId() != null)
         {
-            boolean platformMatched = Objects.equals(row.getMainPlatformId(), query.getMainPlatformId()) || Objects.equals(row.getPlatformId(), query.getMainPlatformId());
-            boolean publicSameNetwork = SCOPE_PUBLIC.equals(row.getBindingScope())
-                && StringUtils.isNotBlank(query.getNetworkEnv())
-                && query.getNetworkEnv().equals(row.getNetworkEnv());
+            boolean platformMatched = row.getMainPlatformIds().contains(query.getMainPlatformId()) ||
+                row.getPlatformIds().contains(query.getMainPlatformId());
+            boolean publicSameNetwork = SCOPE_PUBLIC.equals(row.getBindingScope()) &&
+                StringUtils.isNotBlank(query.getNetworkEnv()) && query.getNetworkEnv().equals(row.getNetworkEnv());
             if (!platformMatched && !publicSameNetwork)
             {
                 return false;
@@ -243,6 +358,62 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
             StringUtils.defaultString(row.getBindingLabel())
         ).toLowerCase(Locale.ROOT);
         return text.contains(keyword);
+    }
+
+    private void validateBindingCommand(SupportEquipmentPlatformBindingBo command)
+    {
+        if (command == null || command.getSiteId() == null || command.getSourceId() == null || command.getPlatformId() == null)
+        {
+            throw new ServiceException("现场、设备和平台不能为空");
+        }
+        String sourceType = normalizeSourceType(command.getSourceType());
+        command.setSourceType(sourceType);
+        SupportPlatform platform = platformService.selectSupportPlatformByPlatformId(command.getPlatformId());
+        requireSameSite(command.getSiteId(), platform == null ? null : platform.getSiteId());
+        if (SOURCE_SERVER.equals(sourceType))
+        {
+            SupportServer server = serverService.selectSupportServerByServerId(command.getSourceId());
+            requireSameSite(command.getSiteId(), server == null ? null : server.getSiteId());
+        }
+        else
+        {
+            SupportHardwareAsset asset = hardwareAssetService.selectSupportHardwareAssetByAssetId(command.getSourceId());
+            requireSameSite(command.getSiteId(), asset == null ? null : asset.getSiteId());
+        }
+    }
+
+    private void requireSameSite(Long expectedSiteId, Long actualSiteId)
+    {
+        if (actualSiteId == null)
+        {
+            throw new ServiceException("设备或平台不存在");
+        }
+        if (!Objects.equals(expectedSiteId, actualSiteId))
+        {
+            throw new ServiceException("仅允许管理当前现场下的设备和平台");
+        }
+    }
+
+    private String normalizeSourceType(String sourceType)
+    {
+        String normalized = StringUtils.trimToEmpty(sourceType).toUpperCase(Locale.ROOT);
+        if (!SOURCE_SERVER.equals(normalized) && !SOURCE_HARDWARE.equals(normalized))
+        {
+            throw new ServiceException("不支持的设备来源类型");
+        }
+        return normalized;
+    }
+
+    private String formatInstallLocation(String room, String cabinet, Integer startU, Integer endU, String fallback)
+    {
+        List<String> parts = new ArrayList<>();
+        if (StringUtils.isNotBlank(room)) parts.add(room);
+        if (StringUtils.isNotBlank(cabinet)) parts.add(cabinet);
+        if (startU != null && endU != null)
+        {
+            parts.add(Objects.equals(startU, endU) ? startU + "U" : startU + "-" + endU + "U");
+        }
+        return parts.isEmpty() ? fallback : String.join(" / ", parts);
     }
 
     private String resolveHardwareTypeLabel(String type)

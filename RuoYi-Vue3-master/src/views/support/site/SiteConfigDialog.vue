@@ -1585,11 +1585,19 @@
     >
       <EquipmentRoom3DWorkspace
         v-if="equipmentRoom3dOpen"
+        ref="equipmentRoom3dRef"
         :site-id="props.site.siteId"
         :site-name="props.site.siteName"
         :initial-device-key="equipmentRoom3dInitialDeviceKey"
+        :initial-platform-id="equipmentRoom3dInitialPlatformId"
         @close="closeEquipmentRoom3d"
         @edit-device="handleEquipmentRoom3dEditDevice"
+        @add-device="handleEquipmentRoom3dAddDevice"
+        @add-server="handleEquipmentRoom3dAddServer"
+        @batch-create="handleEquipmentRoom3dBatchCreate"
+        @manage-credentials="handleEquipmentRoom3dCredentials"
+        @view-password="handleEquipmentRoom3dPassword"
+        @export-devices="handleEquipmentRoom3dExport"
         @changed="handleEquipmentRoom3dChanged"
       />
     </el-dialog>
@@ -3150,6 +3158,8 @@ const hardwareAssetSelectedIds = ref([])
 const equipmentSelectedRows = ref([])
 const equipmentRoom3dOpen = ref(false)
 const equipmentRoom3dInitialDeviceKey = ref('')
+const equipmentRoom3dInitialPlatformId = ref(null)
+const equipmentRoom3dRef = ref(null)
 const hardwareAssetFilter = reactive({
   assetType: null,
   networkEnv: null,
@@ -6596,6 +6606,7 @@ function submitServerForm() {
       await loadServers()
       await loadPlatforms()
       rebuildTopologyTree()
+      await equipmentRoom3dRef.value?.refresh?.()
     })
   })
 }
@@ -6822,19 +6833,19 @@ function openHardwareAssetDialog(platform = selectedPlatform.value) {
   resetHardwareAssetFilter()
   hardwareAssetSelectedIds.value = []
   equipmentSelectedRows.value = []
-  equipmentWorkspaceMode.value = 'list'
-  hardwareAssetDialogOpen.value = true
-  loadHardwareAssets()
+  openEquipmentRoom3d('', platform?.platformId || null)
 }
 
-function openEquipmentRoom3d(deviceKey = '') {
+function openEquipmentRoom3d(deviceKey = '', platformId = hardwareAssetDialogPlatformId.value) {
   equipmentRoom3dInitialDeviceKey.value = typeof deviceKey === 'string' ? deviceKey : ''
+  equipmentRoom3dInitialPlatformId.value = platformId || null
   equipmentRoom3dOpen.value = true
 }
 
 function closeEquipmentRoom3d() {
   equipmentRoom3dOpen.value = false
   equipmentRoom3dInitialDeviceKey.value = ''
+  equipmentRoom3dInitialPlatformId.value = null
 }
 
 async function handleEquipmentRoom3dChanged() {
@@ -6867,6 +6878,57 @@ function handleEquipmentRoom3dEditDevice(device) {
     return
   }
   handleHardwareAssetEdit({ assetId: device.sourceId })
+}
+
+function syncEquipmentWorkspacePlatform(context = {}) {
+  const platformId = context?.platformId || equipmentRoom3dInitialPlatformId.value
+  hardwareAssetDialogPlatformId.value = platformId || null
+  if (!platformId) return null
+  const platform = platformList.value.find((item) => Number(item.platformId) === Number(platformId)) || null
+  if (platform) {
+    selectedPlatformId.value = platform.platformId
+    syncPlatformWindow(platform)
+  }
+  return platform
+}
+
+function handleEquipmentRoom3dAddDevice(context) {
+  syncEquipmentWorkspacePlatform(context)
+  handleHardwareAssetAdd()
+}
+
+function handleEquipmentRoom3dAddServer(context) {
+  syncEquipmentWorkspacePlatform(context)
+  handleServerAdd()
+}
+
+async function handleEquipmentRoom3dBatchCreate(context) {
+  const platform = syncEquipmentWorkspacePlatform(context) || selectedPlatform.value || platformList.value.find((item) => item.platformLevel === 'MAIN')
+  if (!platform) {
+    proxy.$modal.msgWarning('请先新增主平台，再进行批量录入')
+    return
+  }
+  await openServerManagerFromHardwareDialog(platform)
+}
+
+function handleEquipmentRoom3dCredentials(device) {
+  openServerCredentialDialog({
+    serverId: device.sourceId,
+    serverName: device.assetName,
+    serverAddress: device.ipAddress
+  })
+}
+
+function handleEquipmentRoom3dPassword(device) {
+  handleServerPlain({
+    serverId: device.sourceId,
+    serverName: device.assetName,
+    serverAddress: device.ipAddress
+  })
+}
+
+function handleEquipmentRoom3dExport(query = {}) {
+  proxy.download('/support/equipment/export', query, `设备资产清单_${props.site?.siteName || '现场'}_${Date.now()}.xlsx`)
 }
 
 function resetHardwareAssetFilter() {
@@ -7009,6 +7071,7 @@ function submitHardwareAssetForm() {
       await loadHardwareAssets()
       await loadChangeLogs()
       rebuildTopologyTree()
+      await equipmentRoom3dRef.value?.refresh?.()
     })
   })
 }
@@ -7098,8 +7161,8 @@ function handleHardwareAssetExport() {
   handleEquipmentExport()
 }
 
-async function openServerManagerFromHardwareDialog() {
-  const platform = hardwareAssetDialogPlatform.value || selectedPlatform.value
+async function openServerManagerFromHardwareDialog(preferredPlatform = null) {
+  const platform = preferredPlatform || hardwareAssetDialogPlatform.value || selectedPlatform.value
   if (!platform) {
     proxy.$modal.msgWarning('请选择主平台或子平台后再批量录入设备')
     return

@@ -14,6 +14,7 @@ import com.hm.common.exception.ServiceException;
 import com.hm.common.utils.DateUtils;
 import com.hm.common.utils.SecurityUtils;
 import com.hm.common.utils.StringUtils;
+import com.hm.manage.domain.SupportEquipmentAsset;
 import com.hm.manage.domain.SupportEquipmentCabinet;
 import com.hm.manage.domain.SupportEquipmentLink;
 import com.hm.manage.domain.SupportEquipmentRoom;
@@ -27,6 +28,7 @@ import com.hm.manage.mapper.SupportHardwareAssetMapper;
 import com.hm.manage.mapper.SupportServerMapper;
 import com.hm.manage.mapper.SupportSiteMapper;
 import com.hm.manage.service.ISupportChangeLogService;
+import com.hm.manage.service.ISupportEquipmentService;
 import com.hm.manage.service.ISupportEquipmentTopologyService;
 import com.hm.manage.util.SupportEquipmentLayoutUtils;
 
@@ -56,6 +58,9 @@ public class SupportEquipmentTopologyServiceImpl implements ISupportEquipmentTop
 
     @Autowired
     private ISupportChangeLogService changeLogService;
+
+    @Autowired
+    private ISupportEquipmentService equipmentService;
 
     @Override
     public Map<String, Object> selectTopology(Long siteId)
@@ -279,43 +284,25 @@ public class SupportEquipmentTopologyServiceImpl implements ISupportEquipmentTop
         }
 
         List<SupportEquipmentTopologyDeviceVo> devices = new ArrayList<>();
-        SupportServer serverQuery = new SupportServer();
-        serverQuery.setSiteId(siteId);
-        for (SupportServer server : serverMapper.selectSupportServerList(serverQuery))
+        SupportEquipmentAsset query = new SupportEquipmentAsset();
+        query.setSiteId(siteId);
+        for (SupportEquipmentAsset asset : equipmentService.selectEquipmentAssetList(query))
         {
             SupportEquipmentTopologyDeviceVo device = new SupportEquipmentTopologyDeviceVo();
-            device.setDeviceKey(deviceKey(SOURCE_SERVER, server.getServerId()));
-            device.setSourceType(SOURCE_SERVER);
-            device.setSourceId(server.getServerId());
-            device.setSiteId(siteId);
-            device.setAssetType(SOURCE_SERVER);
-            device.setAssetTypeLabel("服务器");
-            device.setAssetName(StringUtils.defaultIfEmpty(server.getServerName(), server.getServerAddress()));
-            device.setIpAddress(server.getServerAddress());
-            device.setEquipmentRoom(server.getEquipmentRoom());
-            device.setCabinetNo(server.getCabinetNo());
-            device.setRackUStart(server.getRackUStart());
-            device.setRackUEnd(server.getRackUEnd());
-            device.setStatus(server.getStatus());
-            resolvePlacement(device, roomMap, cabinetMap);
-            devices.add(device);
-        }
-
-        SupportHardwareAsset assetQuery = new SupportHardwareAsset();
-        assetQuery.setSiteId(siteId);
-        for (SupportHardwareAsset asset : hardwareAssetMapper.selectSupportHardwareAssetList(assetQuery))
-        {
-            SupportEquipmentTopologyDeviceVo device = new SupportEquipmentTopologyDeviceVo();
-            device.setDeviceKey(deviceKey(SOURCE_HARDWARE, asset.getAssetId()));
-            device.setSourceType(SOURCE_HARDWARE);
-            device.setSourceId(asset.getAssetId());
+            device.setDeviceKey(deviceKey(asset.getSourceType(), asset.getSourceId()));
+            device.setSourceType(asset.getSourceType());
+            device.setSourceId(asset.getSourceId());
             device.setSiteId(siteId);
             device.setAssetType(asset.getAssetType());
-            device.setAssetTypeLabel(assetTypeLabel(asset.getAssetType()));
+            device.setAssetTypeLabel(asset.getAssetTypeLabel());
             device.setAssetName(asset.getAssetName());
             device.setIpAddress(asset.getIpAddress());
             device.setManageIp(asset.getManageIp());
             device.setNetworkEnv(asset.getNetworkEnv());
+            device.setManufacturer(asset.getManufacturer());
+            device.setAssetModel(asset.getAssetModel());
+            device.setInstallLocation(asset.getInstallLocation());
+            device.setLoginUsername(asset.getLoginUsername());
             device.setEquipmentRoom(asset.getEquipmentRoom());
             device.setCabinetNo(asset.getCabinetNo());
             device.setRackUStart(asset.getRackUStart());
@@ -323,6 +310,19 @@ public class SupportEquipmentTopologyServiceImpl implements ISupportEquipmentTop
             device.setLegacyPortCount(asset.getPortCount());
             device.setLegacyUplinkDevice(asset.getUplinkDevice());
             device.setStatus(asset.getStatus());
+            device.setPlatformId(asset.getPlatformId());
+            device.setPlatformName(asset.getPlatformName());
+            device.setPlatformLevel(asset.getPlatformLevel());
+            device.setMainPlatformId(asset.getMainPlatformId());
+            device.setMainPlatformName(asset.getMainPlatformName());
+            device.setBindingScope(asset.getBindingScope());
+            device.setBindingLabel(asset.getBindingLabel());
+            device.setPlatformCount(asset.getPlatformCount());
+            device.setCredentialCapable(asset.getCredentialCapable());
+            device.setPlatformIds(asset.getPlatformIds());
+            device.setMainPlatformIds(asset.getMainPlatformIds());
+            device.setPlatformNames(asset.getPlatformNames());
+            device.setPlatformBindings(asset.getPlatformBindings());
             resolvePlacement(device, roomMap, cabinetMap);
             devices.add(device);
         }
@@ -493,15 +493,6 @@ public class SupportEquipmentTopologyServiceImpl implements ISupportEquipmentTop
         String source = StringUtils.defaultIfEmpty(link.getSourceName(), deviceKey(link.getSourceType(), link.getSourceId()));
         String target = StringUtils.defaultIfEmpty(link.getTargetName(), deviceKey(link.getTargetType(), link.getTargetId()));
         return source + " -> " + target + "（" + medium + " " + link.getPortCount() + "）";
-    }
-
-    private String assetTypeLabel(String assetType)
-    {
-        if ("DECODER".equalsIgnoreCase(assetType)) return "解码器";
-        if ("TERMINAL".equalsIgnoreCase(assetType)) return "终端";
-        if (ASSET_SWITCH.equalsIgnoreCase(assetType)) return "交换机";
-        if ("GATEWAY".equalsIgnoreCase(assetType)) return "网闸";
-        return StringUtils.defaultIfEmpty(assetType, "其他设备");
     }
 
     private String normalizeKey(String value)

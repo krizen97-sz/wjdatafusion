@@ -61,7 +61,7 @@ public class SupportEquipmentLocationController extends BaseController
     @Autowired
     private ISupportChangeLogService changeLogService;
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:query')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:query,support:equipment:query')")
     @GetMapping("/layout/{siteId}")
     public AjaxResult layout(@PathVariable Long siteId)
     {
@@ -72,14 +72,14 @@ public class SupportEquipmentLocationController extends BaseController
         return success(data);
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:query')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:query,support:equipment:query')")
     @GetMapping("/topology/{siteId}")
     public AjaxResult topology(@PathVariable Long siteId)
     {
         return success(topologyService.selectTopology(siteId));
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:export')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:export,support:equipment:export')")
     @Log(title = "机房设备布局", businessType = BusinessType.EXPORT)
     @PostMapping("/export")
     public void export(HttpServletResponse response, @RequestParam Long siteId) throws Exception
@@ -87,7 +87,7 @@ public class SupportEquipmentLocationController extends BaseController
         topologyWorkbookService.exportWorkbook(response, siteId);
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:add') and @ss.hasPermi('support:hardwareAsset:edit') and @ss.hasPermi('support:hardwareAsset:remove')")
+    @PreAuthorize("@ss.hasPermi('support:equipment:edit') or (@ss.hasPermi('support:hardwareAsset:add') and @ss.hasPermi('support:hardwareAsset:edit') and @ss.hasPermi('support:hardwareAsset:remove'))")
     @Log(title = "机房设备布局", businessType = BusinessType.IMPORT)
     @PostMapping("/importData")
     public AjaxResult importData(@RequestParam Long siteId, MultipartFile file) throws Exception
@@ -96,7 +96,7 @@ public class SupportEquipmentLocationController extends BaseController
         return AjaxResult.success("机房设备布局导入完成，共变更" + result.get("变更总数") + "项", result);
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:add') or @ss.hasPermi('support:hardwareAsset:edit')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:add,support:hardwareAsset:edit,support:equipment:add,support:equipment:edit')")
     @PostMapping("/room")
     public AjaxResult addRoom(@RequestBody SupportEquipmentRoom room)
     {
@@ -112,7 +112,7 @@ public class SupportEquipmentLocationController extends BaseController
         return toAjax(rows);
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:edit')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:edit,support:equipment:edit')")
     @PutMapping("/room")
     @Transactional(rollbackFor = Exception.class)
     public AjaxResult editRoom(@RequestBody SupportEquipmentRoom room)
@@ -145,7 +145,7 @@ public class SupportEquipmentLocationController extends BaseController
         return toAjax(rows);
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:remove')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:remove,support:equipment:remove')")
     @DeleteMapping("/room/{roomId}")
     @Transactional(rollbackFor = Exception.class)
     public AjaxResult removeRoom(@PathVariable Long roomId)
@@ -167,7 +167,7 @@ public class SupportEquipmentLocationController extends BaseController
         return toAjax(rows);
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:add') or @ss.hasPermi('support:hardwareAsset:edit')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:add,support:hardwareAsset:edit,support:equipment:add,support:equipment:edit')")
     @PostMapping("/cabinet")
     public AjaxResult addCabinet(@RequestBody SupportEquipmentCabinet cabinet)
     {
@@ -183,7 +183,7 @@ public class SupportEquipmentLocationController extends BaseController
         return toAjax(rows);
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:edit')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:edit,support:equipment:edit')")
     @PutMapping("/cabinet")
     @Transactional(rollbackFor = Exception.class)
     public AjaxResult editCabinet(@RequestBody SupportEquipmentCabinet cabinet)
@@ -220,14 +220,14 @@ public class SupportEquipmentLocationController extends BaseController
         return toAjax(rows);
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:edit')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:edit,support:equipment:edit')")
     @PutMapping("/cabinet/layout")
     public AjaxResult updateCabinetLayout(@RequestBody SupportEquipmentCabinet cabinet)
     {
         return toAjax(topologyService.updateCabinetLayout(cabinet));
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:edit')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:edit,support:equipment:edit')")
     @PutMapping("/device/placement")
     public AjaxResult updateDevicePlacement(@RequestBody SupportEquipmentPlacementBo placement)
     {
@@ -235,7 +235,7 @@ public class SupportEquipmentLocationController extends BaseController
         return rows > 0 ? success("设备安装位置已更新") : success("设备安装位置未发生变化");
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:remove')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:remove,support:equipment:remove')")
     @DeleteMapping("/cabinet/{cabinetId}")
     @Transactional(rollbackFor = Exception.class)
     public AjaxResult removeCabinet(@PathVariable Long cabinetId)
@@ -260,21 +260,21 @@ public class SupportEquipmentLocationController extends BaseController
         return toAjax(rows);
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:add') or @ss.hasPermi('support:hardwareAsset:edit')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:add,support:hardwareAsset:edit,support:equipment:add,support:equipment:edit')")
     @PostMapping("/link")
     public AjaxResult addLink(@RequestBody SupportEquipmentLink link)
     {
         return toAjax(topologyService.insertLink(link));
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:edit')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:edit,support:equipment:edit')")
     @PutMapping("/link")
     public AjaxResult editLink(@RequestBody SupportEquipmentLink link)
     {
         return toAjax(topologyService.updateLink(link));
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:remove')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:remove,support:equipment:remove')")
     @DeleteMapping("/link/{linkId}")
     public AjaxResult removeLink(@PathVariable Long linkId)
     {

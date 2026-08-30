@@ -33,7 +33,7 @@ public class SupportHardwareAssetController extends BaseController
     @Autowired
     private ISupportChangeLogService changeLogService;
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:query')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:query,support:equipment:query')")
     @GetMapping("/list")
     public TableDataInfo list(SupportHardwareAsset asset)
     {
@@ -43,7 +43,7 @@ public class SupportHardwareAssetController extends BaseController
         return getDataTable(list);
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:export')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:export,support:equipment:export')")
     @Log(title = "硬件资产管理", businessType = BusinessType.EXPORT)
     @PostMapping("/export")
     public void export(HttpServletResponse response, SupportHardwareAsset asset)
@@ -53,7 +53,7 @@ public class SupportHardwareAssetController extends BaseController
         util.exportExcel(response, list, "硬件资产数据");
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:query')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:query,support:equipment:query')")
     @GetMapping(value = "/{assetId}")
     public AjaxResult getInfo(@PathVariable("assetId") Long assetId)
     {
@@ -71,7 +71,7 @@ public class SupportHardwareAssetController extends BaseController
         return success().put("plain", hardwareAssetService.getHardwareAssetPasswordPlain(assetId));
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:add')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:add,support:equipment:add')")
     @Log(title = "硬件资产管理", businessType = BusinessType.INSERT)
     @PostMapping
     public AjaxResult add(@RequestBody SupportHardwareAsset asset)
@@ -79,7 +79,7 @@ public class SupportHardwareAssetController extends BaseController
         return toAjax(hardwareAssetService.insertSupportHardwareAsset(asset));
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:edit')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:edit,support:equipment:edit')")
     @Log(title = "硬件资产管理", businessType = BusinessType.UPDATE)
     @PutMapping
     public AjaxResult edit(@RequestBody SupportHardwareAsset asset)
@@ -87,7 +87,7 @@ public class SupportHardwareAssetController extends BaseController
         return toAjax(hardwareAssetService.updateSupportHardwareAsset(asset));
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:remove')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:remove,support:equipment:remove')")
     @Log(title = "硬件资产管理", businessType = BusinessType.DELETE)
     @DeleteMapping("/{assetIds}")
     public AjaxResult remove(@PathVariable Long[] assetIds)
@@ -95,14 +95,14 @@ public class SupportHardwareAssetController extends BaseController
         return toAjax(hardwareAssetService.deleteSupportHardwareAssetByAssetIds(assetIds));
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:edit')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:edit,support:equipment:edit')")
     @PostMapping("/bindPlatform")
     public AjaxResult bindPlatform(@RequestParam Long assetId, @RequestParam Long platformId)
     {
         return toAjax(hardwareAssetService.bindPlatform(assetId, platformId));
     }
 
-    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:edit')")
+    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:edit,support:equipment:edit')")
     @DeleteMapping("/unbindPlatform")
     public AjaxResult unbindPlatform(@RequestParam Long assetId, @RequestParam Long platformId)
     {

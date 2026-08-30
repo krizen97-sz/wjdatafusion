@@ -88,3 +88,15 @@ export function importEquipmentTopology(siteId, file) {
     }
   })
 }
+
+export function deleteEquipmentBatch(data) {
+  return request({ url: '/support/equipment/batch', method: 'delete', data })
+}
+
+export function bindEquipmentPlatform(data) {
+  return request({ url: '/support/equipment/platform/bind', method: 'put', data })
+}
+
+export function unbindEquipmentPlatform(data) {
+  return request({ url: '/support/equipment/platform/unbind', method: 'put', data })
+}

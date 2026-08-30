@@ -69,6 +69,27 @@ class SupportEquipmentTopologyMapperContractTest
         assertTrue(deleteDevice.contains("target_type = #{sourceType}"));
     }
 
+    @Test
+    void equipmentProjectionMustLoadAllPlatformBindingsInOneSiteScopedQuery() throws Exception
+    {
+        Document document = readMapper("mapper/support/SupportEquipmentBindingMapper.xml");
+        var xpath = XPathFactory.newInstance().newXPath();
+        String serverBindings = xpath.evaluate("/mapper/select[@id='selectServerBindingsBySiteId']", document);
+        String hardwareBindings = xpath.evaluate("/mapper/select[@id='selectHardwareBindingsBySiteId']", document);
+        String bindingColumns = xpath.evaluate("/mapper/sql[@id='selectPlatformBindingColumns']", document);
+        String serverSourceMapping = xpath.evaluate("/mapper/resultMap[@id='SupportEquipmentPlatformBindingResult']/result[@property='sourceId']/@column", document);
+        String hardwarePlatformMapping = xpath.evaluate("/mapper/resultMap[@id='SupportEquipmentPlatformBindingResult']/result[@property='platformId']/@column", document);
+
+        assertTrue(serverSourceMapping.contains("source_id"));
+        assertTrue(hardwarePlatformMapping.contains("platform_id"));
+        assertTrue(serverBindings.contains("rel.server_id as source_id"));
+        assertTrue(serverBindings.contains("where p.site_id = #{siteId}"));
+        assertTrue(bindingColumns.contains("main_platform_id"));
+        assertTrue(hardwareBindings.contains("rel.asset_id as source_id"));
+        assertTrue(hardwareBindings.contains("where p.site_id = #{siteId}"));
+        assertTrue(bindingColumns.contains("network_env"));
+    }
+
     private Document readMapper(String resource) throws Exception
     {
         try (InputStream input = getClass().getClassLoader().getResourceAsStream(resource))

@@ -463,13 +463,16 @@ VALUES
 (2297, '硬件资产删除', 2201, 12, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:hardwareAsset:remove', '#', 'admin', NOW(), '', NULL, ''),
 (2298, '硬件资产导出', 2201, 13, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:hardwareAsset:export', '#', 'admin', NOW(), '', NULL, ''),
 (2288, '设备清单查询', 2201, 14, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:equipment:query', '#', 'admin', NOW(), '', NULL, ''),
-(2289, '设备清单导出', 2201, 15, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:equipment:export', '#', 'admin', NOW(), '', NULL, '')
+(2289, '设备清单导出', 2201, 15, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:equipment:export', '#', 'admin', NOW(), '', NULL, ''),
+(2321, '设备统一新增', 2201, 16, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:equipment:add', '#', 'admin', NOW(), '', NULL, ''),
+(2322, '设备统一修改', 2201, 17, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:equipment:edit', '#', 'admin', NOW(), '', NULL, ''),
+(2323, '设备统一删除', 2201, 18, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:equipment:remove', '#', 'admin', NOW(), '', NULL, '')
 ON DUPLICATE KEY UPDATE perms=VALUES(perms), menu_name=VALUES(menu_name);
 
 INSERT INTO sys_role_menu(role_id, menu_id)
 SELECT r.role_id, m.menu_id
 FROM sys_role r
-INNER JOIN sys_menu m ON m.menu_id IN (2294, 2295, 2296, 2297, 2298, 2288, 2289)
+INNER JOIN sys_menu m ON m.menu_id IN (2294, 2295, 2296, 2297, 2298, 2288, 2289, 2321, 2322, 2323)
 WHERE r.role_key = 'datafusion'
   AND NOT EXISTS (
     SELECT 1 FROM sys_role_menu rm WHERE rm.role_id = r.role_id AND rm.menu_id = m.menu_id
