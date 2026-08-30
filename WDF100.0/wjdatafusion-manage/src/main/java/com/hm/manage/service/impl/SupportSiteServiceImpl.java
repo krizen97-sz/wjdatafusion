@@ -40,7 +40,12 @@ import com.hm.common.utils.SecurityUtils;
 import com.hm.common.utils.StringUtils;
 import com.hm.common.utils.file.FileUtils;
 import com.hm.manage.domain.SupportOrg;
+import com.hm.manage.domain.SupportEquipmentCabinet;
+import com.hm.manage.domain.SupportEquipmentLink;
+import com.hm.manage.domain.SupportEquipmentRoom;
+import com.hm.manage.domain.SupportHardwareAsset;
 import com.hm.manage.domain.SupportPlatform;
+import com.hm.manage.domain.SupportPlatformAssetRel;
 import com.hm.manage.domain.SupportPlatformServerRel;
 import com.hm.manage.domain.SupportServer;
 import com.hm.manage.domain.SupportSite;
@@ -55,6 +60,7 @@ import com.hm.manage.domain.vo.SupportSiteOverviewVo;
 import com.hm.manage.mapper.SupportContactMapper;
 import com.hm.manage.mapper.SupportChangeLogMapper;
 import com.hm.manage.mapper.SupportEquipmentLocationMapper;
+import com.hm.manage.mapper.SupportEquipmentTopologyMapper;
 import com.hm.manage.mapper.SupportHardwareAssetMapper;
 import com.hm.manage.mapper.SupportOrgMapper;
 import com.hm.manage.mapper.SupportPlatformAssetRelMapper;
@@ -69,6 +75,7 @@ import com.hm.manage.service.ISupportChangeLogService;
 import com.hm.manage.service.ISupportSiteService;
 import com.hm.manage.service.support.CredentialCryptoService;
 import com.hm.manage.util.SupportSiteCodeUtils;
+import com.hm.manage.util.SupportEquipmentLayoutUtils;
 
 @Service
 public class SupportSiteServiceImpl implements ISupportSiteService
@@ -82,6 +89,10 @@ public class SupportSiteServiceImpl implements ISupportSiteService
     private static final String SHEET_SUB_PLATFORM = "子平台";
     private static final String SHEET_ENDPOINT = "页面信息";
     private static final String SHEET_SERVER = "服务器";
+    private static final String SHEET_HARDWARE_ASSET = "硬件资产";
+    private static final String SHEET_EQUIPMENT_ROOM = "机房";
+    private static final String SHEET_EQUIPMENT_CABINET = "机柜";
+    private static final String SHEET_EQUIPMENT_LINK = "设备链路";
     private static final String SHEET_ORG = "组织";
     private static final String SHEET_CONTACT = "人员";
     private static final String SHEET_MESSAGE = "留言";
@@ -94,6 +105,10 @@ public class SupportSiteServiceImpl implements ISupportSiteService
     private static final String[] SUB_PLATFORM_HEADERS = {"源平台ID", "源父平台ID", "子平台名称", "网络环境", "状态", "备注"};
     private static final String[] ENDPOINT_HEADERS = {"源页面ID", "源子平台ID", "页面名称", "访问URL", "登录账号", "登录密码", "备注"};
     private static final String[] SERVER_HEADERS = {"源服务器ID", "服务器名称", "服务器IP", "SSH端口", "操作系统", "所属机房", "机柜编号", "起始U位", "结束U位", "系统账号", "系统密码", "状态", "备注"};
+    private static final String[] HARDWARE_ASSET_HEADERS = {"源资产ID", "源平台ID", "资产名称", "资产类型", "网络环境", "IP地址", "管理地址", "MAC地址", "厂商", "型号", "序列号", "安装位置", "所属机房", "机柜编号", "起始U位", "结束U位", "归属组织", "责任人", "登录账号", "登录密码", "状态", "通道数", "输出类型", "终端类型", "使用部门", "使用位置", "交换机层级", "端口数", "历史上联设备", "VLAN说明", "网闸模式", "数据流向", "带宽", "安全域说明", "备注"};
+    private static final String[] EQUIPMENT_ROOM_HEADERS = {"源机房ID", "机房名称", "机房编码", "机房宽度", "机房深度", "状态", "备注"};
+    private static final String[] EQUIPMENT_CABINET_HEADERS = {"源机柜ID", "源机房ID", "机柜编号", "机柜U数", "X坐标", "Z坐标", "朝向角度", "状态", "备注"};
+    private static final String[] EQUIPMENT_LINK_HEADERS = {"源链路ID", "源设备类型", "源设备ID", "目标设备类型", "目标设备ID", "连接介质", "端口数量", "设备端口", "交换机端口", "状态", "备注"};
     private static final String[] ORG_HEADERS = {"源组织ID", "组织类型", "组织名称", "组织简称", "状态", "备注"};
     private static final String[] CONTACT_HEADERS = {"源人员ID", "源组织ID", "联系人", "角色", "手机", "邮箱", "微信", "主联系人", "备注"};
     private static final String[] MESSAGE_HEADERS = {"源留言ID", "留言内容", "发布用户ID", "发布用户昵称", "状态", "创建时间", "备注"};
@@ -142,6 +157,9 @@ public class SupportSiteServiceImpl implements ISupportSiteService
 
     @Autowired
     private SupportEquipmentLocationMapper equipmentLocationMapper;
+
+    @Autowired
+    private SupportEquipmentTopologyMapper equipmentTopologyMapper;
 
     @Autowired
     private SupportPlatformContactRelMapper platformContactRelMapper;
@@ -221,6 +239,7 @@ public class SupportSiteServiceImpl implements ISupportSiteService
         if (rows > 0)
         {
             platformAssetRelMapper.deleteBySiteIds(siteIds);
+            equipmentTopologyMapper.deleteLinksBySiteIds(siteIds);
             hardwareAssetMapper.deleteSupportHardwareAssetBySiteIds(siteIds);
             equipmentLocationMapper.deleteCabinetsBySiteIds(siteIds);
             equipmentLocationMapper.deleteRoomsBySiteIds(siteIds);
@@ -433,6 +452,12 @@ public class SupportSiteServiceImpl implements ISupportSiteService
         SupportServer serverQuery = new SupportServer();
         serverQuery.setSiteId(site.getSiteId());
         List<SupportServer> servers = serverMapper.selectSupportServerList(serverQuery);
+        SupportHardwareAsset assetQuery = new SupportHardwareAsset();
+        assetQuery.setSiteId(site.getSiteId());
+        List<SupportHardwareAsset> hardwareAssets = hardwareAssetMapper.selectSupportHardwareAssetList(assetQuery);
+        List<SupportEquipmentRoom> equipmentRooms = equipmentLocationMapper.selectRoomsBySiteId(site.getSiteId());
+        List<SupportEquipmentCabinet> equipmentCabinets = equipmentLocationMapper.selectCabinetsBySiteId(site.getSiteId());
+        List<SupportEquipmentLink> equipmentLinks = equipmentTopologyMapper.selectLinksBySiteId(site.getSiteId());
 
         Map<Long, SupportContact> contactMap = new LinkedHashMap<>();
         Map<Long, SupportOrg> orgMap = new LinkedHashMap<>();
@@ -507,6 +532,34 @@ public class SupportSiteServiceImpl implements ISupportSiteService
                 server.getEquipmentRoom(), server.getCabinetNo(), server.getRackUStart(), server.getRackUEnd(),
                 server.getOsUsername(), safeDecrypt(server.getOsPasswordCipher()), server.getStatus(), server.getRemark()));
         }
+        List<String[]> hardwareAssetRows = new ArrayList<>();
+        for (SupportHardwareAsset asset : hardwareAssets)
+        {
+            hardwareAssetRows.add(row(asset.getAssetId(), asset.getPlatformId(), asset.getAssetName(), asset.getAssetType(), asset.getNetworkEnv(),
+                asset.getIpAddress(), asset.getManageIp(), asset.getMacAddress(), asset.getManufacturer(), asset.getAssetModel(), asset.getSerialNo(),
+                asset.getInstallLocation(), asset.getEquipmentRoom(), asset.getCabinetNo(), asset.getRackUStart(), asset.getRackUEnd(), asset.getOwnerOrg(),
+                asset.getOwnerContact(), asset.getLoginUsername(), safeDecrypt(asset.getLoginPasswordCipher()), asset.getStatus(), asset.getChannelCount(),
+                asset.getOutputType(), asset.getTerminalType(), asset.getDepartment(), asset.getUseLocation(), asset.getSwitchLevel(), asset.getPortCount(),
+                asset.getUplinkDevice(), asset.getVlanInfo(), asset.getGatewayMode(), asset.getGatewayDirection(), asset.getGatewayBandwidth(),
+                asset.getSecurityZone(), asset.getRemark()));
+        }
+        List<String[]> equipmentRoomRows = new ArrayList<>();
+        for (SupportEquipmentRoom room : equipmentRooms)
+        {
+            equipmentRoomRows.add(row(room.getRoomId(), room.getRoomName(), room.getRoomCode(), room.getRoomWidth(), room.getRoomDepth(), room.getStatus(), room.getRemark()));
+        }
+        List<String[]> equipmentCabinetRows = new ArrayList<>();
+        for (SupportEquipmentCabinet cabinet : equipmentCabinets)
+        {
+            equipmentCabinetRows.add(row(cabinet.getCabinetId(), cabinet.getRoomId(), cabinet.getCabinetNo(), cabinet.getUCapacity(),
+                cabinet.getPositionX(), cabinet.getPositionZ(), cabinet.getRotationY(), cabinet.getStatus(), cabinet.getRemark()));
+        }
+        List<String[]> equipmentLinkRows = new ArrayList<>();
+        for (SupportEquipmentLink link : equipmentLinks)
+        {
+            equipmentLinkRows.add(row(link.getLinkId(), link.getSourceType(), link.getSourceId(), link.getTargetType(), link.getTargetId(),
+                link.getMediumType(), link.getPortCount(), link.getSourcePort(), link.getTargetPort(), link.getStatus(), link.getRemark()));
+        }
         List<String[]> orgRows = new ArrayList<>();
         for (SupportOrg org : orgMap.values())
         {
@@ -529,7 +582,7 @@ public class SupportSiteServiceImpl implements ISupportSiteService
         instructionRows.add(row("现场名称", site.getSiteName()));
         instructionRows.add(row("现场编码", site.getSiteCode()));
         instructionRows.add(row("说明", "每个xlsx代表一个现场，导入时会新建现场并重新生成现场编码；源ID仅用于重建关系。"));
-        instructionRows.add(row("数据统计", "主平台" + mainPlatformRows.size() + "个，子平台" + subPlatformRows.size() + "个，页面" + endpointRows.size() + "个，服务器" + serverRows.size() + "台，组织" + orgRows.size() + "个，人员" + contactRows.size() + "位，留言" + messageRows.size() + "条"));
+        instructionRows.add(row("数据统计", "主平台" + mainPlatformRows.size() + "个，子平台" + subPlatformRows.size() + "个，页面" + endpointRows.size() + "个，服务器" + serverRows.size() + "台，硬件资产" + hardwareAssetRows.size() + "台，机房" + equipmentRoomRows.size() + "个，机柜" + equipmentCabinetRows.size() + "个，设备链路" + equipmentLinkRows.size() + "条，组织" + orgRows.size() + "个，人员" + contactRows.size() + "位，留言" + messageRows.size() + "条"));
 
         try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream())
         {
@@ -539,6 +592,10 @@ public class SupportSiteServiceImpl implements ISupportSiteService
             writeSheet(workbook, SHEET_SUB_PLATFORM, SUB_PLATFORM_HEADERS, subPlatformRows);
             writeSheet(workbook, SHEET_ENDPOINT, ENDPOINT_HEADERS, endpointRows);
             writeSheet(workbook, SHEET_SERVER, SERVER_HEADERS, serverRows);
+            writeSheet(workbook, SHEET_HARDWARE_ASSET, HARDWARE_ASSET_HEADERS, hardwareAssetRows);
+            writeSheet(workbook, SHEET_EQUIPMENT_ROOM, EQUIPMENT_ROOM_HEADERS, equipmentRoomRows);
+            writeSheet(workbook, SHEET_EQUIPMENT_CABINET, EQUIPMENT_CABINET_HEADERS, equipmentCabinetRows);
+            writeSheet(workbook, SHEET_EQUIPMENT_LINK, EQUIPMENT_LINK_HEADERS, equipmentLinkRows);
             writeSheet(workbook, SHEET_ORG, ORG_HEADERS, orgRows);
             writeSheet(workbook, SHEET_CONTACT, CONTACT_HEADERS, contactRows);
             writeSheet(workbook, SHEET_MESSAGE, MESSAGE_HEADERS, messageRows);
@@ -569,10 +626,14 @@ public class SupportSiteServiceImpl implements ISupportSiteService
 
             Map<Long, Long> orgIdMap = importOrgs(workbook, entry.name, username, now);
             Map<Long, Long> contactIdMap = importContacts(workbook, entry.name, orgIdMap, username, now);
+            Map<Long, Long> roomIdMap = importEquipmentRooms(workbook, entry.name, site.getSiteId(), username, now);
+            Map<Long, Long> cabinetIdMap = importEquipmentCabinets(workbook, entry.name, site.getSiteId(), roomIdMap, username, now);
             Map<Long, Long> serverIdMap = importServers(workbook, entry.name, site.getSiteId(), username, now);
+            Map<Long, Long> hardwareAssetIdMap = importHardwareAssets(workbook, entry.name, site.getSiteId(), platformIdMap, username, now);
             int endpointCount = importEndpoints(workbook, entry.name, platformIdMap, username, now);
             int contactRelCount = importPlatformContactRelations(workbook, entry.name, platformIdMap, contactIdMap, username, now);
             int serverRelCount = importPlatformServerRelations(workbook, entry.name, platformIdMap, serverIdMap, username, now);
+            int equipmentLinkCount = importEquipmentLinks(workbook, entry.name, site.getSiteId(), serverIdMap, hardwareAssetIdMap, username, now);
             int messageCount = importMessages(workbook, entry.name, site.getSiteId(), username, now);
 
             ImportedSiteResult result = new ImportedSiteResult();
@@ -583,6 +644,10 @@ public class SupportSiteServiceImpl implements ISupportSiteService
             result.subPlatformCount = subPlatformCount;
             result.endpointCount = endpointCount;
             result.serverCount = serverIdMap.size();
+            result.hardwareAssetCount = hardwareAssetIdMap.size();
+            result.roomCount = roomIdMap.size();
+            result.cabinetCount = cabinetIdMap.size();
+            result.equipmentLinkCount = equipmentLinkCount;
             result.orgCount = orgIdMap.size();
             result.contactCount = contactIdMap.size();
             result.contactRelCount = contactRelCount;
@@ -597,6 +662,10 @@ public class SupportSiteServiceImpl implements ISupportSiteService
             detail.put("子平台数量", subPlatformCount);
             detail.put("页面数量", endpointCount);
             detail.put("服务器数量", serverIdMap.size());
+            detail.put("硬件资产数量", hardwareAssetIdMap.size());
+            detail.put("机房数量", roomIdMap.size());
+            detail.put("机柜数量", cabinetIdMap.size());
+            detail.put("设备链路数量", equipmentLinkCount);
             detail.put("组织数量", orgIdMap.size());
             detail.put("人员数量", contactIdMap.size());
             detail.put("主平台人员关系数量", contactRelCount);
@@ -732,6 +801,193 @@ public class SupportSiteServiceImpl implements ISupportSiteService
         return contactIdMap;
     }
 
+    private Map<Long, Long> importEquipmentRooms(Workbook workbook, String fileName, Long siteId, String username, Date now)
+    {
+        Map<Long, Long> roomIdMap = new LinkedHashMap<>();
+        for (Map<String, String> row : readOptionalSheetRows(workbook, SHEET_EQUIPMENT_ROOM, fileName))
+        {
+            Long sourceId = requiredLong(row, "源机房ID", SHEET_EQUIPMENT_ROOM, fileName);
+            assertUniqueSourceId(roomIdMap, sourceId, SHEET_EQUIPMENT_ROOM, fileName);
+            SupportEquipmentRoom room = new SupportEquipmentRoom();
+            room.setSiteId(siteId);
+            room.setRoomName(requiredValue(row, "机房名称", SHEET_EQUIPMENT_ROOM, fileName));
+            room.setRoomCode(value(row, "机房编码"));
+            room.setRoomWidth(defaultRoomDimension(optionalDecimal(value(row, "机房宽度"), "机房宽度", SHEET_EQUIPMENT_ROOM, fileName), new BigDecimal("12.00"), "机房宽度", fileName));
+            room.setRoomDepth(defaultRoomDimension(optionalDecimal(value(row, "机房深度"), "机房深度", SHEET_EQUIPMENT_ROOM, fileName), new BigDecimal("8.00"), "机房深度", fileName));
+            room.setStatus(defaultStatus(value(row, "状态")));
+            room.setRemark(value(row, "备注"));
+            applyImportMeta(room, username, now);
+            equipmentLocationMapper.insertRoom(room);
+            roomIdMap.put(sourceId, room.getRoomId());
+        }
+        return roomIdMap;
+    }
+
+    private Map<Long, Long> importEquipmentCabinets(Workbook workbook, String fileName, Long siteId, Map<Long, Long> roomIdMap, String username, Date now)
+    {
+        Map<Long, Long> cabinetIdMap = new LinkedHashMap<>();
+        for (Map<String, String> row : readOptionalSheetRows(workbook, SHEET_EQUIPMENT_CABINET, fileName))
+        {
+            Long sourceId = requiredLong(row, "源机柜ID", SHEET_EQUIPMENT_CABINET, fileName);
+            Long sourceRoomId = requiredLong(row, "源机房ID", SHEET_EQUIPMENT_CABINET, fileName);
+            assertUniqueSourceId(cabinetIdMap, sourceId, SHEET_EQUIPMENT_CABINET, fileName);
+            Long roomId = roomIdMap.get(sourceRoomId);
+            if (roomId == null)
+            {
+                throw new ServiceException("文件" + fileName + "的机柜引用了不存在的源机房ID：" + sourceRoomId);
+            }
+            Integer uCapacity = optionalInteger(value(row, "机柜U数"), "机柜U数", SHEET_EQUIPMENT_CABINET, fileName);
+            if (uCapacity == null) uCapacity = 45;
+            if (uCapacity < 1 || uCapacity > 45)
+            {
+                throw new ServiceException("文件" + fileName + "的机柜U数必须在1到45之间");
+            }
+            SupportEquipmentCabinet cabinet = new SupportEquipmentCabinet();
+            cabinet.setSiteId(siteId);
+            cabinet.setRoomId(roomId);
+            cabinet.setCabinetNo(requiredValue(row, "机柜编号", SHEET_EQUIPMENT_CABINET, fileName));
+            cabinet.setUCapacity(uCapacity);
+            cabinet.setPositionX(optionalDecimal(value(row, "X坐标"), "X坐标", SHEET_EQUIPMENT_CABINET, fileName));
+            cabinet.setPositionZ(optionalDecimal(value(row, "Z坐标"), "Z坐标", SHEET_EQUIPMENT_CABINET, fileName));
+            cabinet.setRotationY(optionalDecimal(value(row, "朝向角度"), "朝向角度", SHEET_EQUIPMENT_CABINET, fileName));
+            if (cabinet.getRotationY() == null) cabinet.setRotationY(BigDecimal.ZERO);
+            validateImportedCabinetLayout(cabinet, fileName);
+            cabinet.setStatus(defaultStatus(value(row, "状态")));
+            cabinet.setRemark(value(row, "备注"));
+            applyImportMeta(cabinet, username, now);
+            equipmentLocationMapper.insertCabinet(cabinet);
+            cabinetIdMap.put(sourceId, cabinet.getCabinetId());
+        }
+        return cabinetIdMap;
+    }
+
+    private Map<Long, Long> importHardwareAssets(Workbook workbook, String fileName, Long siteId, Map<Long, Long> platformIdMap, String username, Date now)
+    {
+        Map<Long, Long> assetIdMap = new LinkedHashMap<>();
+        for (Map<String, String> row : readOptionalSheetRows(workbook, SHEET_HARDWARE_ASSET, fileName))
+        {
+            Long sourceId = requiredLong(row, "源资产ID", SHEET_HARDWARE_ASSET, fileName);
+            assertUniqueSourceId(assetIdMap, sourceId, SHEET_HARDWARE_ASSET, fileName);
+            SupportHardwareAsset asset = new SupportHardwareAsset();
+            asset.setSiteId(siteId);
+            asset.setAssetName(requiredValue(row, "资产名称", SHEET_HARDWARE_ASSET, fileName));
+            asset.setAssetType(requiredValue(row, "资产类型", SHEET_HARDWARE_ASSET, fileName));
+            asset.setNetworkEnv(requiredValue(row, "网络环境", SHEET_HARDWARE_ASSET, fileName));
+            asset.setIpAddress(requiredValue(row, "IP地址", SHEET_HARDWARE_ASSET, fileName));
+            asset.setManageIp(value(row, "管理地址"));
+            asset.setMacAddress(value(row, "MAC地址"));
+            asset.setManufacturer(value(row, "厂商"));
+            asset.setAssetModel(value(row, "型号"));
+            asset.setSerialNo(value(row, "序列号"));
+            asset.setInstallLocation(value(row, "安装位置"));
+            asset.setEquipmentRoom(value(row, "所属机房"));
+            asset.setCabinetNo(value(row, "机柜编号"));
+            asset.setRackUStart(optionalInteger(value(row, "起始U位"), "起始U位", SHEET_HARDWARE_ASSET, fileName));
+            asset.setRackUEnd(optionalInteger(value(row, "结束U位"), "结束U位", SHEET_HARDWARE_ASSET, fileName));
+            validateImportedRackRange(asset.getRackUStart(), asset.getRackUEnd(), SHEET_HARDWARE_ASSET, fileName);
+            asset.setOwnerOrg(value(row, "归属组织"));
+            asset.setOwnerContact(value(row, "责任人"));
+            asset.setLoginUsername(value(row, "登录账号"));
+            asset.setLoginPasswordCipher(cryptoService.encrypt(value(row, "登录密码")));
+            asset.setStatus(defaultStatus(value(row, "状态")));
+            asset.setChannelCount(optionalInteger(value(row, "通道数"), "通道数", SHEET_HARDWARE_ASSET, fileName));
+            asset.setOutputType(value(row, "输出类型"));
+            asset.setTerminalType(value(row, "终端类型"));
+            asset.setDepartment(value(row, "使用部门"));
+            asset.setUseLocation(value(row, "使用位置"));
+            asset.setSwitchLevel(value(row, "交换机层级"));
+            asset.setPortCount(optionalInteger(value(row, "端口数"), "端口数", SHEET_HARDWARE_ASSET, fileName));
+            asset.setUplinkDevice(value(row, "历史上联设备"));
+            asset.setVlanInfo(value(row, "VLAN说明"));
+            asset.setGatewayMode(value(row, "网闸模式"));
+            asset.setGatewayDirection(value(row, "数据流向"));
+            asset.setGatewayBandwidth(value(row, "带宽"));
+            asset.setSecurityZone(value(row, "安全域说明"));
+            asset.setRemark(value(row, "备注"));
+            applyImportMeta(asset, username, now);
+            hardwareAssetMapper.insertSupportHardwareAsset(asset);
+            assetIdMap.put(sourceId, asset.getAssetId());
+
+            Long sourcePlatformId = optionalLong(value(row, "源平台ID"), "源平台ID", SHEET_HARDWARE_ASSET, fileName);
+            if (sourcePlatformId != null)
+            {
+                Long platformId = platformIdMap.get(sourcePlatformId);
+                if (platformId == null)
+                {
+                    throw new ServiceException("文件" + fileName + "的硬件资产引用了不存在的源平台ID：" + sourcePlatformId);
+                }
+                SupportPlatformAssetRel rel = new SupportPlatformAssetRel();
+                rel.setPlatformId(platformId);
+                rel.setAssetId(asset.getAssetId());
+                rel.setCreateBy(username);
+                rel.setCreateTime(now);
+                platformAssetRelMapper.insertSupportPlatformAssetRel(rel);
+            }
+        }
+        return assetIdMap;
+    }
+
+    private int importEquipmentLinks(Workbook workbook, String fileName, Long siteId, Map<Long, Long> serverIdMap,
+        Map<Long, Long> assetIdMap, String username, Date now)
+    {
+        int count = 0;
+        Set<Long> sourceIds = new HashSet<>();
+        Set<String> relationKeys = new HashSet<>();
+        for (Map<String, String> row : readOptionalSheetRows(workbook, SHEET_EQUIPMENT_LINK, fileName))
+        {
+            Long sourceLinkId = requiredLong(row, "源链路ID", SHEET_EQUIPMENT_LINK, fileName);
+            if (!sourceIds.add(sourceLinkId))
+            {
+                throw new ServiceException("文件" + fileName + "的设备链路存在重复源链路ID：" + sourceLinkId);
+            }
+            String sourceType = normalizeImportedDeviceType(requiredValue(row, "源设备类型", SHEET_EQUIPMENT_LINK, fileName), fileName);
+            String targetType = normalizeImportedDeviceType(requiredValue(row, "目标设备类型", SHEET_EQUIPMENT_LINK, fileName), fileName);
+            Long sourceDeviceId = mapImportedDeviceId(sourceType, requiredLong(row, "源设备ID", SHEET_EQUIPMENT_LINK, fileName), serverIdMap, assetIdMap, fileName);
+            Long targetDeviceId = mapImportedDeviceId(targetType, requiredLong(row, "目标设备ID", SHEET_EQUIPMENT_LINK, fileName), serverIdMap, assetIdMap, fileName);
+            if (!"HARDWARE".equals(targetType))
+            {
+                throw new ServiceException("文件" + fileName + "的设备链路上联目标必须是交换机资产");
+            }
+            SupportHardwareAsset targetAsset = hardwareAssetMapper.selectSupportHardwareAssetByAssetId(targetDeviceId);
+            if (targetAsset == null || !"SWITCH".equalsIgnoreCase(targetAsset.getAssetType()))
+            {
+                throw new ServiceException("文件" + fileName + "的设备链路上联目标不是交换机");
+            }
+            if (sourceType.equals(targetType) && sourceDeviceId.equals(targetDeviceId))
+            {
+                throw new ServiceException("文件" + fileName + "的设备链路不能关联设备自身");
+            }
+            String mediumType = normalizeImportedMedium(requiredValue(row, "连接介质", SHEET_EQUIPMENT_LINK, fileName), fileName);
+            Integer portCount = optionalInteger(value(row, "端口数量"), "端口数量", SHEET_EQUIPMENT_LINK, fileName);
+            if (portCount == null) portCount = 1;
+            if (portCount < 1 || portCount > 256)
+            {
+                throw new ServiceException("文件" + fileName + "的链路端口数量必须在1到256之间");
+            }
+            String relationKey = sourceType + ":" + sourceDeviceId + ":" + targetType + ":" + targetDeviceId + ":" + mediumType + ":" + value(row, "设备端口") + ":" + value(row, "交换机端口");
+            if (!relationKeys.add(relationKey))
+            {
+                throw new ServiceException("文件" + fileName + "存在重复设备链路：" + relationKey);
+            }
+            SupportEquipmentLink link = new SupportEquipmentLink();
+            link.setSiteId(siteId);
+            link.setSourceType(sourceType);
+            link.setSourceId(sourceDeviceId);
+            link.setTargetType(targetType);
+            link.setTargetId(targetDeviceId);
+            link.setMediumType(mediumType);
+            link.setPortCount(portCount);
+            link.setSourcePort(value(row, "设备端口"));
+            link.setTargetPort(value(row, "交换机端口"));
+            link.setStatus(defaultStatus(value(row, "状态")));
+            link.setRemark(value(row, "备注"));
+            applyImportMeta(link, username, now);
+            equipmentTopologyMapper.insertLink(link);
+            count++;
+        }
+        return count;
+    }
+
     private Map<Long, Long> importServers(Workbook workbook, String fileName, Long siteId, String username, Date now)
     {
         Map<Long, Long> serverIdMap = new LinkedHashMap<>();
@@ -749,6 +1005,7 @@ public class SupportSiteServiceImpl implements ISupportSiteService
             server.setCabinetNo(value(row, "机柜编号"));
             server.setRackUStart(optionalInteger(value(row, "起始U位"), "起始U位", SHEET_SERVER, fileName));
             server.setRackUEnd(optionalInteger(value(row, "结束U位"), "结束U位", SHEET_SERVER, fileName));
+            validateImportedRackRange(server.getRackUStart(), server.getRackUEnd(), SHEET_SERVER, fileName);
             server.setOsUsername(value(row, "系统账号"));
             server.setOsPasswordCipher(cryptoService.encrypt(value(row, "系统密码")));
             server.setStatus(defaultStatus(value(row, "状态")));
@@ -1039,6 +1296,10 @@ public class SupportSiteServiceImpl implements ISupportSiteService
                 .append("（主平台").append(result.mainPlatformCount)
                 .append("，子平台").append(result.subPlatformCount)
                 .append("，服务器").append(result.serverCount)
+                .append("，硬件资产").append(result.hardwareAssetCount)
+                .append("，机房").append(result.roomCount)
+                .append("，机柜").append(result.cabinetCount)
+                .append("，设备链路").append(result.equipmentLinkCount)
                 .append("，人员").append(result.contactCount)
                 .append("，留言").append(result.messageCount)
                 .append("）");
@@ -1165,6 +1426,118 @@ public class SupportSiteServiceImpl implements ISupportSiteService
         }
     }
 
+    private Long optionalLong(String value, String column, String sheetName, String fileName)
+    {
+        if (StringUtils.isBlank(value))
+        {
+            return null;
+        }
+        try
+        {
+            return new BigDecimal(value).longValueExact();
+        }
+        catch (Exception e)
+        {
+            throw new ServiceException("文件" + fileName + "的工作表" + sheetName + "字段" + column + "必须是整数");
+        }
+    }
+
+    private BigDecimal optionalDecimal(String value, String column, String sheetName, String fileName)
+    {
+        if (StringUtils.isBlank(value))
+        {
+            return null;
+        }
+        try
+        {
+            return new BigDecimal(value);
+        }
+        catch (Exception e)
+        {
+            throw new ServiceException("文件" + fileName + "的工作表" + sheetName + "字段" + column + "必须是数字");
+        }
+    }
+
+    private BigDecimal defaultRoomDimension(BigDecimal value, BigDecimal defaultValue, String column, String fileName)
+    {
+        BigDecimal dimension = value == null ? defaultValue : value;
+        if (dimension.compareTo(new BigDecimal("2")) < 0 || dimension.compareTo(new BigDecimal("100")) > 0)
+        {
+            throw new ServiceException("文件" + fileName + "的" + column + "必须在2到100米之间");
+        }
+        return dimension;
+    }
+
+    private void validateImportedCabinetLayout(SupportEquipmentCabinet cabinet, String fileName)
+    {
+        if (cabinet.getPositionX() == null && cabinet.getPositionZ() == null)
+        {
+            return;
+        }
+        if (cabinet.getPositionX() == null || cabinet.getPositionZ() == null)
+        {
+            throw new ServiceException("文件" + fileName + "的机柜X坐标和Z坐标需要同时填写");
+        }
+        SupportEquipmentRoom room = equipmentLocationMapper.selectRoomByRoomId(cabinet.getRoomId());
+        try
+        {
+            SupportEquipmentLayoutUtils.normalizeAndValidate(cabinet, room);
+        }
+        catch (ServiceException e)
+        {
+            throw new ServiceException("文件" + fileName + "的机柜坐标超出所属机房边界");
+        }
+        SupportEquipmentCabinet collision = SupportEquipmentLayoutUtils.findCollision(cabinet, equipmentLocationMapper.selectCabinetsByRoomId(cabinet.getRoomId()), room);
+        if (collision != null)
+        {
+            throw new ServiceException("文件" + fileName + "的机柜" + cabinet.getCabinetNo() + "与" + collision.getCabinetNo() + "位置重叠");
+        }
+    }
+
+    private void validateImportedRackRange(Integer start, Integer end, String sheetName, String fileName)
+    {
+        if (start == null && end == null)
+        {
+            return;
+        }
+        if (start == null || end == null || start < 1 || end > 45 || start > end)
+        {
+            throw new ServiceException("文件" + fileName + "的工作表" + sheetName + "存在无效U位范围，必须同时填写1到45之间的起止U位");
+        }
+    }
+
+    private String normalizeImportedDeviceType(String value, String fileName)
+    {
+        String type = StringUtils.upperCase(StringUtils.trim(value));
+        if (!"SERVER".equals(type) && !"HARDWARE".equals(type))
+        {
+            throw new ServiceException("文件" + fileName + "的设备类型必须是SERVER或HARDWARE");
+        }
+        return type;
+    }
+
+    private String normalizeImportedMedium(String value, String fileName)
+    {
+        String medium = StringUtils.upperCase(StringUtils.trim(value));
+        if ("光口".equals(value)) medium = "OPTICAL";
+        if ("电口".equals(value)) medium = "ELECTRICAL";
+        if (!"OPTICAL".equals(medium) && !"ELECTRICAL".equals(medium))
+        {
+            throw new ServiceException("文件" + fileName + "的连接介质必须是OPTICAL/光口或ELECTRICAL/电口");
+        }
+        return medium;
+    }
+
+    private Long mapImportedDeviceId(String type, Long sourceId, Map<Long, Long> serverIdMap, Map<Long, Long> assetIdMap, String fileName)
+    {
+        Long mappedId = "SERVER".equals(type) ? serverIdMap.get(sourceId) : assetIdMap.get(sourceId);
+        if (mappedId == null)
+        {
+            throw new ServiceException("文件" + fileName + "的设备链路引用了不存在的" + type + "源ID：" + sourceId);
+        }
+        return mappedId;
+    }
+
     private void assertUniqueSourceId(Map<Long, Long> idMap, Long sourceId, String sheetName, String fileName)
     {
         if (idMap.containsKey(sourceId))
@@ -1270,6 +1643,10 @@ public class SupportSiteServiceImpl implements ISupportSiteService
         private int subPlatformCount;
         private int endpointCount;
         private int serverCount;
+        private int hardwareAssetCount;
+        private int roomCount;
+        private int cabinetCount;
+        private int equipmentLinkCount;
         private int orgCount;
         private int contactCount;
         private int contactRelCount;

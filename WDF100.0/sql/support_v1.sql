@@ -209,6 +209,8 @@ CREATE TABLE IF NOT EXISTS sup_equipment_room (
   site_id            BIGINT       NOT NULL COMMENT '现场ID',
   room_name          VARCHAR(120) NOT NULL COMMENT '机房名称',
   room_code          VARCHAR(80)  DEFAULT NULL COMMENT '机房编码',
+  room_width         DECIMAL(8,2) DEFAULT 12.00 COMMENT '机房宽度（米）',
+  room_depth         DECIMAL(8,2) DEFAULT 8.00 COMMENT '机房深度（米）',
   status             CHAR(1)      DEFAULT '0' COMMENT '状态（0正常 1停用）',
   create_by          VARCHAR(64)  DEFAULT '' COMMENT '创建者',
   create_time        DATETIME     DEFAULT NULL COMMENT '创建时间',
@@ -225,6 +227,9 @@ CREATE TABLE IF NOT EXISTS sup_equipment_cabinet (
   site_id            BIGINT       NOT NULL COMMENT '现场ID',
   cabinet_no         VARCHAR(80)  NOT NULL COMMENT '机柜编号',
   u_capacity         INT          DEFAULT 45 COMMENT '机柜U数',
+  position_x         DECIMAL(8,2) DEFAULT NULL COMMENT '机柜平面X坐标（米）',
+  position_z         DECIMAL(8,2) DEFAULT NULL COMMENT '机柜平面Z坐标（米）',
+  rotation_y         DECIMAL(6,1) DEFAULT 0.0 COMMENT '机柜Y轴朝向角度',
   status             CHAR(1)      DEFAULT '0' COMMENT '状态（0正常 1停用）',
   create_by          VARCHAR(64)  DEFAULT '' COMMENT '创建者',
   create_time        DATETIME     DEFAULT NULL COMMENT '创建时间',
@@ -236,6 +241,29 @@ CREATE TABLE IF NOT EXISTS sup_equipment_cabinet (
   KEY idx_sup_equipment_cabinet_site (site_id),
   KEY idx_sup_equipment_cabinet_room (room_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='现场设备机柜';
+
+CREATE TABLE IF NOT EXISTS sup_equipment_link (
+  link_id             BIGINT       NOT NULL AUTO_INCREMENT COMMENT '设备链路ID',
+  site_id             BIGINT       NOT NULL COMMENT '现场ID',
+  source_type         VARCHAR(16)  NOT NULL COMMENT '源设备类型（SERVER/HARDWARE）',
+  source_id           BIGINT       NOT NULL COMMENT '源设备ID',
+  target_type         VARCHAR(16)  NOT NULL DEFAULT 'HARDWARE' COMMENT '目标设备类型',
+  target_id           BIGINT       NOT NULL COMMENT '目标交换机资产ID',
+  medium_type         VARCHAR(16)  NOT NULL COMMENT '链路介质（OPTICAL/ELECTRICAL）',
+  port_count          INT          NOT NULL DEFAULT 1 COMMENT '占用端口数量',
+  source_port         VARCHAR(80)  DEFAULT NULL COMMENT '源端口说明',
+  target_port         VARCHAR(80)  DEFAULT NULL COMMENT '目标端口说明',
+  status              CHAR(1)      DEFAULT '0' COMMENT '状态（0正常 1停用）',
+  create_by           VARCHAR(64)  DEFAULT '' COMMENT '创建者',
+  create_time         DATETIME     DEFAULT NULL COMMENT '创建时间',
+  update_by           VARCHAR(64)  DEFAULT '' COMMENT '更新者',
+  update_time         DATETIME     DEFAULT NULL COMMENT '更新时间',
+  remark              VARCHAR(500) DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (link_id),
+  KEY idx_sup_equipment_link_site (site_id),
+  KEY idx_sup_equipment_link_source (source_type, source_id),
+  KEY idx_sup_equipment_link_target (target_type, target_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='现场设备物理上联关系';
 
 CREATE TABLE IF NOT EXISTS sup_platform_contact_rel (
   rel_id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '关系ID',

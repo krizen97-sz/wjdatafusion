@@ -1,5 +1,6 @@
 package com.hm.manage.domain;
 
+import java.math.BigDecimal;
 import com.hm.common.core.domain.BaseEntity;
 
 public class SupportEquipmentRoom extends BaseEntity
@@ -10,6 +11,8 @@ public class SupportEquipmentRoom extends BaseEntity
     private Long siteId;
     private String roomName;
     private String roomCode;
+    private BigDecimal roomWidth;
+    private BigDecimal roomDepth;
     private String status;
 
     public Long getRoomId()
@@ -50,6 +53,26 @@ public class SupportEquipmentRoom extends BaseEntity
     public void setRoomCode(String roomCode)
     {
         this.roomCode = roomCode;
+    }
+
+    public BigDecimal getRoomWidth()
+    {
+        return roomWidth;
+    }
+
+    public void setRoomWidth(BigDecimal roomWidth)
+    {
+        this.roomWidth = roomWidth;
+    }
+
+    public BigDecimal getRoomDepth()
+    {
+        return roomDepth;
+    }
+
+    public void setRoomDepth(BigDecimal roomDepth)
+    {
+        this.roomDepth = roomDepth;
     }
 
     public String getStatus()
