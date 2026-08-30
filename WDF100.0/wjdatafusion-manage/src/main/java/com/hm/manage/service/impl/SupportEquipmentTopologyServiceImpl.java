@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +19,7 @@ import com.hm.manage.domain.SupportEquipmentLink;
 import com.hm.manage.domain.SupportEquipmentRoom;
 import com.hm.manage.domain.SupportHardwareAsset;
 import com.hm.manage.domain.SupportServer;
+import com.hm.manage.domain.bo.SupportEquipmentPlacementBo;
 import com.hm.manage.domain.vo.SupportEquipmentTopologyDeviceVo;
 import com.hm.manage.mapper.SupportEquipmentLocationMapper;
 import com.hm.manage.mapper.SupportEquipmentTopologyMapper;
@@ -113,6 +115,89 @@ public class SupportEquipmentTopologyServiceImpl implements ISupportEquipmentTop
         {
             changeLogService.record(original.getSiteId(), "UPDATE", "EQUIPMENT_CABINET", original.getCabinetId(), original.getCabinetNo(),
                 "调整机柜 " + original.getCabinetNo() + " 的三维摆放位置", original, cabinet);
+        }
+        return rows;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int updateDevicePlacement(SupportEquipmentPlacementBo placement)
+    {
+        if (placement == null || placement.getSourceId() == null)
+        {
+            throw new ServiceException("设备来源和设备ID不能为空");
+        }
+        String sourceType = normalizeSourceType(placement.getSourceType());
+        DeviceRef device = requireDevice(sourceType, placement.getSourceId());
+        if (placement.getSiteId() != null && !placement.getSiteId().equals(device.siteId))
+        {
+            throw new ServiceException("不允许跨现场调整设备位置");
+        }
+
+        boolean clearPlacement = placement.getRoomId() == null && placement.getCabinetId() == null
+            && placement.getRackUStart() == null && placement.getRackUEnd() == null;
+        String roomName = null;
+        String cabinetNo = null;
+        Integer rackUStart = null;
+        Integer rackUEnd = null;
+        if (!clearPlacement)
+        {
+            if (placement.getRoomId() == null || placement.getCabinetId() == null
+                || placement.getRackUStart() == null || placement.getRackUEnd() == null)
+            {
+                throw new ServiceException("机房、机柜、起始U位和结束U位需要完整配置");
+            }
+            SupportEquipmentRoom room = locationMapper.selectRoomByRoomId(placement.getRoomId());
+            SupportEquipmentCabinet cabinet = locationMapper.selectCabinetByCabinetId(placement.getCabinetId());
+            if (room == null || cabinet == null)
+            {
+                throw new ServiceException("机房或机柜不存在");
+            }
+            if (!device.siteId.equals(room.getSiteId()) || !device.siteId.equals(cabinet.getSiteId())
+                || !room.getRoomId().equals(cabinet.getRoomId()))
+            {
+                throw new ServiceException("设备、机房和机柜必须属于同一现场");
+            }
+            rackUStart = placement.getRackUStart();
+            rackUEnd = placement.getRackUEnd();
+            int capacity = cabinet.getUCapacity() == null ? 45 : cabinet.getUCapacity();
+            if (rackUStart < 1 || rackUEnd < rackUStart || rackUEnd > capacity)
+            {
+                throw new ServiceException("U位范围必须在1到" + capacity + "之间，且起始U位不能大于结束U位");
+            }
+            roomName = room.getRoomName();
+            cabinetNo = cabinet.getCabinetNo();
+            Long excludeAssetId = SOURCE_HARDWARE.equals(sourceType) ? placement.getSourceId() : null;
+            Long excludeServerId = SOURCE_SERVER.equals(sourceType) ? placement.getSourceId() : null;
+            int conflicts = locationMapper.countHardwareRackConflicts(device.siteId, roomName, cabinetNo,
+                rackUStart, rackUEnd, excludeAssetId)
+                + locationMapper.countServerRackConflicts(device.siteId, roomName, cabinetNo,
+                    rackUStart, rackUEnd, excludeServerId);
+            if (conflicts > 0)
+            {
+                throw new ServiceException("所选U位已被其他设备占用，请重新选择");
+            }
+        }
+
+        if (Objects.equals(device.equipmentRoom, roomName) && Objects.equals(device.cabinetNo, cabinetNo)
+            && Objects.equals(device.rackUStart, rackUStart) && Objects.equals(device.rackUEnd, rackUEnd))
+        {
+            return 0;
+        }
+
+        String username = SecurityUtils.getUsername();
+        int rows = SOURCE_SERVER.equals(sourceType)
+            ? locationMapper.updateServerPlacement(placement.getSourceId(), roomName, cabinetNo, rackUStart, rackUEnd,
+                username, DateUtils.getNowDate())
+            : locationMapper.updateHardwarePlacement(placement.getSourceId(), roomName, cabinetNo, rackUStart, rackUEnd,
+                username, DateUtils.getNowDate());
+        if (rows > 0)
+        {
+            Map<String, Object> before = buildLocationDetail(device.equipmentRoom, device.cabinetNo, device.rackUStart, device.rackUEnd);
+            Map<String, Object> after = buildLocationDetail(roomName, cabinetNo, rackUStart, rackUEnd);
+            String action = clearPlacement ? "清空" : "调整";
+            changeLogService.record(device.siteId, "UPDATE", SOURCE_SERVER.equals(sourceType) ? "SERVER" : "HARDWARE_ASSET",
+                placement.getSourceId(), device.name, action + "设备安装位置：" + device.name, before, after);
         }
         return rows;
     }
@@ -362,14 +447,26 @@ public class SupportEquipmentTopologyServiceImpl implements ISupportEquipmentTop
             {
                 throw new ServiceException("源服务器不存在");
             }
-            return new DeviceRef(server.getSiteId(), SOURCE_SERVER, server.getServerName(), server.getServerAddress());
+            return new DeviceRef(server.getSiteId(), SOURCE_SERVER, server.getServerName(), server.getServerAddress(),
+                server.getEquipmentRoom(), server.getCabinetNo(), server.getRackUStart(), server.getRackUEnd());
         }
         SupportHardwareAsset asset = hardwareAssetMapper.selectSupportHardwareAssetByAssetId(sourceId);
         if (asset == null)
         {
             throw new ServiceException("硬件资产不存在");
         }
-        return new DeviceRef(asset.getSiteId(), asset.getAssetType(), asset.getAssetName(), asset.getIpAddress());
+        return new DeviceRef(asset.getSiteId(), asset.getAssetType(), asset.getAssetName(), asset.getIpAddress(),
+            asset.getEquipmentRoom(), asset.getCabinetNo(), asset.getRackUStart(), asset.getRackUEnd());
+    }
+
+    private Map<String, Object> buildLocationDetail(String roomName, String cabinetNo, Integer rackUStart, Integer rackUEnd)
+    {
+        Map<String, Object> detail = new LinkedHashMap<>();
+        detail.put("所属机房", roomName);
+        detail.put("机柜编号", cabinetNo);
+        detail.put("起始U位", rackUStart);
+        detail.put("结束U位", rackUEnd);
+        return detail;
     }
 
     private String normalizeSourceType(String sourceType)
@@ -423,13 +520,22 @@ public class SupportEquipmentTopologyServiceImpl implements ISupportEquipmentTop
         private final String assetType;
         private final String name;
         private final String ip;
+        private final String equipmentRoom;
+        private final String cabinetNo;
+        private final Integer rackUStart;
+        private final Integer rackUEnd;
 
-        private DeviceRef(Long siteId, String assetType, String name, String ip)
+        private DeviceRef(Long siteId, String assetType, String name, String ip, String equipmentRoom,
+            String cabinetNo, Integer rackUStart, Integer rackUEnd)
         {
             this.siteId = siteId;
             this.assetType = assetType;
             this.name = name;
             this.ip = ip;
+            this.equipmentRoom = equipmentRoom;
+            this.cabinetNo = cabinetNo;
+            this.rackUStart = rackUStart;
+            this.rackUEnd = rackUEnd;
         }
     }
 }

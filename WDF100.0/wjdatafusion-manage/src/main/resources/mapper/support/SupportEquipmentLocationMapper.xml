@@ -122,6 +122,28 @@
         where cabinet_id = #{cabinetId}
     </update>
 
+    <update id="updateHardwarePlacement">
+        update sup_hardware_asset
+        set equipment_room = #{equipmentRoom},
+            cabinet_no = #{cabinetNo},
+            rack_u_start = #{rackUStart},
+            rack_u_end = #{rackUEnd},
+            update_by = #{updateBy},
+            update_time = #{updateTime}
+        where asset_id = #{assetId}
+    </update>
+
+    <update id="updateServerPlacement">
+        update sup_server
+        set equipment_room = #{equipmentRoom},
+            cabinet_no = #{cabinetNo},
+            rack_u_start = #{rackUStart},
+            rack_u_end = #{rackUEnd},
+            update_by = #{updateBy},
+            update_time = #{updateTime}
+        where server_id = #{serverId}
+    </update>
+
     <delete id="deleteCabinetByCabinetId">
         delete from sup_equipment_cabinet where cabinet_id = #{cabinetId}
     </delete>

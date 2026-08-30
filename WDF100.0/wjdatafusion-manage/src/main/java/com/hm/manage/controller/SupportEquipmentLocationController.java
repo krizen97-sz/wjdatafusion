@@ -6,8 +6,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,20 +18,25 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import com.hm.common.annotation.Log;
 import com.hm.common.core.controller.BaseController;
 import com.hm.common.core.domain.AjaxResult;
 import com.hm.common.exception.ServiceException;
+import com.hm.common.enums.BusinessType;
 import com.hm.common.utils.DateUtils;
 import com.hm.common.utils.SecurityUtils;
 import com.hm.common.utils.StringUtils;
 import com.hm.manage.domain.SupportEquipmentCabinet;
 import com.hm.manage.domain.SupportEquipmentLink;
 import com.hm.manage.domain.SupportEquipmentRoom;
+import com.hm.manage.domain.bo.SupportEquipmentPlacementBo;
 import com.hm.manage.mapper.SupportEquipmentLocationMapper;
 import com.hm.manage.mapper.SupportSiteMapper;
 import com.hm.manage.service.ISupportChangeLogService;
 import com.hm.manage.service.ISupportEquipmentTopologyService;
+import com.hm.manage.service.ISupportEquipmentTopologyWorkbookService;
 import com.hm.manage.util.SupportEquipmentLayoutUtils;
 
 @RestController
@@ -47,6 +54,9 @@ public class SupportEquipmentLocationController extends BaseController
 
     @Autowired
     private ISupportEquipmentTopologyService topologyService;
+
+    @Autowired
+    private ISupportEquipmentTopologyWorkbookService topologyWorkbookService;
 
     @Autowired
     private ISupportChangeLogService changeLogService;
@@ -67,6 +77,23 @@ public class SupportEquipmentLocationController extends BaseController
     public AjaxResult topology(@PathVariable Long siteId)
     {
         return success(topologyService.selectTopology(siteId));
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:export')")
+    @Log(title = "机房设备布局", businessType = BusinessType.EXPORT)
+    @PostMapping("/export")
+    public void export(HttpServletResponse response, @RequestParam Long siteId) throws Exception
+    {
+        topologyWorkbookService.exportWorkbook(response, siteId);
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:add') and @ss.hasPermi('support:hardwareAsset:edit') and @ss.hasPermi('support:hardwareAsset:remove')")
+    @Log(title = "机房设备布局", businessType = BusinessType.IMPORT)
+    @PostMapping("/importData")
+    public AjaxResult importData(@RequestParam Long siteId, MultipartFile file) throws Exception
+    {
+        Map<String, Object> result = topologyWorkbookService.importWorkbook(siteId, file);
+        return AjaxResult.success("机房设备布局导入完成，共变更" + result.get("变更总数") + "项", result);
     }
 
     @PreAuthorize("@ss.hasPermi('support:hardwareAsset:add') or @ss.hasPermi('support:hardwareAsset:edit')")
@@ -198,6 +225,14 @@ public class SupportEquipmentLocationController extends BaseController
     public AjaxResult updateCabinetLayout(@RequestBody SupportEquipmentCabinet cabinet)
     {
         return toAjax(topologyService.updateCabinetLayout(cabinet));
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:hardwareAsset:edit')")
+    @PutMapping("/device/placement")
+    public AjaxResult updateDevicePlacement(@RequestBody SupportEquipmentPlacementBo placement)
+    {
+        int rows = topologyService.updateDevicePlacement(placement);
+        return rows > 0 ? success("设备安装位置已更新") : success("设备安装位置未发生变化");
     }
 
     @PreAuthorize("@ss.hasPermi('support:hardwareAsset:remove')")

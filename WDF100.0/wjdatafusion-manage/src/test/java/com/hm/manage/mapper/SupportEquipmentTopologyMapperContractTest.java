@@ -25,6 +25,8 @@ class SupportEquipmentTopologyMapperContractTest
         String roomInsert = xpath.evaluate("/mapper/insert[@id='insertRoom']", document);
         String cabinetInsert = xpath.evaluate("/mapper/insert[@id='insertCabinet']", document);
         String cabinetLayout = xpath.evaluate("/mapper/update[@id='updateCabinetLayout']", document);
+        String hardwarePlacement = xpath.evaluate("/mapper/update[@id='updateHardwarePlacement']", document);
+        String serverPlacement = xpath.evaluate("/mapper/update[@id='updateServerPlacement']", document);
         String clearCabinet = xpath.evaluate("/mapper/update[@id='clearHardwareCabinetLocation']", document);
         String hardwareConflicts = xpath.evaluate("/mapper/select[@id='countHardwareRackConflicts']", document);
         String serverConflicts = xpath.evaluate("/mapper/select[@id='countServerRackConflicts']", document);
@@ -37,6 +39,10 @@ class SupportEquipmentTopologyMapperContractTest
         assertTrue(roomInsert.contains("room_width"));
         assertTrue(cabinetInsert.contains("position_x"));
         assertTrue(cabinetLayout.contains("where cabinet_id = #{cabinetId}"));
+        assertTrue(hardwarePlacement.contains("where asset_id = #{assetId}"));
+        assertTrue(hardwarePlacement.contains("rack_u_start = #{rackUStart}"));
+        assertTrue(serverPlacement.contains("where server_id = #{serverId}"));
+        assertTrue(serverPlacement.contains("equipment_room = #{equipmentRoom}"));
         assertTrue(clearCabinet.contains("rack_u_start = null"));
         assertTrue(clearCabinet.contains("rack_u_end = null"));
         assertTrue(hardwareConflicts.contains("rack_u_start <= #{rackUEnd}"));

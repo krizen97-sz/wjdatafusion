@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import com.hm.manage.domain.SupportEquipmentCabinet;
 import com.hm.manage.domain.SupportEquipmentLink;
+import com.hm.manage.domain.bo.SupportEquipmentPlacementBo;
 
 public interface ISupportEquipmentTopologyService
 {
@@ -12,6 +13,8 @@ public interface ISupportEquipmentTopologyService
     List<SupportEquipmentLink> selectLinksBySiteId(Long siteId);
 
     int updateCabinetLayout(SupportEquipmentCabinet cabinet);
+
+    int updateDevicePlacement(SupportEquipmentPlacementBo placement);
 
     int insertLink(SupportEquipmentLink link);
 

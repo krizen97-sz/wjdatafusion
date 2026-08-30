@@ -39,6 +39,14 @@ export function updateEquipmentCabinetLayout(data) {
   })
 }
 
+export function updateEquipmentDevicePlacement(data) {
+  return request({
+    url: '/support/equipmentLocation/device/placement',
+    method: 'put',
+    data
+  })
+}
+
 export function delEquipmentCabinet(cabinetId) {
   return request({ url: `/support/equipmentLocation/cabinet/${cabinetId}`, method: 'delete' })
 }
@@ -63,5 +71,20 @@ export function delEquipmentLink(linkId) {
   return request({
     url: `/support/equipmentLocation/link/${linkId}`,
     method: 'delete'
+  })
+}
+
+export function importEquipmentTopology(siteId, file) {
+  const data = new FormData()
+  data.append('file', file)
+  return request({
+    url: '/support/equipmentLocation/importData',
+    method: 'post',
+    params: { siteId },
+    data,
+    headers: {
+      'Content-Type': 'multipart/form-data',
+      repeatSubmit: false
+    }
   })
 }

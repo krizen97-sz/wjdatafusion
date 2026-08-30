@@ -1,6 +1,7 @@
 package com.hm.manage.mapper;
 
 import java.util.List;
+import java.util.Date;
 import org.apache.ibatis.annotations.Param;
 import com.hm.manage.domain.SupportEquipmentCabinet;
 import com.hm.manage.domain.SupportEquipmentRoom;
@@ -34,6 +35,14 @@ public interface SupportEquipmentLocationMapper
     int updateCabinet(SupportEquipmentCabinet cabinet);
 
     int updateCabinetLayout(SupportEquipmentCabinet cabinet);
+
+    int updateHardwarePlacement(@Param("assetId") Long assetId, @Param("equipmentRoom") String equipmentRoom,
+        @Param("cabinetNo") String cabinetNo, @Param("rackUStart") Integer rackUStart, @Param("rackUEnd") Integer rackUEnd,
+        @Param("updateBy") String updateBy, @Param("updateTime") Date updateTime);
+
+    int updateServerPlacement(@Param("serverId") Long serverId, @Param("equipmentRoom") String equipmentRoom,
+        @Param("cabinetNo") String cabinetNo, @Param("rackUStart") Integer rackUStart, @Param("rackUEnd") Integer rackUEnd,
+        @Param("updateBy") String updateBy, @Param("updateTime") Date updateTime);
 
     int deleteCabinetByCabinetId(Long cabinetId);
 

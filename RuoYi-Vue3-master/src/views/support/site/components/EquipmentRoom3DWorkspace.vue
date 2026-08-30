@@ -25,6 +25,31 @@
             :value="room.roomId"
           />
         </el-select>
+        <el-button
+          type="primary"
+          icon="Plus"
+          v-hasPermi="['support:hardwareAsset:add', 'support:hardwareAsset:edit']"
+          @click="openRoomForm()"
+        >新增机房</el-button>
+        <el-button
+          icon="Box"
+          :disabled="!selectedRoom"
+          v-hasPermi="['support:hardwareAsset:add', 'support:hardwareAsset:edit']"
+          @click="openCabinetForm()"
+        >新增机柜</el-button>
+        <el-dropdown v-if="canUseDataMenu" trigger="click" @command="handleDataCommand">
+          <el-button icon="Files">数据</el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-if="canExportTopology" command="export" icon="Download">
+                导出机房布局
+              </el-dropdown-item>
+              <el-dropdown-item v-if="canImportTopology" command="import" icon="Upload">
+                导入并修改
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-segmented
           v-model="workspaceMode"
           :options="workspaceModeOptions"
@@ -149,7 +174,11 @@
               <span>{{ selectedDevice.assetTypeLabel || selectedDevice.assetType }}</span>
               <h3>{{ selectedDevice.assetName || '未命名设备' }}</h3>
             </div>
-            <el-button link type="primary" @click="emit('edit-device', selectedDevice)">编辑设备</el-button>
+            <div class="room3d-inspector-actions">
+              <el-button link type="primary" icon="Location" v-hasPermi="['support:hardwareAsset:edit']" @click="openPlacementForm(selectedDevice)">配置位置</el-button>
+              <el-button link type="primary" @click="emit('edit-device', selectedDevice)">编辑档案</el-button>
+              <el-button v-if="isDevicePlaced(selectedDevice)" link type="danger" v-hasPermi="['support:hardwareAsset:edit']" @click="clearDevicePlacement(selectedDevice)">清空位置</el-button>
+            </div>
           </div>
 
           <el-descriptions :column="1" size="small" border>
@@ -220,7 +249,11 @@
               <span>机柜</span>
               <h3>{{ selectedCabinet.cabinetNo }}</h3>
             </div>
-            <el-button link type="primary" @click="focusCabinet(selectedCabinet.cabinetId)">聚焦</el-button>
+            <div class="room3d-inspector-actions">
+              <el-button link type="primary" @click="focusCabinet(selectedCabinet.cabinetId)">聚焦</el-button>
+              <el-button link type="primary" icon="Edit" v-hasPermi="['support:hardwareAsset:edit']" @click="openCabinetForm(selectedCabinet)">编辑</el-button>
+              <el-button link type="danger" v-hasPermi="['support:hardwareAsset:remove']" @click="removeCabinet(selectedCabinet)">删除</el-button>
+            </div>
           </div>
           <el-descriptions :column="1" size="small" border>
             <el-descriptions-item label="机柜容量">{{ selectedCabinet.uCapacity || 45 }}U</el-descriptions-item>
@@ -261,6 +294,10 @@
               <span>当前机房</span>
               <h3>{{ selectedRoom?.roomName || '未选择机房' }}</h3>
             </div>
+            <div v-if="selectedRoom" class="room3d-inspector-actions">
+              <el-button link type="primary" icon="Edit" v-hasPermi="['support:hardwareAsset:edit']" @click="openRoomForm(selectedRoom)">编辑地板</el-button>
+              <el-button link type="danger" v-hasPermi="['support:hardwareAsset:remove']" @click="removeRoom(selectedRoom)">删除</el-button>
+            </div>
           </div>
           <el-descriptions v-if="selectedRoom" :column="1" size="small" border>
             <el-descriptions-item label="机房尺寸">
@@ -273,11 +310,193 @@
           <div class="room3d-inspector-guide">
             <strong>查看方式</strong>
             <p>点击机柜查看容量和柜内设备；点击设备查看 IP、U 位、光电口数量及上联交换机。</p>
-            <p>切换到“调整机柜”后可直接拖动机柜，位置会实时保存。</p>
+            <p>机房尺寸、机柜和设备位置都可在当前工作区维护；切换到“调整机柜”后可直接拖动机柜并实时保存。</p>
           </div>
         </template>
       </aside>
     </div>
+
+    <el-dialog
+      v-model="roomFormOpen"
+      :title="roomForm.roomId ? '编辑机房地板' : '新增机房地板'"
+      width="560px"
+      append-to-body
+      destroy-on-close
+      class="room3d-space-dialog"
+    >
+      <el-form ref="roomFormRef" :model="roomForm" :rules="roomRules" label-width="92px">
+        <el-form-item label="机房名称" prop="roomName">
+          <el-input v-model="roomForm.roomName" placeholder="例如：一楼核心机房" maxlength="100" show-word-limit />
+        </el-form-item>
+        <el-form-item label="机房编码">
+          <el-input v-model="roomForm.roomCode" placeholder="可选，用于现场内识别" maxlength="64" />
+        </el-form-item>
+        <div class="room3d-form-grid">
+          <el-form-item label="地板宽度" prop="roomWidth">
+            <el-input-number v-model="roomForm.roomWidth" :min="2" :max="100" :step="0.5" :precision="1" controls-position="right" />
+          </el-form-item>
+          <el-form-item label="地板深度" prop="roomDepth">
+            <el-input-number v-model="roomForm.roomDepth" :min="2" :max="100" :step="0.5" :precision="1" controls-position="right" />
+          </el-form-item>
+        </div>
+        <el-form-item label="状态">
+          <el-switch v-model="roomForm.status" active-value="0" inactive-value="1" active-text="正常" inactive-text="停用" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="roomForm.remark" type="textarea" :rows="3" maxlength="500" show-word-limit />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="roomFormOpen = false">取消</el-button>
+        <el-button type="primary" :loading="spaceSaving" @click="submitRoom">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="cabinetFormOpen"
+      :title="cabinetForm.cabinetId ? '编辑机柜' : '新增机柜'"
+      width="620px"
+      append-to-body
+      destroy-on-close
+      class="room3d-space-dialog"
+    >
+      <el-form ref="cabinetFormRef" :model="cabinetForm" :rules="cabinetRules" label-width="92px">
+        <el-form-item label="所属机房">
+          <el-input :model-value="selectedRoom?.roomName || '-'" disabled />
+        </el-form-item>
+        <div class="room3d-form-grid">
+          <el-form-item label="机柜编号" prop="cabinetNo">
+            <el-input v-model="cabinetForm.cabinetNo" placeholder="例如：A01" maxlength="64" />
+          </el-form-item>
+          <el-form-item label="机柜U数" prop="uCapacity">
+            <el-input-number v-model="cabinetForm.uCapacity" :min="1" :max="45" controls-position="right" />
+          </el-form-item>
+          <el-form-item label="X坐标" prop="positionX">
+            <el-input-number v-model="cabinetForm.positionX" :min="0" :max="Number(selectedRoom?.roomWidth || 100)" :step="0.2" :precision="2" controls-position="right" />
+          </el-form-item>
+          <el-form-item label="Z坐标" prop="positionZ">
+            <el-input-number v-model="cabinetForm.positionZ" :min="0" :max="Number(selectedRoom?.roomDepth || 100)" :step="0.2" :precision="2" controls-position="right" />
+          </el-form-item>
+        </div>
+        <el-form-item label="朝向角度">
+          <el-input-number v-model="cabinetForm.rotationY" :min="0" :max="359.9" :step="90" :precision="1" controls-position="right" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-switch v-model="cabinetForm.status" active-value="0" inactive-value="1" active-text="正常" inactive-text="停用" />
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="cabinetForm.remark" type="textarea" :rows="3" maxlength="500" show-word-limit />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="cabinetFormOpen = false">取消</el-button>
+        <el-button type="primary" :loading="spaceSaving" @click="submitCabinet">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="placementFormOpen"
+      title="配置设备安装位置"
+      width="900px"
+      append-to-body
+      destroy-on-close
+      class="room3d-placement-dialog"
+    >
+      <div class="room3d-placement-shell">
+        <el-form ref="placementFormRef" :model="placementForm" :rules="placementRules" label-width="86px">
+          <div class="room3d-placement-device">
+            <i :style="{ background: getDeviceColor(placementDevice?.assetType) }"></i>
+            <span>
+              <strong>{{ placementDevice?.assetName || '未命名设备' }}</strong>
+              <small>{{ placementDevice?.ipAddress || '未填写IP' }} · {{ placementDevice?.assetTypeLabel || placementDevice?.assetType }}</small>
+            </span>
+          </div>
+          <el-form-item label="所属机房" prop="roomId">
+            <el-select v-model="placementForm.roomId" placeholder="请选择机房" filterable @change="handlePlacementRoomChange">
+              <el-option v-for="room in rooms" :key="room.roomId" :label="room.roomName" :value="room.roomId" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="机柜编号" prop="cabinetId">
+            <el-select v-model="placementForm.cabinetId" placeholder="请选择机柜" filterable @change="handlePlacementCabinetChange">
+              <el-option
+                v-for="cabinet in placementCabinetOptions"
+                :key="cabinet.cabinetId"
+                :label="`${cabinet.cabinetNo} · ${getCabinetUsedU(cabinet)}/${cabinet.uCapacity || 45}U`"
+                :value="cabinet.cabinetId"
+              />
+            </el-select>
+          </el-form-item>
+          <div class="room3d-form-grid room3d-form-grid--u">
+            <el-form-item label="起始U位" prop="rackUStart">
+              <el-input-number v-model="placementForm.rackUStart" :min="1" :max="placementCapacity" controls-position="right" />
+            </el-form-item>
+            <el-form-item label="结束U位" prop="rackUEnd">
+              <el-input-number v-model="placementForm.rackUEnd" :min="1" :max="placementCapacity" controls-position="right" />
+            </el-form-item>
+          </div>
+          <p class="room3d-placement-copy">点击右侧空闲 U 位选择起点，再点击一次选择终点；已占用 U 位不可选择。</p>
+        </el-form>
+
+        <section class="room3d-u-picker" aria-label="机柜U位选择器">
+          <header>
+            <strong>{{ placementCabinet?.cabinetNo || '请选择机柜' }}</strong>
+            <span>{{ placementRangeLabel }}</span>
+          </header>
+          <el-scrollbar max-height="480px">
+            <div class="room3d-u-list">
+              <el-tooltip
+                v-for="slot in placementUSlots"
+                :key="slot.u"
+                :content="slot.owner ? `${slot.u}U 已由 ${slot.owner.assetName} 占用` : `${slot.u}U 空闲`"
+                placement="left"
+              >
+                <button
+                  type="button"
+                  class="room3d-u-slot"
+                  :class="{ 'is-occupied': !!slot.owner, 'is-selected': slot.selected }"
+                  :disabled="!!slot.owner"
+                  @click="selectPlacementU(slot.u)"
+                >
+                  <span>{{ slot.u }}U</span>
+                  <strong>{{ slot.owner?.assetName || (slot.selected ? placementDevice?.assetName : '空闲') }}</strong>
+                </button>
+              </el-tooltip>
+            </div>
+          </el-scrollbar>
+        </section>
+      </div>
+      <template #footer>
+        <el-button @click="placementFormOpen = false">取消</el-button>
+        <el-button type="primary" :loading="placementSaving" @click="submitPlacement">保存位置</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="importOpen" title="导入机房设备布局" width="560px" append-to-body destroy-on-close class="room3d-space-dialog">
+      <div class="room3d-import-lead">
+        <strong>用 Excel 批量新增或修改当前现场</strong>
+        <span>仅支持从本工作区导出的 xlsx。导入按事务执行，任意一行校验失败都不会写入数据库。</span>
+      </div>
+      <el-upload
+        ref="importUploadRef"
+        drag
+        action="#"
+        accept=".xlsx"
+        :limit="1"
+        :auto-upload="false"
+        :on-change="handleImportFileChange"
+        :on-remove="handleImportFileRemove"
+      >
+        <el-icon class="el-icon--upload"><upload-filled /></el-icon>
+        <div class="el-upload__text">将 xlsx 文件拖到此处，或<em>点击选择</em></div>
+        <template #tip>
+          <div class="el-upload__tip">缺失行不会删除数据；清空设备位置需将该行四个位置字段全部留空。</div>
+        </template>
+      </el-upload>
+      <template #footer>
+        <el-button @click="importOpen = false">取消</el-button>
+        <el-button type="primary" :loading="importing" :disabled="!importFile" @click="submitImport">导入并修改</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="linkFormOpen" :title="linkForm.linkId ? '编辑设备上联' : '新增设备上联'" width="600px" append-to-body>
       <el-form ref="linkFormRef" :model="linkForm" :rules="linkRules" label-width="96px">
@@ -332,11 +551,19 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js'
 import {
+  addEquipmentCabinet,
   addEquipmentLink,
+  addEquipmentRoom,
+  delEquipmentCabinet,
   delEquipmentLink,
+  delEquipmentRoom,
   getEquipmentTopology,
+  importEquipmentTopology,
+  updateEquipmentCabinet,
   updateEquipmentCabinetLayout,
-  updateEquipmentLink
+  updateEquipmentDevicePlacement,
+  updateEquipmentLink,
+  updateEquipmentRoom
 } from '@/api/support/equipmentLocation'
 import {
   CABINET_DEPTH,
@@ -356,7 +583,8 @@ import {
 
 const props = defineProps({
   siteId: { type: [Number, String], required: true },
-  siteName: { type: String, default: '' }
+  siteName: { type: String, default: '' },
+  initialDeviceKey: { type: String, default: '' }
 })
 
 const emit = defineEmits(['close', 'edit-device', 'changed'])
@@ -380,8 +608,41 @@ const workspaceModeOptions = [
   { label: '浏览', value: 'view' },
   { label: '调整机柜', value: 'layout' }
 ]
-
 const sceneHost = ref(null)
+const roomFormRef = ref(null)
+const cabinetFormRef = ref(null)
+const placementFormRef = ref(null)
+const importUploadRef = ref(null)
+const roomFormOpen = ref(false)
+const cabinetFormOpen = ref(false)
+const placementFormOpen = ref(false)
+const importOpen = ref(false)
+const spaceSaving = ref(false)
+const placementSaving = ref(false)
+const importing = ref(false)
+const importFile = ref(null)
+const placementDeviceKey = ref('')
+const placementSelectionAnchor = ref(null)
+const roomForm = reactive(createEmptyRoomForm())
+const cabinetForm = reactive(createEmptyCabinetForm())
+const placementForm = reactive(createEmptyPlacementForm())
+const roomRules = {
+  roomName: [{ required: true, message: '请填写机房名称', trigger: 'blur' }],
+  roomWidth: [{ required: true, message: '请填写地板宽度', trigger: 'change' }],
+  roomDepth: [{ required: true, message: '请填写地板深度', trigger: 'change' }]
+}
+const cabinetRules = {
+  cabinetNo: [{ required: true, message: '请填写机柜编号', trigger: 'blur' }],
+  uCapacity: [{ required: true, message: '请填写机柜U数', trigger: 'change' }],
+  positionX: [{ required: true, message: '请填写X坐标', trigger: 'change' }],
+  positionZ: [{ required: true, message: '请填写Z坐标', trigger: 'change' }]
+}
+const placementRules = {
+  roomId: [{ required: true, message: '请选择机房', trigger: 'change' }],
+  cabinetId: [{ required: true, message: '请选择机柜', trigger: 'change' }],
+  rackUStart: [{ validator: validatePlacementRange, trigger: 'change' }],
+  rackUEnd: [{ validator: validatePlacementRange, trigger: 'change' }]
+}
 const linkFormRef = ref(null)
 const linkFormOpen = ref(false)
 const linkSaving = ref(false)
@@ -412,6 +673,43 @@ const selectedCabinetDevices = computed(() => selectedCabinet.value
     .sort((a, b) => Number(b.rackUEnd || 0) - Number(a.rackUEnd || 0))
   : [])
 const selectedDeviceLinks = computed(() => selectedDevice.value ? getDeviceLinks(selectedDevice.value, links.value) : [])
+const canExportTopology = computed(() => Boolean(proxy?.$auth?.hasPermi(['support:hardwareAsset:export'])))
+const canImportTopology = computed(() => Boolean(proxy?.$auth?.hasPermiAnd([
+  'support:hardwareAsset:add',
+  'support:hardwareAsset:edit',
+  'support:hardwareAsset:remove'
+])))
+const canUseDataMenu = computed(() => canExportTopology.value || canImportTopology.value)
+const placementDevice = computed(() => devices.value.find((device) => device.deviceKey === placementDeviceKey.value) || null)
+const placementCabinetOptions = computed(() => cabinets.value.filter((cabinet) => Number(cabinet.roomId) === Number(placementForm.roomId)))
+const placementCabinet = computed(() => placementCabinetOptions.value.find((cabinet) => Number(cabinet.cabinetId) === Number(placementForm.cabinetId)) || null)
+const placementCapacity = computed(() => Number(placementCabinet.value?.uCapacity) || 45)
+const placementUSlots = computed(() => {
+  if (!placementCabinet.value) return []
+  const owners = devices.value.filter((device) =>
+    device.deviceKey !== placementDeviceKey.value &&
+    Number(device.cabinetId) === Number(placementCabinet.value.cabinetId) &&
+    isDevicePlaced(device)
+  )
+  const slots = []
+  for (let u = placementCapacity.value; u >= 1; u -= 1) {
+    const owner = owners.find((device) => u >= Number(device.rackUStart) && u <= Number(device.rackUEnd)) || null
+    slots.push({
+      u,
+      owner,
+      selected: u >= Number(placementForm.rackUStart || 0) && u <= Number(placementForm.rackUEnd || 0)
+    })
+  }
+  return slots
+})
+const placementRangeLabel = computed(() => {
+  if (!placementCabinet.value) return '等待选择机柜'
+  if (!placementForm.rackUStart || !placementForm.rackUEnd) return `${placementCapacity.value}U 可配置`
+  return Number(placementForm.rackUStart) === Number(placementForm.rackUEnd)
+    ? `已选 ${placementForm.rackUStart}U`
+    : `已选 ${placementForm.rackUStart}-${placementForm.rackUEnd}U`
+})
+const editorOpen = computed(() => roomFormOpen.value || cabinetFormOpen.value || placementFormOpen.value || importOpen.value || linkFormOpen.value)
 const selectedPortSummary = computed(() => selectedDevice.value ? summarizeOutgoingPorts(selectedDevice.value, links.value) : { optical: 0, electrical: 0 })
 const switchOptions = computed(() => devices.value.filter((device) =>
   device.assetType === 'SWITCH' &&
@@ -454,6 +752,7 @@ let reducedMotion = false
 let liveSyncTimer
 let deviceLabelsVisible = false
 let topologySignature = ''
+let initialDeviceHandledKey = ''
 
 onMounted(async () => {
   reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
@@ -481,6 +780,10 @@ watch(selectedRoomId, async () => {
 watch(showLinks, rebuildScene)
 watch(workspaceMode, () => {
   if (sceneHost.value) sceneHost.value.style.cursor = workspaceMode.value === 'layout' ? 'move' : 'grab'
+})
+watch(() => props.initialDeviceKey, () => {
+  initialDeviceHandledKey = ''
+  focusInitialDevice()
 })
 
 async function loadTopology(options = {}) {
@@ -516,6 +819,7 @@ async function loadTopology(options = {}) {
     }
     await nextTick()
     rebuildScene()
+    await focusInitialDevice()
   } catch (error) {
     liveSyncError.value = true
     if (!silent) loadError.value = error?.msg || error?.message || '请检查接口和数据库升级脚本后重试'
@@ -528,7 +832,7 @@ async function loadTopology(options = {}) {
 function startLiveSync() {
   stopLiveSync()
   liveSyncTimer = window.setInterval(() => {
-    if (document.visibilityState === 'visible' && !linkFormOpen.value) loadTopology({ silent: true })
+    if (document.visibilityState === 'visible' && !editorOpen.value) loadTopology({ silent: true })
   }, 10000)
   document.addEventListener('visibilitychange', handleVisibilityChange)
 }
@@ -1061,6 +1365,314 @@ function clearSelection() {
   rebuildScene()
 }
 
+async function focusInitialDevice() {
+  const key = props.initialDeviceKey
+  if (!key || initialDeviceHandledKey === key) return
+  const device = devices.value.find((item) => item.deviceKey === key)
+  if (!device) return
+  initialDeviceHandledKey = key
+  await selectDevice(device)
+  openPlacementForm(device)
+}
+
+function openRoomForm(room = null) {
+  Object.assign(roomForm, createEmptyRoomForm(), room ? {
+    ...room,
+    roomWidth: Number(room.roomWidth) || 12,
+    roomDepth: Number(room.roomDepth) || 8
+  } : {})
+  roomFormOpen.value = true
+  nextTick(() => roomFormRef.value?.clearValidate())
+}
+
+async function submitRoom() {
+  if (!await roomFormRef.value?.validate().catch(() => false)) return
+  spaceSaving.value = true
+  const previousId = roomForm.roomId
+  const roomName = roomForm.roomName
+  try {
+    if (previousId) await updateEquipmentRoom(roomForm)
+    else await addEquipmentRoom({ ...roomForm, siteId: Number(props.siteId) })
+    roomFormOpen.value = false
+    await loadTopology()
+    selectedRoomId.value = previousId || rooms.value.find((room) => room.roomName === roomName)?.roomId || selectedRoomId.value
+    proxy.$modal.msgSuccess(previousId ? '机房地板已更新' : '机房地板已新增')
+    emit('changed')
+  } finally {
+    spaceSaving.value = false
+  }
+}
+
+async function removeRoom(room) {
+  await proxy.$modal.confirm(`确认删除机房“${room.roomName}”吗？机房内机柜将一并删除，设备资产保留但安装位置会被清空。`)
+  await delEquipmentRoom(room.roomId)
+  clearSelection()
+  await loadTopology()
+  proxy.$modal.msgSuccess('机房已删除，相关设备已转入未上架列表')
+  emit('changed')
+}
+
+function openCabinetForm(cabinet = null) {
+  if (!selectedRoom.value) {
+    proxy.$modal.msgWarning('请先选择或新增机房')
+    return
+  }
+  const layout = cabinet || resolveCabinetLayout({}, currentRoomCabinets.value.length, selectedRoom.value)
+  Object.assign(cabinetForm, createEmptyCabinetForm(), cabinet ? {
+    ...cabinet,
+    positionX: Number(cabinet.positionX),
+    positionZ: Number(cabinet.positionZ),
+    rotationY: normalizeCabinetRotation(cabinet.rotationY)
+  } : {
+    roomId: selectedRoom.value.roomId,
+    positionX: Number(layout.x.toFixed(2)),
+    positionZ: Number(layout.z.toFixed(2)),
+    rotationY: normalizeCabinetRotation(layout.rotationY)
+  })
+  cabinetFormOpen.value = true
+  nextTick(() => cabinetFormRef.value?.clearValidate())
+}
+
+async function submitCabinet() {
+  if (!await cabinetFormRef.value?.validate().catch(() => false)) return
+  spaceSaving.value = true
+  const previousId = cabinetForm.cabinetId
+  const cabinetNo = cabinetForm.cabinetNo
+  try {
+    if (previousId) await updateEquipmentCabinet(cabinetForm)
+    else await addEquipmentCabinet({ ...cabinetForm, roomId: selectedRoom.value.roomId })
+    cabinetFormOpen.value = false
+    await loadTopology()
+    const saved = previousId
+      ? cabinets.value.find((item) => Number(item.cabinetId) === Number(previousId))
+      : currentRoomCabinets.value.find((item) => item.cabinetNo === cabinetNo)
+    if (saved) {
+      selectedCabinetId.value = saved.cabinetId
+      focusCabinet(saved.cabinetId)
+    }
+    proxy.$modal.msgSuccess(previousId ? '机柜配置已更新' : '机柜已新增，可切换到调整模式拖动摆放')
+    emit('changed')
+  } finally {
+    spaceSaving.value = false
+  }
+}
+
+async function removeCabinet(cabinet) {
+  await proxy.$modal.confirm(`确认删除机柜“${cabinet.cabinetNo}”吗？设备资产保留，但该柜内设备的机柜和U位会被清空。`)
+  await delEquipmentCabinet(cabinet.cabinetId)
+  clearSelection()
+  await loadTopology()
+  proxy.$modal.msgSuccess('机柜已删除，柜内设备已转入未上架列表')
+  emit('changed')
+}
+
+function openPlacementForm(device) {
+  if (!rooms.value.length) {
+    proxy.$modal.msgWarning('请先新增机房和机柜')
+    openRoomForm()
+    return
+  }
+  placementDeviceKey.value = device.deviceKey
+  placementSelectionAnchor.value = null
+  const roomId = device.roomId || selectedRoomId.value || rooms.value[0]?.roomId || null
+  const roomCabinets = cabinets.value.filter((cabinet) => Number(cabinet.roomId) === Number(roomId))
+  const cabinetId = device.cabinetId || roomCabinets[0]?.cabinetId || null
+  Object.assign(placementForm, createEmptyPlacementForm(), {
+    siteId: Number(props.siteId),
+    sourceType: device.sourceType,
+    sourceId: device.sourceId,
+    roomId,
+    cabinetId,
+    rackUStart: device.rackUStart || null,
+    rackUEnd: device.rackUEnd || null
+  })
+  if (!placementForm.rackUStart && cabinetId) assignFirstAvailableRange(1)
+  placementFormOpen.value = true
+  nextTick(() => placementFormRef.value?.clearValidate())
+}
+
+function handlePlacementRoomChange() {
+  placementForm.cabinetId = placementCabinetOptions.value[0]?.cabinetId || null
+  placementForm.rackUStart = null
+  placementForm.rackUEnd = null
+  placementSelectionAnchor.value = null
+  if (placementForm.cabinetId) assignFirstAvailableRange(1)
+}
+
+function handlePlacementCabinetChange() {
+  const deviceHeight = Math.max(1, Number(placementDevice.value?.rackUEnd || 0) - Number(placementDevice.value?.rackUStart || 0) + 1)
+  placementForm.rackUStart = null
+  placementForm.rackUEnd = null
+  placementSelectionAnchor.value = null
+  assignFirstAvailableRange(deviceHeight)
+}
+
+function assignFirstAvailableRange(height = 1) {
+  if (!placementCabinet.value) return
+  const capacity = placementCapacity.value
+  for (let start = 1; start + height - 1 <= capacity; start += 1) {
+    const end = start + height - 1
+    if (!placementRangeOccupied(start, end)) {
+      placementForm.rackUStart = start
+      placementForm.rackUEnd = end
+      return
+    }
+  }
+}
+
+function selectPlacementU(u) {
+  if (placementSelectionAnchor.value == null) {
+    placementSelectionAnchor.value = u
+    placementForm.rackUStart = u
+    placementForm.rackUEnd = u
+    return
+  }
+  const start = Math.min(placementSelectionAnchor.value, u)
+  const end = Math.max(placementSelectionAnchor.value, u)
+  if (placementRangeOccupied(start, end)) {
+    proxy.$modal.msgWarning('选择范围内包含已占用U位，请重新选择')
+    placementSelectionAnchor.value = null
+    placementForm.rackUStart = null
+    placementForm.rackUEnd = null
+    return
+  }
+  placementForm.rackUStart = start
+  placementForm.rackUEnd = end
+  placementSelectionAnchor.value = null
+  placementFormRef.value?.validateField?.(['rackUStart', 'rackUEnd'])
+}
+
+function placementRangeOccupied(start, end) {
+  return placementUSlots.value.some((slot) => slot.owner && slot.u >= Number(start) && slot.u <= Number(end))
+}
+
+function validatePlacementRange(_rule, _value, callback) {
+  const start = Number(placementForm.rackUStart)
+  const end = Number(placementForm.rackUEnd)
+  if (!start || !end) {
+    callback(new Error('请选择完整U位范围'))
+    return
+  }
+  if (start < 1 || end < start || end > placementCapacity.value) {
+    callback(new Error(`U位范围必须在1到${placementCapacity.value}之间`))
+    return
+  }
+  if (placementRangeOccupied(start, end)) {
+    callback(new Error('所选U位已被其他设备占用'))
+    return
+  }
+  callback()
+}
+
+async function submitPlacement() {
+  if (!await placementFormRef.value?.validate().catch(() => false)) return
+  placementSaving.value = true
+  const deviceKey = placementDeviceKey.value
+  try {
+    await updateEquipmentDevicePlacement({ ...placementForm })
+    placementFormOpen.value = false
+    await loadTopology()
+    const device = devices.value.find((item) => item.deviceKey === deviceKey)
+    if (device) await selectDevice(device)
+    proxy.$modal.msgSuccess('设备安装位置已保存')
+    emit('changed')
+  } finally {
+    placementSaving.value = false
+  }
+}
+
+async function clearDevicePlacement(device) {
+  await proxy.$modal.confirm(`确认清空“${device.assetName}”的机房、机柜和U位吗？设备资产不会删除。`)
+  await updateEquipmentDevicePlacement({
+    siteId: Number(props.siteId),
+    sourceType: device.sourceType,
+    sourceId: device.sourceId,
+    roomId: null,
+    cabinetId: null,
+    rackUStart: null,
+    rackUEnd: null
+  })
+  await loadTopology()
+  const refreshed = devices.value.find((item) => item.deviceKey === device.deviceKey)
+  if (refreshed) await selectDevice(refreshed)
+  proxy.$modal.msgSuccess('设备安装位置已清空')
+  emit('changed')
+}
+
+function handleDataCommand(command) {
+  if (command === 'export') {
+    const timestamp = formatCompactDate(new Date())
+    proxy.download('/support/equipmentLocation/export', { siteId: props.siteId }, `机房设备布局_${props.siteName || '现场'}_${timestamp}.xlsx`)
+    return
+  }
+  importFile.value = null
+  importOpen.value = true
+  nextTick(() => importUploadRef.value?.clearFiles?.())
+}
+
+function handleImportFileChange(file) {
+  const raw = file?.raw
+  if (!raw?.name?.toLowerCase().endsWith('.xlsx')) {
+    importFile.value = null
+    importUploadRef.value?.clearFiles?.()
+    proxy.$modal.msgWarning('机房布局导入仅支持 xlsx 格式')
+    return
+  }
+  importFile.value = raw
+}
+
+function handleImportFileRemove() {
+  importFile.value = null
+}
+
+async function submitImport() {
+  if (!importFile.value) return
+  importing.value = true
+  try {
+    const response = await importEquipmentTopology(props.siteId, importFile.value)
+    importOpen.value = false
+    importFile.value = null
+    await loadTopology()
+    emit('changed')
+    const result = response.data || {}
+    await proxy.$alert(formatImportResult(result), response.msg || '机房设备布局导入完成', {
+      confirmButtonText: '知道了'
+    })
+  } finally {
+    importing.value = false
+  }
+}
+
+function formatImportResult(result) {
+  return [
+    `机房：新增 ${result['新增机房'] || 0}，修改 ${result['修改机房'] || 0}`,
+    `机柜：新增 ${result['新增机柜'] || 0}，修改 ${result['修改机柜'] || 0}`,
+    `设备位置：更新 ${result['更新设备位置'] || 0}，清空 ${result['清空设备位置'] || 0}`,
+    `设备链路：新增 ${result['新增设备链路'] || 0}，修改 ${result['修改设备链路'] || 0}，删除 ${result['删除设备链路'] || 0}`
+  ].join('\n')
+}
+
+function createEmptyRoomForm() {
+  return { roomId: null, siteId: Number(props?.siteId) || null, roomName: '', roomCode: '', roomWidth: 12, roomDepth: 8, status: '0', remark: '' }
+}
+
+function createEmptyCabinetForm() {
+  return { cabinetId: null, roomId: null, cabinetNo: '', uCapacity: 45, positionX: 0.8, positionZ: 0.9, rotationY: 0, status: '0', remark: '' }
+}
+
+function createEmptyPlacementForm() {
+  return { siteId: Number(props?.siteId) || null, sourceType: '', sourceId: null, roomId: null, cabinetId: null, rackUStart: null, rackUEnd: null }
+}
+
+function normalizeCabinetRotation(value) {
+  return Number((((Number(value) || 0) % 360 + 360) % 360).toFixed(1))
+}
+
+function formatCompactDate(date) {
+  const pad = (value) => String(value).padStart(2, '0')
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
+}
+
 function openLinkForm(link = null) {
   if (!selectedDevice.value && !link) return
   Object.assign(linkForm, createEmptyLinkForm())
@@ -1178,7 +1790,8 @@ function formatLinkPorts(link) {
 }
 
 function readCssColor(variable, fallback) {
-  return getComputedStyle(document.documentElement).getPropertyValue(variable).trim() || fallback
+  const color = getComputedStyle(document.documentElement).getPropertyValue(variable).trim() || fallback
+  return color.replace(/^rgba\(([^,]+,[^,]+,[^,]+),[^)]+\)$/i, 'rgb($1)')
 }
 
 function escapeHtml(value) {
@@ -1238,6 +1851,11 @@ function disposeScene() {
   min-height: 0;
   color: var(--el-text-color-primary);
   background: var(--el-bg-color);
+}
+
+:global(.room3d-space-dialog),
+:global(.room3d-placement-dialog) {
+  max-width: calc(100vw - 32px);
 }
 
 .room3d-header {
@@ -1651,6 +2269,18 @@ function disposeScene() {
   font-size: 17px;
 }
 
+.room3d-inspector-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 150px;
+}
+
+.room3d-inspector-actions :deep(.el-button + .el-button) {
+  margin-left: 8px;
+}
+
 .room3d-port-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1757,6 +2387,143 @@ function disposeScene() {
   gap: 12px;
 }
 
+.room3d-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.room3d-form-grid :deep(.el-input-number),
+.room3d-placement-shell :deep(.el-select) {
+  width: 100%;
+}
+
+.room3d-placement-shell {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.9fr) minmax(360px, 1.1fr);
+  gap: 24px;
+  min-height: 520px;
+}
+
+.room3d-placement-device {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 20px 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.room3d-placement-device i {
+  width: 8px;
+  height: 38px;
+  border-radius: 3px;
+}
+
+.room3d-placement-device span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.room3d-placement-device strong,
+.room3d-placement-device small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room3d-placement-device small,
+.room3d-placement-copy,
+.room3d-import-lead span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.room3d-placement-copy {
+  margin: 0 0 0 86px;
+}
+
+.room3d-u-picker {
+  min-width: 0;
+  border-left: 1px solid var(--el-border-color-lighter);
+  padding-left: 20px;
+}
+
+.room3d-u-picker > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.room3d-u-picker > header span {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.room3d-u-list {
+  display: grid;
+  gap: 3px;
+  padding-right: 8px;
+}
+
+.room3d-u-slot {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  min-height: 30px;
+  padding: 3px 8px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 4px;
+  color: var(--el-text-color-primary);
+  text-align: left;
+  background: var(--el-bg-color);
+  cursor: pointer;
+}
+
+.room3d-u-slot:hover:not(:disabled) {
+  border-color: var(--el-color-primary-light-5);
+  background: var(--el-color-primary-light-9);
+}
+
+.room3d-u-slot.is-selected {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+}
+
+.room3d-u-slot.is-occupied {
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-light);
+  cursor: not-allowed;
+}
+
+.room3d-u-slot span {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.room3d-u-slot strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room3d-import-lead {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 18px;
+}
+
+.room3d-import-lead strong {
+  font-size: 15px;
+}
+
 @media (max-width: 1180px) {
   .room3d-header {
     align-items: flex-start;
@@ -1798,7 +2565,38 @@ function disposeScene() {
   }
 
   .room3d-room-panel {
-    display: none;
+    display: grid;
+    grid-template-columns: minmax(150px, 0.55fr) minmax(200px, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 220px;
+    min-height: 220px;
+    overflow: hidden;
+    border-right: 0;
+    border-bottom: 1px solid var(--el-border-color-light);
+  }
+
+  .room3d-room-panel > .room3d-panel-title {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .room3d-room-panel > .room3d-room-menu,
+  .room3d-room-panel > .el-empty {
+    grid-column: 1;
+    grid-row: 2;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .room3d-unplaced {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    min-width: 0;
+    margin: 0;
+    padding: 0 12px;
+    overflow: hidden;
+    border-top: 0;
+    border-left: 1px solid var(--el-border-color-lighter);
   }
 
   .room3d-scene-panel {
@@ -1814,6 +2612,20 @@ function disposeScene() {
   .room3d-link-form-grid {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+
+  .room3d-placement-shell,
+  .room3d-form-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .room3d-u-picker {
+    margin-top: 20px;
+    padding-top: 18px;
+    padding-left: 0;
+    border-top: 1px solid var(--el-border-color-lighter);
+    border-left: 0;
   }
 
   .room3d-scene-summary {
