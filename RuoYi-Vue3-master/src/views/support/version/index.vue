@@ -39,7 +39,7 @@
         <div v-if="!modulePreset" class="quick-filter-panel">
           <div class="quick-filter-panel__head">
             <span>模块快捷标签</span>
-            <button type="button" @click="resetFilters">重置</button>
+            <el-button link type="primary" size="small" icon="Refresh" @click="resetFilters">重置</el-button>
           </div>
           <div class="version-filter-row">
             <button
@@ -168,7 +168,6 @@
 
         <section class="version-detail-section">
           <div class="section-title">
-            <span>改动内容</span>
             <strong>详细说明</strong>
           </div>
           <div class="version-change-list">
@@ -182,7 +181,6 @@
         <section class="version-detail-grid">
           <article class="version-info-block">
             <div class="section-title">
-              <span>作用范围</span>
               <strong>影响范围</strong>
             </div>
             <div class="version-scope-list">
@@ -192,7 +190,6 @@
 
           <article class="version-info-block">
             <div class="section-title">
-              <span>上线说明</span>
               <strong>数据库与部署</strong>
             </div>
             <p class="version-database">{{ formatDisplayText(activeRelease.database) }}</p>
@@ -715,13 +712,16 @@ function getPrimaryModule(entry) {
 
 <style scoped>
 .version-center-page {
+  --version-selection-bg: color-mix(in srgb, var(--el-color-primary) 8%, var(--surface-strong));
+  --version-selection-border: color-mix(in srgb, var(--el-color-primary) 42%, var(--surface-border));
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   height: calc(100vh - 84px);
   min-height: 660px;
   overflow: hidden;
-  color: var(--app-heading);
+  color: var(--app-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
 
 .version-hero {
@@ -731,9 +731,9 @@ function getPrimaryModule(entry) {
   gap: 16px;
   min-height: 74px;
   padding: 12px 16px;
-  border: 1px solid var(--el-color-primary-light-9);
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 58%, var(--surface-strong) 100%);
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background: var(--surface-strong);
 }
 
 .version-hero__copy {
@@ -743,20 +743,15 @@ function getPrimaryModule(entry) {
   min-width: 0;
 }
 
-.section-title span {
-  color: var(--el-color-primary);
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0;
-}
-
 .version-hero h2,
 .version-list-panel h3,
 .version-detail h3,
 .section-title strong {
   margin: 0;
-  color: var(--el-color-primary);
-  line-height: 1.2;
+  color: var(--app-heading);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
 }
 
 .version-hero h2 {
@@ -769,7 +764,7 @@ function getPrimaryModule(entry) {
   flex: 0 1 720px;
   align-self: stretch;
   overflow: hidden;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
 .version-hero__meta :deep(.el-descriptions__body) {
@@ -782,13 +777,17 @@ function getPrimaryModule(entry) {
   table-layout: fixed;
 }
 
+.version-hero__meta :deep(.el-descriptions__cell) {
+  border-color: var(--surface-border) !important;
+}
+
 .version-hero__meta :deep(.el-descriptions__label.el-descriptions__cell) {
   height: 28px;
   padding: 6px 10px;
   background: var(--surface-muted);
   color: var(--app-muted);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.2;
   text-align: center;
   vertical-align: middle;
@@ -808,9 +807,9 @@ function getPrimaryModule(entry) {
   align-items: center;
   justify-content: center;
   min-width: 0;
-  color: var(--el-color-primary);
+  color: var(--app-heading);
   font-size: 16px;
-  font-weight: 750;
+  font-weight: 650;
   line-height: 1.25;
   overflow-wrap: anywhere;
   text-align: center;
@@ -820,8 +819,8 @@ function getPrimaryModule(entry) {
   display: grid;
   grid-template-columns: 400px minmax(0, 1fr);
   min-height: 0;
-  border: 1px solid var(--el-color-primary-light-9);
-  border-radius: 8px;
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
   background: var(--surface-strong);
   overflow: hidden;
 }
@@ -833,7 +832,7 @@ function getPrimaryModule(entry) {
   min-width: 0;
   min-height: 0;
   padding: 16px;
-  border-right: 1px solid var(--el-color-primary-light-9);
+  border-right: 1px solid var(--surface-border);
   background: var(--surface-muted);
   overflow: hidden;
 }
@@ -862,24 +861,7 @@ function getPrimaryModule(entry) {
   min-width: 0;
   color: var(--app-heading);
   font-size: 13px;
-  font-weight: 800;
-}
-
-.quick-filter-panel__head button {
-  flex: 0 0 auto;
-  height: 24px;
-  padding: 0 8px;
-  border: 1px solid var(--el-color-primary-light-9);
-  border-radius: 12px;
-  background: var(--surface-strong);
-  color: var(--app-muted);
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.quick-filter-panel__head button:hover {
-  border-color: var(--el-color-primary-light-7);
-  color: var(--el-color-primary);
+  font-weight: 600;
 }
 
 .quick-filter-panel__head em {
@@ -911,7 +893,7 @@ function getPrimaryModule(entry) {
   flex: 0 0 auto;
   height: 30px;
   padding: 0 12px;
-  border: 1px solid var(--el-color-primary-light-9);
+  border: 1px solid var(--surface-border);
   border-radius: 16px;
   background: var(--surface-strong);
   color: var(--app-text);
@@ -926,21 +908,26 @@ function getPrimaryModule(entry) {
   height: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  background: var(--el-color-primary-light-9);
-  color: var(--app-text);
+  background: var(--surface-subtle);
+  color: var(--app-muted);
   font-size: 11px;
   line-height: 18px;
 }
 
+.version-filter-row button:hover {
+  border-color: var(--surface-border-strong);
+  background: var(--surface-hover);
+}
+
 .version-filter-row button.is-active {
-  border-color: var(--el-color-primary);
-  background: var(--surface-subtle);
+  border-color: var(--version-selection-border);
+  background: var(--version-selection-bg);
   color: var(--el-color-primary);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .version-filter-row button.is-active small {
-  background: var(--el-color-primary-light-9);
+  background: color-mix(in srgb, var(--el-color-primary) 10%, var(--surface-strong));
   color: var(--el-color-primary);
 }
 
@@ -964,14 +951,14 @@ function getPrimaryModule(entry) {
   min-width: 92px;
   height: 32px;
   padding: 0 10px;
-  border: 1px solid var(--el-color-primary-light-9);
-  border-radius: 8px;
+  border: 1px solid var(--surface-border);
+  border-radius: 9px;
   background: var(--surface-strong);
   color: var(--app-heading);
   cursor: pointer;
   font-size: 12px;
   font-family: inherit;
-  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.16s ease, background 0.16s ease;
 }
 
 .major-filter-card strong,
@@ -983,7 +970,7 @@ function getPrimaryModule(entry) {
 
 .major-filter-card strong {
   color: var(--app-heading);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .major-filter-card small {
@@ -993,18 +980,21 @@ function getPrimaryModule(entry) {
   height: 18px;
   padding: 0 5px;
   border-radius: 999px;
-  background: var(--el-color-primary-light-9);
+  background: var(--surface-subtle);
   color: var(--app-muted);
   font-size: 12px;
   line-height: 18px;
 }
 
-.major-filter-card:hover,
+.major-filter-card:hover {
+  border-color: var(--surface-border-strong);
+  background: var(--surface-hover);
+}
+
 .major-filter-card.is-active {
-  border-color: var(--el-color-primary);
-  background: var(--surface-subtle);
+  border-color: var(--version-selection-border);
+  background: var(--version-selection-bg);
   color: var(--el-color-primary);
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--el-color-primary) 8%, transparent);
 }
 
 .major-filter-card.is-active strong {
@@ -1012,7 +1002,7 @@ function getPrimaryModule(entry) {
 }
 
 .major-filter-card.is-active small {
-  background: var(--el-color-primary-light-9);
+  background: color-mix(in srgb, var(--el-color-primary) 10%, var(--surface-strong));
   color: var(--el-color-primary);
 }
 
@@ -1041,7 +1031,7 @@ function getPrimaryModule(entry) {
   flex: 0 0 auto;
   height: 26px;
   padding: 0 10px;
-  border: 1px solid var(--el-color-primary-light-9);
+  border: 1px solid var(--surface-border);
   border-radius: 999px;
   background: var(--surface-strong);
   color: var(--app-text);
@@ -1049,12 +1039,16 @@ function getPrimaryModule(entry) {
   font-size: 12px;
 }
 
-.major-below-row button:hover,
+.major-below-row button:hover {
+  border-color: var(--surface-border-strong);
+  background: var(--surface-hover);
+}
+
 .major-below-row button.is-active {
-  border-color: var(--el-color-primary);
-  background: var(--surface-subtle);
+  border-color: var(--version-selection-border);
+  background: var(--version-selection-bg);
   color: var(--el-color-primary);
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .version-tree {
@@ -1099,10 +1093,9 @@ function getPrimaryModule(entry) {
   width: 100%;
   min-height: 42px;
   padding: 8px 10px;
-  border: 1px solid var(--el-color-primary-light-9);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--el-color-primary-light-9) 96%, transparent);
-  backdrop-filter: blur(8px);
+  border: 1px solid var(--surface-border);
+  border-radius: 9px;
+  background: var(--surface-subtle);
   cursor: pointer;
   font-family: inherit;
   text-align: left;
@@ -1121,8 +1114,8 @@ function getPrimaryModule(entry) {
 
 .version-tree-group.is-active .version-tree-group__head,
 .version-tree-group__head:hover {
-  border-color: var(--el-color-primary-light-7);
-  background: var(--surface-subtle);
+  border-color: var(--surface-border-strong);
+  background: var(--surface-hover);
 }
 
 .version-tree-group__head span {
@@ -1135,6 +1128,7 @@ function getPrimaryModule(entry) {
   overflow: hidden;
   color: var(--app-heading);
   font-size: 13px;
+  font-weight: 600;
   line-height: 1.2;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1160,7 +1154,7 @@ function getPrimaryModule(entry) {
   bottom: 10px;
   left: 3px;
   width: 1px;
-  background: var(--el-color-primary-light-9);
+  background: var(--surface-border);
   content: '';
 }
 
@@ -1171,13 +1165,13 @@ function getPrimaryModule(entry) {
   width: 100%;
   padding: 11px 12px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--app-text);
   cursor: pointer;
   font-family: inherit;
   text-align: left;
-  transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: background 0.16s ease, border-color 0.16s ease;
 }
 
 .version-tree-item::before {
@@ -1186,7 +1180,7 @@ function getPrimaryModule(entry) {
   left: -12px;
   width: 12px;
   height: 1px;
-  background: var(--el-color-primary-light-9);
+  background: var(--surface-border);
   content: '';
 }
 
@@ -1196,23 +1190,25 @@ function getPrimaryModule(entry) {
   left: -15px;
   width: 7px;
   height: 7px;
-  border: 1px solid var(--el-color-primary-light-7);
+  border: 1px solid var(--surface-border-strong);
   border-radius: 50%;
   background: var(--surface-strong);
   content: '';
 }
 
-.version-tree-item:hover,
+.version-tree-item:hover {
+  border-color: var(--surface-border);
+  background: var(--surface-hover);
+}
+
 .version-tree-item.is-active {
-  border-color: var(--el-color-primary-light-7);
-  background: var(--surface-strong);
-  box-shadow: 0 8px 20px color-mix(in srgb, var(--el-color-primary) 8%, transparent);
+  border-color: var(--version-selection-border);
+  background: var(--version-selection-bg);
 }
 
 .version-tree-item.is-active::after {
   border-color: var(--el-color-primary);
   background: var(--el-color-primary);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--el-color-primary) 12%, transparent);
 }
 
 .version-tree-item__top,
@@ -1226,17 +1222,22 @@ function getPrimaryModule(entry) {
 
 .version-tree-item__top strong {
   overflow: hidden;
-  color: var(--el-color-primary);
+  color: var(--app-heading);
   font-size: 15px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.version-tree-item.is-active .version-tree-item__top strong {
+  color: var(--el-color-primary);
 }
 
 .version-tree-item__title {
   overflow: hidden;
   color: var(--app-heading);
   font-size: 14px;
-  font-weight: 800;
+  font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1257,7 +1258,7 @@ function getPrimaryModule(entry) {
   gap: 16px;
   min-width: 0;
   min-height: 0;
-  padding: 22px;
+  padding: 24px;
   background: var(--surface-strong);
   overflow-y: auto;
   overscroll-behavior: contain;
@@ -1267,14 +1268,14 @@ function getPrimaryModule(entry) {
 .version-detail-section,
 .version-info-block {
   border: 1px solid var(--surface-border);
-  border-radius: 8px;
+  border-radius: 12px;
   background: var(--surface-strong);
 }
 
 .version-focus-card {
   display: grid;
-  gap: 14px;
-  padding: 20px;
+  gap: 16px;
+  padding: 24px;
 }
 
 .version-focus-card__meta {
@@ -1282,7 +1283,7 @@ function getPrimaryModule(entry) {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  color: var(--app-text);
+  color: var(--app-muted);
   font-size: 13px;
 }
 
@@ -1294,22 +1295,24 @@ function getPrimaryModule(entry) {
 }
 
 .version-detail h3 {
-  font-size: 26px;
+  max-width: 34ch;
+  font-size: 24px;
+  line-height: 1.35;
 }
 
 .version-focus {
   display: grid;
   gap: 8px;
   padding: 16px;
-  border: 1px solid var(--el-color-primary-light-9);
-  border-radius: 8px;
+  border: 0;
+  border-radius: 10px;
   background: var(--surface-muted);
 }
 
 .version-focus span {
-  color: var(--el-color-primary);
-  font-size: 13px;
-  font-weight: 800;
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .version-focus p,
@@ -1324,7 +1327,7 @@ function getPrimaryModule(entry) {
 .version-info-block {
   display: grid;
   gap: 14px;
-  padding: 18px;
+  padding: 20px;
 }
 
 .section-title {
@@ -1334,6 +1337,7 @@ function getPrimaryModule(entry) {
 
 .section-title strong {
   font-size: 17px;
+  font-weight: 650;
 }
 
 .version-change-list {
@@ -1347,7 +1351,7 @@ function getPrimaryModule(entry) {
   gap: 10px;
   align-items: start;
   padding: 12px;
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--surface-muted);
 }
 
@@ -1357,10 +1361,10 @@ function getPrimaryModule(entry) {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
+  background: var(--surface-subtle);
+  color: var(--app-muted);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .version-change-item p {
@@ -1386,7 +1390,7 @@ function getPrimaryModule(entry) {
   padding: 6px 10px;
   border-radius: 16px;
   background: var(--surface-subtle);
-  color: var(--el-color-primary);
+  color: var(--app-text);
   font-size: 12px;
 }
 
@@ -1400,7 +1404,7 @@ function getPrimaryModule(entry) {
   overflow-wrap: anywhere;
   padding: 8px 10px;
   border-radius: 6px;
-  background: var(--surface-strong);
+  background: var(--surface-muted);
   color: var(--app-text);
   font-family: Menlo, Monaco, Consolas, 'Courier New', monospace;
   font-size: 12px;
@@ -1422,15 +1426,19 @@ function getPrimaryModule(entry) {
 }
 
 :global(html.dark) .version-center-page .major-filter-card:hover,
-:global(html.dark) .version-center-page .major-filter-card.is-active,
 :global(html.dark) .version-center-page .major-below-row button:hover,
+:global(html.dark) .version-center-page .version-tree-group__head:hover,
+:global(html.dark) .version-center-page .version-tree-item:hover {
+  border-color: var(--surface-border-strong) !important;
+  background: var(--surface-hover) !important;
+}
+
+:global(html.dark) .version-center-page .major-filter-card.is-active,
 :global(html.dark) .version-center-page .major-below-row button.is-active,
 :global(html.dark) .version-center-page .version-tree-group.is-active .version-tree-group__head,
-:global(html.dark) .version-center-page .version-tree-group__head:hover,
-:global(html.dark) .version-center-page .version-tree-item:hover,
 :global(html.dark) .version-center-page .version-tree-item.is-active {
-  border-color: color-mix(in srgb, var(--el-color-primary-light-5) 50%, transparent) !important;
-  background: var(--support-accent-soft) !important;
+  border-color: var(--version-selection-border) !important;
+  background: var(--version-selection-bg) !important;
 }
 
 :global(html.dark) .version-center-page .major-filter-card strong,
@@ -1447,6 +1455,10 @@ function getPrimaryModule(entry) {
 }
 
 :global(html.dark) .version-center-page .version-tree-item__top strong {
+  color: var(--support-strong) !important;
+}
+
+:global(html.dark) .version-center-page .version-tree-item.is-active .version-tree-item__top strong {
   color: var(--support-accent) !important;
 }
 
@@ -1456,7 +1468,7 @@ function getPrimaryModule(entry) {
 }
 
 :global(html.dark) .version-center-page .version-tree-item::after {
-  border-color: color-mix(in srgb, var(--el-color-primary-light-5) 38%, transparent) !important;
+  border-color: var(--support-line) !important;
   background: var(--support-panel) !important;
 }
 
@@ -1494,7 +1506,7 @@ function getPrimaryModule(entry) {
 
   .version-list-panel {
     border-right: 0;
-    border-bottom: 1px solid var(--el-color-primary-light-9);
+    border-bottom: 1px solid var(--surface-border);
   }
 
   .version-tree {

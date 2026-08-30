@@ -76,12 +76,18 @@ test('all loading surfaces use the platform mark instead of circular upstream sp
 
 test('version summary uses one aligned Element Plus description surface', () => {
   const versionCenter = read('src/views/support/version/index.vue')
+  const supportTheme = read('src/assets/styles/support.scss')
 
   assert.ok(versionCenter.includes('<el-descriptions'))
   assert.ok(versionCenter.includes('aria-label="版本摘要"'))
   assert.ok(versionCenter.includes('summaryColumnCount'))
   assert.ok(versionCenter.includes('latestReleaseSummaryValue'))
+  assert.ok(versionCenter.includes('--version-selection-bg'))
+  assert.ok(versionCenter.includes('.version-tree-item.is-active .version-tree-item__top strong'))
+  assert.ok(!versionCenter.includes('background: linear-gradient(135deg'))
+  assert.ok(!versionCenter.includes('.section-title span'))
   assert.ok(!versionCenter.includes('align-items: baseline'))
+  assert.ok(!supportTheme.includes('html.dark .version-center-page .version-hero'))
 })
 
 test('global theme contract includes complete light and dark semantic surfaces', () => {
