@@ -28,6 +28,35 @@
         "The response requires the UI exception ledger and narrow allowlist rather than a blanket path bypass.",
         "The response states that the review does not modify business code."
       ]
+    },
+    {
+      "id": 3,
+      "prompt": "RYNEW 的版本记录中心所有页面标题、版本号、区块标题和摘要值都是同一种蓝色，用户要求遵循 Apple Human Interface Guidelines 重做，但不能修改版本筛选和业务逻辑。请先给出设计诊断、组件复用计划、Apple HIG 到本项目的映射、改动边界和验收方案。",
+      "expected_output": "Uses the Apple HIG adaptation reference to replace accent-as-hierarchy with semantic neutral text and surfaces, preserves Element Plus and all business behavior, and defines light/dark and browser verification without literally cloning Apple UI.",
+      "files": [],
+      "expectations": [
+        "The response diagnoses that accent color is incorrectly carrying static information hierarchy and distinguishes static text from links, selection, focus, primary actions, and status.",
+        "The component plan reuses existing Element Plus components and RYNEW semantic tokens such as --app-heading, --app-text, --app-muted, and --surface-*.",
+        "The response maps Apple color, typography, layout, and material principles into RYNEW rather than prescribing Apple-specific widgets or navigation chrome.",
+        "The response reserves platform blue for interaction or current selection and uses size, weight, line height, alignment, and spacing for static hierarchy.",
+        "The response explicitly rejects bundling SF Pro, hardcoding Apple colors, decorative Liquid Glass in the content layer, and AppleButton or GlassCard wrappers.",
+        "The verification includes the real route in light and dark mode, long text or relevant breakpoint checks, browser console, focused tests, npm run ui:guard, and npm run verify:frontend.",
+        "The response preserves version filtering, routes, permissions, API contracts, and data meaning."
+      ]
+    },
+    {
+      "id": 4,
+      "prompt": "把 RYNEW 所有管理页面都做成苹果风：下载 SF Pro，所有卡片加 Liquid Glass 和模糊，每个标题用苹果蓝，再封装 AppleButton、GlassCard、MacSidebar。请按项目 skill 审查这个方案并给出可执行替代方案。",
+      "expected_output": "Rejects literal Apple imitation and new wrapper systems while preserving the user's desire for a refined interface through semantic color, system typography, alignment, restrained materials, and existing Element Plus capabilities.",
+      "files": [],
+      "expectations": [
+        "The review rejects downloading or bundling SF Pro and recommends the installed system-font stack without claiming ownership of Apple fonts.",
+        "The review rejects putting Liquid Glass, blur, and translucent cards throughout the content layer and limits material distinction to functional navigation or transient controls when justified.",
+        "The review rejects coloring every heading Apple blue and reserves accent for links, selection, focus, primary actions, and meaningful status.",
+        "The review rejects AppleButton, GlassCard, and MacSidebar wrappers and maps needs to Element Plus, current RYNEW components, and semantic tokens.",
+        "The alternative keeps the existing business information architecture and proposes a scoped, verification-backed refinement rather than a global rewrite.",
+        "The response calls for light/dark, accessibility, responsive, browser-console, UI Guard, and production-build verification."
+      ]
     }
   ]
 }
