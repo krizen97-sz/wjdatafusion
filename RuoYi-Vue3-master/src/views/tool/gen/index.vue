@@ -128,13 +128,18 @@
     />
     <!-- 预览界面 -->
     <el-dialog :title="preview.title" v-model="preview.open" width="80%" top="5vh" append-to-body class="scrollbar">
-      <el-tabs v-model="preview.activeName">
+      <el-tabs v-model="preview.activeName" class="motion-tabs">
         <el-tab-pane
           v-for="(value, key) in preview.data"
-          :label="key.substring(key.lastIndexOf('/')+1,key.indexOf('.vm'))"
           :name="key.substring(key.lastIndexOf('/')+1,key.indexOf('.vm'))"
           :key="value"
         >
+          <template #label>
+            <span class="motion-control-label">
+              <svg-icon icon-class="keyline-file-text" class="motion-control-label__icon" />
+              <span class="motion-control-label__text">{{ key.substring(key.lastIndexOf('/')+1,key.indexOf('.vm')) }}</span>
+            </span>
+          </template>
           <el-link :underline="false" icon="DocumentCopy" v-copyText="value" v-copyText:callback="copyTextSuccess" style="float:right">&nbsp;复制</el-link>
           <pre>{{ value }}</pre>
         </el-tab-pane>

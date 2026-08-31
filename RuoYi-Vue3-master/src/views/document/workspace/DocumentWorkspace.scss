@@ -411,26 +411,7 @@
 .document-search { width: 300px; }
 .type-filter { width: 190px; }
 .permission-filter {
-  display: inline-flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--surface-border);
-  border-radius: 6px;
-  background: var(--surface-muted);
-
-  button {
-    height: 28px;
-    padding: 0 10px;
-    border: 0;
-    border-radius: 4px;
-    background: transparent;
-    color: var(--app-muted);
-    cursor: pointer;
-    font-size: 12px;
-
-    &:focus-visible { outline: 2px solid color-mix(in srgb, var(--el-color-primary) 35%, transparent); outline-offset: 1px; }
-    &.is-active { background: var(--surface-strong); color: var(--el-color-primary); box-shadow: 0 1px 3px color-mix(in srgb, var(--app-heading) 12%, transparent); font-weight: 650; }
-  }
+  flex: 0 0 auto;
 }
 .toolbar-spacer { flex: 1; }
 .batch-download-button { min-width: 108px; }

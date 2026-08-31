@@ -1,8 +1,8 @@
 export const RECORD_FILTERS = [
-  { value: 'ALL', label: '全部' },
-  { value: 'PERMISSION', label: '权限' },
-  { value: 'LIFECYCLE', label: '归档' },
-  { value: 'ACCESS', label: '访问' }
+  { value: 'ALL', label: '全部', icon: 'keyline-list-sort' },
+  { value: 'PERMISSION', label: '权限', icon: 'keyline-lock' },
+  { value: 'LIFECYCLE', label: '归档', icon: 'keyline-package' },
+  { value: 'ACCESS', label: '访问', icon: 'keyline-eye' }
 ]
 
 const OPERATION_LABELS = {

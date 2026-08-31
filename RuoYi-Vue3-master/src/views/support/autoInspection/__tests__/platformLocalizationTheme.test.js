@@ -1,8 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import path from 'node:path'
 
 const read = (file) => fs.readFileSync(file, 'utf8')
+
+function collectVueFiles(directory) {
+  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const target = path.join(directory, entry.name)
+    if (entry.isDirectory()) return collectVueFiles(target)
+    return entry.isFile() && entry.name.endsWith('.vue') ? [target] : []
+  })
+}
 
 test('production and staging builds expose only the platform brand', () => {
   const production = read('.env.production')
@@ -122,6 +131,96 @@ test('async route pages do not use the blank-prone out-in transition mode', () =
 
   assert.ok(appMain.includes('Component && !route.meta.link'))
   assert.ok(!appMain.includes('mode="out-in"'))
+})
+
+test('precision rail motion is semantic, opt-in where needed and reduced-motion safe', () => {
+  const variables = read('src/assets/styles/variables.module.scss')
+  const globalStyles = read('src/assets/styles/index.scss')
+  const motion = read('src/assets/styles/motion.scss')
+  const directiveIndex = read('src/directive/index.js')
+  const ripple = read('src/directive/common/motionRipple.js')
+  const overview = read('src/views/support/autoInspection/index.vue')
+  const cockpit = read('src/views/support/autoInspection/cockpit.vue')
+  const recordDrawer = read('src/views/document/components/DocumentRecordsDrawer.vue')
+  const documentWorkspace = read('src/views/document/workspace/index.vue')
+
+  for (const marker of [
+    '--motion-duration-instant',
+    '--motion-duration-fast',
+    '--motion-duration-base',
+    '--motion-ease-out',
+    '--motion-ease-standard',
+    '--motion-rail-size'
+  ]) {
+    assert.ok(variables.includes(marker), `missing shared motion token: ${marker}`)
+  }
+
+  assert.ok(globalStyles.includes("@use './motion.scss'"))
+  assert.ok(!globalStyles.includes('icon-micro-pop'))
+  assert.ok(!globalStyles.includes('icon-tone-glow'))
+  assert.ok(motion.includes('.el-tabs__active-bar'))
+  assert.ok(motion.includes('.el-segmented__item-selected::after'))
+  assert.ok(motion.includes('.motion-entry-action'))
+  assert.ok(motion.includes('.motion-execute-action'))
+  assert.ok(motion.includes('.motion-view-stage'))
+  assert.ok(motion.includes('@media (prefers-reduced-motion: reduce)'))
+  assert.ok(!motion.includes('animation: bounce'))
+  assert.ok(!motion.includes('filter: drop-shadow'))
+
+  assert.ok(directiveIndex.includes("app.directive('motion-ripple', motionRipple)"))
+  assert.ok(ripple.includes("el.addEventListener('pointerdown', handler)"))
+  assert.ok(ripple.includes("el.classList.contains('is-loading')"))
+  assert.ok(ripple.includes('prefers-reduced-motion: reduce'))
+
+  for (const marker of [
+    'record-view-tabs motion-tabs',
+    'keyline-list-check',
+    'keyline-activity',
+    'health-sample-filters',
+    'v-motion-ripple',
+    'targetPreviewSucceeded'
+  ]) {
+    assert.ok(overview.includes(marker), `missing overview motion contract: ${marker}`)
+  }
+  assert.ok(cockpit.includes('motion-segmented cockpit-plan-mode'))
+  assert.ok(cockpit.includes('keyline-layout-dashboard'))
+  assert.ok(recordDrawer.includes('operation-filter motion-segmented'))
+  assert.ok(documentWorkspace.includes('permission-filter motion-segmented'))
+  assert.ok(!overview.includes('<el-steps'))
+})
+
+test('every business view Tabs and Segmented control uses the shared rail and an existing icon label', () => {
+  const files = collectVueFiles('src/views')
+  let tabCount = 0
+  let segmentedCount = 0
+
+  for (const file of files) {
+    const source = read(file)
+    const tabs = source.match(/<el-tabs\b[^>]*>/g) || []
+    const segmentedTags = source.match(/<el-segmented\b[^>]*>/g) || []
+    const segmentedBlocks = source.match(/<el-segmented\b[\s\S]*?<\/el-segmented>/g) || []
+
+    tabCount += tabs.length
+    segmentedCount += segmentedTags.length
+
+    for (const tag of tabs) {
+      assert.ok(tag.includes('motion-tabs'), `${file} has a Tabs surface outside Precision Rail`)
+    }
+    if (tabs.length) {
+      assert.ok(source.includes('motion-control-label'), `${file} is missing icon/text Tab labels`)
+      assert.ok(source.includes('<svg-icon'), `${file} is missing Tab icons`)
+    }
+
+    assert.equal(segmentedBlocks.length, segmentedTags.length, `${file} has a self-closing Segmented control without an icon slot`)
+    for (const block of segmentedBlocks) {
+      assert.ok(block.match(/class="[^"]*motion-segmented/), `${file} has a Segmented surface outside Precision Rail`)
+      assert.ok(block.includes('motion-control-label'), `${file} is missing a Segmented icon/text label`)
+      assert.ok(block.includes('<svg-icon'), `${file} is missing Segmented icons`)
+    }
+  }
+
+  assert.ok(tabCount >= 11, 'the repository-wide Tabs inventory unexpectedly shrank')
+  assert.ok(segmentedCount >= 12, 'the repository-wide Segmented inventory unexpectedly shrank')
 })
 
 test('cockpit survives production compilation contract', () => {

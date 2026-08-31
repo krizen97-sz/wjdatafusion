@@ -172,9 +172,14 @@
             <el-option label="ZIP 压缩包" value="zip" />
             <el-option label="RAR 压缩包" value="rar" />
           </el-select>
-          <div v-if="query.scope === 'SHARED'" class="permission-filter" role="group" aria-label="共享权限筛选">
-            <button v-for="item in SHARED_PERMISSION_FILTERS" :key="item.value" type="button" :class="{ 'is-active': query.accessPermission === item.value }" @click="query.accessPermission = item.value">{{ item.label }}</button>
-          </div>
+          <el-segmented v-if="query.scope === 'SHARED'" v-model="query.accessPermission" class="permission-filter motion-segmented" :options="SHARED_PERMISSION_FILTERS" size="small" aria-label="共享权限筛选">
+            <template #default="{ item }">
+              <span class="motion-control-label">
+                <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
+                <span class="motion-control-label__text">{{ item.label }}</span>
+              </span>
+            </template>
+          </el-segmented>
           <span class="toolbar-spacer" />
           <el-button
             v-if="canDownloadDocuments"
@@ -562,9 +567,9 @@ const contentTitle = computed(() => {
   return folderBreadcrumb.value[folderBreadcrumb.value.length - 1]?.folderName || currentScope.value.label
 })
 const SHARED_PERMISSION_FILTERS = [
-  { value: '', label: '全部' },
-  { value: 'EDIT', label: '可编辑' },
-  { value: 'VIEW', label: '仅查看' }
+  { value: '', label: '全部', icon: 'keyline-list-sort' },
+  { value: 'EDIT', label: '可编辑', icon: 'keyline-pen' },
+  { value: 'VIEW', label: '仅查看', icon: 'keyline-eye' }
 ]
 const scopeDescription = computed(() => ({
   MY: '你创建并拥有的全部文档',

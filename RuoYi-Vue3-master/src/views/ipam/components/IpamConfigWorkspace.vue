@@ -13,16 +13,25 @@
       </div>
       <div class="grid-actions">
         <el-segmented
-          class="grid-mode-toggle"
+          class="grid-mode-toggle motion-segmented"
           :model-value="displayMode"
           :options="gridDisplayModeOptions"
           aria-label="IP网格显示方式"
           @change="$emit('update:display-mode', $event)"
-        />
+        >
+          <template #default="{ item }">
+            <span class="motion-control-label">
+              <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
+              <span class="motion-control-label__text">{{ item.label }}</span>
+            </span>
+          </template>
+        </el-segmented>
         <div class="legend">
           <span v-for="option in statusOptions" :key="option.value" :class="['legend-dot', statusMeta(option.value).className]">{{ option.label }}</span>
         </div>
         <el-button
+          v-motion-ripple
+          class="motion-execute-action"
           icon="Search"
           :loading="loading.scan"
           :disabled="sheetChangedCount > 0"
@@ -142,6 +151,8 @@
           >{{ editButtonLabel }}</el-button>
           <el-button :icon="expanded ? 'ArrowUp' : 'ArrowDown'" @click="expanded = !expanded">{{ expanded ? '收起扩展' : '扩展字段' }}</el-button>
           <el-button
+            v-motion-ripple
+            class="motion-execute-action"
             type="primary"
             icon="Check"
             :disabled="!editReady || sheetErrorCount > 0 || sheetChangedCount === 0"
@@ -458,8 +469,8 @@ const sheetTableRef = ref(null)
 const manufacturerListId = `ipam-manufacturer-${useId()}`
 const maxGridCommunityNameLength = 14
 const gridDisplayModeOptions = [
-  { label: '简约', value: 'compact' },
-  { label: '详细', value: 'detailed' }
+  { label: '简约', value: 'compact', icon: 'keyline-grid-3x3' },
+  { label: '详细', value: 'detailed', icon: 'keyline-list-sort' }
 ]
 const gridTargetTypeShortLabels = {
   RECORDER: '录像',

@@ -64,7 +64,7 @@
 
     <template #footer>
       <el-button :disabled="validating" @click="closeDialog">取消</el-button>
-      <el-button type="primary" :loading="validating" :disabled="!selectedFile || !folderId" @click="submitUpload">
+      <el-button v-motion-ripple class="motion-execute-action" type="primary" :loading="validating" :disabled="!selectedFile || !folderId" @click="submitUpload">
         {{ validating ? '文件校验中' : '开始上传' }}
       </el-button>
     </template>

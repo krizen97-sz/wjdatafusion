@@ -1,8 +1,16 @@
 <template>
   <div class="right-board">
-    <el-tabs v-model="currentTab" stretch class="center-tabs">
-      <el-tab-pane label="组件属性" name="field" />
-      <el-tab-pane label="表单属性" name="form" />
+    <el-tabs v-model="currentTab" stretch class="center-tabs motion-tabs">
+      <el-tab-pane name="field">
+        <template #label>
+          <span class="motion-control-label"><svg-icon icon-class="keyline-shapes" class="motion-control-label__icon" /><span class="motion-control-label__text">组件属性</span></span>
+        </template>
+      </el-tab-pane>
+      <el-tab-pane name="form">
+        <template #label>
+          <span class="motion-control-label"><svg-icon icon-class="keyline-settings" class="motion-control-label__icon" /><span class="motion-control-label__text">表单属性</span></span>
+        </template>
+      </el-tab-pane>
     </el-tabs>
     <div class="field-box">
       <a class="document-link" target="_blank" :href="documentLink" title="查看组件文档">

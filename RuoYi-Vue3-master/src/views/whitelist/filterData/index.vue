@@ -31,10 +31,10 @@
 
     <el-row :gutter="10" class="mb8">
       <el-col v-if="isAdmin" :span="1.5">
-        <el-button type="primary" plain icon="VideoPlay" @click="handlePull" :loading="pullLoading" v-hasPermi="['whitelist:filterData:pull']">立即拉取</el-button>
+        <el-button v-motion-ripple class="motion-execute-action" type="primary" plain icon="VideoPlay" @click="handlePull" :loading="pullLoading" v-hasPermi="['whitelist:filterData:pull']">立即拉取</el-button>
       </el-col>
       <el-col v-if="isAdmin" :span="1.5">
-        <el-button type="success" plain icon="Promotion" @click="handleOpenPublish" v-hasPermi="['whitelist:filterData:pull']">写入 Topic</el-button>
+        <el-button class="motion-entry-action" data-motion-direction="forward" type="success" plain icon="Promotion" @click="handleOpenPublish" v-hasPermi="['whitelist:filterData:pull']">写入 Topic</el-button>
       </el-col>
       <el-col v-if="isAdmin" :span="1.5">
         <el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete" v-hasPermi="['whitelist:filterData:remove']">删除</el-button>
@@ -119,7 +119,7 @@
           <div class="publish-toolbar">
             <el-input v-model="publishPlateNo" placeholder="请输入车牌号，例如 苏D12345警" clearable class="publish-toolbar__plate" />
             <el-button @click="handleBuildSample">生成示例消息</el-button>
-            <el-button type="primary" plain @click="handlePublish" :loading="publishLoading">写入 Topic</el-button>
+            <el-button v-motion-ripple class="motion-execute-action" type="primary" plain @click="handlePublish" :loading="publishLoading">写入 Topic</el-button>
           </div>
         </el-form-item>
         <el-form-item label="消息内容">
@@ -129,7 +129,7 @@
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="publishOpen = false">取 消</el-button>
-          <el-button type="primary" @click="handlePublish" :loading="publishLoading">写 入</el-button>
+          <el-button v-motion-ripple class="motion-execute-action" type="primary" @click="handlePublish" :loading="publishLoading">写 入</el-button>
         </div>
       </template>
     </el-dialog>

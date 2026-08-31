@@ -19,8 +19,14 @@
         </div>
       </section>
 
-      <el-tabs v-model="activeTab" class="record-tabs" stretch>
-        <el-tab-pane label="修改记录" name="versions">
+      <el-tabs v-model="activeTab" class="record-tabs motion-tabs" stretch>
+        <el-tab-pane name="versions">
+          <template #label>
+            <span class="motion-control-label">
+              <svg-icon icon-class="keyline-clock-arrow-left" class="motion-control-label__icon" />
+              <span class="motion-control-label__text">修改记录</span>
+            </span>
+          </template>
           <div v-loading="loading.records" class="version-list">
             <article v-for="version in versions" :key="version.versionId" class="version-item" :class="{ 'is-current': version.current }">
               <span class="version-dot" />
@@ -37,16 +43,21 @@
           </div>
         </el-tab-pane>
 
-        <el-tab-pane v-if="isOwner" label="其他操作" name="operations">
-          <div class="operation-filter" role="group" aria-label="操作记录筛选">
-            <button
-              v-for="filter in RECORD_FILTERS"
-              :key="filter.value"
-              type="button"
-              :class="{ 'is-active': operationFilter === filter.value }"
-              @click="operationFilter = filter.value"
-            >{{ filter.label }}</button>
-          </div>
+        <el-tab-pane v-if="isOwner" name="operations">
+          <template #label>
+            <span class="motion-control-label">
+              <svg-icon icon-class="keyline-list-sort" class="motion-control-label__icon" />
+              <span class="motion-control-label__text">其他操作</span>
+            </span>
+          </template>
+          <el-segmented v-model="operationFilter" class="operation-filter motion-segmented" :options="RECORD_FILTERS" block aria-label="操作记录筛选">
+            <template #default="{ item }">
+              <span class="motion-control-label">
+                <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
+                <span class="motion-control-label__text">{{ item.label }}</span>
+              </span>
+            </template>
+          </el-segmented>
           <div v-loading="loading.records" class="operation-list">
             <article v-for="operation in visibleOperations" :key="operation.logId" class="operation-item">
               <span class="operation-icon"><el-icon><Clock /></el-icon></span>
@@ -176,26 +187,7 @@ async function loadRecords() {
 .version-copy > time { color: var(--app-muted); }
 
 .operation-filter {
-  display: flex;
-  gap: 4px;
   margin: 2px 0 8px;
-  padding: 3px;
-  border-radius: 7px;
-  background: var(--surface-muted);
-
-  button {
-    flex: 1;
-    padding: 6px 4px;
-    border: 0;
-    border-radius: 5px;
-    background: transparent;
-    color: var(--app-muted);
-    cursor: pointer;
-    font-size: 12px;
-  }
-  button:hover,
-  button:focus-visible,
-  button.is-active { outline: none; background: var(--surface-strong); color: var(--el-color-primary); box-shadow: 0 1px 2px color-mix(in srgb, var(--app-heading) 8%, transparent); }
 }
 
 .operation-item {

@@ -13,8 +13,11 @@
       </div>
     </section>
 
-    <el-tabs v-model="activeTab" class="tim-tabs">
-      <el-tab-pane label="巡检记录" name="record">
+    <el-tabs v-model="activeTab" class="tim-tabs motion-tabs">
+      <el-tab-pane name="record">
+        <template #label>
+          <span class="motion-control-label"><svg-icon icon-class="keyline-list-check" class="motion-control-label__icon" /><span class="motion-control-label__text">巡检记录</span></span>
+        </template>
         <el-form :model="queryParams" ref="queryRef" :inline="true" v-show="showSearch" label-width="80px" class="tim-query-bar">
           <el-form-item label="来源" prop="sourceType">
             <el-select v-model="queryParams.sourceType" placeholder="全部来源" clearable style="width: 150px">
@@ -83,7 +86,10 @@
         />
       </el-tab-pane>
 
-      <el-tab-pane label="巡检配置" name="config">
+      <el-tab-pane name="config">
+        <template #label>
+          <span class="motion-control-label"><svg-icon icon-class="keyline-settings" class="motion-control-label__icon" /><span class="motion-control-label__text">巡检配置</span></span>
+        </template>
         <div class="config-grid" v-loading="configLoading">
           <article v-for="item in configList" :key="item.itemCode" class="config-card" :class="{ 'is-disabled': item.enabledFlag !== 'Y' }">
             <div class="config-card__head">
@@ -132,7 +138,10 @@
         </div>
       </el-tab-pane>
 
-      <el-tab-pane label="巡检计划" name="plan">
+      <el-tab-pane name="plan">
+        <template #label>
+          <span class="motion-control-label"><svg-icon icon-class="keyline-calendar-check" class="motion-control-label__icon" /><span class="motion-control-label__text">巡检计划</span></span>
+        </template>
         <el-form :model="planQuery" ref="planQueryRef" :inline="true" label-width="80px" class="tim-query-bar">
           <el-form-item label="计划名称" prop="planName">
             <el-input v-model="planQuery.planName" placeholder="请输入计划名称" clearable @keyup.enter="handlePlanQuery" />

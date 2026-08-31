@@ -288,6 +288,11 @@ default、card、border-card，也不要用 `div` 和绝对定位下划线模拟
 
 后台页面处于 Operate 场景，动效只承担反馈、状态、连续性和真实进度：
 
+当前统一方向为 **精准滑轨（Precision Rail）**：选中关系由一条短而稳定的
+活动轨道承载，按钮反馈使用轻微位移和表面变化，高价值执行动作才使用有界
+Ripple；内容切换只做短距离、可中断的方向过渡。禁止恢复历史上的图标放大、
+弹跳、彩色光晕和多层阴影叠加。
+
 | 节奏 | 时长 | 使用场景 |
 | --- | --- | --- |
 | 即时 | 100–140ms | press、focus、图标颜色 |
@@ -305,6 +310,23 @@ default、card、border-card，也不要用 `div` 和绝对定位下划线模拟
   success morph、增强 Tabs 和 Stepper 均为显式 opt-in，不能靠宽泛选择器扩散。
 - 减少动效模式移除位移、Ripple 扩张、morph 编排和非必要循环，但保留最终
   选中、焦点、loading、success 和 error 状态。
+
+### 12.2 精准滑轨实现契约
+
+| 业务语义 | 项目实现 | 使用边界 |
+| --- | --- | --- |
+| 普通后台按钮 | 全局 `el-button` hover / press 基础反馈 | 不改业务颜色，不作用于 link / text 行操作 |
+| 应用或工作区入口 | `.motion-entry-action` + `data-motion-direction` | 只移动方向图标，普通查询/重置不使用 |
+| 提交或执行 | `.motion-execute-action` + `v-motion-ripple` | 只绑定明确执行动作，loading/disabled/reduced-motion 自动停用 |
+| 真实成功反馈 | `.is-motion-success` + `.motion-action-state` | 必须来自真实业务结果，错误后立即恢复可执行态 |
+| 应用级 Tabs | `el-tabs.motion-tabs` + `.motion-control-label` | 复用原生 active bar，不自绘第二套下划线 |
+| 紧凑互斥筛选 | `el-segmented.motion-segmented` + option 图标 | 复用原生选中层，局部决定等宽、换行或横向滚动 |
+| 视图内容交接 | keyed `.motion-view-stage.is-forward/.is-backward` | 只在关系明确的相邻视图使用，不制造 `out-in` 空白 |
+| 真实阶段流程 | `el-steps` + keyed Vue `Transition` | 当前没有真实阶段数据的页面不得为了视觉效果新增 |
+
+允许的高辨识度微动效只有：活动轨道交接、方向图标轻推、有界 Ripple、真实
+成功 Morph、真实 loading 进度轨道，以及业务确实处于活动态时的低频状态脉冲。
+单个交互最多选择一项主效应和一项辅助效应；页面密度越高，位移和阴影越弱。
 
 ## 13. 实施前后检查
 

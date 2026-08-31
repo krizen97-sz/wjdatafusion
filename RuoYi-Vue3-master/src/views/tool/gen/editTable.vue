@@ -1,10 +1,16 @@
 <template>
   <el-card>
-    <el-tabs v-model="activeName">
-      <el-tab-pane label="基本信息" name="basic">
+    <el-tabs v-model="activeName" class="motion-tabs">
+      <el-tab-pane name="basic">
+        <template #label>
+          <span class="motion-control-label"><svg-icon icon-class="keyline-info" class="motion-control-label__icon" /><span class="motion-control-label__text">基本信息</span></span>
+        </template>
         <basic-info-form ref="basicInfo" :info="info" />
       </el-tab-pane>
-      <el-tab-pane label="字段信息" name="columnInfo">
+      <el-tab-pane name="columnInfo">
+        <template #label>
+          <span class="motion-control-label"><svg-icon icon-class="keyline-database" class="motion-control-label__icon" /><span class="motion-control-label__text">字段信息</span></span>
+        </template>
         <el-table ref="dragTable" :data="columns" row-key="columnId" :max-height="tableHeight">
           <el-table-column label="序号" type="index" min-width="5%" class-name="allowDrag"/>
           <el-table-column label="字段列名" prop="columnName" min-width="10%" :show-overflow-tooltip="true" class-name="allowDrag"/>
@@ -108,7 +114,10 @@
           </el-table-column>
         </el-table>
       </el-tab-pane>
-      <el-tab-pane label="生成信息" name="genInfo">
+      <el-tab-pane name="genInfo">
+        <template #label>
+          <span class="motion-control-label"><svg-icon icon-class="keyline-settings" class="motion-control-label__icon" /><span class="motion-control-label__text">生成信息</span></span>
+        </template>
         <gen-info-form ref="genInfo" :info="info" :tables="tables" />
       </el-tab-pane>
     </el-tabs>

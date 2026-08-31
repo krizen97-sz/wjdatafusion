@@ -21,8 +21,8 @@ import {
 } from './ipamWorkbookRules.js'
 
 const MODE_OPTIONS = [
-  { label: '按网段', value: 'network' },
-  { label: '按小区', value: 'community' }
+  { label: '按网段', value: 'network', icon: 'keyline-route' },
+  { label: '按小区', value: 'community', icon: 'keyline-building' }
 ]
 
 const TREE_PROPS = {

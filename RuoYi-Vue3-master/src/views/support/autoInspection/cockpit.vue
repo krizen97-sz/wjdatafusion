@@ -14,8 +14,8 @@
         <p>例行巡检与高频健康使用同一份当日结论，数据更新于 {{ dashboard.generatedTime || '-' }}</p>
       </div>
       <div class="cockpit-commandbar__actions">
-        <el-button :icon="List" @click="openOverview">巡检总览</el-button>
-        <el-button :icon="Setting" @click="openConfig">巡检配置</el-button>
+        <el-button class="motion-entry-action" data-motion-direction="forward" :icon="List" @click="openOverview">巡检总览</el-button>
+        <el-button class="motion-entry-action" data-motion-direction="forward" :icon="Setting" @click="openConfig">巡检配置</el-button>
         <el-button type="primary" :icon="Refresh" :loading="loading" @click="loadDashboard">刷新数据</el-button>
       </div>
     </header>
@@ -74,7 +74,7 @@
         </header>
         <div v-if="hasTrendData" ref="trendChartRef" class="cockpit-chart cockpit-chart--trend"></div>
         <el-empty v-else class="cockpit-chart-empty" description="近七日还没有可汇总的巡检数据" :image-size="48">
-          <el-button type="primary" plain :icon="Setting" @click="openConfig">配置巡检计划</el-button>
+          <el-button class="motion-entry-action" data-motion-direction="forward" type="primary" plain :icon="Setting" @click="openConfig">配置巡检计划</el-button>
         </el-empty>
         <div v-if="hasTrendData" class="cockpit-day-track">
           <button
@@ -99,7 +99,7 @@
         </header>
         <div v-if="hasPlanData" ref="distributionChartRef" class="cockpit-chart cockpit-chart--distribution"></div>
         <el-empty v-else class="cockpit-chart-empty cockpit-chart-empty--small" description="今天没有需要执行的巡检计划" :image-size="48">
-          <el-button type="primary" plain :icon="Setting" @click="openConfig">新增执行计划</el-button>
+          <el-button class="motion-entry-action" data-motion-direction="forward" type="primary" plain :icon="Setting" @click="openConfig">新增执行计划</el-button>
         </el-empty>
         <div class="cockpit-coverage">
           <span><strong>{{ activePlanCount }}</strong>今日计划</span>
@@ -115,7 +115,14 @@
           <span>只展示按当前周期配置今天需要执行的计划，异常和需关注计划优先</span>
         </div>
         <div class="cockpit-plan-filters">
-          <el-segmented v-model="planModeFilter" :options="planModeOptions" />
+          <el-segmented v-model="planModeFilter" class="motion-segmented cockpit-plan-mode" :options="planModeOptions" aria-label="今日计划类型筛选">
+            <template #default="{ item }">
+              <span class="motion-control-label">
+                <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
+                <span class="motion-control-label__text">{{ item.label }}</span>
+              </span>
+            </template>
+          </el-segmented>
           <el-input v-model="planKeyword" clearable :prefix-icon="Search" placeholder="搜索计划、模板或标签" />
         </div>
       </header>
@@ -267,9 +274,9 @@ const distributionChartRef = ref(null)
 const charts = {}
 
 const planModeOptions = [
-  { label: '全部计划', value: 'ALL' },
-  { label: '例行巡检', value: 'ROUTINE' },
-  { label: '高频健康', value: 'FREQUENT' }
+  { label: '全部计划', value: 'ALL', icon: 'keyline-layout-dashboard' },
+  { label: '例行巡检', value: 'ROUTINE', icon: 'keyline-calendar-check' },
+  { label: '高频健康', value: 'FREQUENT', icon: 'keyline-activity' }
 ]
 
 const healthOverview = computed(() => dashboard.value.healthOverview || {})
@@ -696,6 +703,10 @@ function issueKey(item) {
 
 .cockpit-plan-filters .el-input {
   width: 240px;
+}
+
+.cockpit-plan-mode :deep(.el-segmented__item) {
+  min-width: 92px;
 }
 
 .cockpit-status-legend span {

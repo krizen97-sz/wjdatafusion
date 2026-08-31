@@ -48,11 +48,17 @@
                    <span>基本资料</span>
                  </div>
                </template>
-               <el-tabs v-model="selectedTab">
-                  <el-tab-pane label="基本资料" name="userinfo">
+               <el-tabs v-model="selectedTab" class="motion-tabs">
+                  <el-tab-pane name="userinfo">
+                     <template #label>
+                        <span class="motion-control-label"><svg-icon icon-class="keyline-user" class="motion-control-label__icon" /><span class="motion-control-label__text">基本资料</span></span>
+                     </template>
                      <userInfo :user="state.user" />
                   </el-tab-pane>
-                  <el-tab-pane label="修改密码" name="resetPwd">
+                  <el-tab-pane name="resetPwd">
+                     <template #label>
+                        <span class="motion-control-label"><svg-icon icon-class="keyline-lock" class="motion-control-label__icon" /><span class="motion-control-label__text">修改密码</span></span>
+                     </template>
                      <resetPwd />
                   </el-tab-pane>
                </el-tabs>

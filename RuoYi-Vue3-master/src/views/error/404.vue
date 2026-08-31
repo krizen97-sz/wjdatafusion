@@ -7,7 +7,7 @@
       <p>当前地址可能已经调整，也可能不在您的菜单权限范围内。您可以返回工作台，或回到上一页继续操作。</p>
       <div class="platform-error-actions">
         <el-button :icon="Back" @click="goBack">返回上一页</el-button>
-        <el-button type="primary" :icon="HomeFilled" @click="goHome">进入工作台</el-button>
+        <el-button class="motion-entry-action" data-motion-direction="forward" type="primary" :icon="HomeFilled" @click="goHome">进入工作台</el-button>
       </div>
     </section>
   </main>

@@ -11,8 +11,8 @@
           <p>这里汇总你经手的现场、全站最新修改和常用工作入口，帮助你更快回到正在维护的现场配置。</p>
           <div class="fusion-hero__actions">
             <el-button type="primary" icon="Plus" @click="openSiteCreate">新增现场</el-button>
-            <el-button type="success" icon="Monitor" plain @click="goRoute('/support/site')">进入现场管理</el-button>
-            <el-button icon="Document" plain @click="goRoute('/version')">版本记录</el-button>
+            <el-button class="motion-entry-action" data-motion-direction="forward" type="success" icon="Monitor" plain @click="goRoute('/support/site')">进入现场管理</el-button>
+            <el-button class="motion-entry-action" data-motion-direction="forward" icon="Document" plain @click="goRoute('/version')">版本记录</el-button>
             <el-button icon="Refresh" plain :loading="dashboardLoading" @click="loadSiteDashboard">刷新</el-button>
           </div>
         </div>
@@ -77,7 +77,7 @@
                 <em>{{ formatDateTime(site.lastOperateTime) }}</em>
               </div>
               <div class="fusion-site-card__actions">
-                <el-button link type="primary" icon="Setting" @click="openSiteConfig(site)">配置画布</el-button>
+                <el-button class="motion-entry-action" data-motion-direction="forward" link type="primary" icon="Setting" @click="openSiteConfig(site)">配置画布</el-button>
                 <el-button link type="primary" icon="View" @click="goSiteList(site)">查看列表</el-button>
               </div>
             </article>
@@ -157,7 +157,7 @@
         <pre class="fusion-detail-content">{{ activeChange.detailContent || activeChange.summary || '暂无详情' }}</pre>
         <template #footer>
           <el-button @click="changeDetailOpen = false">关闭</el-button>
-          <el-button v-if="activeChange.siteId" type="primary" @click="openSiteConfig(activeChange)">进入现场</el-button>
+          <el-button v-if="activeChange.siteId" class="motion-entry-action" data-motion-direction="forward" type="primary" @click="openSiteConfig(activeChange)">进入现场</el-button>
         </template>
       </el-dialog>
     </template>
@@ -178,7 +178,7 @@
             <el-button type="primary" icon="User" plain @click="goRoute('/user/profile')">
               我的资料
             </el-button>
-            <el-button type="primary" icon="Monitor" plain @click="goRoute('/support/site')">
+            <el-button class="motion-entry-action" data-motion-direction="forward" type="primary" icon="Monitor" plain @click="goRoute('/support/site')">
               进入现场管理
             </el-button>
           </div>

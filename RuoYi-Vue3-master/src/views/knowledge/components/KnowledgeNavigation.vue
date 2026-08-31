@@ -65,11 +65,18 @@
 
     <el-segmented
       v-model="scopeModel"
-      class="knowledge-navigation__scope"
+      class="knowledge-navigation__scope motion-segmented"
       :options="visibleScopes"
       :disabled="disabled"
       @change="(value) => emit('scope-change', value)"
-    />
+    >
+      <template #default="{ item }">
+        <span class="motion-control-label">
+          <svg-icon :icon-class="item.icon || 'keyline-file-text'" class="motion-control-label__icon" />
+          <span class="motion-control-label__text">{{ item.label }}</span>
+        </span>
+      </template>
+    </el-segmented>
 
     <el-scrollbar class="knowledge-navigation__tree" :class="{ 'is-disabled': disabled }" v-loading="loading">
       <el-tree

@@ -87,6 +87,18 @@ $--color-info: #7d90a6;
   --health-danger: #d55353;
   --health-idle: #8a9aad;
 
+  --motion-duration-instant: 120ms;
+  --motion-duration-fast: 160ms;
+  --motion-duration-base: 220ms;
+  --motion-duration-deliberate: 300ms;
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --motion-state-hover: color-mix(in srgb, var(--el-color-primary) 7%, transparent);
+  --motion-state-press: color-mix(in srgb, var(--el-color-primary) 12%, transparent);
+  --motion-focus-ring: color-mix(in srgb, var(--el-color-primary) 28%, transparent);
+  --motion-rail-size: 3px;
+  --motion-control-radius: 8px;
+
   --sidebar-bg: #{rgba(247, 251, 255, 0.82)};
   --sidebar-text: #{$menuText};
   --menu-hover: #{$menuHover};

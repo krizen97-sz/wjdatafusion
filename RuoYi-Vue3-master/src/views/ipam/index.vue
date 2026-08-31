@@ -22,11 +22,19 @@
         <el-tag size="small" type="info" effect="plain">全部网段</el-tag>
       </div>
       <el-segmented
+        class="motion-segmented"
         :model-value="globalScenarioType"
         :options="scenarioTypeOptions"
         :disabled="loading.scenario || !canEditNetwork"
         @change="handleScenarioChange"
-      />
+      >
+        <template #default="{ item }">
+          <span class="motion-control-label">
+            <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
+            <span class="motion-control-label__text">{{ item.label }}</span>
+          </span>
+        </template>
+      </el-segmented>
     </div>
 
     <div class="ipam-shell">
@@ -83,8 +91,11 @@
           </button>
         </nav>
 
-        <el-tabs v-model="activeTab" class="ipam-tabs">
-          <el-tab-pane label="网段管理" name="network" lazy>
+        <el-tabs v-model="activeTab" class="ipam-tabs motion-tabs">
+          <el-tab-pane name="network" lazy>
+            <template #label>
+              <span class="motion-control-label"><svg-icon icon-class="network" class="motion-control-label__icon" /><span class="motion-control-label__text">网段管理</span></span>
+            </template>
             <section v-if="selectedNetwork" class="network-detail">
               <div class="network-detail__head">
                 <div>
@@ -139,7 +150,10 @@
             <el-empty v-else :image-size="96" description="请先选择网段" />
           </el-tab-pane>
 
-          <el-tab-pane label="IP配置" name="config" lazy>
+          <el-tab-pane name="config" lazy>
+            <template #label>
+              <span class="motion-control-label"><svg-icon icon-class="keyline-file-spreadsheet" class="motion-control-label__icon" /><span class="motion-control-label__text">IP配置</span></span>
+            </template>
             <IpamConfigWorkspace
               v-if="selectedSegment && !configFullscreen"
               :selected-segment="selectedSegment"
@@ -183,7 +197,10 @@
             <el-empty v-else-if="!selectedSegment" :image-size="96" description="请选择网段" />
           </el-tab-pane>
 
-          <el-tab-pane label="地址台账" name="ledger" lazy>
+          <el-tab-pane name="ledger" lazy>
+            <template #label>
+              <span class="motion-control-label"><svg-icon icon-class="keyline-list-check" class="motion-control-label__icon" /><span class="motion-control-label__text">地址台账</span></span>
+            </template>
             <div class="ledger-panel">
               <el-form :model="ledgerQuery" :inline="true" v-show="showSearch" class="compact-filter">
                 <el-form-item label="状态">

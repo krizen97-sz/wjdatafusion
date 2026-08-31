@@ -22,11 +22,19 @@
 
     <div class="workbook-toolbar">
       <el-segmented
+        class="motion-segmented"
         :model-value="scopeMode"
         :options="MODE_OPTIONS"
         aria-label="工作表查看方式"
         @change="changeScopeMode"
-      />
+      >
+        <template #default="{ item }">
+          <span class="motion-control-label">
+            <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
+            <span class="motion-control-label__text">{{ item.label }}</span>
+          </span>
+        </template>
+      </el-segmented>
 
       <el-input
         v-model="tableKeyword"
@@ -55,6 +63,8 @@
       >{{ expandedFields ? '基础字段' : '扩展字段' }}</el-button>
       <el-button icon="RefreshLeft" :disabled="loading.sheet" @click="reloadSheet">重载</el-button>
       <el-button
+        v-motion-ripple
+        class="motion-execute-action"
         type="primary"
         icon="Check"
         :loading="loading.submit"

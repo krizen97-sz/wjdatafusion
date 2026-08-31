@@ -53,11 +53,23 @@
             <el-descriptions-item label="修改说明" :span="2">{{ activeDetail.version.changeNote || operationLabel(activeDetail.version.operationType) }}</el-descriptions-item>
           </el-descriptions>
 
-          <el-tabs v-model="activeTab">
-            <el-tab-pane label="版本内容" name="snapshot">
+          <el-tabs v-model="activeTab" class="motion-tabs">
+            <el-tab-pane name="snapshot">
+              <template #label>
+                <span class="motion-control-label">
+                  <svg-icon icon-class="keyline-file-text" class="motion-control-label__icon" />
+                  <span class="motion-control-label__text">版本内容</span>
+                </span>
+              </template>
               <article class="knowledge-version-content" v-html="activeDetail.version.snapshotContent" />
             </el-tab-pane>
-            <el-tab-pane label="与当前版本对比" name="compare">
+            <el-tab-pane name="compare">
+              <template #label>
+                <span class="motion-control-label">
+                  <svg-icon icon-class="keyline-git-compare" class="motion-control-label__icon" />
+                  <span class="motion-control-label__text">与当前版本对比</span>
+                </span>
+              </template>
               <el-row :gutter="16">
                 <el-col :xs="24" :md="12">
                   <section class="knowledge-version-column">
@@ -73,7 +85,13 @@
                 </el-col>
               </el-row>
             </el-tab-pane>
-            <el-tab-pane label="版本关系" name="relations">
+            <el-tab-pane name="relations">
+              <template #label>
+                <span class="motion-control-label">
+                  <svg-icon icon-class="keyline-link" class="motion-control-label__icon" />
+                  <span class="motion-control-label__text">版本关系</span>
+                </span>
+              </template>
               <el-descriptions :column="1" border>
                 <el-descriptions-item label="标签">
                   <el-space v-if="activeDetail.tags?.length" wrap><el-tag v-for="tag in activeDetail.tags" :key="tag" size="small" effect="plain">{{ tag }}</el-tag></el-space>

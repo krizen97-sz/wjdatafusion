@@ -8,7 +8,7 @@
       <el-alert title="权限调整后，请重新登录以刷新菜单和权限信息。" type="info" :closable="false" show-icon />
       <div class="platform-error-actions">
         <el-button :icon="Back" @click="goBack">返回上一页</el-button>
-        <el-button type="primary" :icon="HomeFilled" @click="goHome">进入工作台</el-button>
+        <el-button class="motion-entry-action" data-motion-direction="forward" type="primary" :icon="HomeFilled" @click="goHome">进入工作台</el-button>
       </div>
     </section>
   </main>

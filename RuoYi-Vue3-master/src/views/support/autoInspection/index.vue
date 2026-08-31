@@ -8,24 +8,26 @@
             <span>统一查看例行执行记录与高频每日健康</span>
           </div>
           <div class="record-board__actions">
-            <el-button type="primary" plain icon="DataAnalysis" @click="openCockpit">巡检驾驶舱</el-button>
+            <el-button class="motion-entry-action" data-motion-direction="forward" type="primary" plain icon="DataAnalysis" @click="openCockpit">巡检驾驶舱</el-button>
             <el-button icon="Refresh" @click="refreshCurrentRecordView">刷新</el-button>
           </div>
         </header>
 
-        <el-tabs v-model="recordViewMode" class="record-view-tabs" @tab-change="handleRecordViewChange">
+        <el-tabs v-model="recordViewMode" class="record-view-tabs motion-tabs" @tab-change="handleRecordViewChange">
           <el-tab-pane :name="PLAN_MODE_ROUTINE">
             <template #label>
-              <span class="record-view-tab-label">
-                例行巡检记录
+              <span class="record-view-tab-label motion-control-label">
+                <svg-icon icon-class="keyline-list-check" class="motion-control-label__icon" />
+                <span class="motion-control-label__text">例行巡检记录</span>
                 <small>{{ recordTotal }}条</small>
               </span>
             </template>
           </el-tab-pane>
           <el-tab-pane :name="PLAN_MODE_FREQUENT">
             <template #label>
-              <span class="record-view-tab-label">
-                高频每日健康
+              <span class="record-view-tab-label motion-control-label">
+                <svg-icon icon-class="keyline-activity" class="motion-control-label__icon" />
+                <span class="motion-control-label__text">高频每日健康</span>
                 <small :class="`is-${dashboardHealthOverview.frequentStatus || '3'}`">{{ formatResult(dashboardHealthOverview.frequentStatus) }}</small>
               </span>
             </template>
@@ -55,6 +57,7 @@
           </div>
         </section>
 
+        <div :key="recordViewMode" class="record-view-stage motion-view-stage" :class="`is-${recordViewMotionDirection}`">
         <template v-if="recordViewMode === PLAN_MODE_ROUTINE">
         <section class="dashboard-brief" :class="`dashboard-brief--${dashboardWeekSummary.status || '3'}`">
           <div class="dashboard-brief__status">
@@ -235,6 +238,7 @@
           @update:plan-id="dailyHealthPlanId = $event"
           @day-results="openHealthSamples"
         />
+        </div>
       </section>
     </section>
 
@@ -509,7 +513,7 @@
     <section v-show="activeTab === 'config'" class="auto-content-section auto-content-section--config">
       <div class="config-shell">
         <header class="config-commandbar">
-          <el-tabs :model-value="configTab" class="config-switcher" aria-label="巡检配置区域" @tab-change="switchConfigTab">
+          <el-tabs :model-value="configTab" class="config-switcher motion-tabs" aria-label="巡检配置区域" @tab-change="switchConfigTab">
             <el-tab-pane name="template">
               <template #label>
                 <span class="config-switcher__label">
@@ -1079,7 +1083,14 @@
             </section>
           </div>
           <div v-if="useGenericNumericRule" class="evaluation-mode-panel">
-            <el-segmented v-model="stepDraft.stepParams.evaluationConfig.mode" :options="evaluationModeOptions" />
+            <el-segmented v-model="stepDraft.stepParams.evaluationConfig.mode" class="motion-segmented" :options="evaluationModeOptions">
+              <template #default="{ item }">
+                <span class="motion-control-label">
+                  <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
+                  <span class="motion-control-label__text">{{ item.label }}</span>
+                </span>
+              </template>
+            </el-segmented>
             <div>
               <strong>{{ stepDraft.stepParams.evaluationConfig.mode === EVALUATION_MODE_PREVIOUS ? '本次结果与上一次执行结果比较' : '本次结果与固定阈值比较' }}</strong>
               <span>{{ evaluationModeHint }}</span>
@@ -1182,8 +1193,11 @@
             <el-col v-if="!isHttpHealthStep" :span="24"><el-form-item label="请求体模板"><el-input v-model="stepDraft.target.extraParams" type="textarea" :rows="4" placeholder='例如：{"startTime":"${todayStart}","endTime":"${todayEnd}"}' /></el-form-item></el-col>
           </el-row>
           <div v-if="isHttpApiTestStep" class="api-test-config">
-            <el-tabs v-model="apiConfigActiveTab" class="api-config-tabs">
-              <el-tab-pane label="请求信息" name="request">
+            <el-tabs v-model="apiConfigActiveTab" class="api-config-tabs motion-tabs">
+              <el-tab-pane name="request">
+                <template #label>
+                  <span class="motion-control-label"><svg-icon icon-class="keyline-route" class="motion-control-label__icon" /><span class="motion-control-label__text">请求信息</span></span>
+                </template>
                 <section class="api-test-section">
                   <header>
                     <strong>请求信息</strong>
@@ -1225,7 +1239,10 @@
                 </section>
               </el-tab-pane>
 
-              <el-tab-pane label="参数与鉴权" name="params">
+              <el-tab-pane name="params">
+                <template #label>
+                  <span class="motion-control-label"><svg-icon icon-class="keyline-lock" class="motion-control-label__icon" /><span class="motion-control-label__text">参数与鉴权</span></span>
+                </template>
                 <section class="api-test-section">
                   <header>
                     <strong>鉴权信息</strong>
@@ -1742,7 +1759,18 @@
           <span>正在配置：<strong>{{ stepActiveSectionLabel }}</strong></span>
           <div>
             <el-button @click="stepDialogOpen = false">取消</el-button>
-            <el-button :loading="targetTesting || targetPreviewLoading" @click="handlePreviewStepTarget">测试并预览</el-button>
+            <el-button
+              v-motion-ripple
+              class="motion-execute-action"
+              :class="{ 'is-motion-success': targetPreviewSucceeded }"
+              :loading="targetTesting || targetPreviewLoading"
+              @click="handlePreviewStepTarget"
+            >
+              <span class="motion-action-state" aria-live="polite">
+                <svg-icon :icon-class="targetPreviewSucceeded ? 'keyline-circle-check' : 'keyline-circle-progress-check'" class="motion-action-state__icon" />
+                {{ targetPreviewSucceeded ? '测试成功' : '测试并预览' }}
+              </span>
+            </el-button>
             <el-button type="primary" @click="submitStepDraft">保存步骤</el-button>
           </div>
         </div>
@@ -1915,7 +1943,14 @@
       <el-form ref="planRef" :model="planForm" :rules="planRules" label-position="top" label-width="auto" class="inspection-standard-form plan-editor-form">
         <section class="plan-mode-section">
           <el-form-item label="运行模式">
-            <el-segmented v-model="planForm.planMode" :options="planModeOptions" @change="handlePlanModeChange" />
+            <el-segmented v-model="planForm.planMode" class="motion-segmented" :options="planModeOptions" @change="handlePlanModeChange">
+              <template #default="{ item }">
+                <span class="motion-control-label">
+                  <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
+                  <span class="motion-control-label__text">{{ item.label }}</span>
+                </span>
+              </template>
+            </el-segmented>
           </el-form-item>
           <span>{{ planForm.planMode === PLAN_MODE_FREQUENT ? '分钟级执行，结果按天汇总健康度。' : '按日、周或月执行，每次生成一条完整巡检记录。' }}</span>
         </section>
@@ -2105,7 +2140,20 @@
           <strong>执行记录</strong>
           <span>每次执行默认收起，展开后查看步骤与目标明细。</span>
         </div>
-        <el-segmented v-model="healthSampleResultStatus" :options="healthSampleStatusOptions" @change="handleHealthSampleStatusChange" />
+        <el-segmented
+          v-model="healthSampleResultStatus"
+          class="motion-segmented health-sample-filters"
+          :options="healthSampleStatusOptions"
+          aria-label="执行结果筛选"
+          @change="handleHealthSampleStatusChange"
+        >
+          <template #default="{ item }">
+            <span class="motion-control-label" :class="item.tone ? `is-${item.tone}` : ''">
+              <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
+              <span class="motion-control-label__text">{{ item.label }}</span>
+            </span>
+          </template>
+        </el-segmented>
       </div>
       <el-table
         v-loading="healthSampleLoading"
@@ -2364,6 +2412,7 @@ const recordLoading = ref(false)
 const recordList = ref([])
 const recordTotal = ref(0)
 const recordViewMode = ref(route.query.view === 'frequent' ? PLAN_MODE_FREQUENT : PLAN_MODE_ROUTINE)
+const recordViewMotionDirection = ref(recordViewMode.value === PLAN_MODE_FREQUENT ? 'forward' : 'backward')
 const recordQuery = ref({ pageNum: 1, pageSize: 20, templateId: undefined, planId: undefined, sourceType: '', resultStatus: '', runMode: PLAN_MODE_ROUTINE })
 const dailyHealthLoading = ref(false)
 const dailyHealthRows = ref([])
@@ -2379,11 +2428,11 @@ const healthSampleQuery = ref({ pageNum: 1, pageSize: 20 })
 const healthSampleExpandedKeys = ref([])
 const healthSampleResultStatus = ref('ALL')
 const healthSampleStatusOptions = [
-  { label: '全部结果', value: 'ALL' },
-  { label: '仅看异常', value: '2' },
-  { label: '仅看关注', value: '4' },
-  { label: '仅看正常', value: '1' },
-  { label: '未执行', value: '3' }
+  { label: '全部结果', value: 'ALL', icon: 'keyline-list-sort' },
+  { label: '仅看异常', value: '2', icon: 'keyline-triangle-alert', tone: 'danger' },
+  { label: '仅看关注', value: '4', icon: 'keyline-circle-alert', tone: 'warning' },
+  { label: '仅看正常', value: '1', icon: 'keyline-circle-check', tone: 'success' },
+  { label: '未执行', value: '3', icon: 'keyline-clock', tone: 'idle' }
 ]
 const reportExportOpen = ref(false)
 const reportExportLoading = ref(false)
@@ -2586,8 +2635,8 @@ const weekOptions = [
   { label: '周六', value: 'SAT' }
 ]
 const planModeOptions = [
-  { label: '例行巡检', value: PLAN_MODE_ROUTINE },
-  { label: '高频监测', value: PLAN_MODE_FREQUENT }
+  { label: '例行巡检', value: PLAN_MODE_ROUTINE, icon: 'keyline-calendar-check' },
+  { label: '高频监测', value: PLAN_MODE_FREQUENT, icon: 'keyline-activity' }
 ]
 const httpDatePlaceholders = [
   { value: '${today}', label: '当天日期', example: '2026-06-11' },
@@ -2758,6 +2807,7 @@ const planRules = {
 
 const activeStep = computed(() => templateForm.value.steps?.[activeStepIndex.value])
 const targetPreviewFields = computed(() => targetPreviewData.value?.preview?.detectedFields || [])
+const targetPreviewSucceeded = computed(() => Boolean(targetPreviewData.value?.passed) && !targetPreviewLoading.value && !targetTesting.value)
 const databasePreviewColumns = computed(() => targetPreviewData.value?.preview?.columns || [])
 const databasePreviewRows = computed(() => targetPreviewData.value?.preview?.rows || [])
 const currentStepTool = computed(() => toolList.value.find((item) => item.toolCode === stepDraft.value.toolCode))
@@ -2876,8 +2926,8 @@ const isTcpPortStep = computed(() => stepDraft.value.toolCode === TOOL_TCP_PORT_
 const isServiceStatusStep = computed(() => stepDraft.value.toolCode === TOOL_SERVER_SERVICE_STATUS)
 const useGenericNumericRule = computed(() => !isServiceStatusStep.value && !isHttpApiTestStep.value)
 const evaluationModeOptions = [
-  { label: '固定阈值', value: EVALUATION_MODE_FIXED },
-  { label: '上次结果', value: EVALUATION_MODE_PREVIOUS }
+  { label: '固定阈值', value: EVALUATION_MODE_FIXED, icon: 'keyline-sliders-horizontal' },
+  { label: '上次结果', value: EVALUATION_MODE_PREVIOUS, icon: 'keyline-clock-arrow-left' }
 ]
 const comparisonRuleOptions = computed(() => stepDraft.value.stepParams?.evaluationConfig?.mode === EVALUATION_MODE_PREVIOUS
   ? [
@@ -3080,7 +3130,10 @@ watch(recordViewMode, (mode) => {
 watch(() => route.query.view, (view) => {
   if (applyingOverviewDeepLink.value) return
   const nextMode = view === 'frequent' ? PLAN_MODE_FREQUENT : PLAN_MODE_ROUTINE
-  if (recordViewMode.value !== nextMode) recordViewMode.value = nextMode
+  if (recordViewMode.value !== nextMode) {
+    recordViewMotionDirection.value = nextMode === PLAN_MODE_FREQUENT ? 'forward' : 'backward'
+    recordViewMode.value = nextMode
+  }
 })
 watch([dailyHealthMonth, dailyHealthPlanId], () => {
   if (!applyingOverviewDeepLink.value && recordViewMode.value === PLAN_MODE_FREQUENT) getDailyHealth()
@@ -3164,6 +3217,7 @@ function switchConfigTab(tab) {
 }
 
 function handleRecordViewChange(mode) {
+  recordViewMotionDirection.value = mode === PLAN_MODE_FREQUENT ? 'forward' : 'backward'
   const nextView = mode === PLAN_MODE_FREQUENT ? 'frequent' : 'routine'
   if (route.query.view === nextView) return
   const nextQuery = { ...route.query, view: nextView }
@@ -4049,6 +4103,7 @@ function handleTestStepTarget() {
 }
 
 function handlePreviewStepTarget() {
+  targetPreviewData.value = { passed: false, resultStatus: '3', preview: {} }
   if (['FTP_FILE_COUNT', 'SERVER_FILE_COUNT', 'BIG_DATA_SERVER_DISK', TOOL_SERVER_SERVICE_STATUS].includes(stepDraft.value.toolCode)) {
     return handleTestStepTarget()
   }
@@ -6890,6 +6945,12 @@ function resultTagType(value) {
   color: var(--health-warning);
 }
 
+.record-view-stage {
+  display: grid;
+  min-width: 0;
+  gap: 14px;
+}
+
 .health-sample-summary {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -6940,6 +7001,15 @@ function resultTagType(value) {
     color: var(--app-muted);
     font-size: 12px;
   }
+}
+
+.health-sample-filters {
+  max-width: 100%;
+  flex: 0 0 auto;
+}
+
+.health-sample-filters :deep(.el-segmented__item) {
+  min-width: 98px;
 }
 
 .health-sample-table {
@@ -10956,6 +11026,16 @@ function resultTagType(value) {
   .record-board__actions {
     flex-wrap: wrap;
     width: 100%;
+  }
+
+  .health-sample-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .health-sample-filters {
+    width: 100%;
+    overflow-x: auto;
   }
 
   .config-commandbar {

@@ -9,6 +9,44 @@ their component ownership or visual language. RYNEW remains a Vue 3 + Element
 Plus desktop operations product. Motion supports scanability, confidence, and
 continuity; it does not turn the admin interface into a showcase.
 
+## Selected project direction: Precision Rail
+
+Precision Rail is the default RYNEW interaction language selected for the current
+frontend. It combines a restrained Apple HIG-inspired hierarchy with a visible,
+project-native continuity cue:
+
+- selection travels through the native Tabs active bar or Segmented selected
+  layer, with one short accent rail as the primary moving element;
+- ordinary buttons use semantic surface change and a 1px press acknowledgment;
+- workspace entrances can nudge only their directional icon by up to 2px;
+- explicit submit/execute actions may use the bounded `v-motion-ripple` state
+  layer and a real-result success morph;
+- related content views may use a keyed 4-8px directional enter; dense data stays
+  stable while the active control explains the change;
+- loading uses the existing platform mark plus a restrained progress rail, never
+  an upstream circular spinner or fabricated percentage;
+- a low-frequency live pulse is allowed only while the business object is truly
+  active, recording, streaming, or monitoring.
+
+The old global icon pop, scale, colored drop-shadow/glow, bounce, and decorative
+loop vocabulary is retired. A single interaction normally receives one primary
+effect and at most one supporting effect.
+
+### Context adaptation matrix
+
+| Local context | Keep | Optional enhancement | Remove or avoid |
+| --- | --- | --- | --- |
+| Dense CRUD table | color, focus, 1px press | none | lift on link actions, ripple, content slide |
+| Application-level Tabs | native active bar, icon/text state | short related-content handoff | card-style tabs, duplicate underline, scale |
+| Compact result filter | native selected thumb, semantic icon | short bottom rail | separate colored pill per state |
+| Workspace entrance | normal button semantics | 2px directional icon nudge | permanent glow or whole-button travel |
+| Submit/execute action | real loading/error | bounded ripple, real success morph | timer success, repeated pulse, fake progress |
+| Audio/model/import flow | real `el-steps` state | keyed phase content, live-state pulse | invented phases, percentages, autoplay |
+
+Implementation ownership lives in `src/assets/styles/motion.scss`, shared motion
+tokens, and the `motion-ripple` directive. Pages opt into the smallest applicable
+capability and retain their own layout, route, filter, and request contracts.
+
 ## Authoritative references
 
 - [Element Plus Button](https://element-plus.org/en-US/component/button.html)

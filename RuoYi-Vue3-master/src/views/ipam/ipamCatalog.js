@@ -26,8 +26,8 @@ export const MANUFACTURER_OPTIONS = ['海康', '大华', '宇视', '华龙', '�
   .map((item) => ({ label: item, value: item }))
 
 export const SCENARIO_TYPE_OPTIONS = [
-  { label: '社会面场景', value: 'SOCIAL' },
-  { label: '公安内网场景', value: 'INTERNAL' }
+  { label: '社会面场景', value: 'SOCIAL', icon: 'keyline-users' },
+  { label: '公安内网场景', value: 'INTERNAL', icon: 'keyline-building' }
 ]
 
 export function getStatusMeta(status) {

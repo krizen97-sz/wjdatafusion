@@ -99,6 +99,20 @@
         "The response uses a bounded 160-320ms motion budget and removes displacement or choreography under prefers-reduced-motion.",
         "The response does not add an animation or UI framework dependency for effects expressible with Element Plus, Vue, and CSS."
       ]
+    },
+    {
+      "id": 8,
+      "prompt": "用户选择了精准滑轨作为 RYNEW 全局交互方向，并要求扫描项目全面替换，但强调不能机械套用。请给出实施分层、页面适配判断和验证边界。",
+      "expected_output": "Locks Precision Rail as the shared motion vocabulary, separates global foundations from semantic opt-ins, adapts Tabs, Segmented, entry, execute, success, and process states by real page context, and rejects mechanical mass replacement or fabricated progress.",
+      "files": [],
+      "expectations": [
+        "The response identifies native Tabs active bars and Segmented selected layers as the shared Precision Rail continuity mechanism.",
+        "The response limits global changes to shared tokens and conservative ordinary-button or indicator behavior, leaving entry, ripple, success morph, and content motion as explicit opt-ins.",
+        "The response distinguishes dense CRUD pages, application navigation, compact filters, workspace entrances, execution actions, and true staged processes instead of applying one effect everywhere.",
+        "The response removes or rejects icon scale, pop, colored glow, bounce, fake percentage, timer-based success, and universal ripple.",
+        "The response preserves route query, filter values, loading/disabled/error states, permissions, APIs, and the page-specific wrapping or overflow strategy.",
+        "The verification includes repository-wide inventory evidence, focused behavior tests, reduced-motion, keyboard, light/dark, responsive layout, UI Guard, production build, and real-route browser inspection."
+      ]
     }
   ]
 }

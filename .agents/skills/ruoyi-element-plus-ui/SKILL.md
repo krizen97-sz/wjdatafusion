@@ -75,6 +75,10 @@ full mapping when Apple/HIG styling is explicit:
 
 ## Interaction and motion floor
 
+- The selected RYNEW direction is **Precision Rail**: a moving native active
+  bar/thumb carries selection continuity; ordinary actions use quiet surface and
+  1px press feedback; entry, ripple, success morph, and directional content are
+  explicit opt-ins. Do not reintroduce the historical icon pop/scale/glow style.
 - Motion must explain feedback, state, continuity, or progress. Routine admin
   interactions stay within 100-300ms and never make the user wait for decoration.
 - Use installed Element Plus behavior first: `el-button` for actions, `el-tabs`
@@ -92,6 +96,11 @@ full mapping when Apple/HIG styling is explicit:
   in a decorative loop.
 - Respect `prefers-reduced-motion`: remove displacement and nonessential loops
   while keeping selection, focus, loading, success, and error legible.
+- Adapt intensity to the page instead of mechanically adding every effect:
+  dense tables use the rail and color change; spacious entry surfaces may add an
+  icon nudge; explicit execution actions may add one bounded ripple; a real
+  completed request may add a short success morph. One primary motion idea per
+  interaction is the default.
 
 ## When a screenshot or prototype is provided
 

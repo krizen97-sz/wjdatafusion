@@ -6,6 +6,7 @@
 @use './ruoyi.scss';
 @use './support.scss';
 @use './platform-theme.scss';
+@use './motion.scss';
 
 body {
   height: 100%;
@@ -162,88 +163,6 @@ html.dark {
   .link-type:focus,
   aside a {
     color: var(--el-color-primary-light-3);
-  }
-}
-
-.svg-icon,
-.el-icon,
-.el-icon svg {
-  transition: color 0.18s ease, transform 0.18s ease, filter 0.18s ease, opacity 0.18s ease;
-  transform-origin: center;
-}
-
-.sidebar-container {
-  .el-menu-item,
-  .el-sub-menu__title {
-    .svg-icon {
-      width: 1.08em;
-      height: 1.08em;
-      margin-right: 11px;
-      stroke-width: 2;
-    }
-
-    &:hover .svg-icon {
-      transform: translateX(2px) scale(1.08);
-      filter: drop-shadow(0 0 10px color-mix(in srgb, var(--el-color-primary) 26%, transparent));
-    }
-  }
-
-  .el-menu-item.is-active .svg-icon,
-  .el-sub-menu.is-active > .el-sub-menu__title .svg-icon {
-    transform: scale(1.08);
-    filter: drop-shadow(0 0 12px color-mix(in srgb, var(--el-color-primary) 32%, transparent));
-  }
-}
-
-.navbar,
-.topmenu-container,
-.support-page,
-.auto-page,
-.version-center-page,
-.tim-page,
-.site-config-shell {
-  .el-button:not(.is-disabled):hover .el-icon,
-  .el-button:not(.is-disabled):hover .svg-icon {
-    transform: translateY(-1px) scale(1.06);
-  }
-
-  .el-button--primary:not(.is-disabled):hover .el-icon,
-  .el-button--primary:not(.is-disabled):hover .svg-icon,
-  .el-button--success:not(.is-disabled):hover .el-icon,
-  .el-button--success:not(.is-disabled):hover .svg-icon,
-  .el-button--warning:not(.is-disabled):hover .el-icon,
-  .el-button--warning:not(.is-disabled):hover .svg-icon {
-    animation: icon-micro-pop 0.34s ease both;
-  }
-}
-
-.right-menu-item.hover-effect:hover .svg-icon,
-.right-menu-item.hover-effect:hover .el-icon,
-.tags-view-item:hover .svg-icon {
-  transform: translateY(-1px) scale(1.08);
-  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--el-color-primary) 24%, transparent));
-}
-
-@keyframes icon-micro-pop {
-  0% {
-    transform: translateY(0) scale(1);
-  }
-  48% {
-    transform: translateY(-2px) scale(1.12);
-  }
-  100% {
-    transform: translateY(-1px) scale(1.06);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .svg-icon,
-  .el-icon,
-  .el-icon svg {
-    transition: none !important;
-    animation: none !important;
-    transform: none !important;
-    filter: none !important;
   }
 }
 

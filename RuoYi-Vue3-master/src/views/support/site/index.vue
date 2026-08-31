@@ -225,7 +225,7 @@
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="siteImportUpload.open = false">取 消</el-button>
-          <el-button type="primary" :loading="siteImportUpload.isUploading" @click="submitImportFileForm">开始导入</el-button>
+          <el-button v-motion-ripple class="motion-execute-action" type="primary" :loading="siteImportUpload.isUploading" @click="submitImportFileForm">开始导入</el-button>
         </div>
       </template>
     </el-dialog>

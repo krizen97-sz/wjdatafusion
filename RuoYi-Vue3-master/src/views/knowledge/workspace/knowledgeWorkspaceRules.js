@@ -7,9 +7,9 @@ export const KNOWLEDGE_PERMISSIONS = {
 }
 
 export const KNOWLEDGE_SCOPES = [
-  { value: 'ACTIVE', label: '当前知识' },
-  { value: 'ARCHIVED', label: '已归档' },
-  { value: 'TRASH', label: '回收站' }
+  { value: 'ACTIVE', label: '当前知识', icon: 'keyline-file-text' },
+  { value: 'ARCHIVED', label: '已归档', icon: 'keyline-archive' },
+  { value: 'TRASH', label: '回收站', icon: 'keyline-bin' }
 ]
 
 export function buildKnowledgeTree(items = []) {

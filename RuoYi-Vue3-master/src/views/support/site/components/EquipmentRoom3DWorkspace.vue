@@ -70,10 +70,18 @@
         </el-dropdown>
         <el-segmented
           v-model="workspaceMode"
+          class="motion-segmented"
           :options="workspaceModeOptions"
           :disabled="!selectedRoom"
           v-hasPermi="['support:equipment:edit', 'support:hardwareAsset:edit']"
-        />
+        >
+          <template #default="{ item }">
+            <span class="motion-control-label">
+              <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
+              <span class="motion-control-label__text">{{ item.label }}</span>
+            </span>
+          </template>
+        </el-segmented>
         <label class="room3d-switch-label">
           <span>链路</span>
           <el-switch v-model="showLinks" />
@@ -115,7 +123,14 @@
 
         <div class="room3d-device-drawer-body">
           <div class="room3d-device-scope">
-            <el-segmented v-model="deviceScope" :options="deviceScopeOptions" />
+            <el-segmented v-model="deviceScope" class="motion-segmented" :options="deviceScopeOptions">
+              <template #default="{ item }">
+                <span class="motion-control-label">
+                  <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
+                  <span class="motion-control-label__text">{{ item.label }}</span>
+                </span>
+              </template>
+            </el-segmented>
             <el-text type="info" size="small">{{ deviceScopeDescription }}</el-text>
           </div>
 
@@ -786,8 +801,8 @@ const batchDeleting = ref(false)
 const bindingPlatformId = ref(null)
 const bindingSaving = ref(false)
 const workspaceModeOptions = [
-  { label: '浏览', value: 'view' },
-  { label: '调整机柜', value: 'layout' }
+  { label: '浏览', value: 'view', icon: 'keyline-eye' },
+  { label: '调整机柜', value: 'layout', icon: 'keyline-grid-3x3' }
 ]
 const sceneHost = ref(null)
 const roomFormRef = ref(null)
@@ -853,8 +868,8 @@ const activeScopePlatformId = computed(() => deviceScope.value === 'PLATFORM' &&
   ? Number(props.initialPlatformId)
   : null)
 const deviceScopeOptions = computed(() => [
-  { label: '当前平台', value: 'PLATFORM', disabled: !props.initialPlatformId },
-  { label: '全现场', value: 'SITE' }
+  { label: '当前平台', value: 'PLATFORM', icon: 'keyline-layout-dashboard', disabled: !props.initialPlatformId },
+  { label: '全现场', value: 'SITE', icon: 'keyline-building' }
 ])
 const deviceScopeDescription = computed(() => deviceScope.value === 'PLATFORM'
   ? `当前平台：${currentScopePlatform.value?.platformName || '加载中'}`

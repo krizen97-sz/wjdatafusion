@@ -1,0 +1,322 @@
+/* RYNEW precision-rail interaction system. */
+
+.svg-icon,
+.el-icon,
+.el-icon svg {
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-fast) var(--motion-ease-out),
+    opacity var(--motion-duration-fast) var(--motion-ease-standard);
+  transform-origin: center;
+}
+
+.el-button {
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-instant) var(--motion-ease-out);
+}
+
+.el-button:not(.is-disabled):not(.is-loading):not(.is-link):not(.is-text):active {
+  transform: translateY(1px);
+  transition-duration: var(--motion-duration-instant);
+}
+
+.el-button.is-disabled,
+.el-button.is-loading {
+  transform: none !important;
+}
+
+.motion-entry-action {
+  --motion-entry-shift: 2px;
+}
+
+.motion-entry-action[data-motion-direction='back'] {
+  --motion-entry-shift: -2px;
+}
+
+.motion-entry-action[data-motion-direction='up'] {
+  --motion-entry-shift-x: 0px;
+  --motion-entry-shift-y: -2px;
+}
+
+.motion-execute-action {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.motion-execute-action > :not(.motion-ripple-layer) {
+  position: relative;
+  z-index: 1;
+}
+
+.motion-ripple-layer {
+  position: absolute;
+  z-index: 0;
+  display: block;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.12);
+  transform-origin: center;
+  animation: motion-ripple-expand 460ms var(--motion-ease-out) forwards;
+}
+
+.motion-execute-action.is-loading::before {
+  position: absolute;
+  z-index: 0;
+  right: 8px;
+  bottom: 1px;
+  left: 8px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  content: '';
+  opacity: 0.26;
+  transform: scaleX(0.18);
+  transform-origin: left center;
+  animation: motion-execution-progress 900ms var(--motion-ease-standard) infinite;
+}
+
+.el-button.is-motion-success {
+  --el-button-bg-color: color-mix(in srgb, var(--health-normal) 10%, var(--surface-strong));
+  --el-button-border-color: color-mix(in srgb, var(--health-normal) 54%, var(--surface-border));
+  --el-button-text-color: var(--health-normal);
+  --el-button-hover-bg-color: color-mix(in srgb, var(--health-normal) 14%, var(--surface-strong));
+  --el-button-hover-border-color: var(--health-normal);
+  --el-button-hover-text-color: var(--health-normal);
+}
+
+.motion-action-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.motion-action-state__icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.sidebar-container {
+  .el-menu-item,
+  .el-sub-menu__title {
+    .svg-icon {
+      width: 1.08em;
+      height: 1.08em;
+      margin-right: 11px;
+      stroke-width: 2;
+    }
+  }
+}
+
+.el-tabs__nav-wrap::after {
+  height: 1px;
+  background-color: var(--surface-border);
+}
+
+.el-tabs__active-bar {
+  height: var(--motion-rail-size);
+  border-radius: var(--motion-rail-size);
+  transition:
+    transform var(--motion-duration-base) var(--motion-ease-standard),
+    width var(--motion-duration-base) var(--motion-ease-standard);
+}
+
+.el-tabs__item {
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.el-tabs__item.is-active .motion-control-label__icon {
+  color: var(--el-color-primary);
+  transform: translateY(-1px);
+}
+
+.el-segmented {
+  --el-segmented-bg-color: var(--surface-muted);
+  --el-segmented-item-selected-bg-color: var(--surface-strong);
+  --el-segmented-item-selected-color: var(--app-heading);
+  --el-segmented-item-hover-bg-color: var(--surface-hover);
+  --el-segmented-item-hover-color: var(--app-heading);
+  --el-segmented-item-active-bg-color: var(--motion-state-press);
+  border: 1px solid var(--surface-border);
+  border-radius: var(--motion-control-radius);
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.el-segmented__item-selected {
+  border-radius: calc(var(--motion-control-radius) - 2px);
+  box-shadow: none;
+  transition:
+    transform var(--motion-duration-base) var(--motion-ease-standard),
+    width var(--motion-duration-base) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.el-segmented__item-selected::after {
+  position: absolute;
+  right: 8px;
+  bottom: 0;
+  left: 8px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--el-color-primary);
+  content: '';
+}
+
+.el-segmented__item-label {
+  transition: color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.motion-control-label {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.motion-control-label__icon {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 17px;
+  color: var(--app-muted);
+}
+
+.motion-control-label__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.motion-control-label.is-danger .motion-control-label__icon {
+  color: var(--health-danger);
+}
+
+.motion-control-label.is-warning .motion-control-label__icon {
+  color: var(--health-warning);
+}
+
+.motion-control-label.is-success .motion-control-label__icon {
+  color: var(--health-normal);
+}
+
+.motion-control-label.is-idle .motion-control-label__icon {
+  color: var(--health-idle);
+}
+
+.motion-segmented .el-segmented__item.is-selected .motion-control-label__text,
+.motion-tabs .el-tabs__item.is-active .motion-control-label__text {
+  color: var(--el-color-primary);
+  font-weight: 600;
+}
+
+.motion-view-stage {
+  animation-duration: var(--motion-duration-fast);
+  animation-fill-mode: both;
+  animation-timing-function: var(--motion-ease-out);
+}
+
+.motion-view-stage.is-forward {
+  animation-name: motion-view-enter-forward;
+}
+
+.motion-view-stage.is-backward {
+  animation-name: motion-view-enter-backward;
+}
+
+.right-menu-item.hover-effect,
+.tags-view-item {
+  .svg-icon,
+  .el-icon {
+    transition: transform var(--motion-duration-fast) var(--motion-ease-out);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .el-button:not(.is-disabled):not(.is-loading):not(.is-link):not(.is-text):hover {
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--app-heading) 10%, transparent);
+    transform: translateY(-1px);
+  }
+
+  .motion-entry-action:not(.is-disabled):not(.is-loading):hover .el-icon,
+  .motion-entry-action:not(.is-disabled):not(.is-loading):hover .svg-icon {
+    transform: translate(
+      var(--motion-entry-shift-x, var(--motion-entry-shift)),
+      var(--motion-entry-shift-y, 0px)
+    );
+  }
+
+  .sidebar-container .el-menu-item:hover .svg-icon,
+  .sidebar-container .el-sub-menu__title:hover .svg-icon,
+  .right-menu-item.hover-effect:hover .svg-icon,
+  .right-menu-item.hover-effect:hover .el-icon,
+  .tags-view-item:hover .svg-icon {
+    transform: translateX(2px);
+  }
+}
+
+@keyframes motion-ripple-expand {
+  0% { opacity: 0.18; transform: scale(0.12); }
+  62% { opacity: 0.1; }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+@keyframes motion-execution-progress {
+  0% { opacity: 0.12; transform: scaleX(0.18); }
+  55% { opacity: 0.34; transform: scaleX(1); }
+  100% { opacity: 0.12; transform: scaleX(0.18); transform-origin: right center; }
+}
+
+@keyframes motion-view-enter-forward {
+  from { opacity: 0.72; transform: translateX(6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes motion-view-enter-backward {
+  from { opacity: 0.72; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .svg-icon,
+  .el-icon,
+  .el-icon svg,
+  .el-button,
+  .el-tabs__active-bar,
+  .el-tabs__item,
+  .el-segmented,
+  .el-segmented__item-selected,
+  .el-segmented__item-label {
+    transition-duration: 1ms !important;
+  }
+
+  .motion-ripple-layer,
+  .motion-execute-action.is-loading::before {
+    display: none !important;
+  }
+
+  .motion-view-stage,
+  .sidebar-container .svg-icon,
+  .right-menu-item.hover-effect .svg-icon,
+  .right-menu-item.hover-effect .el-icon,
+  .tags-view-item .svg-icon,
+  .motion-entry-action .el-icon,
+  .motion-entry-action .svg-icon {
+    animation: none !important;
+    transform: none !important;
+  }
+}

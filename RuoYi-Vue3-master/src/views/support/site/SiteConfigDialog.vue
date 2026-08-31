@@ -977,9 +977,16 @@
                               />
                               <el-segmented
                                 v-model="contactFilterMode"
-                                class="organization-panel__segmented"
+                                class="organization-panel__segmented motion-segmented"
                                 :options="contactFilterOptions"
-                              />
+                              >
+                                <template #default="{ item }">
+                                  <span class="motion-control-label">
+                                    <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
+                                    <span class="motion-control-label__text">{{ item.label }}</span>
+                                  </span>
+                                </template>
+                              </el-segmented>
                               <el-button type="primary" plain @click="handleContactAddForOrg(selectedOrg)">新增联系人</el-button>
                             </div>
                           </div>
@@ -1331,7 +1338,7 @@
             <div>
               <el-button v-if="equipmentWorkspaceMode === 'server'" plain @click="equipmentWorkspaceMode = 'list'">返回设备清单</el-button>
               <el-button v-if="equipmentWorkspaceMode === 'list'" type="primary" icon="Plus" @click="handleEquipmentAdd">新增设备</el-button>
-              <el-button v-if="equipmentWorkspaceMode === 'list'" type="primary" plain icon="View" @click="openEquipmentRoom3d">3D机房</el-button>
+              <el-button v-if="equipmentWorkspaceMode === 'list'" class="motion-entry-action" data-motion-direction="forward" type="primary" plain icon="View" @click="openEquipmentRoom3d">3D机房</el-button>
               <el-button v-if="equipmentWorkspaceMode === 'list'" plain icon="Upload" @click="openServerManagerFromHardwareDialog">批量录入</el-button>
               <el-button v-if="equipmentWorkspaceMode === 'list'" plain icon="Download" @click="handleEquipmentExport">导出设备清单</el-button>
               <el-button v-if="equipmentWorkspaceMode === 'list'" type="danger" plain :disabled="!equipmentSelectedRows.length" @click="handleEquipmentBatchDelete">
@@ -3345,8 +3352,8 @@ const selectedOrg = computed(() => {
   return orgList.value.find((item) => item.orgId === currentOrg.value.orgId) || currentOrg.value
 })
 const contactFilterOptions = [
-  { label: '全部', value: 'all' },
-  { label: '主联系人', value: 'primary' }
+  { label: '全部', value: 'all', icon: 'keyline-users' },
+  { label: '主联系人', value: 'primary', icon: 'keyline-user-check' }
 ]
 const selectedOrgContacts = computed(() => contactList.value || [])
 const filteredSelectedOrgContacts = computed(() => {
@@ -10291,9 +10298,8 @@ onBeforeUnmount(() => {
 }
 
 .organization-panel__segmented {
-  --el-segmented-item-selected-color: #8a5948;
-  --el-segmented-item-selected-bg-color: #fff1e9;
-  --el-border-radius-base: 14px;
+  --el-segmented-item-selected-color: var(--app-heading);
+  --el-segmented-item-selected-bg-color: var(--surface-strong);
 }
 
 .organization-panel__head strong {
