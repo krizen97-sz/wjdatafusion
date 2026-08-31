@@ -10,9 +10,13 @@ import com.hm.common.utils.DateUtils;
 import com.hm.common.utils.SecurityUtils;
 import com.hm.common.utils.StringUtils;
 import com.hm.manage.domain.SupportHardwareAsset;
+import com.hm.manage.domain.SupportEquipmentCabinet;
+import com.hm.manage.domain.SupportEquipmentRoom;
 import com.hm.manage.domain.SupportPlatform;
 import com.hm.manage.domain.SupportPlatformAssetRel;
 import com.hm.manage.mapper.SupportHardwareAssetMapper;
+import com.hm.manage.mapper.SupportEquipmentTopologyMapper;
+import com.hm.manage.mapper.SupportEquipmentLocationMapper;
 import com.hm.manage.mapper.SupportPlatformAssetRelMapper;
 import com.hm.manage.mapper.SupportPlatformMapper;
 import com.hm.manage.mapper.SupportSiteMapper;
@@ -38,6 +42,12 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
 
     @Autowired
     private SupportSiteMapper siteMapper;
+
+    @Autowired
+    private SupportEquipmentTopologyMapper equipmentTopologyMapper;
+
+    @Autowired
+    private SupportEquipmentLocationMapper equipmentLocationMapper;
 
     @Autowired
     private ISupportChangeLogService changeLogService;
@@ -125,6 +135,7 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
                 deletedAssets.add(asset);
             }
             platformAssetRelMapper.deleteByAssetId(assetId);
+            equipmentTopologyMapper.deleteLinksByDevice("HARDWARE", assetId);
         }
         int rows = hardwareAssetMapper.deleteSupportHardwareAssetByAssetIds(assetIds);
         if (rows > 0)
@@ -266,13 +277,14 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
     {
         Integer rackUStart = asset.getRackUStart();
         Integer rackUEnd = asset.getRackUEnd();
-        if (rackUStart == null && rackUEnd == null)
+        boolean hasLocation = StringUtils.isNotBlank(asset.getEquipmentRoom()) || StringUtils.isNotBlank(asset.getCabinetNo()) || rackUStart != null || rackUEnd != null;
+        if (!hasLocation)
         {
             return;
         }
-        if (rackUStart == null || rackUEnd == null)
+        if (StringUtils.isBlank(asset.getEquipmentRoom()) || StringUtils.isBlank(asset.getCabinetNo()) || rackUStart == null || rackUEnd == null)
         {
-            throw new ServiceException("设备U位需要同时选择起始U位和结束U位");
+            throw new ServiceException("设备位置需要同时选择机房、机柜、起始U位和结束U位");
         }
         if (rackUStart < 1 || rackUStart > 45 || rackUEnd < 1 || rackUEnd > 45)
         {
@@ -281,6 +293,27 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
         if (rackUStart > rackUEnd)
         {
             throw new ServiceException("设备起始U位不能大于结束U位");
+        }
+        SupportEquipmentRoom room = equipmentLocationMapper.selectRoomBySiteAndName(asset.getSiteId(), asset.getEquipmentRoom());
+        if (room == null)
+        {
+            throw new ServiceException("所选机房不存在，请重新选择设备位置");
+        }
+        SupportEquipmentCabinet cabinet = equipmentLocationMapper.selectCabinetByRoomAndNo(room.getRoomId(), asset.getCabinetNo());
+        if (cabinet == null)
+        {
+            throw new ServiceException("所选机柜不存在，请重新选择设备位置");
+        }
+        int capacity = cabinet.getUCapacity() == null ? 45 : cabinet.getUCapacity();
+        if (rackUEnd > capacity)
+        {
+            throw new ServiceException("设备结束U位不能超过机柜容量" + capacity + "U");
+        }
+        int hardwareConflicts = equipmentLocationMapper.countHardwareRackConflicts(asset.getSiteId(), asset.getEquipmentRoom(), asset.getCabinetNo(), rackUStart, rackUEnd, asset.getAssetId());
+        int serverConflicts = equipmentLocationMapper.countServerRackConflicts(asset.getSiteId(), asset.getEquipmentRoom(), asset.getCabinetNo(), rackUStart, rackUEnd, null);
+        if (hardwareConflicts + serverConflicts > 0)
+        {
+            throw new ServiceException("所选U位已被其他设备占用，请重新选择");
         }
     }
 

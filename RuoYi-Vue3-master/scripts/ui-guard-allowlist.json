@@ -24,6 +24,7 @@
       "@vueup/vue-quill",
       "echarts",
       "splitpanes",
+      "three",
       "vue-cropper",
       "vuedraggable"
     ]
@@ -153,7 +154,8 @@
       "rule": "hardcoded-shape-spacing",
       "paths": [
         "src/views/support/site/index.vue",
-        "src/views/support/site/SiteConfigDialog.vue"
+        "src/views/support/site/SiteConfigDialog.vue",
+        "src/views/support/site/components/EquipmentRoom3DWorkspace.vue"
       ],
       "reason": "UIX-004 preserves topology, physical-location, and overview spatial scales; standard Dialog radius and controls were normalized separately.",
       "owner": "frontend-governance",
@@ -163,7 +165,8 @@
       "id": "UIX-004-topology-palette",
       "rule": "hardcoded-colors",
       "paths": [
-        "src/views/support/site/SiteConfigDialog.vue"
+        "src/views/support/site/SiteConfigDialog.vue",
+        "src/views/support/site/components/EquipmentRoom3DWorkspace.vue"
       ],
       "reason": "UIX-004 retains the topology and equipment-location palette with existing explicit dark-mode overrides.",
       "owner": "frontend-governance",
@@ -173,7 +176,8 @@
       "id": "UIX-004-topology-positioning",
       "rule": "absolute-layout",
       "paths": [
-        "src/views/support/site/SiteConfigDialog.vue"
+        "src/views/support/site/SiteConfigDialog.vue",
+        "src/views/support/site/components/EquipmentRoom3DWorkspace.vue"
       ],
       "reason": "UIX-004 allows bounded connector and canvas positioning, never ordinary form layout.",
       "owner": "frontend-governance",

@@ -4,6 +4,13 @@ export function getEquipmentLocationLayout(siteId) {
   return request({ url: `/support/equipmentLocation/layout/${siteId}`, method: 'get' })
 }
 
+export function getEquipmentTopology(siteId) {
+  return request({
+    url: `/support/equipmentLocation/topology/${siteId}`,
+    method: 'get'
+  })
+}
+
 export function addEquipmentRoom(data) {
   return request({ url: '/support/equipmentLocation/room', method: 'post', data })
 }
@@ -24,6 +31,72 @@ export function updateEquipmentCabinet(data) {
   return request({ url: '/support/equipmentLocation/cabinet', method: 'put', data })
 }
 
+export function updateEquipmentCabinetLayout(data) {
+  return request({
+    url: '/support/equipmentLocation/cabinet/layout',
+    method: 'put',
+    data
+  })
+}
+
+export function updateEquipmentDevicePlacement(data) {
+  return request({
+    url: '/support/equipmentLocation/device/placement',
+    method: 'put',
+    data
+  })
+}
+
 export function delEquipmentCabinet(cabinetId) {
   return request({ url: `/support/equipmentLocation/cabinet/${cabinetId}`, method: 'delete' })
+}
+
+export function addEquipmentLink(data) {
+  return request({
+    url: '/support/equipmentLocation/link',
+    method: 'post',
+    data
+  })
+}
+
+export function updateEquipmentLink(data) {
+  return request({
+    url: '/support/equipmentLocation/link',
+    method: 'put',
+    data
+  })
+}
+
+export function delEquipmentLink(linkId) {
+  return request({
+    url: `/support/equipmentLocation/link/${linkId}`,
+    method: 'delete'
+  })
+}
+
+export function importEquipmentTopology(siteId, file) {
+  const data = new FormData()
+  data.append('file', file)
+  return request({
+    url: '/support/equipmentLocation/importData',
+    method: 'post',
+    params: { siteId },
+    data,
+    headers: {
+      'Content-Type': 'multipart/form-data',
+      repeatSubmit: false
+    }
+  })
+}
+
+export function deleteEquipmentBatch(data) {
+  return request({ url: '/support/equipment/batch', method: 'delete', data })
+}
+
+export function bindEquipmentPlatform(data) {
+  return request({ url: '/support/equipment/platform/bind', method: 'put', data })
+}
+
+export function unbindEquipmentPlatform(data) {
+  return request({ url: '/support/equipment/platform/unbind', method: 'put', data })
 }

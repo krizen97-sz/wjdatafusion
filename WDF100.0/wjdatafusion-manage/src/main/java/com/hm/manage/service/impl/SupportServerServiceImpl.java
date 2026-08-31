@@ -28,7 +28,11 @@ import com.hm.common.utils.StringUtils;
 import com.hm.common.utils.file.FileUtils;
 import com.hm.manage.domain.SupportServer;
 import com.hm.manage.domain.SupportServerCredential;
+import com.hm.manage.domain.SupportEquipmentCabinet;
+import com.hm.manage.domain.SupportEquipmentRoom;
+import com.hm.manage.mapper.SupportEquipmentLocationMapper;
 import com.hm.manage.mapper.SupportPlatformServerRelMapper;
+import com.hm.manage.mapper.SupportEquipmentTopologyMapper;
 import com.hm.manage.mapper.SupportServerCredentialMapper;
 import com.hm.manage.mapper.SupportServerMapper;
 import com.hm.manage.service.ISupportChangeLogService;
@@ -56,6 +60,12 @@ public class SupportServerServiceImpl implements ISupportServerService
 
     @Autowired
     private SupportServerCredentialMapper credentialMapper;
+
+    @Autowired
+    private SupportEquipmentTopologyMapper equipmentTopologyMapper;
+
+    @Autowired
+    private SupportEquipmentLocationMapper equipmentLocationMapper;
 
     @Autowired
     private CredentialCryptoService cryptoService;
@@ -122,6 +132,7 @@ public class SupportServerServiceImpl implements ISupportServerService
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int deleteSupportServerByServerIds(Long[] serverIds)
     {
         List<SupportServer> deletedServers = new ArrayList<>();
@@ -134,6 +145,7 @@ public class SupportServerServiceImpl implements ISupportServerService
             }
             platformServerRelMapper.deleteByServerId(serverId);
             credentialMapper.deleteCredentialsByServerId(serverId);
+            equipmentTopologyMapper.deleteLinksByDevice("SERVER", serverId);
         }
         int rows = serverMapper.deleteSupportServerByServerIds(serverIds);
         if (rows > 0)
@@ -703,7 +715,7 @@ public class SupportServerServiceImpl implements ISupportServerService
         }
         server.setEquipmentRoom(StringUtils.trimToNull(server.getEquipmentRoom()));
         server.setCabinetNo(StringUtils.trimToNull(server.getCabinetNo()));
-        validateRackRange(server.getRackUStart(), server.getRackUEnd());
+        validateRackLocation(server);
         SupportServer sameAddressServer = serverMapper.selectSupportServerBySiteAndAddress(server.getSiteId(), server.getServerAddress());
         if (sameAddressServer != null && (!update || !sameAddressServer.getServerId().equals(server.getServerId())))
         {
@@ -711,15 +723,18 @@ public class SupportServerServiceImpl implements ISupportServerService
         }
     }
 
-    private void validateRackRange(Integer rackUStart, Integer rackUEnd)
+    private void validateRackLocation(SupportServer server)
     {
-        if (rackUStart == null && rackUEnd == null)
+        Integer rackUStart = server.getRackUStart();
+        Integer rackUEnd = server.getRackUEnd();
+        boolean hasLocation = StringUtils.isNotBlank(server.getEquipmentRoom()) || StringUtils.isNotBlank(server.getCabinetNo()) || rackUStart != null || rackUEnd != null;
+        if (!hasLocation)
         {
             return;
         }
-        if (rackUStart == null || rackUEnd == null)
+        if (StringUtils.isBlank(server.getEquipmentRoom()) || StringUtils.isBlank(server.getCabinetNo()) || rackUStart == null || rackUEnd == null)
         {
-            throw new ServiceException("起始U位和结束U位需要同时填写");
+            throw new ServiceException("服务器位置需要同时选择机房、机柜、起始U位和结束U位");
         }
         if (rackUStart < 1 || rackUStart > 45 || rackUEnd < 1 || rackUEnd > 45)
         {
@@ -728,6 +743,27 @@ public class SupportServerServiceImpl implements ISupportServerService
         if (rackUStart > rackUEnd)
         {
             throw new ServiceException("起始U位不能大于结束U位");
+        }
+        SupportEquipmentRoom room = equipmentLocationMapper.selectRoomBySiteAndName(server.getSiteId(), server.getEquipmentRoom());
+        if (room == null)
+        {
+            throw new ServiceException("所选机房不存在，请重新选择服务器位置");
+        }
+        SupportEquipmentCabinet cabinet = equipmentLocationMapper.selectCabinetByRoomAndNo(room.getRoomId(), server.getCabinetNo());
+        if (cabinet == null)
+        {
+            throw new ServiceException("所选机柜不存在，请重新选择服务器位置");
+        }
+        int capacity = cabinet.getUCapacity() == null ? 45 : cabinet.getUCapacity();
+        if (rackUEnd > capacity)
+        {
+            throw new ServiceException("服务器结束U位不能超过机柜容量" + capacity + "U");
+        }
+        int serverConflicts = equipmentLocationMapper.countServerRackConflicts(server.getSiteId(), server.getEquipmentRoom(), server.getCabinetNo(), rackUStart, rackUEnd, server.getServerId());
+        int hardwareConflicts = equipmentLocationMapper.countHardwareRackConflicts(server.getSiteId(), server.getEquipmentRoom(), server.getCabinetNo(), rackUStart, rackUEnd, null);
+        if (serverConflicts + hardwareConflicts > 0)
+        {
+            throw new ServiceException("所选U位已被其他设备占用，请重新选择");
         }
     }
 

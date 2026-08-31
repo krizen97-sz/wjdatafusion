@@ -216,6 +216,8 @@ CREATE TABLE IF NOT EXISTS sup_equipment_room (
   site_id            BIGINT       NOT NULL COMMENT '现场ID',
   room_name          VARCHAR(120) NOT NULL COMMENT '机房名称',
   room_code          VARCHAR(80)  DEFAULT NULL COMMENT '机房编码',
+  room_width         DECIMAL(8,2) DEFAULT 12.00 COMMENT '机房宽度（米）',
+  room_depth         DECIMAL(8,2) DEFAULT 8.00 COMMENT '机房深度（米）',
   status             CHAR(1)      DEFAULT '0' COMMENT '状态（0正常 1停用）',
   create_by          VARCHAR(64)  DEFAULT '' COMMENT '创建者',
   create_time        DATETIME     DEFAULT NULL COMMENT '创建时间',
@@ -232,6 +234,9 @@ CREATE TABLE IF NOT EXISTS sup_equipment_cabinet (
   site_id            BIGINT       NOT NULL COMMENT '现场ID',
   cabinet_no         VARCHAR(80)  NOT NULL COMMENT '机柜编号',
   u_capacity         INT          DEFAULT 45 COMMENT '机柜U数',
+  position_x         DECIMAL(8,2) DEFAULT NULL COMMENT '机柜平面X坐标（米）',
+  position_z         DECIMAL(8,2) DEFAULT NULL COMMENT '机柜平面Z坐标（米）',
+  rotation_y         DECIMAL(6,1) DEFAULT 0.0 COMMENT '机柜Y轴朝向角度',
   status             CHAR(1)      DEFAULT '0' COMMENT '状态（0正常 1停用）',
   create_by          VARCHAR(64)  DEFAULT '' COMMENT '创建者',
   create_time        DATETIME     DEFAULT NULL COMMENT '创建时间',
@@ -243,6 +248,29 @@ CREATE TABLE IF NOT EXISTS sup_equipment_cabinet (
   KEY idx_sup_equipment_cabinet_site (site_id),
   KEY idx_sup_equipment_cabinet_room (room_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='现场设备机柜';
+
+CREATE TABLE IF NOT EXISTS sup_equipment_link (
+  link_id             BIGINT       NOT NULL AUTO_INCREMENT COMMENT '设备链路ID',
+  site_id             BIGINT       NOT NULL COMMENT '现场ID',
+  source_type         VARCHAR(16)  NOT NULL COMMENT '源设备类型（SERVER/HARDWARE）',
+  source_id           BIGINT       NOT NULL COMMENT '源设备ID',
+  target_type         VARCHAR(16)  NOT NULL DEFAULT 'HARDWARE' COMMENT '目标设备类型',
+  target_id           BIGINT       NOT NULL COMMENT '目标交换机资产ID',
+  medium_type         VARCHAR(16)  NOT NULL COMMENT '链路介质（OPTICAL/ELECTRICAL）',
+  port_count          INT          NOT NULL DEFAULT 1 COMMENT '占用端口数量',
+  source_port         VARCHAR(80)  DEFAULT NULL COMMENT '源端口说明',
+  target_port         VARCHAR(80)  DEFAULT NULL COMMENT '目标端口说明',
+  status              CHAR(1)      DEFAULT '0' COMMENT '状态（0正常 1停用）',
+  create_by           VARCHAR(64)  DEFAULT '' COMMENT '创建者',
+  create_time         DATETIME     DEFAULT NULL COMMENT '创建时间',
+  update_by           VARCHAR(64)  DEFAULT '' COMMENT '更新者',
+  update_time         DATETIME     DEFAULT NULL COMMENT '更新时间',
+  remark              VARCHAR(500) DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (link_id),
+  KEY idx_sup_equipment_link_site (site_id),
+  KEY idx_sup_equipment_link_source (source_type, source_id),
+  KEY idx_sup_equipment_link_target (target_type, target_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='现场设备物理上联关系';
 
 CREATE TABLE IF NOT EXISTS sup_platform_contact_rel (
   rel_id              BIGINT       NOT NULL AUTO_INCREMENT COMMENT '关系ID',
@@ -563,13 +591,16 @@ VALUES
 (2297, '硬件资产删除', 2201, 12, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:hardwareAsset:remove', '#', 'admin', NOW(), '', NULL, ''),
 (2298, '硬件资产导出', 2201, 13, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:hardwareAsset:export', '#', 'admin', NOW(), '', NULL, ''),
 (2288, '设备清单查询', 2201, 14, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:equipment:query', '#', 'admin', NOW(), '', NULL, ''),
-(2289, '设备清单导出', 2201, 15, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:equipment:export', '#', 'admin', NOW(), '', NULL, '')
+(2289, '设备清单导出', 2201, 15, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:equipment:export', '#', 'admin', NOW(), '', NULL, ''),
+(2321, '设备统一新增', 2201, 16, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:equipment:add', '#', 'admin', NOW(), '', NULL, ''),
+(2322, '设备统一修改', 2201, 17, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:equipment:edit', '#', 'admin', NOW(), '', NULL, ''),
+(2323, '设备统一删除', 2201, 18, '#', '', '', '', 1, 0, 'F', '0', '0', 'support:equipment:remove', '#', 'admin', NOW(), '', NULL, '')
 ON DUPLICATE KEY UPDATE perms=VALUES(perms), menu_name=VALUES(menu_name);
 
 INSERT INTO sys_role_menu(role_id, menu_id)
 SELECT r.role_id, m.menu_id
 FROM sys_role r
-INNER JOIN sys_menu m ON m.menu_id IN (2294, 2295, 2296, 2297, 2298, 2288, 2289)
+INNER JOIN sys_menu m ON m.menu_id IN (2294, 2295, 2296, 2297, 2298, 2288, 2289, 2321, 2322, 2323)
 WHERE r.role_key = 'datafusion'
   AND NOT EXISTS (
     SELECT 1 FROM sys_role_menu rm WHERE rm.role_id = r.role_id AND rm.menu_id = m.menu_id
@@ -1709,3 +1740,42 @@ DROP TEMPORARY TABLE IF EXISTS tmp_v3162_daily_stats;
 DROP TEMPORARY TABLE IF EXISTS tmp_v3162_baseline_records;
 DROP TEMPORARY TABLE IF EXISTS tmp_v3162_baseline_steps;
 DROP TEMPORARY TABLE IF EXISTS tmp_v3162_baseline_targets;
+
+-- v3.17.0 现场融合机房三维摆放与设备上联拓扑
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_equipment_room' AND COLUMN_NAME = 'room_width') = 0,
+  'ALTER TABLE sup_equipment_room ADD COLUMN room_width DECIMAL(8,2) DEFAULT 12.00 COMMENT ''机房宽度（米）'' AFTER room_code', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_equipment_room' AND COLUMN_NAME = 'room_depth') = 0,
+  'ALTER TABLE sup_equipment_room ADD COLUMN room_depth DECIMAL(8,2) DEFAULT 8.00 COMMENT ''机房深度（米）'' AFTER room_width', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_equipment_cabinet' AND COLUMN_NAME = 'position_x') = 0,
+  'ALTER TABLE sup_equipment_cabinet ADD COLUMN position_x DECIMAL(8,2) DEFAULT NULL COMMENT ''机柜平面X坐标（米）'' AFTER u_capacity', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_equipment_cabinet' AND COLUMN_NAME = 'position_z') = 0,
+  'ALTER TABLE sup_equipment_cabinet ADD COLUMN position_z DECIMAL(8,2) DEFAULT NULL COMMENT ''机柜平面Z坐标（米）'' AFTER position_x', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_equipment_cabinet' AND COLUMN_NAME = 'rotation_y') = 0,
+  'ALTER TABLE sup_equipment_cabinet ADD COLUMN rotation_y DECIMAL(6,1) DEFAULT 0.0 COMMENT ''机柜Y轴朝向角度'' AFTER position_z', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+CREATE TABLE IF NOT EXISTS sup_equipment_link (
+  link_id BIGINT NOT NULL AUTO_INCREMENT COMMENT '设备链路ID',
+  site_id BIGINT NOT NULL COMMENT '现场ID',
+  source_type VARCHAR(16) NOT NULL COMMENT '源设备类型（SERVER/HARDWARE）',
+  source_id BIGINT NOT NULL COMMENT '源设备ID',
+  target_type VARCHAR(16) NOT NULL DEFAULT 'HARDWARE' COMMENT '目标设备类型',
+  target_id BIGINT NOT NULL COMMENT '目标交换机资产ID',
+  medium_type VARCHAR(16) NOT NULL COMMENT '链路介质（OPTICAL/ELECTRICAL）',
+  port_count INT NOT NULL DEFAULT 1 COMMENT '占用端口数量',
+  source_port VARCHAR(80) DEFAULT NULL COMMENT '源端口说明',
+  target_port VARCHAR(80) DEFAULT NULL COMMENT '目标端口说明',
+  status CHAR(1) DEFAULT '0' COMMENT '状态（0正常 1停用）',
+  create_by VARCHAR(64) DEFAULT '' COMMENT '创建者',
+  create_time DATETIME DEFAULT NULL COMMENT '创建时间',
+  update_by VARCHAR(64) DEFAULT '' COMMENT '更新者',
+  update_time DATETIME DEFAULT NULL COMMENT '更新时间',
+  remark VARCHAR(500) DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (link_id),
+  KEY idx_sup_equipment_link_site (site_id),
+  KEY idx_sup_equipment_link_source (source_type, source_id),
+  KEY idx_sup_equipment_link_target (target_type, target_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='现场设备物理上联关系';

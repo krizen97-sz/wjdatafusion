@@ -9,6 +9,8 @@
         <result property="siteId" column="site_id"/>
         <result property="roomName" column="room_name"/>
         <result property="roomCode" column="room_code"/>
+        <result property="roomWidth" column="room_width"/>
+        <result property="roomDepth" column="room_depth"/>
         <result property="status" column="status"/>
         <result property="createBy" column="create_by"/>
         <result property="createTime" column="create_time"/>
@@ -23,6 +25,9 @@
         <result property="siteId" column="site_id"/>
         <result property="cabinetNo" column="cabinet_no"/>
         <result property="uCapacity" column="u_capacity"/>
+        <result property="positionX" column="position_x"/>
+        <result property="positionZ" column="position_z"/>
+        <result property="rotationY" column="rotation_y"/>
         <result property="status" column="status"/>
         <result property="createBy" column="create_by"/>
         <result property="createTime" column="create_time"/>
@@ -39,15 +44,21 @@
         select * from sup_equipment_room where room_id = #{roomId}
     </select>
 
+    <select id="selectRoomBySiteAndName" resultMap="SupportEquipmentRoomResult">
+        select * from sup_equipment_room where site_id = #{siteId} and room_name = #{roomName} limit 1
+    </select>
+
     <insert id="insertRoom" parameterType="SupportEquipmentRoom" useGeneratedKeys="true" keyProperty="roomId">
-        insert into sup_equipment_room(site_id, room_name, room_code, status, create_by, create_time, remark)
-        values(#{siteId}, #{roomName}, #{roomCode}, #{status}, #{createBy}, #{createTime}, #{remark})
+        insert into sup_equipment_room(site_id, room_name, room_code, room_width, room_depth, status, create_by, create_time, remark)
+        values(#{siteId}, #{roomName}, #{roomCode}, #{roomWidth}, #{roomDepth}, #{status}, #{createBy}, #{createTime}, #{remark})
     </insert>
 
     <update id="updateRoom" parameterType="SupportEquipmentRoom">
         update sup_equipment_room
         set room_name = #{roomName},
             room_code = #{roomCode},
+            room_width = #{roomWidth},
+            room_depth = #{roomDepth},
             status = #{status},
             update_by = #{updateBy},
             update_time = #{updateTime},
@@ -78,20 +89,59 @@
         select * from sup_equipment_cabinet where cabinet_id = #{cabinetId}
     </select>
 
+    <select id="selectCabinetByRoomAndNo" resultMap="SupportEquipmentCabinetResult">
+        select * from sup_equipment_cabinet where room_id = #{roomId} and cabinet_no = #{cabinetNo} limit 1
+    </select>
+
     <insert id="insertCabinet" parameterType="SupportEquipmentCabinet" useGeneratedKeys="true" keyProperty="cabinetId">
-        insert into sup_equipment_cabinet(room_id, site_id, cabinet_no, u_capacity, status, create_by, create_time, remark)
-        values(#{roomId}, #{siteId}, #{cabinetNo}, #{uCapacity}, #{status}, #{createBy}, #{createTime}, #{remark})
+        insert into sup_equipment_cabinet(room_id, site_id, cabinet_no, u_capacity, position_x, position_z, rotation_y, status, create_by, create_time, remark)
+        values(#{roomId}, #{siteId}, #{cabinetNo}, #{uCapacity}, #{positionX}, #{positionZ}, #{rotationY}, #{status}, #{createBy}, #{createTime}, #{remark})
     </insert>
 
     <update id="updateCabinet" parameterType="SupportEquipmentCabinet">
         update sup_equipment_cabinet
         set cabinet_no = #{cabinetNo},
             u_capacity = #{uCapacity},
+            position_x = #{positionX},
+            position_z = #{positionZ},
+            rotation_y = #{rotationY},
             status = #{status},
             update_by = #{updateBy},
             update_time = #{updateTime},
             remark = #{remark}
         where cabinet_id = #{cabinetId}
+    </update>
+
+    <update id="updateCabinetLayout" parameterType="SupportEquipmentCabinet">
+        update sup_equipment_cabinet
+        set position_x = #{positionX},
+            position_z = #{positionZ},
+            rotation_y = #{rotationY},
+            update_by = #{updateBy},
+            update_time = #{updateTime}
+        where cabinet_id = #{cabinetId}
+    </update>
+
+    <update id="updateHardwarePlacement">
+        update sup_hardware_asset
+        set equipment_room = #{equipmentRoom},
+            cabinet_no = #{cabinetNo},
+            rack_u_start = #{rackUStart},
+            rack_u_end = #{rackUEnd},
+            update_by = #{updateBy},
+            update_time = #{updateTime}
+        where asset_id = #{assetId}
+    </update>
+
+    <update id="updateServerPlacement">
+        update sup_server
+        set equipment_room = #{equipmentRoom},
+            cabinet_no = #{cabinetNo},
+            rack_u_start = #{rackUStart},
+            rack_u_end = #{rackUEnd},
+            update_by = #{updateBy},
+            update_time = #{updateTime}
+        where server_id = #{serverId}
     </update>
 
     <delete id="deleteCabinetByCabinetId">
@@ -116,5 +166,80 @@
         <if test="cabinetId != null">
           and cabinet_id &lt;&gt; #{cabinetId}
         </if>
+    </select>
+
+    <update id="updateHardwareRoomName">
+        update sup_hardware_asset set equipment_room = #{newRoomName}
+        where site_id = #{siteId} and equipment_room = #{oldRoomName}
+    </update>
+
+    <update id="updateServerRoomName">
+        update sup_server set equipment_room = #{newRoomName}
+        where site_id = #{siteId} and equipment_room = #{oldRoomName}
+    </update>
+
+    <update id="updateHardwareCabinetNo">
+        update sup_hardware_asset set cabinet_no = #{newCabinetNo}
+        where site_id = #{siteId} and equipment_room = #{roomName} and cabinet_no = #{oldCabinetNo}
+    </update>
+
+    <update id="updateServerCabinetNo">
+        update sup_server set cabinet_no = #{newCabinetNo}
+        where site_id = #{siteId} and equipment_room = #{roomName} and cabinet_no = #{oldCabinetNo}
+    </update>
+
+    <update id="clearHardwareRoomLocation">
+        update sup_hardware_asset
+        set equipment_room = null, cabinet_no = null, rack_u_start = null, rack_u_end = null
+        where site_id = #{siteId} and equipment_room = #{roomName}
+    </update>
+
+    <update id="clearServerRoomLocation">
+        update sup_server
+        set equipment_room = null, cabinet_no = null, rack_u_start = null, rack_u_end = null
+        where site_id = #{siteId} and equipment_room = #{roomName}
+    </update>
+
+    <update id="clearHardwareCabinetLocation">
+        update sup_hardware_asset set cabinet_no = null, rack_u_start = null, rack_u_end = null
+        where site_id = #{siteId} and equipment_room = #{roomName} and cabinet_no = #{cabinetNo}
+    </update>
+
+    <update id="clearServerCabinetLocation">
+        update sup_server set cabinet_no = null, rack_u_start = null, rack_u_end = null
+        where site_id = #{siteId} and equipment_room = #{roomName} and cabinet_no = #{cabinetNo}
+    </update>
+
+    <select id="countHardwareRackConflicts" resultType="int">
+        select count(1) from sup_hardware_asset
+        where site_id = #{siteId}
+          and equipment_room = #{roomName}
+          and cabinet_no = #{cabinetNo}
+          and rack_u_start &lt;= #{rackUEnd}
+          and rack_u_end &gt;= #{rackUStart}
+        <if test="excludeAssetId != null">
+          and asset_id &lt;&gt; #{excludeAssetId}
+        </if>
+    </select>
+
+    <select id="countServerRackConflicts" resultType="int">
+        select count(1) from sup_server
+        where site_id = #{siteId}
+          and equipment_room = #{roomName}
+          and cabinet_no = #{cabinetNo}
+          and rack_u_start &lt;= #{rackUEnd}
+          and rack_u_end &gt;= #{rackUStart}
+        <if test="excludeServerId != null">
+          and server_id &lt;&gt; #{excludeServerId}
+        </if>
+    </select>
+
+    <select id="countRackPlacementsAboveCapacity" resultType="int">
+        select
+          (select count(1) from sup_hardware_asset
+           where site_id = #{siteId} and equipment_room = #{roomName} and cabinet_no = #{cabinetNo} and rack_u_end &gt; #{uCapacity})
+          +
+          (select count(1) from sup_server
+           where site_id = #{siteId} and equipment_room = #{roomName} and cabinet_no = #{cabinetNo} and rack_u_end &gt; #{uCapacity})
     </select>
 </mapper>

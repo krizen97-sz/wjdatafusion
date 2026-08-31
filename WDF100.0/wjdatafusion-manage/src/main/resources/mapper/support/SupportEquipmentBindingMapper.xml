@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportEquipmentBindingMapper">
+
+    <resultMap id="SupportEquipmentPlatformBindingResult" type="com.hm.manage.domain.vo.SupportEquipmentPlatformBindingVo">
+        <result property="sourceId" column="source_id"/>
+        <result property="platformId" column="platform_id"/>
+        <result property="platformName" column="platform_name"/>
+        <result property="platformLevel" column="platform_level"/>
+        <result property="mainPlatformId" column="main_platform_id"/>
+        <result property="mainPlatformName" column="main_platform_name"/>
+        <result property="networkEnv" column="network_env"/>
+    </resultMap>
+
+    <sql id="selectPlatformBindingColumns">
+        p.platform_id,
+        p.platform_name,
+        p.platform_level,
+        case when p.platform_level = 'MAIN' then p.platform_id else mp.platform_id end as main_platform_id,
+        case when p.platform_level = 'MAIN' then p.platform_name else mp.platform_name end as main_platform_name,
+        case when p.platform_level = 'MAIN' then p.network_env else mp.network_env end as network_env
+    </sql>
+
+    <select id="selectServerBindingsBySiteId" resultMap="SupportEquipmentPlatformBindingResult">
+        select rel.server_id as source_id,
+               <include refid="selectPlatformBindingColumns"/>
+        from sup_platform_server_rel rel
+                 inner join sup_platform p on p.platform_id = rel.platform_id
+                 left join sup_platform mp on mp.platform_id = p.parent_platform_id
+        where p.site_id = #{siteId}
+        order by rel.server_id, p.platform_id
+    </select>
+
+    <select id="selectHardwareBindingsBySiteId" resultMap="SupportEquipmentPlatformBindingResult">
+        select rel.asset_id as source_id,
+               <include refid="selectPlatformBindingColumns"/>
+        from sup_platform_asset_rel rel
+                 inner join sup_platform p on p.platform_id = rel.platform_id
+                 left join sup_platform mp on mp.platform_id = p.parent_platform_id
+        where p.site_id = #{siteId}
+        order by rel.asset_id, p.platform_level, p.platform_id
+    </select>
+</mapper>

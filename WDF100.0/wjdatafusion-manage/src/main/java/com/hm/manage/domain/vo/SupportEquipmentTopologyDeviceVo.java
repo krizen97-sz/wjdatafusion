@@ -1,85 +1,56 @@
-package com.hm.manage.domain;
+package com.hm.manage.domain.vo;
 
 import java.util.ArrayList;
 import java.util.List;
-import com.hm.common.annotation.Excel;
-import com.hm.common.core.domain.BaseEntity;
-import com.hm.manage.domain.vo.SupportEquipmentPlatformBindingVo;
 
-public class SupportEquipmentAsset extends BaseEntity
+public class SupportEquipmentTopologyDeviceVo
 {
-    private static final long serialVersionUID = 1L;
-
+    private String deviceKey;
     private String sourceType;
     private Long sourceId;
     private Long siteId;
-
-    @Excel(name = "设备类型")
     private String assetType;
-
-    @Excel(name = "设备类型名称")
     private String assetTypeLabel;
-
-    @Excel(name = "设备名称")
     private String assetName;
-
-    @Excel(name = "网络环境")
-    private String networkEnv;
-
-    @Excel(name = "IP地址")
     private String ipAddress;
-
-    @Excel(name = "管理地址")
     private String manageIp;
-
-    @Excel(name = "厂商")
+    private String networkEnv;
     private String manufacturer;
-
-    @Excel(name = "型号")
     private String assetModel;
-
-    @Excel(name = "安装位置")
     private String installLocation;
-
-    @Excel(name = "登录账号")
     private String loginUsername;
-
-    @Excel(name = "所属机房")
     private String equipmentRoom;
-
-    @Excel(name = "机柜编号")
     private String cabinetNo;
-
-    @Excel(name = "起始U位")
+    private Long roomId;
+    private Long cabinetId;
     private Integer rackUStart;
-
-    @Excel(name = "结束U位")
     private Integer rackUEnd;
-
-    @Excel(name = "端口数")
-    private Integer portCount;
-
-    @Excel(name = "上联设备")
-    private String uplinkDevice;
-
-    @Excel(name = "绑定范围")
-    private String bindingLabel;
-
-    @Excel(name = "状态", readConverterExp = "0=正常,1=停用")
+    private Integer legacyPortCount;
+    private String legacyUplinkDevice;
     private String status;
-
     private Long platformId;
     private String platformName;
+    private String platformLevel;
     private Long mainPlatformId;
     private String mainPlatformName;
     private String bindingScope;
-    private String platformLevel;
+    private String bindingLabel;
     private Integer platformCount;
     private Boolean credentialCapable;
     private List<Long> platformIds = new ArrayList<>();
     private List<Long> mainPlatformIds = new ArrayList<>();
     private List<String> platformNames = new ArrayList<>();
     private List<SupportEquipmentPlatformBindingVo> platformBindings = new ArrayList<>();
+
+    public String getDeviceKey()
+    {
+        return deviceKey;
+    }
+
+    public void setDeviceKey(String deviceKey)
+    {
+        this.deviceKey = deviceKey;
+    }
 
     public String getSourceType()
     {
@@ -141,16 +112,6 @@ public class SupportEquipmentAsset extends BaseEntity
         this.assetName = assetName;
     }
 
-    public String getNetworkEnv()
-    {
-        return networkEnv;
-    }
-
-    public void setNetworkEnv(String networkEnv)
-    {
-        this.networkEnv = networkEnv;
-    }
-
     public String getIpAddress()
     {
         return ipAddress;
@@ -169,6 +130,16 @@ public class SupportEquipmentAsset extends BaseEntity
     public void setManageIp(String manageIp)
     {
         this.manageIp = manageIp;
+    }
+
+    public String getNetworkEnv()
+    {
+        return networkEnv;
+    }
+
+    public void setNetworkEnv(String networkEnv)
+    {
+        this.networkEnv = networkEnv;
     }
 
     public String getManufacturer()
@@ -231,6 +202,26 @@ public class SupportEquipmentAsset extends BaseEntity
         this.cabinetNo = cabinetNo;
     }
 
+    public Long getRoomId()
+    {
+        return roomId;
+    }
+
+    public void setRoomId(Long roomId)
+    {
+        this.roomId = roomId;
+    }
+
+    public Long getCabinetId()
+    {
+        return cabinetId;
+    }
+
+    public void setCabinetId(Long cabinetId)
+    {
+        this.cabinetId = cabinetId;
+    }
+
     public Integer getRackUStart()
     {
         return rackUStart;
@@ -251,34 +242,24 @@ public class SupportEquipmentAsset extends BaseEntity
         this.rackUEnd = rackUEnd;
     }
 
-    public Integer getPortCount()
+    public Integer getLegacyPortCount()
     {
-        return portCount;
+        return legacyPortCount;
     }
 
-    public void setPortCount(Integer portCount)
+    public void setLegacyPortCount(Integer legacyPortCount)
     {
-        this.portCount = portCount;
+        this.legacyPortCount = legacyPortCount;
     }
 
-    public String getUplinkDevice()
+    public String getLegacyUplinkDevice()
     {
-        return uplinkDevice;
+        return legacyUplinkDevice;
     }
 
-    public void setUplinkDevice(String uplinkDevice)
+    public void setLegacyUplinkDevice(String legacyUplinkDevice)
     {
-        this.uplinkDevice = uplinkDevice;
-    }
-
-    public String getBindingLabel()
-    {
-        return bindingLabel;
-    }
-
-    public void setBindingLabel(String bindingLabel)
-    {
-        this.bindingLabel = bindingLabel;
+        this.legacyUplinkDevice = legacyUplinkDevice;
     }
 
     public String getStatus()
@@ -311,6 +292,16 @@ public class SupportEquipmentAsset extends BaseEntity
         this.platformName = platformName;
     }
 
+    public String getPlatformLevel()
+    {
+        return platformLevel;
+    }
+
+    public void setPlatformLevel(String platformLevel)
+    {
+        this.platformLevel = platformLevel;
+    }
+
     public Long getMainPlatformId()
     {
         return mainPlatformId;
@@ -341,14 +332,14 @@ public class SupportEquipmentAsset extends BaseEntity
         this.bindingScope = bindingScope;
     }
 
-    public String getPlatformLevel()
+    public String getBindingLabel()
     {
-        return platformLevel;
+        return bindingLabel;
     }
 
-    public void setPlatformLevel(String platformLevel)
+    public void setBindingLabel(String bindingLabel)
     {
-        this.platformLevel = platformLevel;
+        this.bindingLabel = bindingLabel;
     }
 
     public Integer getPlatformCount()

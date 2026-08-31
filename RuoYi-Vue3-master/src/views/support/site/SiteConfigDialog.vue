@@ -1331,6 +1331,7 @@
             <div>
               <el-button v-if="equipmentWorkspaceMode === 'server'" plain @click="equipmentWorkspaceMode = 'list'">返回设备清单</el-button>
               <el-button v-if="equipmentWorkspaceMode === 'list'" type="primary" icon="Plus" @click="handleEquipmentAdd">新增设备</el-button>
+              <el-button v-if="equipmentWorkspaceMode === 'list'" type="primary" plain icon="View" @click="openEquipmentRoom3d">3D机房</el-button>
               <el-button v-if="equipmentWorkspaceMode === 'list'" plain icon="Upload" @click="openServerManagerFromHardwareDialog">批量录入</el-button>
               <el-button v-if="equipmentWorkspaceMode === 'list'" plain icon="Download" @click="handleEquipmentExport">导出设备清单</el-button>
               <el-button v-if="equipmentWorkspaceMode === 'list'" type="danger" plain :disabled="!equipmentSelectedRows.length" @click="handleEquipmentBatchDelete">
@@ -1600,6 +1601,34 @@
       </template>
     </el-dialog>
 
+    <el-dialog
+      v-model="equipmentRoom3dOpen"
+      fullscreen
+      append-to-body
+      destroy-on-close
+      :show-close="false"
+      title="现场设备统一管控图"
+      class="equipment-room-3d-dialog"
+    >
+      <EquipmentRoom3DWorkspace
+        v-if="equipmentRoom3dOpen"
+        ref="equipmentRoom3dRef"
+        :site-id="props.site.siteId"
+        :site-name="props.site.siteName"
+        :initial-device-key="equipmentRoom3dInitialDeviceKey"
+        :initial-platform-id="equipmentRoom3dInitialPlatformId"
+        @close="closeEquipmentRoom3d"
+        @edit-device="handleEquipmentRoom3dEditDevice"
+        @add-device="handleEquipmentRoom3dAddDevice"
+        @add-server="handleEquipmentRoom3dAddServer"
+        @batch-create="handleEquipmentRoom3dBatchCreate"
+        @manage-credentials="handleEquipmentRoom3dCredentials"
+        @view-password="handleEquipmentRoom3dPassword"
+        @export-devices="handleEquipmentRoom3dExport"
+        @changed="handleEquipmentRoom3dChanged"
+      />
+    </el-dialog>
+
     <el-dialog v-model="serverCredentialDialogOpen" :aria-label="serverCredentialServer?.serverName ? `${serverCredentialServer.serverName} 服务器凭据档案` : '服务器凭据档案'" width="860px" append-to-body class="server-credential-dialog">
       <template #header="{ titleId, titleClass }">
         <div :id="titleId" :class="titleClass" class="dialog-title">
@@ -1765,12 +1794,12 @@
         <div class="hardware-form-section">
           <div class="hardware-form-section__head">
             <strong>安装位置</strong>
-            <el-button plain size="small" icon="Grid" @click="openLocationVisualDialog('hardware')">进入设备位置图</el-button>
+            <el-button plain size="small" icon="Grid" :disabled="!hardwareAssetForm.assetId" @click="openLocationVisualDialog('hardware')">在3D图中配置</el-button>
           </div>
           <div class="equipment-location-summary">
             <span>当前位置</span>
             <strong>{{ formatEquipmentLocation(hardwareAssetForm) || '暂未配置' }}</strong>
-            <small>安装位置只在设备位置图中维护，避免表单和图上重复配置。</small>
+            <small>{{ hardwareAssetForm.assetId ? '安装位置只在3D机房图中维护。' : '请先保存设备，再进入3D机房图配置位置。' }}</small>
           </div>
         </div>
 
@@ -1858,159 +1887,6 @@
           <el-button @click="hardwareAssetFormOpen = false">取消</el-button>
           <el-button type="primary" :loading="dialogSaving.hardware" @click="submitHardwareAssetForm">保存</el-button>
         </div>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="locationVisualOpen" title="设备位置可视化配置" width="1280px" append-to-body class="equipment-location-dialog">
-      <div class="equipment-location-shell" v-loading="locationLoading">
-        <aside class="equipment-location-side">
-          <div class="equipment-location-side__head">
-            <strong>机房</strong>
-            <el-button type="primary" plain size="small" icon="Plus" @click="startAddRoom">新增机房</el-button>
-          </div>
-          <button
-            v-for="room in equipmentRooms"
-            :key="room.roomId"
-            type="button"
-            class="equipment-room-item"
-            :class="{ 'is-active': selectedLocationRoomId === room.roomId }"
-            @click="selectLocationRoom(room.roomId)"
-          >
-            <strong>{{ room.roomName }}</strong>
-            <span>{{ getRoomCabinets(room.roomId).length }} 个机柜 · {{ getRoomAssetCount(room.roomId) }} 台设备</span>
-          </button>
-          <el-empty v-if="!equipmentRooms.length" description="暂无机房" />
-        </aside>
-
-        <main class="equipment-location-main">
-          <div class="equipment-location-toolbar">
-            <div>
-              <strong>{{ selectedLocationRoom?.roomName || '请选择机房' }}</strong>
-              <span>先选择机柜，再在右侧选择设备占用的 U 位范围</span>
-            </div>
-            <div>
-              <el-button plain icon="Edit" :disabled="!selectedLocationRoom" @click="startEditRoom">编辑机房</el-button>
-              <el-button type="primary" plain icon="Plus" :disabled="!selectedLocationRoom" @click="startAddCabinet">新增机柜</el-button>
-            </div>
-          </div>
-
-          <div class="equipment-location-board">
-            <section class="equipment-room-map">
-              <div class="equipment-room-map__head">
-                <div>
-                  <strong>机柜平面图</strong>
-                  <span>{{ selectedRoomCabinets.length }} 个机柜 · {{ selectedRoomUsedUCount }}U 已占用</span>
-                </div>
-                <div class="equipment-location-legend">
-                  <span v-for="item in hardwareTypeOptions" :key="item.value">
-                    <i :style="{ background: getEquipmentAssetColor(item.value) }"></i>{{ item.label }}
-                  </span>
-                </div>
-              </div>
-              <div class="equipment-cabinet-map-grid">
-                <button
-                  v-for="cabinet in selectedRoomCabinets"
-                  :key="cabinet.cabinetId"
-                  type="button"
-                  class="equipment-cabinet-map-card"
-                  :class="{ 'is-active': selectedLocationCabinetId === cabinet.cabinetId, 'is-current': isCurrentFormCabinet(cabinet) }"
-                  @click="selectLocationCabinet(cabinet.cabinetId)"
-                >
-                  <span class="equipment-cabinet-map-card__title">
-                    <strong>{{ cabinet.cabinetNo }}</strong>
-                    <em>{{ getCabinetOccupancy(cabinet).used }}/{{ getCabinetOccupancy(cabinet).capacity }}U</em>
-                  </span>
-                  <span class="equipment-cabinet-map-card__meter">
-                    <i :style="{ width: getCabinetOccupancy(cabinet).rate + '%' }"></i>
-                  </span>
-                  <span class="equipment-cabinet-mini-rack">
-                    <i
-                      v-for="unit in getCabinetMiniUnits(cabinet)"
-                      :key="`${cabinet.cabinetId}-mini-${unit.u}`"
-                      :title="unit.asset ? `${unit.u}U ${unit.asset.assetName}` : `${unit.u}U 空闲`"
-                      :class="{ 'is-used': !!unit.asset, 'is-current': unit.isCurrent }"
-                      :style="unit.asset ? { '--asset-color': getEquipmentAssetColor(unit.asset.assetType) } : null"
-                    ></i>
-                  </span>
-                  <span class="equipment-cabinet-map-card__summary">
-                    {{ getCabinetAssetCount(cabinet) }} 台设备
-                    <small v-if="getCabinetMajorAsset(cabinet)">· {{ getCabinetMajorAsset(cabinet).assetName }}</small>
-                  </span>
-                </button>
-                <el-empty v-if="selectedLocationRoom && !selectedRoomCabinets.length" description="当前机房暂无机柜" />
-              </div>
-            </section>
-
-            <aside class="equipment-cabinet-detail">
-              <template v-if="selectedLocationCabinet">
-                <header class="equipment-cabinet-detail__head">
-                  <div>
-                    <strong>{{ selectedLocationCabinet.cabinetNo }}</strong>
-                    <span>{{ getCabinetOccupancy(selectedLocationCabinet).used }}/{{ getCabinetOccupancy(selectedLocationCabinet).capacity }}U 已占用</span>
-                  </div>
-                  <el-button link type="primary" @click="startEditCabinet(selectedLocationCabinet)">编辑</el-button>
-                </header>
-                <div class="equipment-rack-visual">
-                  <button
-                    v-for="unit in getCabinetUnits(selectedLocationCabinet)"
-                    :key="`${selectedLocationCabinet.cabinetId}-${unit.u}`"
-                    type="button"
-                    class="equipment-rack-unit"
-                    :class="{ 'is-used': !!unit.asset, 'is-current': unit.isCurrent }"
-                    :style="unit.asset ? { '--asset-color': getEquipmentAssetColor(unit.asset.assetType) } : null"
-                    @click="selectRackUnit(selectedLocationCabinet, unit.u)"
-                  >
-                    <span>{{ unit.u }}U</span>
-                    <strong v-if="unit.asset">{{ unit.asset.assetName }}</strong>
-                    <em v-if="unit.asset">{{ getHardwareTypeLabel(unit.asset.assetType) }}</em>
-                  </button>
-                </div>
-              </template>
-              <el-empty v-else description="请选择一个机柜" />
-            </aside>
-          </div>
-        </main>
-      </div>
-      <template #footer>
-        <el-button @click="locationVisualOpen = false">关闭</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="locationRoomFormOpen" :title="locationRoomTitle" width="460px" append-to-body>
-      <el-form :model="locationRoomForm" label-width="90px">
-        <el-form-item label="机房名称" required>
-          <el-input v-model="locationRoomForm.roomName" placeholder="例如：一楼核心机房" />
-        </el-form-item>
-        <el-form-item label="机房编码">
-          <el-input v-model="locationRoomForm.roomCode" placeholder="可选" />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="locationRoomForm.remark" type="textarea" :rows="3" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button v-if="locationRoomForm.roomId" type="danger" plain @click="removeLocationRoom">删除</el-button>
-        <el-button @click="locationRoomFormOpen = false">取消</el-button>
-        <el-button type="primary" :loading="dialogSaving.room" @click="submitLocationRoom">保存</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="locationCabinetFormOpen" :title="locationCabinetTitle" width="460px" append-to-body>
-      <el-form :model="locationCabinetForm" label-width="90px">
-        <el-form-item label="机柜编号" required>
-          <el-input v-model="locationCabinetForm.cabinetNo" placeholder="例如：A01" />
-        </el-form-item>
-        <el-form-item label="机柜U数" required>
-          <el-input-number v-model="locationCabinetForm.uCapacity" :min="1" :max="45" controls-position="right" />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="locationCabinetForm.remark" type="textarea" :rows="3" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button v-if="locationCabinetForm.cabinetId" type="danger" plain @click="removeLocationCabinet">删除</el-button>
-        <el-button @click="locationCabinetFormOpen = false">取消</el-button>
-        <el-button type="primary" :loading="dialogSaving.cabinet" @click="submitLocationCabinet">保存</el-button>
       </template>
     </el-dialog>
 
@@ -2766,8 +2642,8 @@
                 <div class="editor-form__wide equipment-location-summary equipment-location-summary--editor">
                   <span>安装位置</span>
                   <strong>{{ formatEquipmentLocation(serverForm) || '暂未配置' }}</strong>
-                  <small>位置统一在设备位置图中配置。</small>
-                  <el-button plain size="small" icon="Grid" @click="openLocationVisualDialog('server')">进入设备位置图</el-button>
+                  <small>{{ serverForm.serverId ? '位置统一在3D机房图中配置。' : '请先保存服务器，再进入3D机房图配置位置。' }}</small>
+                  <el-button plain size="small" icon="Grid" :disabled="!serverForm.serverId" @click="openLocationVisualDialog('server')">在3D图中配置</el-button>
                 </div>
               </el-form>
             </div>
@@ -3066,7 +2942,6 @@ import { addSiteMessage, latestSiteMessage, listSiteMessage } from '@/api/suppor
 import { addPlatform, bindContact, bindServer, delPlatform, getPlatform, listPlatform, listPlatformContacts, listPlatformServers, unbindContact, updatePlatform } from '@/api/support/platform'
 import { addServer, addServerCredential, delServer, delServerCredential, getServer, listServer, listServerCredentialPlainSummaries, listServerCredentials, previewServerImport, updateServer, updateServerCredential, viewServerCredentialPlain } from '@/api/support/server'
 import { addHardwareAsset, delHardwareAsset, getHardwareAsset, listHardwareAsset, updateHardwareAsset, viewHardwareAssetPlain } from '@/api/support/hardwareAsset'
-import { addEquipmentCabinet, addEquipmentRoom, delEquipmentCabinet, delEquipmentRoom, getEquipmentLocationLayout, updateEquipmentCabinet, updateEquipmentRoom } from '@/api/support/equipmentLocation'
 import { addOrg, delOrg, getOrg, listOrg, updateOrg } from '@/api/support/org'
 import { addContact, delContact, getContact, listContact, updateContact } from '@/api/support/contact'
 import { addEndpoint, delEndpoint, getEndpoint, listEndpoint, updateEndpoint, viewEndpointPlain } from '@/api/support/endpoint'
@@ -3079,6 +2954,7 @@ import equipmentDecoderImage from '@/assets/equipment/decoder.svg'
 import equipmentTerminalImage from '@/assets/equipment/terminal.svg'
 import equipmentSwitchImage from '@/assets/equipment/switch.svg'
 import equipmentGatewayImage from '@/assets/equipment/gateway.svg'
+import EquipmentRoom3DWorkspace from './components/EquipmentRoom3DWorkspace.vue'
 
 const CANVAS_LAYOUT_STORAGE_KEY = 'support-site-canvas-layout'
 const SITE_MESSAGE_PREVIEW_SIZE = 8
@@ -3338,19 +3214,10 @@ const hardwareAssetDialogPlatformId = ref(null)
 const hardwareAssetKeyword = ref('')
 const hardwareAssetSelectedIds = ref([])
 const equipmentSelectedRows = ref([])
-const locationLoading = ref(false)
-const locationVisualOpen = ref(false)
-const equipmentRooms = ref([])
-const equipmentCabinets = ref([])
-const selectedLocationRoomId = ref(null)
-const selectedLocationCabinetId = ref(null)
-const activeLocationTarget = ref('hardware')
-const locationRoomFormOpen = ref(false)
-const locationRoomTitle = ref('')
-const locationRoomForm = ref({})
-const locationCabinetFormOpen = ref(false)
-const locationCabinetTitle = ref('')
-const locationCabinetForm = ref({})
+const equipmentRoom3dOpen = ref(false)
+const equipmentRoom3dInitialDeviceKey = ref('')
+const equipmentRoom3dInitialPlatformId = ref(null)
+const equipmentRoom3dRef = ref(null)
 const hardwareAssetFilter = reactive({
   assetType: null,
   networkEnv: null,
@@ -3582,18 +3449,6 @@ const equipmentCreateOptions = computed(() => [
     description: `${item.label}作为现场硬件资产登记，可绑定现场、主平台或子平台`
   }))
 ])
-const selectedLocationRoom = computed(() =>
-  equipmentRooms.value.find((item) => item.roomId === selectedLocationRoomId.value) || null
-)
-const selectedRoomCabinets = computed(() =>
-  selectedLocationRoomId.value ? getRoomCabinets(selectedLocationRoomId.value) : []
-)
-const selectedLocationCabinet = computed(() =>
-  selectedRoomCabinets.value.find((item) => item.cabinetId === selectedLocationCabinetId.value) || selectedRoomCabinets.value[0] || null
-)
-const selectedRoomUsedUCount = computed(() =>
-  selectedRoomCabinets.value.reduce((total, cabinet) => total + getCabinetOccupancy(cabinet).used, 0)
-)
 const supportFeatureVersion = computed(() => latestSupportRelease.version)
 const siteMessagePreviewList = computed(() => siteMessageList.value.slice(0, SITE_MESSAGE_PREVIEW_SIZE))
 const messageBarrageItems = computed(() =>
@@ -5344,132 +5199,13 @@ function formatEquipmentLocation(row = {}) {
     parts.push(row.equipmentRoom)
   }
   if (row.cabinetNo) {
-    parts.push(`${row.cabinetNo}机柜`)
+    const cabinetLabel = String(row.cabinetNo).endsWith('机柜') ? row.cabinetNo : `${row.cabinetNo}机柜`
+    parts.push(cabinetLabel)
   }
   if (row.rackUStart && row.rackUEnd) {
     parts.push(row.rackUStart === row.rackUEnd ? `${row.rackUStart}U` : `${row.rackUStart}-${row.rackUEnd}U`)
   }
   return parts.length ? parts.join(' / ') : row.installLocation
-}
-
-function getRoomCabinets(roomId) {
-  return equipmentCabinets.value.filter((item) => item.roomId === roomId)
-}
-
-function getRoomAssetCount(roomId) {
-  const room = equipmentRooms.value.find((item) => item.roomId === roomId)
-  if (!room) return 0
-  return getLocationEquipmentRows().filter((item) => item.equipmentRoom === room.roomName).length
-}
-
-function getCabinetAssetList(cabinet = {}) {
-  if (!selectedLocationRoom.value || !cabinet?.cabinetNo) return []
-  return getLocationEquipmentRows().filter((item) =>
-    item.equipmentRoom === selectedLocationRoom.value.roomName &&
-    item.cabinetNo === cabinet.cabinetNo &&
-    item.rackUStart &&
-    item.rackUEnd
-  )
-}
-
-function getCabinetAssetCount(cabinet = {}) {
-  return getCabinetAssetList(cabinet).length
-}
-
-function getCabinetMajorAsset(cabinet = {}) {
-  return getCabinetAssetList(cabinet)[0] || null
-}
-
-function getCabinetOccupancy(cabinet = {}) {
-  const capacity = Number(cabinet.uCapacity) || 45
-  const usedSet = new Set()
-  getCabinetAssetList(cabinet).forEach((asset) => {
-    const start = Math.max(1, Number(asset.rackUStart) || 0)
-    const end = Math.min(capacity, Number(asset.rackUEnd) || 0)
-    for (let u = start; u <= end; u += 1) {
-      usedSet.add(u)
-    }
-  })
-  const used = usedSet.size
-  return {
-    capacity,
-    used,
-    rate: capacity ? Math.round((used / capacity) * 100) : 0
-  }
-}
-
-function isCurrentFormCabinet(cabinet = {}) {
-  const form = getActiveLocationForm()
-  return form.equipmentRoom === selectedLocationRoom.value?.roomName &&
-    form.cabinetNo === cabinet.cabinetNo
-}
-
-function getCabinetUnits(cabinet = {}) {
-  const capacity = Number(cabinet.uCapacity) || 45
-  const rows = []
-  for (let u = capacity; u >= 1; u -= 1) {
-    const asset = getLocationEquipmentRows().find((item) => {
-      if (isEditingCurrentLocationAsset(item)) return false
-      if (item.equipmentRoom !== selectedLocationRoom.value?.roomName) return false
-      if (item.cabinetNo !== cabinet.cabinetNo) return false
-      return Number(item.rackUStart) <= u && Number(item.rackUEnd) >= u
-    })
-    const form = getActiveLocationForm()
-    const start = Number(form.rackUStart)
-    const end = Number(form.rackUEnd)
-    rows.push({
-      u,
-      asset,
-      isCurrent: form.equipmentRoom === selectedLocationRoom.value?.roomName &&
-        form.cabinetNo === cabinet.cabinetNo &&
-        start <= u &&
-        end >= u
-    })
-  }
-  return rows
-}
-
-function getCabinetMiniUnits(cabinet = {}) {
-  return getCabinetUnits(cabinet)
-}
-
-function getLocationEquipmentRows() {
-  return [
-    ...serverList.value.map((server) => ({
-      ...server,
-      sourceType: EQUIPMENT_SOURCE_SERVER,
-      sourceId: server.serverId,
-      assetType: HARDWARE_SERVER_TYPE,
-      assetName: server.serverName || server.serverAddress || '未命名服务器'
-    })),
-    ...hardwareAssetList.value.map((asset) => ({
-      ...asset,
-      sourceType: EQUIPMENT_SOURCE_HARDWARE,
-      sourceId: asset.assetId
-    }))
-  ]
-}
-
-function getActiveLocationForm() {
-  return activeLocationTarget.value === 'server' ? serverForm.value : hardwareAssetForm.value
-}
-
-function isEditingCurrentLocationAsset(item = {}) {
-  if (activeLocationTarget.value === 'server') {
-    return item.sourceType === EQUIPMENT_SOURCE_SERVER && item.sourceId === serverForm.value.serverId
-  }
-  return item.sourceType === EQUIPMENT_SOURCE_HARDWARE && item.sourceId === hardwareAssetForm.value.assetId
-}
-
-function getEquipmentAssetColor(assetType) {
-  const colorMap = {
-    DECODER: '#2f80ed',
-    TERMINAL: '#27ae60',
-    SWITCH: '#f2994a',
-    GATEWAY: '#9b51e0',
-    SERVER: '#eb5757'
-  }
-  return colorMap[assetType] || '#607d9f'
 }
 
 function getHardwareSummaryFromRows(servers = [], assets = []) {
@@ -6930,6 +6666,7 @@ function submitServerForm() {
       await loadServers()
       await loadPlatforms()
       rebuildTopologyTree()
+      await equipmentRoom3dRef.value?.refresh?.()
     }))
   })
 }
@@ -7156,9 +6893,102 @@ function openHardwareAssetDialog(platform = selectedPlatform.value) {
   resetHardwareAssetFilter()
   hardwareAssetSelectedIds.value = []
   equipmentSelectedRows.value = []
-  equipmentWorkspaceMode.value = 'list'
-  hardwareAssetDialogOpen.value = true
-  loadHardwareAssets()
+  openEquipmentRoom3d('', platform?.platformId || null)
+}
+
+function openEquipmentRoom3d(deviceKey = '', platformId = hardwareAssetDialogPlatformId.value) {
+  equipmentRoom3dInitialDeviceKey.value = typeof deviceKey === 'string' ? deviceKey : ''
+  equipmentRoom3dInitialPlatformId.value = platformId || null
+  equipmentRoom3dOpen.value = true
+}
+
+function closeEquipmentRoom3d() {
+  equipmentRoom3dOpen.value = false
+  equipmentRoom3dInitialDeviceKey.value = ''
+  equipmentRoom3dInitialPlatformId.value = null
+}
+
+async function handleEquipmentRoom3dChanged() {
+  await Promise.all([
+    loadHardwareAssets(),
+    loadServers(),
+    refreshPlatformServerMap(),
+    loadChangeLogs()
+  ])
+  if (serverFormOpen.value && serverForm.value.serverId) {
+    syncFormLocation(serverForm.value, serverList.value.find((server) => server.serverId === serverForm.value.serverId))
+  }
+  if (hardwareAssetFormOpen.value && hardwareAssetForm.value.assetId) {
+    syncFormLocation(hardwareAssetForm.value, hardwareAssetList.value.find((asset) => asset.assetId === hardwareAssetForm.value.assetId))
+  }
+  rebuildTopologyTree()
+}
+
+function syncFormLocation(form, latest) {
+  if (!latest) return
+  form.equipmentRoom = latest.equipmentRoom || null
+  form.cabinetNo = latest.cabinetNo || null
+  form.rackUStart = latest.rackUStart || null
+  form.rackUEnd = latest.rackUEnd || null
+}
+
+function handleEquipmentRoom3dEditDevice(device) {
+  if (device.sourceType === EQUIPMENT_SOURCE_SERVER) {
+    handleServerEdit({ serverId: device.sourceId })
+    return
+  }
+  handleHardwareAssetEdit({ assetId: device.sourceId })
+}
+
+function syncEquipmentWorkspacePlatform(context = {}) {
+  const platformId = context?.platformId || equipmentRoom3dInitialPlatformId.value
+  hardwareAssetDialogPlatformId.value = platformId || null
+  if (!platformId) return null
+  const platform = platformList.value.find((item) => Number(item.platformId) === Number(platformId)) || null
+  if (platform) {
+    selectedPlatformId.value = platform.platformId
+    syncPlatformWindow(platform)
+  }
+  return platform
+}
+
+function handleEquipmentRoom3dAddDevice(context) {
+  syncEquipmentWorkspacePlatform(context)
+  handleHardwareAssetAdd()
+}
+
+function handleEquipmentRoom3dAddServer(context) {
+  syncEquipmentWorkspacePlatform(context)
+  handleServerAdd()
+}
+
+async function handleEquipmentRoom3dBatchCreate(context) {
+  const platform = syncEquipmentWorkspacePlatform(context) || selectedPlatform.value || platformList.value.find((item) => item.platformLevel === 'MAIN')
+  if (!platform) {
+    proxy.$modal.msgWarning('请先新增主平台，再进行批量录入')
+    return
+  }
+  await openServerManagerFromHardwareDialog(platform)
+}
+
+function handleEquipmentRoom3dCredentials(device) {
+  openServerCredentialDialog({
+    serverId: device.sourceId,
+    serverName: device.assetName,
+    serverAddress: device.ipAddress
+  })
+}
+
+function handleEquipmentRoom3dPassword(device) {
+  handleServerPlain({
+    serverId: device.sourceId,
+    serverName: device.assetName,
+    serverAddress: device.ipAddress
+  })
+}
+
+function handleEquipmentRoom3dExport(query = {}) {
+  proxy.download('/support/equipment/export', query, `设备资产清单_${props.site?.siteName || '现场'}_${Date.now()}.xlsx`)
 }
 
 function resetHardwareAssetFilter() {
@@ -7191,152 +7021,13 @@ function validateRackURange(_rule, _value, callback) {
   callback()
 }
 
-async function loadEquipmentLocationLayout() {
-  if (!props.site?.siteId) return
-  locationLoading.value = true
-  try {
-    const res = await getEquipmentLocationLayout(props.site.siteId)
-    equipmentRooms.value = res.data?.rooms || []
-    equipmentCabinets.value = res.data?.cabinets || []
-    if (!selectedLocationRoomId.value && equipmentRooms.value.length) {
-      selectedLocationRoomId.value = equipmentRooms.value[0].roomId
-    }
-    syncSelectedLocationCabinet()
-  } finally {
-    locationLoading.value = false
-  }
-}
-
 async function openLocationVisualDialog(target = 'hardware') {
-  activeLocationTarget.value = target
-  locationVisualOpen.value = true
-  await loadEquipmentLocationLayout()
-  const form = getActiveLocationForm()
-  const matchedRoom = equipmentRooms.value.find((item) => item.roomName === form.equipmentRoom)
-  if (matchedRoom) {
-    selectedLocationRoomId.value = matchedRoom.roomId
-  }
-  const matchedCabinet = selectedRoomCabinets.value.find((item) => item.cabinetNo === form.cabinetNo)
-  if (matchedCabinet) {
-    selectedLocationCabinetId.value = matchedCabinet.cabinetId
-  } else {
-    syncSelectedLocationCabinet()
-  }
-}
-
-function selectLocationRoom(roomId) {
-  selectedLocationRoomId.value = roomId
-  syncSelectedLocationCabinet()
-}
-
-function selectLocationCabinet(cabinetId) {
-  selectedLocationCabinetId.value = cabinetId
-}
-
-function syncSelectedLocationCabinet() {
-  const exists = selectedRoomCabinets.value.some((item) => item.cabinetId === selectedLocationCabinetId.value)
-  selectedLocationCabinetId.value = exists ? selectedLocationCabinetId.value : selectedRoomCabinets.value[0]?.cabinetId || null
-}
-
-function startAddRoom() {
-  locationRoomTitle.value = '新增机房'
-  locationRoomForm.value = { siteId: props.site.siteId, roomName: null, roomCode: null, status: '0', remark: null }
-  locationRoomFormOpen.value = true
-}
-
-function startEditRoom() {
-  if (!selectedLocationRoom.value) return
-  locationRoomTitle.value = '编辑机房'
-  locationRoomForm.value = { ...selectedLocationRoom.value }
-  locationRoomFormOpen.value = true
-}
-
-async function submitLocationRoom() {
-  if (!locationRoomForm.value.roomName) {
-    proxy.$modal.msgError('请填写机房名称')
+  const sourceId = target === 'server' ? serverForm.value.serverId : hardwareAssetForm.value.assetId
+  if (!sourceId) {
+    proxy.$modal.msgWarning(target === 'server' ? '请先保存服务器，再配置安装位置' : '请先保存设备，再配置安装位置')
     return
   }
-  await runDialogSave('room', async () => {
-    const req = locationRoomForm.value.roomId ? updateEquipmentRoom(locationRoomForm.value) : addEquipmentRoom(locationRoomForm.value)
-    await req
-    proxy.$modal.msgSuccess('保存成功')
-    locationRoomFormOpen.value = false
-    await loadEquipmentLocationLayout()
-  })
-}
-
-async function removeLocationRoom() {
-  await proxy.$modal.confirm('确认删除该机房及其机柜配置吗？不会删除已登记的设备资产。')
-  await delEquipmentRoom(locationRoomForm.value.roomId)
-  proxy.$modal.msgSuccess('删除成功')
-  locationRoomFormOpen.value = false
-  if (selectedLocationRoomId.value === locationRoomForm.value.roomId) {
-    selectedLocationRoomId.value = null
-  }
-  await loadEquipmentLocationLayout()
-}
-
-function startAddCabinet() {
-  if (!selectedLocationRoom.value) return
-  locationCabinetTitle.value = '新增机柜'
-  locationCabinetForm.value = { roomId: selectedLocationRoom.value.roomId, cabinetNo: null, uCapacity: 45, status: '0', remark: null }
-  locationCabinetFormOpen.value = true
-}
-
-function startEditCabinet(cabinet) {
-  locationCabinetTitle.value = '编辑机柜'
-  locationCabinetForm.value = { ...cabinet }
-  locationCabinetFormOpen.value = true
-}
-
-async function submitLocationCabinet() {
-  if (!locationCabinetForm.value.cabinetNo) {
-    proxy.$modal.msgError('请填写机柜编号')
-    return
-  }
-  await runDialogSave('cabinet', async () => {
-    const req = locationCabinetForm.value.cabinetId ? updateEquipmentCabinet(locationCabinetForm.value) : addEquipmentCabinet(locationCabinetForm.value)
-    await req
-    proxy.$modal.msgSuccess('保存成功')
-    locationCabinetFormOpen.value = false
-    await loadEquipmentLocationLayout()
-    const savedCabinet = selectedRoomCabinets.value.find((item) => item.cabinetNo === locationCabinetForm.value.cabinetNo)
-    if (savedCabinet) {
-      selectedLocationCabinetId.value = savedCabinet.cabinetId
-    }
-  })
-}
-
-async function removeLocationCabinet() {
-  await proxy.$modal.confirm('确认删除该机柜配置吗？不会删除已登记的设备资产。')
-  await delEquipmentCabinet(locationCabinetForm.value.cabinetId)
-  proxy.$modal.msgSuccess('删除成功')
-  locationCabinetFormOpen.value = false
-  await loadEquipmentLocationLayout()
-  syncSelectedLocationCabinet()
-}
-
-function selectRackUnit(cabinet, u) {
-  if (!selectedLocationRoom.value) return
-  const form = getActiveLocationForm()
-  const selectingSameCabinet = isCurrentFormCabinet(cabinet)
-  const currentStart = Number(form.rackUStart)
-  const currentEnd = Number(form.rackUEnd)
-  form.equipmentRoom = selectedLocationRoom.value.roomName
-  form.cabinetNo = cabinet.cabinetNo
-  selectedLocationCabinetId.value = cabinet.cabinetId
-  if (selectingSameCabinet && currentStart && currentEnd && currentStart === currentEnd && currentStart !== u) {
-    form.rackUStart = Math.min(currentStart, u)
-    form.rackUEnd = Math.max(currentStart, u)
-  } else {
-    form.rackUStart = u
-    form.rackUEnd = u
-  }
-  if (activeLocationTarget.value === 'hardware') {
-    proxy.$refs.hardwareAssetRef?.validateField?.(['rackUStart', 'rackUEnd'])
-  } else {
-    proxy.$refs.serverRef?.validateField?.(['rackUStart', 'rackUEnd'])
-  }
+  openEquipmentRoom3d(`${target === 'server' ? 'SERVER' : 'HARDWARE'}:${sourceId}`)
 }
 
 function resetHardwareAssetForm(assetType = null) {
@@ -7440,6 +7131,7 @@ function submitHardwareAssetForm() {
       await loadHardwareAssets()
       await loadChangeLogs()
       rebuildTopologyTree()
+      await equipmentRoom3dRef.value?.refresh?.()
     }))
   })
 }
@@ -7529,8 +7221,8 @@ function handleHardwareAssetExport() {
   handleEquipmentExport()
 }
 
-async function openServerManagerFromHardwareDialog() {
-  const platform = hardwareAssetDialogPlatform.value || selectedPlatform.value
+async function openServerManagerFromHardwareDialog(preferredPlatform = null) {
+  const platform = preferredPlatform || hardwareAssetDialogPlatform.value || selectedPlatform.value
   if (!platform) {
     proxy.$modal.msgWarning('请选择主平台或子平台后再批量录入设备')
     return
@@ -12800,6 +12492,11 @@ onBeforeUnmount(() => {
   background: var(--surface-subtle);
 }
 
+.equipment-rack-unit:disabled {
+  cursor: not-allowed;
+  opacity: 0.78;
+}
+
 .equipment-rack-unit strong {
   min-width: 0;
   overflow: hidden;
@@ -12857,6 +12554,33 @@ onBeforeUnmount(() => {
 
 .equipment-server-empty {
   min-height: 360px;
+}
+
+.location-dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.location-dimension-grid :deep(.el-input-number) {
+  width: 100%;
+}
+
+:global(.equipment-room-3d-dialog) {
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden;
+  border-radius: 0 !important;
+}
+
+:global(.equipment-room-3d-dialog .el-dialog__header) {
+  display: none;
+}
+
+:global(.equipment-room-3d-dialog .el-dialog__body) {
+  height: 100vh;
+  padding: 0 !important;
+  overflow: hidden;
 }
 
 .server-manager-shell {

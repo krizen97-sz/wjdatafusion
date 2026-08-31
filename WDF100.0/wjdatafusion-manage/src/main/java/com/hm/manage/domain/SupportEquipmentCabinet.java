@@ -1,5 +1,6 @@
 package com.hm.manage.domain;
 
+import java.math.BigDecimal;
 import com.hm.common.core.domain.BaseEntity;
 
 public class SupportEquipmentCabinet extends BaseEntity
@@ -11,6 +12,9 @@ public class SupportEquipmentCabinet extends BaseEntity
     private Long siteId;
     private String cabinetNo;
     private Integer uCapacity;
+    private BigDecimal positionX;
+    private BigDecimal positionZ;
+    private BigDecimal rotationY;
     private String status;
 
     public Long getCabinetId()
@@ -61,6 +65,36 @@ public class SupportEquipmentCabinet extends BaseEntity
     public void setUCapacity(Integer uCapacity)
     {
         this.uCapacity = uCapacity;
+    }
+
+    public BigDecimal getPositionX()
+    {
+        return positionX;
+    }
+
+    public void setPositionX(BigDecimal positionX)
+    {
+        this.positionX = positionX;
+    }
+
+    public BigDecimal getPositionZ()
+    {
+        return positionZ;
+    }
+
+    public void setPositionZ(BigDecimal positionZ)
+    {
+        this.positionZ = positionZ;
+    }
+
+    public BigDecimal getRotationY()
+    {
+        return rotationY;
+    }
+
+    public void setRotationY(BigDecimal rotationY)
+    {
+        this.rotationY = rotationY;
     }
 
     public String getStatus()

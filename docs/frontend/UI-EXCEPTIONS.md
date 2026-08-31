@@ -21,7 +21,7 @@
 | UIX-001 | `src/components/AuthScene/index.vue` | 登录 / 注册认证侧的本地 Vue/SCSS 动画；第三方视觉来源由 `CAREERCOMPASS_NOTICE.txt` 留存 | 不得扩散到普通业务页；不得恢复 Firebase、React、Tailwind、远程图片依赖 | 保留现状 |
 | UIX-002 | `src/views/support/autoInspection/{cockpit.vue,index.vue,components/InspectionFlowCanvas.vue}` | ECharts 健康度、巡检证据密集布局与步骤流程图；普通配置 Tabs 已改为 Element Plus | 按钮、Tag、空态、错误、表格和图标仍用 Element Plus；不得手写操作 SVG | 已复核 |
 | UIX-003 | `src/views/ipam/{index.vue,overview/index.vue,components/IpamHudIcon.vue}` | IP 地址占用、网段工作流和 HUD 可视化；图表媒介可按登记使用 SVG / Canvas | 不得用 Canvas 模拟表格、表单或分页 | 已复核 |
-| UIX-004 | `src/views/support/site/{index.vue,SiteConfigDialog.vue}` | 现场概览、关系拓扑、连接线、节点布局和设备位置等专业可视结构；全局暗色覆盖已存在 | 普通编辑、状态、按钮、Dialog、Drawer 和图标不得自绘；不把拓扑视觉推广为 CRUD 标准 | 已复核，优先渐进拆分 |
+| UIX-004 | `src/views/support/site/{index.vue,SiteConfigDialog.vue,components/EquipmentRoom3DWorkspace.vue}` | 现场概览、关系拓扑、连接线、Three.js机房、节点布局和设备位置等专业可视结构；全局暗色覆盖已存在 | 普通编辑、状态、按钮、Dialog、Drawer 和图标不得自绘；不把拓扑视觉推广为 CRUD 标准 | 已复核，优先渐进拆分 |
 | UIX-005 | `src/views/ipam/workbook` | 已安装 `@revolist/vue3-datagrid` 用于 Excel 式大规模 IP 编辑 | 普通管理列表继续用 `el-table`；不得为其他页面默认引入 RevoGrid | 保留现状 |
 | UIX-006 | `src/views/document/workspace/index.vue` | 文件夹树、拖拽移动、列表/网格切换、撤销反馈等文件工作区交互 | 普通 CRUD 不复制文件卡片、颜色选择或自定义原生按钮体系 | 保留现状 |
 | UIX-007 | `src/views/tool/build` | 表单生成器的拖拽画布、属性编辑器和代码预览 | 不得将编辑器定位方式、色板或控件覆盖复制到业务页面 | 已复核 |
