@@ -838,6 +838,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         Map<String, Object> planQuery = new HashMap<>();
         planQuery.put("status", STATUS_NORMAL);
         List<Map<String, Object>> activePlans = autoInspectionMapper.selectPlanList(planQuery);
+        List<Map<String, Object>> todayPlans = selectTodayScheduledPlans(activePlans, today);
 
         Map<String, Object> routineSummary = buildDashboardSummary(today, records, steps, targets);
         Map<String, Object> frequentSummary = buildFrequentDashboardSummary(today, dailyHealthRows);
@@ -856,7 +857,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         dashboard.put("latestAbnormalTargets", latestAbnormalTargets);
         dashboard.put("latestIssues", buildLatestDashboardIssues(today, latestAbnormalTargets, dailyHealthRows));
         dashboard.put("recentRecords", buildDashboardRecentRecords(today, records));
-        dashboard.put("currentPlanHealth", buildCurrentPlanHealth(today, activePlans, records, dailyHealthRows));
+        dashboard.put("currentPlanHealth", buildCurrentPlanHealth(today, todayPlans, records, dailyHealthRows));
         dashboard.put("generatedTime", formatDate(new Date()));
         return dashboard;
     }
@@ -1152,6 +1153,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             row.put("templateName", plan.get("templateName"));
             row.put("labelName", plan.get("labelName"));
             row.put("planMode", mode);
+            row.put("todaySchedule", plan.get("todaySchedule"));
             if (AutoInspectionPlanHealthConfig.MODE_FREQUENT.equals(mode))
             {
                 Map<String, Object> health = frequentByPlan.get(planId);
@@ -1187,6 +1189,26 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 .comparingInt((Map<String, Object> row) -> healthStatusPriority(str(row, "resultStatus")))
                 .thenComparing(row -> str(row, "labelName"))
                 .thenComparing(row -> str(row, "planName")));
+        return result;
+    }
+
+    private List<Map<String, Object>> selectTodayScheduledPlans(List<Map<String, Object>> activePlans,
+                                                                 LocalDate today)
+    {
+        ZoneId zoneId = ZoneId.systemDefault();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> plan : activePlans)
+        {
+            AutoInspectionPlanScheduleMatcher.TodaySchedule schedule = AutoInspectionPlanScheduleMatcher.resolve(
+                    str(plan, "cronExpression"), toLocalDateTime(plan.get("createTime")), today, zoneId);
+            if (!schedule.scheduled())
+            {
+                continue;
+            }
+            Map<String, Object> item = new LinkedHashMap<>(plan);
+            item.put("todaySchedule", schedule.display());
+            result.add(item);
+        }
         return result;
     }
 

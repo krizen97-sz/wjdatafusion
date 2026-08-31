@@ -93,16 +93,16 @@
       <article class="cockpit-panel cockpit-panel--distribution">
         <header class="cockpit-panel__head">
           <div>
-            <h2>当前计划状态</h2>
-            <span>所有已启用的例行与高频计划</span>
+            <h2>今日计划状态</h2>
+            <span>按计划周期筛选今天需要执行的例行与高频计划</span>
           </div>
         </header>
         <div v-if="hasPlanData" ref="distributionChartRef" class="cockpit-chart cockpit-chart--distribution"></div>
-        <el-empty v-else class="cockpit-chart-empty cockpit-chart-empty--small" description="当前没有启用的巡检计划" :image-size="48">
+        <el-empty v-else class="cockpit-chart-empty cockpit-chart-empty--small" description="今天没有需要执行的巡检计划" :image-size="48">
           <el-button type="primary" plain :icon="Setting" @click="openConfig">新增执行计划</el-button>
         </el-empty>
         <div class="cockpit-coverage">
-          <span><strong>{{ activePlanCount }}</strong>启用计划</span>
+          <span><strong>{{ activePlanCount }}</strong>今日计划</span>
           <span><strong>{{ checkedPlanCount }}</strong>今日已检测</span>
         </div>
       </article>
@@ -111,15 +111,15 @@
     <section class="cockpit-panel cockpit-plan-panel">
       <header class="cockpit-panel__head cockpit-panel__head--controls">
         <div>
-          <h2>计划健康清单</h2>
-          <span>异常和需关注计划自动排在前面，例行与高频可在同一张表筛选</span>
+          <h2>今日计划健康清单</h2>
+          <span>只展示按当前周期配置今天需要执行的计划，异常和需关注计划优先</span>
         </div>
         <div class="cockpit-plan-filters">
           <el-segmented v-model="planModeFilter" :options="planModeOptions" />
           <el-input v-model="planKeyword" clearable :prefix-icon="Search" placeholder="搜索计划、模板或标签" />
         </div>
       </header>
-      <el-table :data="filteredPlanHealth" class="cockpit-plan-table" empty-text="当前没有启用的巡检计划">
+      <el-table :data="filteredPlanHealth" class="cockpit-plan-table" empty-text="今天没有需要执行的巡检计划">
         <el-table-column label="状态" width="94" align="center">
           <template #default="scope">
             <el-tag :type="healthStatusType(scope.row.resultStatus)" effect="plain">
@@ -144,6 +144,9 @@
         </el-table-column>
         <el-table-column label="标签" prop="labelName" width="120" show-overflow-tooltip>
           <template #default="scope">{{ scope.row.labelName || '未分类' }}</template>
+        </el-table-column>
+        <el-table-column label="今日安排" prop="todaySchedule" width="150" align="center">
+          <template #default="scope">{{ scope.row.todaySchedule || '-' }}</template>
         </el-table-column>
         <el-table-column label="健康度" width="190">
           <template #default="scope">

@@ -93,6 +93,12 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- 与若依定时任务使用同一套 Cron 解析规则，支持可选年份字段 -->
+        <dependency>
+            <groupId>org.quartz-scheduler</groupId>
+            <artifactId>quartz</artifactId>
+        </dependency>
+
 
     </dependencies>
 

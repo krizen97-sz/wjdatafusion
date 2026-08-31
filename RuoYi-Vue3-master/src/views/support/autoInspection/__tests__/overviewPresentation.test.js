@@ -6,7 +6,8 @@ import {
   buildWeekResultDistribution,
   collectLabelNames,
   formatInspectionClock,
-  groupInspectionRecordsByDay
+  groupInspectionRecordsByDay,
+  presentInspectionDate
 } from '../overviewPresentation.js'
 
 test('records are grouped by day with daily result totals', () => {
@@ -38,6 +39,14 @@ test('unknown dates stay visible and do not mutate source rows', () => {
   assert.equal(groups[0].status, '3')
   assert.equal(groups[0].manualCount, 1)
   assert.deepEqual(rows, snapshot)
+})
+
+test('date presentation is shared by routine and frequent lists', () => {
+  const today = presentInspectionDate('2026-08-20', new Date(2026, 7, 20, 12, 0, 0))
+  const yesterday = presentInspectionDate('2026-08-19', new Date(2026, 7, 20, 12, 0, 0))
+
+  assert.deepEqual(today, { dateKey: '2026-08-20', label: '今天', weekday: '周四' })
+  assert.deepEqual(yesterday, { dateKey: '2026-08-19', label: '昨天', weekday: '周三' })
 })
 
 test('week distribution keeps normal abnormal and untested results', () => {

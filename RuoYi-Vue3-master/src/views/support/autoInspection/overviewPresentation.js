@@ -31,18 +31,26 @@ function displayDayLabel(dateKey, todayKey, yesterdayKey) {
   return date ? `${date.getMonth() + 1}月${date.getDate()}日` : dateKey
 }
 
+export function presentInspectionDate(value, referenceDate = new Date()) {
+  const current = new Date(referenceDate)
+  current.setHours(0, 0, 0, 0)
+  const yesterday = new Date(current)
+  yesterday.setDate(current.getDate() - 1)
+  const dateKey = parseDateKey(value)
+  const date = dateFromKey(dateKey)
+  return {
+    dateKey,
+    label: displayDayLabel(dateKey, localDateKey(current), localDateKey(yesterday)),
+    weekday: date ? WEEKDAY_LABELS[date.getDay()] : ''
+  }
+}
+
 export function formatInspectionClock(value) {
   const match = /(?:\s|T)(\d{2}:\d{2})(?::\d{2})?/.exec(String(value || ''))
   return match?.[1] || '--:--'
 }
 
 export function groupInspectionRecordsByDay(rows = [], referenceDate = new Date()) {
-  const today = new Date(referenceDate)
-  today.setHours(0, 0, 0, 0)
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-  const todayKey = localDateKey(today)
-  const yesterdayKey = localDateKey(yesterday)
   const groups = new Map()
 
   ;(Array.isArray(rows) ? rows : []).forEach((row) => {
@@ -78,11 +86,11 @@ export function groupInspectionRecordsByDay(rows = [], referenceDate = new Date(
     })
     .map((group) => {
       const total = group.records.length
-      const day = dateFromKey(group.dateKey)
+      const presentation = presentInspectionDate(group.dateKey, referenceDate)
       return {
         ...group,
-        label: displayDayLabel(group.dateKey, todayKey, yesterdayKey),
-        weekday: day ? WEEKDAY_LABELS[day.getDay()] : '',
+        label: presentation.label,
+        weekday: presentation.weekday,
         status: group.abnormalCount > 0
           ? RESULT_ABNORMAL
           : (total > 0 && group.normalCount === total ? RESULT_NORMAL : RESULT_UNKNOWN),

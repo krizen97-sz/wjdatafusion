@@ -73,6 +73,23 @@ class AutoInspectionDashboardAggregationTest
         assertEquals(Object.class, AutoInspectionDashboardVo.class.getMethod("getLatestIssues").getReturnType());
     }
 
+    @Test
+    void planHealthPublishesTodaySchedule() throws Exception
+    {
+        List<Map<String, Object>> plans = List.of(mapOf(
+                "planId", 9L,
+                "planName", "每日巡检",
+                "planMode", "ROUTINE",
+                "todaySchedule", "08:00"));
+
+        List<Map<String, Object>> result = invoke("buildCurrentPlanHealth",
+                new Class<?>[] {java.time.LocalDate.class, List.class, List.class, List.class},
+                java.time.LocalDate.of(2026, 8, 31), plans, List.of(), List.of());
+
+        assertEquals(1, result.size());
+        assertEquals("08:00", result.get(0).get("todaySchedule"));
+    }
+
     @SuppressWarnings("unchecked")
     private <T> T invoke(String methodName, Class<?>[] parameterTypes, Object... args) throws Exception
     {

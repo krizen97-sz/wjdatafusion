@@ -1,5 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import {
   RESULT_ABNORMAL,
   RESULT_NORMAL,
@@ -12,6 +13,8 @@ import {
   normalizeCockpitDashboard,
   normalizeHealthScore
 } from '../cockpitPresentation.js'
+
+const cockpitSource = readFileSync(new URL('../cockpit.vue', import.meta.url), 'utf8')
 
 test('cockpit normalizes mixed dashboard payloads without mutating source data', () => {
   const source = {
@@ -59,4 +62,12 @@ test('current status distribution always exposes all four business states', () =
   ])
 
   assert.deepEqual(result.map((item) => item.value), [2, 1, 1, 0])
+})
+
+test('cockpit presents only today scheduled plans and their schedule', () => {
+  assert.ok(cockpitSource.includes('<h2>今日计划状态</h2>'))
+  assert.ok(cockpitSource.includes('<h2>今日计划健康清单</h2>'))
+  assert.ok(cockpitSource.includes('label="今日安排"'))
+  assert.ok(cockpitSource.includes("scope.row.todaySchedule || '-'"))
+  assert.ok(cockpitSource.includes('今天没有需要执行的巡检计划'))
 })
