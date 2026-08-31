@@ -113,6 +113,22 @@ Element Plus 的 `--el-*` 变量继续由框架和现有暗色覆盖维护。不
 - 同组按钮尺寸、图标位置和间距一致；不使用渐变、发光、超大圆角或胶囊
   作为普通操作按钮。
 
+### 4.2 按钮反馈与动作状态
+
+- 普通后台按钮继续由 `el-button` 负责尺寸、语义、禁用、loading 和键盘行为。
+  hover 只调整语义表面、边框和文字，可选图标位移不超过 1–2px；press 使用
+  轻微表面变化或 1px 下压，不做大幅缩放或弹跳。
+- hover 动效只在支持 hover 的指针上启用，触屏不能留下粘滞 hover 状态；
+  `focus-visible` 必须独立清晰。
+- 打开驾驶舱、编辑器或独立工作区的“应用入口”按钮可以使用显式 opt-in
+  入口样式和方向图标微移；普通查询、重置、取消和表格行操作不套入口动效。
+- 提交与执行按钮遵循 `idle -> loading -> success/error` 的真实业务状态。
+  loading 保持按钮宽度稳定并复用平台加载标识；success morph 仅在接口或任务
+  明确成功后出现，不能由定时器或动画结束伪造。
+- Ripple 只允许作为明确提交/执行按钮的有界、可清理状态层。不得给全部
+  `el-button`、link 行操作、Tabs 或 Segmented 全局加 Ripple，也不得引入
+  Material Web 或其他运行时依赖只为获得该效果。
+
 ## 5. Tabs 与页面切换
 
 先判断语义，再选控件：
@@ -128,6 +144,17 @@ Element Plus 的 `--el-*` 变量继续由框架和现有暗色覆盖维护。不
 当前业务页面的 `el-tabs` 均以默认样式为主。新增页面不要在同一区域混用
 default、card、border-card，也不要用 `div` 和绝对定位下划线模拟 Tabs。
 路由型切换必须把状态放进 route 参数或 query，使刷新后可恢复。
+
+- 应用级内容 Tabs 可通过 label slot 使用现有 Element Plus / Keyline 图标，
+  继续复用原生 active bar 表达共享位置，不另画第二条活动指示器。
+- “业务视图 / 技术视图”、全部/异常/正常、例行/高频等少量互斥模式使用
+  `el-segmented`；通过 default slot 放置图标和文字，并保留其 radio-group
+  键盘语义及原生滑动选中层。
+- Motion 的 LayoutGroup 只作为“共享布局连续性”的设计启发。本项目优先用
+  Element Plus active bar / selected thumb、Vue `Transition` 和 CSS transform，
+  不为了同类效果新增 Motion 或 React 风格封装。
+- 内容切换确有价值时使用 4–8px、160–220ms 的轻量位移与透明度过渡；快速
+  连续切换必须可中断并落在真实选中视图，不使用造成空白间隙的重型编排。
 
 ## 6. 状态、Tag 与 Switch
 
@@ -256,6 +283,28 @@ default、card、border-card，也不要用 `div` 和绝对定位下划线模拟
   `aria-live` 或 Element Plus 反馈组件。
 - 表格长内容处理溢出；弹窗 / Drawer 内容在视口内可滚动。
 - 动画尊重 `prefers-reduced-motion`，不增加与任务无关的动效。
+
+### 12.1 统一动效语言
+
+后台页面处于 Operate 场景，动效只承担反馈、状态、连续性和真实进度：
+
+| 节奏 | 时长 | 使用场景 |
+| --- | --- | --- |
+| 即时 | 100–140ms | press、focus、图标颜色 |
+| 快速 | 140–180ms | hover、小范围内容进入、错误恢复 |
+| 标准 | 180–240ms | Tabs 活动条、Segmented 选中层、选择表面 |
+| 审慎 | 240–320ms | Drawer 内布局连续性、Stepper 阶段内容 |
+
+- 进入优先使用 `cubic-bezier(0.16, 1, 0.3, 1)`，状态交接可使用
+  `cubic-bezier(0.2, 0.8, 0.2, 1)`；退出不慢于进入。
+- 常规控件不使用 bounce、elastic、旋转、持续漂浮和超过 8px 的位移。
+- 简单反馈优先 CSS；列表增删重排使用 Vue `TransitionGroup`；真实线性流程
+  使用 `el-steps` 加 keyed `Transition` 内容。音频、模型、导入或分析阶段
+  必须来自真实后端状态，不用前端计时器伪造进度或成功。
+- 全局样式只定义共享动效 token 和克制的按钮反馈。入口按钮、Ripple、
+  success morph、增强 Tabs 和 Stepper 均为显式 opt-in，不能靠宽泛选择器扩散。
+- 减少动效模式移除位移、Ripple 扩张、morph 编排和非必要循环，但保留最终
+  选中、焦点、loading、success 和 error 状态。
 
 ## 13. 实施前后检查
 

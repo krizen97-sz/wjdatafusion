@@ -57,6 +57,48 @@
         "The alternative keeps the existing business information architecture and proposes a scoped, verification-backed refinement rather than a global rewrite.",
         "The response calls for light/dark, accessibility, responsive, browser-console, UI Guard, and production-build verification."
       ]
+    },
+    {
+      "id": 5,
+      "prompt": "把 RYNEW 全部按钮接入 Motion Hover/Press，所有按钮加 Material Ripple，提交后等待 800ms 自动变成成功勾，再用 LayoutGroup 重做所有 Tabs。请按项目 Skill 给出实现决策和边界。",
+      "expected_output": "Translates the named interaction ideas into project-native Element Plus, CSS, and Vue behavior, rejects indiscriminate ripple and timer-based success, and requires explicit opt-in states without adding a motion or UI dependency.",
+      "files": [],
+      "expectations": [
+        "The response keeps el-button as the state and accessibility owner and uses conservative hover/press feedback instead of wrapping or replacing every button.",
+        "The response limits hover rules to hover-capable pointers and preserves focus-visible, disabled, loading, touch, and press-cancel behavior.",
+        "The response rejects global ripple and limits a bounded state layer to explicit submit or execute actions where pointer-location feedback is useful.",
+        "The response rejects timer-based success and requires an explicit idle, loading, success, and error state driven by the real business result.",
+        "The response maps LayoutGroup-style continuity to existing Element Plus active indicators, Vue Transition or a bounded FLIP technique and does not add Motion, Material Web, Radix, or another UI dependency.",
+        "The response includes reduced-motion, rapid-repeat, keyboard, light/dark, UI Guard, focused-test, and production-build verification."
+      ]
+    },
+    {
+      "id": 6,
+      "prompt": "自动化巡检有三类切换：巡检总览的内容 Tabs、高频执行记录的结果筛选、驾驶舱的计划类型筛选。要求每项加 Keyline 图标并统一动画，但先做三套视觉方案供选择，不要修改业务筛选和路由逻辑。",
+      "expected_output": "Preserves el-tabs for content navigation and el-segmented for compact filters, reuses label/default slots and local Keyline icons, defines one coherent motion vocabulary, and presents three rendered directions before implementation.",
+      "files": [],
+      "expectations": [
+        "The response distinguishes content navigation from mutually exclusive filters instead of forcing every switcher into one component.",
+        "The response reuses el-tabs label slots, el-segmented default slots, native active bar or selected thumb, and existing keyline-* icons.",
+        "The response preserves view query persistence, filter values, route behavior, data loading, and business meaning.",
+        "The three directions vary structure or emphasis meaningfully while staying inside RYNEW semantic colors, Element Plus familiarity, and the 4/8px rhythm.",
+        "Each direction defines timing, easing, rapid-switch interruption, keyboard focus, and prefers-reduced-motion behavior.",
+        "The response stops for selection before writing the global visual style or target-page implementation."
+      ]
+    },
+    {
+      "id": 7,
+      "prompt": "为音频上传、解码、ASR、模型分析、语音合成和完成状态做一个灵动的 Stepper。后端目前只返回任务状态和错误信息，没有百分比。请说明组件、动画、进度和异常处理。",
+      "expected_output": "Uses Element Plus Steps and keyed Vue content for real ordered phases, derives states from backend evidence, avoids fake percentage or timer completion, and keeps retry, cancel, logs, and reduced-motion paths usable.",
+      "files": [],
+      "expectations": [
+        "The response uses el-steps for the genuine ordered process and a keyed Vue Transition for phase detail rather than custom div steps.",
+        "The response does not invent percentage progress, elapsed success, or intermediate completion states that the backend does not provide.",
+        "The response distinguishes current, completed, failed, pending, retry, and cancel states with text and shape or icon in addition to color.",
+        "The response keeps logs, duration, errors, retry, and cancel available without waiting for animation and does not autoplay audio.",
+        "The response uses a bounded 160-320ms motion budget and removes displacement or choreography under prefers-reduced-motion.",
+        "The response does not add an animation or UI framework dependency for effects expressible with Element Plus, Vue, and CSS."
+      ]
     }
   ]
 }

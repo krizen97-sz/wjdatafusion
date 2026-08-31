@@ -1,6 +1,6 @@
 ---
 name: ruoyi-element-plus-ui
-description: Use this project skill for every RYNEW Vue frontend task involving RuoYi, Vue 3, Element Plus, page layout, forms, queries, tables, pagination, toolbars, dialogs, drawers, buttons, Tabs, Switches, status display, tags, icons, loading/empty/error states, UI refactors or reviews, and implementation from screenshots, prototypes, mockups, design files, or Apple HIG requests. Trigger even when the user only asks to add or polish one frontend page or component. It enforces repository-first component reuse, Apple HIG-inspired semantic hierarchy adapted to RYNEW, prototype-to-project adaptation, UI Guard validation, and consistency over novelty; do not use it for backend-only, database-only, deployment-only, or the legacy Vue 2 UI unless that scope is explicit.
+description: Use this project skill for every RYNEW Vue frontend task involving RuoYi, Vue 3, Element Plus, page layout, forms, queries, tables, pagination, toolbars, dialogs, drawers, buttons, Tabs, segmented controls, steppers, hover/press feedback, motion, status display, tags, icons, loading/empty/error states, UI refactors or reviews, and implementation from screenshots, prototypes, mockups, design files, or Apple HIG requests. Trigger even when the user only asks to add or polish one frontend page or component. It enforces repository-first component reuse, Apple HIG-inspired semantic hierarchy, purposeful project-native motion, prototype-to-project adaptation, UI Guard validation, and consistency over novelty; do not use it for backend-only, database-only, deployment-only, or the legacy Vue 2 UI unless that scope is explicit.
 ---
 
 # RuoYi + Element Plus UI governance
@@ -19,6 +19,9 @@ mix it into Vue 3 work without an explicit request.
 - Never mechanically translate every visual element into custom DOM and CSS.
 - Use Apple HIG as a hierarchy and restraint discipline, not as permission to copy
   iOS/macOS chrome or replace Element Plus.
+- Translate external interaction ideas by purpose. Terms such as Motion Hover,
+  LayoutGroup, Toggle Group, Ripple, and Success Morph describe behavior; they do
+  not authorize a new runtime dependency or a second component system.
 - Preserve business flow, permissions, API contracts, and current module behavior.
 - Continue with the most conservative consistent choice when only minor design
   detail is missing; ask only when a conflict can change business correctness or
@@ -34,12 +37,15 @@ mix it into Vue 3 work without an explicit request.
 3. For Apple, macOS, HIG, premium, quiet, overly blue, visual hierarchy, material,
    or typography requests, read
    [references/apple-hig-adaptation.md](references/apple-hig-adaptation.md).
-4. Check `RuoYi-Vue3-master/package.json`; never assume or upgrade a dependency.
-5. Inspect `RuoYi-Vue3-master/src/components` and the current module.
-6. Find at least two similar pages, including one from `REFERENCE-PAGES.md` when
+4. For hover/press, ripple, loading-success morph, animated Tabs, LayoutGroup,
+   toggle/segmented controls, Stepper, audio/model phases, or global motion work,
+   read [references/interaction-motion-governance.md](references/interaction-motion-governance.md).
+5. Check `RuoYi-Vue3-master/package.json`; never assume or upgrade a dependency.
+6. Inspect `RuoYi-Vue3-master/src/components` and the current module.
+7. Find at least two similar pages, including one from `REFERENCE-PAGES.md` when
    its semantics match.
-7. Search existing uses of every planned Element Plus or project component.
-8. Write the component reuse plan below, then proceed.
+8. Search existing uses of every planned Element Plus or project component.
+9. Write the component reuse plan below, then proceed.
 
 | Page need | Existing implementation | Chosen component | Reference file | Custom work needed |
 | --- | --- | --- | --- | --- |
@@ -66,6 +72,26 @@ full mapping when Apple/HIG styling is explicit:
   overrides that recolor every heading or version value with the accent.
 - Apple HIG never overrides the repository, Element Plus behavior, accessibility,
   permissions, or business flow.
+
+## Interaction and motion floor
+
+- Motion must explain feedback, state, continuity, or progress. Routine admin
+  interactions stay within 100-300ms and never make the user wait for decoration.
+- Use installed Element Plus behavior first: `el-button` for actions, `el-tabs`
+  for content navigation, `el-segmented` for compact mutually exclusive views or
+  filters, and `el-steps` for genuine linear phases.
+- Use CSS transitions and Vue `Transition` / `TransitionGroup` before considering
+  another runtime. Do not add Motion, Radix, Material Web, or another UI package
+  merely to reproduce a named pattern from another project.
+- Hover feedback only applies on hover-capable pointers. Press, focus-visible,
+  disabled, loading, success, and error remain distinct and keyboard-readable.
+- Ripple and success morph are opt-in action feedback. Never attach ripple to
+  every button, and never infer success from a timer or animation completion.
+- Preserve stable control dimensions through loading and success. A long-running
+  task must expose real business progress or status instead of keeping a button
+  in a decorative loop.
+- Respect `prefers-reduced-motion`: remove displacement and nonessential loops
+  while keeping selection, focus, loading, success, and error legible.
 
 ## When a screenshot or prototype is provided
 
@@ -99,6 +125,8 @@ current project.
 - Query/list: RuoYi query form + `RightToolbar` + `el-table` + `Pagination`.
 - Simple edit: `el-dialog + el-form`; contextual long detail: `el-drawer`;
   read-only fields: `el-descriptions`.
+- Page content navigation: `el-tabs`; business/technical view or compact filter:
+  `el-segmented`; real multi-stage process: `el-steps` plus keyed content.
 - Feedback: existing `$modal` / Element Plus message, notification, and confirm APIs.
 - Icons: `@element-plus/icons-vue`, `SvgIcon`, `IconSelect`, and the existing local
   catalog only.
@@ -120,6 +148,11 @@ capabilities. Do not introduce a second UI framework or icon library.
   merely to make an admin page feel "Apple-like".
 - Do not download, bundle, or claim Apple's proprietary system fonts or assets.
 - Do not globally restyle Element Plus from a page-scoped task.
+- Do not globally add ripple nodes, scale/bounce every button, animate layout
+  properties, or make every Tab/Segmented group use a page-specific visual skin.
+- Do not use React-only names such as `LayoutGroup` as an implementation plan in
+  this Vue project; preserve the continuity with Element Plus indicators, Vue
+  transitions, or a bounded FLIP-style transform when truly needed.
 - Do not copy complex module visuals into ordinary CRUD pages.
 - Do not broaden a touched-page cleanup into historical mass refactoring.
 
@@ -141,6 +174,8 @@ the smallest auditable allowlist entry. Never treat an old deviation as approval
    headings remain neutral while accent use corresponds to interaction or state.
 7. Check alignment, 200% zoom/long text where practical, keyboard focus order,
    and browser console output on the real local route.
+8. For motion, test hover-capable pointer, press cancel, rapid repeated switching,
+   keyboard activation, loading/error recovery, and reduced-motion behavior.
 
 ## Handoff format
 
@@ -153,4 +188,6 @@ Report:
 5. validation commands and exact results;
 6. visual or business adaptations, including which Apple HIG principles were
    translated rather than copied;
-7. assumptions and remaining risks.
+7. motion thesis, reused indicator/state mechanisms, timing and reduced-motion
+   behavior when interaction motion changed;
+8. assumptions and remaining risks.
