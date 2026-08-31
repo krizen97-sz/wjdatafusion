@@ -98,3 +98,11 @@ export function summarizeDailyHealth(groups = []) {
     warningDays: active.filter((item) => item.dayStatus === '4').length
   }
 }
+
+export function paginateDailyHealthRows(rows = [], page = 1, pageSize = 20) {
+  const source = Array.isArray(rows) ? rows : []
+  const currentPage = Math.max(1, Math.trunc(Number(page) || 1))
+  const currentPageSize = Math.max(1, Math.trunc(Number(pageSize) || 20))
+  const start = (currentPage - 1) * currentPageSize
+  return source.slice(start, start + currentPageSize)
+}

@@ -36,7 +36,7 @@
 
     <el-table
       v-loading="loading"
-      :data="groupedRows"
+      :data="pagedRows"
       row-key="healthDate"
       :row-class-name="dailyHealthRowClass"
       class="auto-table record-table record-table--daily continuous-health-table"
@@ -131,6 +131,14 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <pagination
+      v-show="groupedRows.length > 0"
+      :total="groupedRows.length"
+      v-model:page="pageNum"
+      v-model:limit="pageSize"
+      @pagination="handlePagination"
+    />
   </section>
 </template>
 
@@ -142,6 +150,7 @@ import {
   groupDailyHealthRows,
   healthStatusLabel,
   healthStatusType,
+  paginateDailyHealthRows,
   summarizeDailyHealth
 } from '../continuousHealthPresentation'
 import { presentInspectionDate } from '../overviewPresentation'
@@ -157,7 +166,19 @@ const props = defineProps({
 defineEmits(['update:month', 'update:planId', 'day-results'])
 
 const groupedRows = computed(() => groupDailyHealthRows(props.rows))
+const pageNum = ref(1)
+const pageSize = ref(20)
+const pagedRows = computed(() => paginateDailyHealthRows(groupedRows.value, pageNum.value, pageSize.value))
 const summary = computed(() => summarizeDailyHealth(groupedRows.value))
+
+watch(() => [props.month, props.planId], () => {
+  pageNum.value = 1
+})
+
+watch(() => groupedRows.value.length, (total) => {
+  const lastPage = Math.max(1, Math.ceil(total / pageSize.value))
+  if (pageNum.value > lastPage) pageNum.value = lastPage
+})
 
 function datePresentation(value) {
   return presentInspectionDate(value)
@@ -165,6 +186,11 @@ function datePresentation(value) {
 
 function dailyHealthRowClass({ row }) {
   return row?.dayStatus === '2' ? 'record-table-row--abnormal' : ''
+}
+
+function handlePagination({ page, limit }) {
+  pageNum.value = page
+  pageSize.value = limit
 }
 
 const statusGuide = [

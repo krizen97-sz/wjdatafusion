@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import {
   groupDailyHealthRows,
   healthStatusLabel,
+  paginateDailyHealthRows,
   summarizeDailyHealth
 } from '../continuousHealthPresentation.js'
 
@@ -33,6 +34,18 @@ test('monthly summary is weighted by expected slots', () => {
   assert.equal(summary.dayCount, 2)
   assert.equal(summary.healthScore, 90.9)
   assert.equal(summary.abnormalDays, 1)
+})
+
+test('daily health pagination keeps complete date groups together', () => {
+  const rows = Array.from({ length: 31 }, (_, index) => ({
+    healthDate: `2026-08-${String(31 - index).padStart(2, '0')}`
+  }))
+
+  assert.deepEqual(
+    paginateDailyHealthRows(rows, 2, 20).map((item) => item.healthDate),
+    rows.slice(20).map((item) => item.healthDate)
+  )
+  assert.equal(paginateDailyHealthRows(rows, 1, 10).length, 10)
 })
 
 test('a multi-plan day stays abnormal while any plan remains abnormal', () => {
@@ -82,6 +95,10 @@ test('workspace exposes plan mode, daily health and activity tools', () => {
   assert.ok(panelSource.includes('class="record-result-summary"'))
   assert.ok(panelSource.includes('class="record-count-cell"'))
   assert.ok(panelSource.includes('presentInspectionDate'))
+  assert.ok(panelSource.includes(':data="pagedRows"'))
+  assert.ok(panelSource.includes('v-model:page="pageNum"'))
+  assert.ok(panelSource.includes('v-model:limit="pageSize"'))
+  assert.ok(panelSource.includes('@pagination="handlePagination"'))
   assert.ok(workspaceSource.includes('type="expand"'))
   assert.ok(workspaceSource.includes(':expand-row-keys="healthSampleExpandedKeys"'))
   assert.ok(workspaceSource.includes('handleHealthSampleExpand'))
