@@ -4,7 +4,7 @@
       THESIS: 以设备为唯一对象，把档案、平台归属、机房位置、凭据和链路收进一张可操作的管控图。
       OWN-WORLD: 继承若依与Element Plus中性色表面，设备类型、位置状态、光口和电口只承担语义区分。
       STORY: 运维人员从全现场设备目录定位对象，在同一图中查看并修正平台、位置、链路和设备档案。
-      FIRST VIEWPORT: 左侧设备目录、中间全幅Three.js场景、右侧统一检查器，新增、批量和数据操作始终留在顶部。
+      FIRST VIEWPORT: 全幅Three.js场景承载主任务，设备清单与配置检查器按需从两侧弹出。
       FORM: 既有设备管理的Operate型专业可视化扩展；使用UIX-004拓扑例外。
       FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
     -->
@@ -25,6 +25,8 @@
             :value="room.roomId"
           />
         </el-select>
+        <el-button icon="List" @click="openDeviceDrawer">设备清单</el-button>
+        <el-button icon="Setting" @click="openInspectorDrawer">配置信息</el-button>
         <el-dropdown
           v-hasPermi="['support:equipment:add', 'support:hardwareAsset:add', 'support:server:add']"
           trigger="click"
@@ -95,84 +97,121 @@
     </div>
 
     <div v-else class="room3d-body">
-      <aside class="room3d-room-panel room3d-inventory">
-        <div class="room3d-panel-title">
-          <strong>设备目录</strong>
-          <span>{{ filteredDevices.length }} / {{ devices.length }} 台</span>
-        </div>
-        <div class="room3d-inventory-filters">
-          <el-input v-model="deviceKeyword" clearable placeholder="搜索名称、IP、平台或位置" prefix-icon="Search" />
-          <el-select v-model="platformFilterId" clearable filterable placeholder="全部平台">
-            <el-option v-for="platform in platformOptions" :key="platform.platformId" :label="platform.displayName" :value="platform.platformId" />
-          </el-select>
-          <div class="room3d-inventory-filter-row">
-            <el-select v-model="assetTypeFilter" aria-label="设备类型">
-              <el-option label="全部类型" value="ALL" />
-              <el-option v-for="item in deviceLegend" :key="item.value" :label="item.label" :value="item.value" />
-            </el-select>
-            <el-select v-model="placementFilter" aria-label="上架状态">
-              <el-option label="全部位置" value="ALL" />
-              <el-option label="已上架" value="PLACED" />
-              <el-option label="未上架" value="UNPLACED" />
-            </el-select>
+      <el-drawer
+        v-model="deviceDrawerOpen"
+        direction="ltr"
+        size="min(900px, 94vw)"
+        append-to-body
+        destroy-on-close
+        class="room3d-device-drawer"
+        @closed="clearDeviceSelection"
+      >
+        <template #header>
+          <div class="room3d-drawer-heading">
+            <strong>设备清单</strong>
+            <el-text type="info" size="small">{{ filteredDevices.length }} / {{ devices.length }} 台</el-text>
           </div>
-        </div>
+        </template>
 
-        <div class="room3d-selection-bar">
-          <el-checkbox
-            :model-value="allFilteredSelected"
-            :indeterminate="filteredSelectionIndeterminate"
-            @change="toggleAllFiltered"
-          >全选当前结果</el-checkbox>
-          <span v-if="selectedDeviceKeys.length">已选 {{ selectedDeviceKeys.length }} 台</span>
-        </div>
+        <div class="room3d-device-drawer-body">
+          <div class="room3d-device-scope">
+            <el-segmented v-model="deviceScope" :options="deviceScopeOptions" />
+            <el-text type="info" size="small">{{ deviceScopeDescription }}</el-text>
+          </div>
 
-        <el-scrollbar class="room3d-inventory-scroll">
-          <div v-if="filteredDevices.length" class="room3d-device-list">
-            <button
-              v-for="device in filteredDevices"
-              :key="device.deviceKey"
-              type="button"
-              class="room3d-device-item"
-              :class="{ 'is-active': selectedDeviceKey === device.deviceKey }"
-              @click="selectDevice(device)"
-            >
-              <el-checkbox
-                :model-value="selectedDeviceKeys.includes(device.deviceKey)"
-                :aria-label="`选择${device.assetName || '设备'}`"
-                @click.stop
-                @change="toggleDeviceSelection(device.deviceKey, $event)"
+          <el-form class="room3d-device-query" :inline="true" label-width="56px">
+            <el-form-item label="关键字">
+              <el-input
+                v-model="deviceKeyword"
+                clearable
+                placeholder="设备名称、IP、平台或位置"
+                prefix-icon="Search"
+                @keyup.enter="handleDeviceQuery"
               />
-              <i :style="{ background: getDeviceColor(device.assetType) }"></i>
-              <span class="room3d-device-item__body">
-                <span class="room3d-device-item__title">
-                  <strong>{{ device.assetName || '未命名设备' }}</strong>
-                  <small>{{ device.assetTypeLabel || device.assetType }}</small>
-                </span>
-                <small>{{ device.ipAddress || device.manageIp || '未填写IP' }}</small>
-                <small>{{ device.bindingLabel || '未归属平台' }}</small>
-                <small :class="{ 'is-unplaced': !isDevicePlaced(device) }">
-                  {{ isDevicePlaced(device) ? formatDeviceLocation(device) : '未配置机房位置' }}
-                </small>
-              </span>
-            </button>
-          </div>
-          <el-empty v-else description="没有符合条件的设备" :image-size="72" />
-        </el-scrollbar>
+            </el-form-item>
+            <el-form-item label="类型">
+              <el-select v-model="assetTypeFilter" aria-label="设备类型">
+                <el-option label="全部类型" value="ALL" />
+                <el-option v-for="item in deviceLegend" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="位置">
+              <el-select v-model="placementFilter" aria-label="上架状态">
+                <el-option label="全部位置" value="ALL" />
+                <el-option label="已上架" value="PLACED" />
+                <el-option label="未上架" value="UNPLACED" />
+              </el-select>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" icon="Search" @click="handleDeviceQuery">搜索</el-button>
+              <el-button icon="Refresh" @click="resetDeviceQuery">重置</el-button>
+            </el-form-item>
+          </el-form>
 
-        <div v-if="selectedDeviceKeys.length" class="room3d-batch-bar">
-          <el-button size="small" @click="clearDeviceSelection">取消选择</el-button>
-          <el-button
+          <div class="room3d-device-toolbar">
+            <el-text type="info" size="small">
+              当前页 {{ pagedDevices.length }} 台<span v-if="selectedDeviceKeys.length">，已选 {{ selectedDeviceKeys.length }} 台</span>
+            </el-text>
+            <el-space>
+              <el-button size="small" :disabled="!selectedDeviceKeys.length" @click="clearDeviceSelection">取消选择</el-button>
+              <el-button
+                size="small"
+                type="danger"
+                plain
+                icon="Delete"
+                :disabled="!selectedDeviceKeys.length"
+                :loading="batchDeleting"
+                v-hasPermi="['support:equipment:remove', 'support:hardwareAsset:remove', 'support:server:remove']"
+                @click="removeSelectedDevices"
+              >批量删除</el-button>
+            </el-space>
+          </div>
+
+          <el-table
+            ref="deviceTableRef"
+            v-loading="loading"
+            :data="pagedDevices"
+            row-key="deviceKey"
             size="small"
-            type="danger"
-            plain
-            icon="Delete"
-            :loading="batchDeleting"
-            v-hasPermi="['support:equipment:remove', 'support:hardwareAsset:remove', 'support:server:remove']"
-            @click="removeSelectedDevices"
-          >批量删除</el-button>
+            height="100%"
+            empty-text="没有符合条件的设备"
+            @selection-change="handleDeviceSelectionChange"
+          >
+            <el-table-column type="selection" width="48" align="center" />
+            <el-table-column label="设备名称" prop="assetName" min-width="140" show-overflow-tooltip />
+            <el-table-column label="类型" prop="assetTypeLabel" width="76" show-overflow-tooltip />
+            <el-table-column label="IP地址" min-width="112" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.ipAddress || row.manageIp || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="平台归属" prop="bindingLabel" min-width="145" show-overflow-tooltip />
+            <el-table-column label="安装位置" min-width="160" show-overflow-tooltip>
+              <template #default="{ row }">{{ isDevicePlaced(row) ? formatDeviceLocation(row) : '未配置机房位置' }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="66" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.status === '1' ? 'info' : 'success'" size="small">
+                  {{ row.status === '1' ? '停用' : '正常' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="60" align="center" fixed="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="locateDeviceFromDrawer(row)">定位</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <Pagination
+            v-show="filteredDevices.length > 0"
+            :total="filteredDevices.length"
+            v-model:page="devicePage.pageNum"
+            v-model:limit="devicePage.pageSize"
+            :page-sizes="[10, 20, 30]"
+            :auto-scroll="false"
+            @pagination="handleDevicePagination"
+          />
         </div>
-      </aside>
+      </el-drawer>
 
       <main class="room3d-scene-panel">
         <div class="room3d-scene-summary">
@@ -221,7 +260,16 @@
         </div>
       </main>
 
-      <aside class="room3d-inspector">
+      <el-drawer
+        v-model="inspectorDrawerOpen"
+        title="配置信息"
+        direction="rtl"
+        size="min(460px, 94vw)"
+        append-to-body
+        destroy-on-close
+        class="room3d-inspector-drawer"
+      >
+        <div class="room3d-inspector">
         <template v-if="selectedDevice">
           <div class="room3d-inspector-head">
             <div>
@@ -231,9 +279,7 @@
             <div class="room3d-inspector-actions">
               <el-button v-if="canManageEquipment" link type="primary" @click="emit('edit-device', selectedDevice)">编辑档案</el-button>
               <el-dropdown v-if="canManageEquipment || canDeleteEquipment || canViewPassword" trigger="click" @command="handleSelectedDeviceCommand">
-                <el-tooltip content="更多设备操作" placement="bottom">
-                  <el-button link type="primary" icon="MoreFilled" aria-label="更多设备操作" />
-                </el-tooltip>
+                <el-button link type="primary" icon="MoreFilled" title="更多设备操作" aria-label="更多设备操作" />
                 <template #dropdown>
                   <el-dropdown-menu>
                     <el-dropdown-item v-if="canManageEquipment" command="placement" icon="Location">配置机房位置</el-dropdown-item>
@@ -419,7 +465,8 @@
             <p>机房尺寸、机柜和设备位置都可在当前工作区维护；切换到“调整机柜”后可直接拖动机柜并实时保存。</p>
           </div>
         </template>
-      </aside>
+        </div>
+      </el-drawer>
     </div>
 
     <el-dialog
@@ -726,10 +773,14 @@ const selectedCabinetId = ref(null)
 const selectedDeviceKey = ref('')
 const showLinks = ref(true)
 const workspaceMode = ref('view')
+const deviceDrawerOpen = ref(false)
+const inspectorDrawerOpen = ref(false)
+const deviceTableRef = ref(null)
+const deviceScope = ref(props.initialPlatformId ? 'PLATFORM' : 'SITE')
 const deviceKeyword = ref('')
-const platformFilterId = ref(props.initialPlatformId ? Number(props.initialPlatformId) : null)
 const assetTypeFilter = ref('ALL')
 const placementFilter = ref('ALL')
+const devicePage = reactive({ pageNum: 1, pageSize: 10 })
 const selectedDeviceKeys = ref([])
 const batchDeleting = ref(false)
 const bindingPlatformId = ref(null)
@@ -795,7 +846,25 @@ const selectedRoom = computed(() => rooms.value.find((room) => Number(room.roomI
 const currentRoomCabinets = computed(() => cabinets.value.filter((cabinet) => Number(cabinet.roomId) === Number(selectedRoomId.value)))
 const currentRoomDevices = computed(() => devices.value.filter((device) => Number(device.roomId) === Number(selectedRoomId.value) && isDevicePlaced(device)))
 const platformOptions = computed(() => flattenPlatformTree(platformTree.value))
+const currentScopePlatform = computed(() => platformOptions.value.find((platform) =>
+  Number(platform.platformId) === Number(props.initialPlatformId)
+) || null)
+const activeScopePlatformId = computed(() => deviceScope.value === 'PLATFORM' && props.initialPlatformId
+  ? Number(props.initialPlatformId)
+  : null)
+const deviceScopeOptions = computed(() => [
+  { label: '当前平台', value: 'PLATFORM', disabled: !props.initialPlatformId },
+  { label: '全现场', value: 'SITE' }
+])
+const deviceScopeDescription = computed(() => deviceScope.value === 'PLATFORM'
+  ? `当前平台：${currentScopePlatform.value?.platformName || '加载中'}`
+  : `当前现场：${props.siteName || '全部设备'}`
+)
 const filteredDevices = computed(() => devices.value.filter(matchesDeviceFilters))
+const pagedDevices = computed(() => {
+  const start = (devicePage.pageNum - 1) * devicePage.pageSize
+  return filteredDevices.value.slice(start, start + devicePage.pageSize)
+})
 const visibleCurrentRoomDevices = computed(() => filteredDevices.value.filter((device) =>
   Number(device.roomId) === Number(selectedRoomId.value) && isDevicePlaced(device)
 ))
@@ -830,13 +899,6 @@ const bindablePlatformOptions = computed(() => {
   return selectedDevice.value.sourceType === 'SERVER'
     ? platformOptions.value.filter((platform) => platform.platformLevel === 'SUB')
     : platformOptions.value
-})
-const allFilteredSelected = computed(() => filteredDevices.value.length > 0 && filteredDevices.value.every((device) =>
-  selectedDeviceKeys.value.includes(device.deviceKey)
-))
-const filteredSelectionIndeterminate = computed(() => {
-  const count = filteredDevices.value.filter((device) => selectedDeviceKeys.value.includes(device.deviceKey)).length
-  return count > 0 && count < filteredDevices.value.length
 })
 const placementDevice = computed(() => devices.value.find((device) => device.deviceKey === placementDeviceKey.value) || null)
 const placementCabinetOptions = computed(() => cabinets.value.filter((cabinet) => Number(cabinet.roomId) === Number(placementForm.roomId)))
@@ -945,14 +1007,20 @@ watch(() => props.initialDeviceKey, () => {
   focusInitialDevice()
 })
 watch(() => props.initialPlatformId, (value) => {
-  platformFilterId.value = value ? Number(value) : null
+  if (!value && deviceScope.value === 'PLATFORM') deviceScope.value = 'SITE'
 })
-watch([deviceKeyword, platformFilterId, assetTypeFilter, placementFilter], () => {
+watch([deviceKeyword, deviceScope, assetTypeFilter, placementFilter], () => {
+  devicePage.pageNum = 1
+  clearDeviceSelection()
   if (selectedDevice.value && !matchesDeviceFilters(selectedDevice.value)) {
     selectedDeviceKey.value = ''
     selectedCabinetId.value = null
   }
   rebuildScene()
+})
+watch(() => filteredDevices.value.length, (total) => {
+  const maxPage = Math.max(1, Math.ceil(total / devicePage.pageSize))
+  if (devicePage.pageNum > maxPage) devicePage.pageNum = maxPage
 })
 watch(selectedDeviceKey, () => {
   bindingPlatformId.value = null
@@ -1422,10 +1490,13 @@ async function handlePointerUp(event) {
   if (data.kind === 'device') {
     selectedDeviceKey.value = data.deviceKey
     selectedCabinetId.value = Number(data.cabinetId)
+    inspectorDrawerOpen.value = true
   } else if (data.kind === 'cabinet') {
     selectedCabinetId.value = Number(data.cabinetId)
     selectedDeviceKey.value = ''
+    inspectorDrawerOpen.value = true
   }
+  if (inspectorDrawerOpen.value) deviceDrawerOpen.value = false
   rebuildScene()
 }
 
@@ -1545,10 +1616,10 @@ function matchesDeviceFilters(device) {
   if (assetTypeFilter.value !== 'ALL' && device.assetType !== assetTypeFilter.value) return false
   if (placementFilter.value === 'PLACED' && !isDevicePlaced(device)) return false
   if (placementFilter.value === 'UNPLACED' && isDevicePlaced(device)) return false
-  if (platformFilterId.value) {
+  if (activeScopePlatformId.value) {
     const platformIds = (device.platformIds || []).map(Number)
     const mainPlatformIds = (device.mainPlatformIds || []).map(Number)
-    if (!platformIds.includes(Number(platformFilterId.value)) && !mainPlatformIds.includes(Number(platformFilterId.value))) return false
+    if (!platformIds.includes(activeScopePlatformId.value) && !mainPlatformIds.includes(activeScopePlatformId.value)) return false
   }
   const keyword = deviceKeyword.value.trim().toLowerCase()
   if (!keyword) return true
@@ -1566,24 +1637,47 @@ function matchesDeviceFilters(device) {
   ].filter(Boolean).join(' ').toLowerCase().includes(keyword)
 }
 
-function toggleDeviceSelection(deviceKey, checked) {
-  const keys = new Set(selectedDeviceKeys.value)
-  if (checked) keys.add(deviceKey)
-  else keys.delete(deviceKey)
-  selectedDeviceKeys.value = Array.from(keys)
-}
-
-function toggleAllFiltered(checked) {
-  const keys = new Set(selectedDeviceKeys.value)
-  filteredDevices.value.forEach((device) => {
-    if (checked) keys.add(device.deviceKey)
-    else keys.delete(device.deviceKey)
-  })
-  selectedDeviceKeys.value = Array.from(keys)
+function handleDeviceSelectionChange(rows) {
+  selectedDeviceKeys.value = rows.map((device) => device.deviceKey)
 }
 
 function clearDeviceSelection() {
   selectedDeviceKeys.value = []
+  deviceTableRef.value?.clearSelection?.()
+}
+
+function handleDeviceQuery() {
+  devicePage.pageNum = 1
+  clearDeviceSelection()
+}
+
+function resetDeviceQuery() {
+  deviceKeyword.value = ''
+  assetTypeFilter.value = 'ALL'
+  placementFilter.value = 'ALL'
+  handleDeviceQuery()
+}
+
+function handleDevicePagination({ page, limit }) {
+  devicePage.pageNum = page
+  devicePage.pageSize = limit
+  clearDeviceSelection()
+}
+
+function openDeviceDrawer() {
+  inspectorDrawerOpen.value = false
+  deviceDrawerOpen.value = true
+}
+
+function openInspectorDrawer() {
+  deviceDrawerOpen.value = false
+  inspectorDrawerOpen.value = true
+}
+
+async function locateDeviceFromDrawer(device) {
+  await selectDevice(device)
+  deviceDrawerOpen.value = false
+  inspectorDrawerOpen.value = true
 }
 
 async function removeSelectedDevices() {
@@ -1623,9 +1717,9 @@ async function removeDevices(targets) {
 }
 
 function handleCreateCommand(command) {
-  if (command === 'hardware') emit('add-device', { platformId: platformFilterId.value })
-  if (command === 'server') emit('add-server', { platformId: platformFilterId.value })
-  if (command === 'batch') emit('batch-create', { platformId: platformFilterId.value })
+  if (command === 'hardware') emit('add-device', { platformId: activeScopePlatformId.value })
+  if (command === 'server') emit('add-server', { platformId: activeScopePlatformId.value })
+  if (command === 'batch') emit('batch-create', { platformId: activeScopePlatformId.value })
 }
 
 async function handleSelectedDeviceCommand(command) {
@@ -1706,6 +1800,7 @@ async function selectDevice(device) {
 function clearSelection() {
   selectedCabinetId.value = null
   selectedDeviceKey.value = ''
+  inspectorDrawerOpen.value = false
   rebuildScene()
 }
 
@@ -1952,7 +2047,7 @@ function handleDataCommand(command) {
   if (command === 'export-devices') {
     emit('export-devices', {
       siteId: Number(props.siteId),
-      platformId: platformFilterId.value || undefined,
+      platformId: activeScopePlatformId.value || undefined,
       assetType: assetTypeFilter.value === 'ALL' ? undefined : assetTypeFilter.value,
       assetName: deviceKeyword.value || undefined
     })
@@ -2300,142 +2395,89 @@ defineExpose({ refresh: loadTopology })
 }
 
 .room3d-body {
-  display: grid;
-  grid-template-columns: 300px minmax(480px, 1fr) 340px;
+  display: block;
   min-height: 0;
   overflow: hidden;
 }
 
-.room3d-room-panel,
+.room3d-scene-panel {
+  height: 100%;
+}
+
+.room3d-drawer-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.room3d-drawer-heading strong {
+  color: var(--el-text-color-primary);
+  font-size: 17px;
+}
+
+.room3d-device-drawer-body {
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+:global(.room3d-device-drawer .el-drawer__body) {
+  overflow: hidden;
+}
+
+:global(.room3d-inspector-drawer .el-drawer__body) {
+  overflow: auto;
+}
+
+.room3d-device-scope {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.room3d-device-scope :deep(.el-segmented) {
+  flex: 0 0 auto;
+}
+
+.room3d-device-query {
+  padding-top: 14px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.room3d-device-query :deep(.el-form-item) {
+  margin-right: 12px;
+  margin-bottom: 14px;
+}
+
+.room3d-device-query :deep(.el-input) {
+  width: 200px;
+}
+
+.room3d-device-query :deep(.el-select) {
+  width: 120px;
+}
+
+.room3d-device-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+}
+
 .room3d-inspector {
   min-height: 0;
-  overflow: auto;
+  padding: 0;
   background: var(--el-bg-color);
 }
 
-.room3d-room-panel {
-  border-right: 1px solid var(--el-border-color-light);
-}
-
-.room3d-inventory {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
-  overflow: hidden;
-}
-
-.room3d-inventory-filters {
-  display: grid;
-  gap: 8px;
-  padding: 4px 14px 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-
-.room3d-inventory-filters :deep(.el-select) {
-  width: 100%;
-}
-
-.room3d-inventory-filter-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.room3d-selection-bar,
-.room3d-batch-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 14px;
-}
-
-.room3d-selection-bar {
-  color: var(--el-text-color-secondary);
-  font-size: 12px;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-}
-
-.room3d-batch-bar {
-  border-top: 1px solid var(--el-border-color-light);
-  background: var(--el-fill-color-extra-light);
-}
-
-.room3d-inventory-scroll {
-  min-height: 0;
-}
-
-.room3d-device-list {
-  padding: 6px 8px 12px;
-}
-
-.room3d-device-item {
-  display: grid;
-  grid-template-columns: 18px 6px minmax(0, 1fr);
-  align-items: start;
-  gap: 8px;
-  width: 100%;
-  min-height: 82px;
-  padding: 9px 7px;
-  border: 0;
-  border-bottom: 1px solid var(--el-border-color-lighter);
-  border-radius: 4px;
-  color: var(--el-text-color-primary);
-  text-align: left;
-  background: transparent;
-  cursor: pointer;
-}
-
-.room3d-device-item:hover,
-.room3d-device-item.is-active {
-  background: var(--el-fill-color-light);
-}
-
-.room3d-device-item.is-active {
-  box-shadow: inset 3px 0 0 var(--el-color-primary);
-}
-
-.room3d-device-item > i {
-  width: 6px;
-  height: 42px;
-  margin-top: 2px;
-  border-radius: 3px;
-}
-
-.room3d-device-item__body {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.room3d-device-item__title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.room3d-device-item__body strong,
-.room3d-device-item__body small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.room3d-device-item__body small {
-  color: var(--el-text-color-secondary);
-  font-size: 11px;
-}
-
-.room3d-device-item__body small.is-unplaced {
-  color: var(--el-color-warning-dark-2);
-}
-
-.room3d-inspector {
-  padding: 16px;
-  border-left: 1px solid var(--el-border-color-light);
-}
-
-.room3d-panel-title,
 .room3d-section-head,
 .room3d-inspector-head {
   display: flex;
@@ -2444,11 +2486,6 @@ defineExpose({ refresh: loadTopology })
   gap: 10px;
 }
 
-.room3d-panel-title {
-  padding: 15px 14px 8px;
-}
-
-.room3d-panel-title span,
 .room3d-section-head span,
 .room3d-inspector-head span {
   color: var(--el-text-color-secondary);
@@ -2981,16 +3018,9 @@ defineExpose({ refresh: loadTopology })
     flex-wrap: wrap;
   }
 
-  .room3d-body {
-    grid-template-columns: 260px minmax(420px, 1fr) 300px;
-  }
 }
 
 @media (max-width: 900px) {
-  .room3d-workspace {
-    overflow: auto;
-  }
-
   .room3d-header {
     position: sticky;
     top: 0;
@@ -3008,48 +3038,22 @@ defineExpose({ refresh: loadTopology })
   }
 
   .room3d-body {
-    grid-template-columns: 1fr;
-    overflow: visible;
-  }
-
-  .room3d-room-panel {
-    height: 310px;
-    min-height: 310px;
     overflow: hidden;
-    border-right: 0;
-    border-bottom: 1px solid var(--el-border-color-light);
   }
 
-  .room3d-inventory {
-    grid-template-columns: 180px minmax(260px, 1fr);
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+  .room3d-device-scope {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
-  .room3d-inventory > .room3d-panel-title,
-  .room3d-inventory > .room3d-inventory-filters,
-  .room3d-inventory > .room3d-selection-bar,
-  .room3d-inventory > .room3d-batch-bar {
-    grid-column: 1;
+  .room3d-device-query :deep(.el-form-item) {
+    display: flex;
+    margin-right: 0;
   }
 
-  .room3d-inventory > .room3d-inventory-scroll {
-    grid-column: 2;
-    grid-row: 1 / span 4;
-    border-left: 1px solid var(--el-border-color-lighter);
-  }
-
-  .room3d-inventory-filter-row {
-    grid-template-columns: 1fr;
-  }
-
-  .room3d-scene-panel {
-    min-height: 58vh;
-    border-bottom: 1px solid var(--el-border-color-light);
-  }
-
-  .room3d-inspector {
-    min-height: 360px;
-    border-left: 0;
+  .room3d-device-query :deep(.el-input),
+  .room3d-device-query :deep(.el-select) {
+    width: 100%;
   }
 
   .room3d-link-form-grid {
