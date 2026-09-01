@@ -2298,6 +2298,13 @@ import InspectionFlowCanvas from './components/InspectionFlowCanvas.vue'
 import ContinuousHealthPanel from './components/ContinuousHealthPanel.vue'
 import { hydrateDatabaseTarget, normalizeDatabaseTargetConfig } from './databaseTargetConfig'
 import {
+  COMPARISON_SCOPE_CONTINUOUS,
+  COMPARISON_SCOPE_DAY,
+  COMPARISON_SCOPE_HOUR,
+  comparisonScopeOptions,
+  normalizeComparisonScope
+} from './comparisonScopeConfig'
+import {
   buildInspectionRecordTableRows,
   buildLabelTreeOptions,
   buildWeekResultDistribution,
@@ -2362,9 +2369,6 @@ const TOOL_KAFKA_CONSUMER_PROGRESS = 'KAFKA_CONSUMER_PROGRESS'
 const TOOL_MQTT_TOPIC_ACTIVITY = 'MQTT_TOPIC_ACTIVITY'
 const EVALUATION_MODE_FIXED = 'FIXED'
 const EVALUATION_MODE_PREVIOUS = 'PREVIOUS'
-const COMPARISON_SCOPE_CONTINUOUS = 'CONTINUOUS'
-const COMPARISON_SCOPE_DAY = 'DAY'
-const COMPARISON_SCOPE_HOUR = 'HOUR'
 const KAFKA_METRIC_MAX_LAG = 'MAX_LAG'
 const KAFKA_METRIC_TOTAL_LAG = 'TOTAL_LAG'
 const KAFKA_METRIC_PRODUCED_OFFSET = 'PRODUCED_OFFSET'
@@ -2646,11 +2650,6 @@ const weekOptions = [
 const planModeOptions = [
   { label: '逐次记录', value: PLAN_MODE_ROUTINE, icon: 'keyline-calendar-check' },
   { label: '每日汇总', value: PLAN_MODE_FREQUENT, icon: 'keyline-activity' }
-]
-const comparisonScopeOptions = [
-  { label: '连续累计', value: COMPARISON_SCOPE_CONTINUOUS },
-  { label: '每天重新累计', value: COMPARISON_SCOPE_DAY },
-  { label: '每小时重新累计', value: COMPARISON_SCOPE_HOUR }
 ]
 const httpDatePlaceholders = [
   { value: '${today}', label: '当天日期', example: '2026-06-11' },
@@ -5165,23 +5164,12 @@ function defaultEvaluationConfig(toolCode = '') {
   }
 }
 
-function containsDailyComparisonPlaceholder(value) {
-  const text = JSON.stringify(value || {})
-  return ['${today}', '${todayStart}', '${todayEnd}', '${yyyyMMdd}'].some((placeholder) => text.includes(placeholder))
-}
-
-function inferComparisonScope(toolCode, context) {
-  return ['HTTP_COUNT', TOOL_DATABASE_QUERY].includes(toolCode) && containsDailyComparisonPlaceholder(context)
-    ? COMPARISON_SCOPE_DAY
-    : COMPARISON_SCOPE_CONTINUOUS
-}
-
 function normalizeEvaluationConfig(config = {}, toolCode = '', context = undefined) {
   const fallback = defaultEvaluationConfig(toolCode)
   return {
     mode: config.mode === EVALUATION_MODE_PREVIOUS ? EVALUATION_MODE_PREVIOUS : (config.mode === EVALUATION_MODE_FIXED ? EVALUATION_MODE_FIXED : fallback.mode),
     resetOnDecrease: config.resetOnDecrease === true || config.resetOnDecrease === 'true' || (config.resetOnDecrease === undefined && fallback.resetOnDecrease),
-    scope: comparisonScopeOptions.some((item) => item.value === config.scope) ? config.scope : inferComparisonScope(toolCode, context)
+    scope: normalizeComparisonScope(config.scope, toolCode, context)
   }
 }
 

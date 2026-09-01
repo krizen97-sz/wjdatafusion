@@ -8,7 +8,7 @@
 
 从业务价值上看，自动化巡检解决的是“检查动作标准化、执行过程自动化、异常定位结构化、报告归档规范化”的问题。它不是简单的记录表，也不是固定写死的巡检清单，而是一个可以随着项目变化持续扩展的巡检工作台。后续只要新增巡检工具或调整目标配置，就可以复用现有模板、计划、看板和报告能力，降低现场巡检的人力成本和交接成本。
 
-适用版本：`v4.1.0`
+适用版本：`v4.1.1`
 
 适用模块：自动化巡检 / 巡检驾驶舱 / 巡检总览 / 巡检配置 / 巡检版本记录
 
@@ -663,4 +663,4 @@ data.total
 | `前端工程/public/docs/auto-inspection/auto-inspection-manual.docx` | 前端静态 Word 备份，可随 dist 一起部署 |
 | `前端工程/public/docs/auto-inspection/auto-inspection-manual-assets/` | 前端静态截图资源，打包进入 `dist/docs/auto-inspection/` |
 
-`v4.1.0` 需要执行 `WDF100.0/sql/support_upgrade_20260901_auto_inspection_window_unified_plan_v4_1_0.sql`，用于补充统计窗口证据字段；脚本不删除、不重算历史巡检数据，旧 `ROUTINE/FREQUENT` 值继续兼容。
+`v4.1.1` 不新增数据库修改。首次从 `v4.0.x` 升级时仍需执行 `WDF100.0/sql/support_upgrade_20260901_auto_inspection_window_unified_plan_v4_1_0.sql`，用于补充统计窗口证据字段；脚本不删除、不重算历史巡检数据。

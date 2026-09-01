@@ -1,5 +1,23 @@
 export const releaseNotes = [
   {
+    version: 'v4.1.1',
+    submitTime: '2026-09-01 16:34:34',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '巡检总览累计周期初始化修复',
+    summary: '修复累计周期选项在页面表单初始化后才创建导致的TDZ错误，恢复巡检总览、巡检配置等共用工作台路由。',
+    changes: [
+      '将累计周期常量、选项、当天变量识别和默认范围推断抽离为独立无状态模块，页面setup初始化时可直接安全调用。',
+      '移除normalizeEvaluationConfig对后置comparisonScopeOptions变量的初始化顺序依赖，解决Cannot access comparisonScopeOptions before initialization。',
+      '补充模块级执行测试，覆盖选项初始化、带日期变量的HTTP数量自动按天识别、Kafka连续累计以及显式配置优先级。',
+      '不改变v4.1.0统计窗口、计划汇总方式、后端接口和数据库字段。'
+    ],
+    scope: ['自动化巡检', '巡检总览', '巡检配置', 'Vue setup', '累计周期', '初始化顺序', '前端修复', '版本记录'],
+    database: '无数据库结构或业务数据修改；首次升级v4.1.x时仍需执行v4.1.0统计窗口升级脚本。',
+    scripts: []
+  },
+  {
     version: 'v4.1.0',
     submitTime: '2026-09-01 15:25:59',
     level: 'minor',
