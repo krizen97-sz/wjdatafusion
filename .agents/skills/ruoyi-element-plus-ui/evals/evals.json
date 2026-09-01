@@ -111,6 +111,7 @@
         "The response distinguishes dense CRUD pages, application navigation, compact filters, workspace entrances, execution actions, and true staged processes instead of applying one effect everywhere.",
         "The response removes or rejects icon scale, pop, colored glow, bounce, fake percentage, timer-based success, and universal ripple.",
         "The response preserves route query, filter values, loading/disabled/error states, permissions, APIs, and the page-specific wrapping or overflow strategy.",
+        "The response centralizes repeated Segmented icon/text optical alignment in the shared label style instead of adding page-local offsets.",
         "The verification includes repository-wide inventory evidence, focused behavior tests, reduced-motion, keyboard, light/dark, responsive layout, UI Guard, production build, and real-route browser inspection."
       ]
     }

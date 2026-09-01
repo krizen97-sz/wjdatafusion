@@ -103,6 +103,9 @@ full mapping when Apple/HIG styling is explicit:
   icon nudge; explicit execution actions may add one bounded ripple; a real
   completed request may add a short success morph. One primary motion idea per
   interaction is the default.
+- Keep Segmented icon/text optical alignment in the shared motion label styles.
+  Do not add page-local top, margin, line-height, or transform fixes for the same
+  system-font baseline issue.
 
 ## When a screenshot or prototype is provided
 

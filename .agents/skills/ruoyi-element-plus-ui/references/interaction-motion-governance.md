@@ -210,6 +210,10 @@ view/technical view, all/abnormal/normal, or routine/frequent.
   rail or selection border. Use the moving surface, one light shadow, heading-color
   bold text, and primary/semantic icon state so the control remains vertically
   balanced without drawing a box around the selected label.
+- Measure icon and text centers on the rendered control. The current system-font
+  label needs the shared `-2px` optical text correction in Segmented controls;
+  keep that correction global to the motion label instead of accumulating page
+  offsets.
 - Use `block` only when equal-width distribution helps the local layout.
 - Keep labels short. At narrow widths, wrap the toolbar or allow an intentional
   local overflow strategy instead of shrinking targets below a usable size.
