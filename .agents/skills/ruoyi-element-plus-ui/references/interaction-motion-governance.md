@@ -210,10 +210,9 @@ view/technical view, all/abnormal/normal, or routine/frequent.
   rail or selection border. Use the moving surface, one light shadow, heading-color
   bold text, and primary/semantic icon state so the control remains vertically
   balanced without drawing a box around the selected label.
-- Measure icon and text centers on the rendered control. The current system-font
-  label needs the shared `-2px` optical text correction in Segmented controls;
-  keep that correction global to the motion label instead of accumulating page
-  offsets.
+- Measure icon and text centers on the rendered control. With the shared base
+  font size, the current system-font label and icon align without a vertical
+  offset; do not accumulate page-level `translateY` corrections.
 - Use `--el-font-size-base` for Segmented label text so compact filters keep the
   same typography scale as adjacent Element Plus inputs and buttons. Compactness
   comes from padding and grouping, not from shrinking business labels.
