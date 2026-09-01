@@ -214,6 +214,9 @@ view/technical view, all/abnormal/normal, or routine/frequent.
   label needs the shared `-2px` optical text correction in Segmented controls;
   keep that correction global to the motion label instead of accumulating page
   offsets.
+- Use `--el-font-size-base` for Segmented label text so compact filters keep the
+  same typography scale as adjacent Element Plus inputs and buttons. Compactness
+  comes from padding and grouping, not from shrinking business labels.
 - Use `block` only when equal-width distribution helps the local layout.
 - Keep labels short. At narrow widths, wrap the toolbar or allow an intentional
   local overflow strategy instead of shrinking targets below a usable size.

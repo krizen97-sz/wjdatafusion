@@ -106,6 +106,9 @@ full mapping when Apple/HIG styling is explicit:
 - Keep Segmented icon/text optical alignment in the shared motion label styles.
   Do not add page-local top, margin, line-height, or transform fixes for the same
   system-font baseline issue.
+- Segmented text uses the installed Element Plus base font-size token so it stays
+  consistent with adjacent inputs and buttons. Do not preserve the component's
+  smaller inherited size or replace the token with a page-specific pixel value.
 
 ## When a screenshot or prototype is provided
 

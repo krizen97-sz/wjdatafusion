@@ -112,6 +112,7 @@
         "The response removes or rejects icon scale, pop, colored glow, bounce, fake percentage, timer-based success, and universal ripple.",
         "The response preserves route query, filter values, loading/disabled/error states, permissions, APIs, and the page-specific wrapping or overflow strategy.",
         "The response centralizes repeated Segmented icon/text optical alignment in the shared label style instead of adding page-local offsets.",
+        "The response uses the Element Plus base font-size token for Segmented labels so adjacent inputs, buttons, and filters do not use visibly different text scales.",
         "The verification includes repository-wide inventory evidence, focused behavior tests, reduced-motion, keyboard, light/dark, responsive layout, UI Guard, production build, and real-route browser inspection."
       ]
     }

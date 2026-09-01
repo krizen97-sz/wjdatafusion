@@ -18,6 +18,7 @@ export const releaseNotes = [
       '按钮hover抬升和入口图标轻推在pointer按下时立即让位给1px press反馈，避免hover选择器覆盖按压终态。',
       '有选中底色的Segmented取消底部蓝色轨道和选中边框，仅用完整滑动选中面与单层轻阴影；选中文字使用标题色，普通图标随选中项变为主色，异常等状态图标继续保留业务语义色。',
       '浏览器实测Segmented文字视觉中心比图标低2px，在共享motion标签层统一向上做光学校正，保持全部计划、结果筛选、IPAM、知识和文档筛选的图文中心一致。',
+      'Segmented原继承字号为12px，而相邻Input与Button为14px；统一改用Element Plus基础字号变量，保持同一工具栏文字尺度一致且不引入页面硬编码。',
       '同步更新前端设计规范、组件目录和项目Skill，明确精准滑轨的适用矩阵、炫酷微动效上限、业务适配原则与自动化验证契约。'
     ],
     scope: ['全局前端规范', '精准滑轨', 'Element Plus Tabs', 'Element Plus Segmented', 'Keyline图标', '按钮动效', 'Ripple', '减少动效', '自动化巡检', '文档管理', '知识中心', 'IPAM', '版本记录'],

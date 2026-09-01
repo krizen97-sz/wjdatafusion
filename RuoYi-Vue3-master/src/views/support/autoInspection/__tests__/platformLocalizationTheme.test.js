@@ -164,6 +164,7 @@ test('precision rail motion is semantic, opt-in where needed and reduced-motion 
   assert.ok(motion.includes('0 1px 3px color-mix(in srgb, var(--app-heading) 10%, transparent)'))
   assert.ok(!motion.includes('inset 0 0 0 1px var(--surface-border-strong)'))
   assert.ok(!motion.includes('.el-segmented__item-selected::after'))
+  assert.match(motion, /\.motion-segmented \.motion-control-label__text\s*\{[\s\S]*?font-size:\s*var\(--el-font-size-base\)/)
   assert.match(motion, /\.motion-segmented \.motion-control-label__text\s*\{[\s\S]*?transform:\s*translateY\(-2px\)/)
   assert.match(motion, /\.motion-segmented[\s\S]*?\.motion-control-label__text\s*\{[\s\S]*?color:\s*var\(--app-heading\)/)
   assert.ok(motion.includes('.motion-entry-action'))
