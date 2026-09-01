@@ -321,7 +321,7 @@ default、card、border-card，也不要用 `div` 和绝对定位下划线模拟
 | 提交或执行 | `.motion-execute-action` + `v-motion-ripple` | 只绑定明确执行动作，loading/disabled/reduced-motion 自动停用 |
 | 真实成功反馈 | `.is-motion-success` + `.motion-action-state` | 必须来自真实业务结果，错误后立即恢复可执行态 |
 | 应用级 Tabs | `el-tabs.motion-tabs` + `.motion-control-label` | 复用原生 active bar，不自绘第二套下划线 |
-| 紧凑互斥筛选 | `el-segmented.motion-segmented` + option 图标 | 复用原生滑动选中面和中性描边，不加下划线；局部决定等宽、换行或横向滚动 |
+| 紧凑互斥筛选 | `el-segmented.motion-segmented` + option 图标 | 复用原生滑动选中面和中性描边，不加下划线；选中文字使用标题色，普通图标使用主色；局部决定等宽、换行或横向滚动 |
 | 视图内容交接 | keyed `.motion-view-stage.is-forward/.is-backward` | 只在关系明确的相邻视图使用，不制造 `out-in` 空白 |
 | 真实阶段流程 | `el-steps` + keyed Vue `Transition` | 当前没有真实阶段数据的页面不得为了视觉效果新增 |
 

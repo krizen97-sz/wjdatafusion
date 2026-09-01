@@ -210,7 +210,11 @@
   color: var(--health-idle);
 }
 
-.motion-segmented .el-segmented__item.is-selected .motion-control-label__text,
+.motion-segmented .el-segmented__item.is-selected .motion-control-label__text {
+  color: var(--app-heading);
+  font-weight: 600;
+}
+
 .motion-tabs .el-tabs__item.is-active .motion-control-label__text {
   color: var(--el-color-primary);
   font-weight: 600;

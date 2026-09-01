@@ -208,7 +208,8 @@ view/technical view, all/abnormal/normal, or routine/frequent.
   remain meaningful, but never turn every segment into a different colored button.
 - When the selected surface already changes background, do not add a lower active
   rail. Use the moving surface, a neutral one-pixel edge, light elevation, and
-  text/icon state so the control remains vertically balanced.
+  heading-color bold text plus primary/semantic icon state so the control remains
+  vertically balanced without over-coloring the label.
 - Use `block` only when equal-width distribution helps the local layout.
 - Keep labels short. At narrow widths, wrap the toolbar or allow an intentional
   local overflow strategy instead of shrinking targets below a usable size.
