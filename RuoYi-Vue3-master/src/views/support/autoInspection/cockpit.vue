@@ -14,7 +14,7 @@
         <p>例行巡检与高频健康使用同一份当日结论，数据更新于 {{ dashboard.generatedTime || '-' }}</p>
       </div>
       <div class="cockpit-commandbar__actions">
-        <el-button class="motion-entry-action" data-motion-direction="forward" :icon="List" @click="openOverview">巡检总览</el-button>
+        <el-button class="motion-entry-action" data-motion-direction="forward" :icon="List" @click="openOverview()">巡检总览</el-button>
         <el-button class="motion-entry-action" data-motion-direction="forward" :icon="Setting" @click="openConfig">巡检配置</el-button>
         <el-button type="primary" :icon="Refresh" :loading="loading" @click="loadDashboard">刷新数据</el-button>
       </div>
@@ -194,7 +194,7 @@
             <h2>待处理问题</h2>
             <span>例行异常、高频异常与采样缺失统一排列</span>
           </div>
-          <el-button link type="primary" @click="openOverview">查看全部记录</el-button>
+          <el-button link type="primary" @click="openOverview()">查看全部记录</el-button>
         </header>
         <el-empty v-if="!dashboard.latestIssues.length" description="今天暂未发现需要处理的问题" :image-size="54" />
         <div v-else class="cockpit-issue-list">
@@ -921,6 +921,36 @@ function issueKey(item) {
 
 .cockpit-status-marker {
   flex: 0 0 auto;
+}
+
+@media (max-width: 900px) {
+  .cockpit-panel__head--controls {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .cockpit-plan-filters {
+    width: 100%;
+  }
+
+  .cockpit-plan-filters .el-input {
+    width: auto;
+    min-width: 0;
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 620px) {
+  .cockpit-plan-filters {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .cockpit-plan-mode,
+  .cockpit-plan-filters .el-input {
+    width: 100%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

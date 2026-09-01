@@ -101,6 +101,7 @@ test('version summary uses one aligned Element Plus description surface', () => 
 
 test('global theme contract includes complete light and dark semantic surfaces', () => {
   const variables = read('src/assets/styles/variables.module.scss')
+  const globalStyles = read('src/assets/styles/index.scss')
   const theme = read('src/assets/styles/platform-theme.scss')
   const navbar = read('src/layout/components/Navbar.vue')
   const settings = read('src/layout/components/Settings/index.vue')
@@ -118,6 +119,7 @@ test('global theme contract includes complete light and dark semantic surfaces',
     assert.ok(variables.includes(marker), `missing theme token: ${marker}`)
   }
   assert.ok(variables.includes('html.dark'))
+  assert.match(globalStyles, /html\.dark\s*\{[\s\S]*?body\s*\{[\s\S]*?color-scheme:\s*dark;/)
   assert.ok(theme.includes('.platform-loading-mask'))
   assert.ok(theme.includes('.el-table--enable-row-hover'))
   assert.ok(navbar.includes('runThemeTransition'))

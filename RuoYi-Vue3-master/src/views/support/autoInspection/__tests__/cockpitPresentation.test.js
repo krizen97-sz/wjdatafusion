@@ -71,3 +71,11 @@ test('cockpit presents only today scheduled plans and their schedule', () => {
   assert.ok(cockpitSource.includes("scope.row.todaySchedule || '-'"))
   assert.ok(cockpitSource.includes('今天没有需要执行的巡检计划'))
 })
+
+test('cockpit navigation and compact plan filters remain clean at narrow widths', () => {
+  assert.equal(cockpitSource.match(/@click="openOverview\(\)"/g)?.length, 2)
+  assert.ok(!cockpitSource.includes('@click="openOverview"'))
+  assert.ok(cockpitSource.includes('@media (max-width: 900px)'))
+  assert.ok(cockpitSource.includes('.cockpit-panel__head--controls'))
+  assert.ok(cockpitSource.includes('flex-direction: column'))
+})
