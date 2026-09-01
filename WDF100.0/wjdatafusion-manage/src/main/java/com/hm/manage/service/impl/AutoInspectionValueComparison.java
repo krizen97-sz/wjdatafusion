@@ -56,6 +56,22 @@ final class AutoInspectionValueComparison
                 buildRule(normalizedMode, normalizedRule, safeThreshold), detail);
     }
 
+    static Evaluation establishBaseline(String compareRule, BigDecimal threshold,
+                                        BigDecimal currentValue, BigDecimal previousValue,
+                                        String reason)
+    {
+        if (currentValue == null)
+        {
+            return evaluate(MODE_PREVIOUS, compareRule, threshold, null, previousValue, false);
+        }
+        String normalizedRule = RULE_MIN.equalsIgnoreCase(compareRule) ? RULE_MIN : RULE_MAX;
+        BigDecimal safeThreshold = threshold == null ? BigDecimal.ZERO : threshold;
+        String detail = StringUtils.defaultIfBlank(reason, "首次采样")
+                + "，已建立新的对照基线，本次按正常计入健康度";
+        return new Evaluation(MODE_PREVIOUS, STATUS_NORMAL, true, currentValue, previousValue, null,
+                buildRule(MODE_PREVIOUS, normalizedRule, safeThreshold), detail);
+    }
+
     static String normalizeMode(Object value, boolean legacyPreviousMode)
     {
         String mode = StringUtils.trimToEmpty(value == null ? "" : value.toString()).toUpperCase();

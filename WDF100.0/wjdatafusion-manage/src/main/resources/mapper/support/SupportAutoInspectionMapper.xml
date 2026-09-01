@@ -549,6 +549,8 @@
                tr.actual_unit as actualUnit, tr.evaluation_mode as evaluationMode,
                tr.previous_value as previousValue, tr.change_value as changeValue,
                tr.evaluation_rule as evaluationRule, tr.baseline_flag as baselineFlag,
+               tr.comparison_scope as comparisonScope, tr.window_key as windowKey,
+               tr.window_start as windowStart, tr.window_end as windowEnd,
                tr.result_detail as resultDetail,
                tr.error_message as errorMessage, tr.create_by as createBy,
                tr.create_time as createTime, tr.update_by as updateBy,
@@ -567,6 +569,8 @@
                tr.actual_unit as actualUnit, tr.evaluation_mode as evaluationMode,
                tr.previous_value as previousValue, tr.change_value as changeValue,
                tr.evaluation_rule as evaluationRule, tr.baseline_flag as baselineFlag,
+               tr.comparison_scope as comparisonScope, tr.window_key as windowKey,
+               tr.window_start as windowStart, tr.window_end as windowEnd,
                tr.result_detail as resultDetail,
                tr.error_message as errorMessage, tr.create_by as createBy,
                tr.create_time as createTime, tr.update_by as updateBy,
@@ -584,12 +588,14 @@
         insert into sup_auto_inspection_target_result(
             record_id, step_result_id, target_id, target_name, target_type,
             result_status, actual_value, actual_unit, evaluation_mode, previous_value,
-            change_value, evaluation_rule, baseline_flag, result_detail, error_message,
+            change_value, evaluation_rule, baseline_flag, comparison_scope, window_key,
+            window_start, window_end, result_detail, error_message,
             create_by, create_time, update_by, update_time, remark
         ) values (
             #{recordId}, #{stepResultId}, #{targetId}, #{targetName}, #{targetType},
             #{resultStatus}, #{actualValue}, #{actualUnit}, #{evaluationMode}, #{previousValue},
-            #{changeValue}, #{evaluationRule}, #{baselineFlag}, #{resultDetail}, #{errorMessage},
+            #{changeValue}, #{evaluationRule}, #{baselineFlag}, #{comparisonScope}, #{windowKey},
+            #{windowStart}, #{windowEnd}, #{resultDetail}, #{errorMessage},
             #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
         )
     </insert>
@@ -598,6 +604,8 @@
         select state_id as stateId, plan_id as planId, step_id as stepId, target_id as targetId,
                tool_code as toolCode, primary_value as primaryValue, secondary_value as secondaryValue,
                observed_at as observedAt, last_activity_at as lastActivityAt,
+               comparison_scope as comparisonScope, window_key as windowKey,
+               window_start as windowStart, window_end as windowEnd,
                abnormal_streak as abnormalStreak, normal_streak as normalStreak,
                state_status as stateStatus, state_detail as stateDetail,
                create_by as createBy, create_time as createTime,
@@ -610,16 +618,20 @@
     <insert id="upsertProbeState" parameterType="java.util.HashMap">
         insert into sup_auto_inspection_probe_state(
             plan_id, step_id, target_id, tool_code, primary_value, secondary_value,
-            observed_at, last_activity_at, abnormal_streak, normal_streak,
+            observed_at, last_activity_at, comparison_scope, window_key, window_start, window_end,
+            abnormal_streak, normal_streak,
             state_status, state_detail, create_by, create_time, update_by, update_time
         ) values (
             #{planId}, #{stepId}, #{targetId}, #{toolCode}, #{primaryValue}, #{secondaryValue},
-            #{observedAt}, #{lastActivityAt}, #{abnormalStreak}, #{normalStreak},
+            #{observedAt}, #{lastActivityAt}, #{comparisonScope}, #{windowKey}, #{windowStart}, #{windowEnd},
+            #{abnormalStreak}, #{normalStreak},
             #{stateStatus}, #{stateDetail}, #{createBy}, #{createTime}, #{updateBy}, #{updateTime}
         )
         on duplicate key update
             primary_value = values(primary_value), secondary_value = values(secondary_value),
             observed_at = values(observed_at), last_activity_at = values(last_activity_at),
+            comparison_scope = values(comparison_scope), window_key = values(window_key),
+            window_start = values(window_start), window_end = values(window_end),
             abnormal_streak = values(abnormal_streak), normal_streak = values(normal_streak),
             state_status = values(state_status), state_detail = values(state_detail),
             update_by = values(update_by), update_time = values(update_time)

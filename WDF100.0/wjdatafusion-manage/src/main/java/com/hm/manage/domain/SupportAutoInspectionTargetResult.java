@@ -1,6 +1,7 @@
 package com.hm.manage.domain;
 
 import java.math.BigDecimal;
+import java.util.Date;
 import com.hm.common.core.domain.BaseEntity;
 
 public class SupportAutoInspectionTargetResult extends BaseEntity
@@ -25,6 +26,10 @@ public class SupportAutoInspectionTargetResult extends BaseEntity
     private BigDecimal changeValue;
     private String evaluationRule;
     private String baselineFlag;
+    private String comparisonScope;
+    private String windowKey;
+    private Date windowStart;
+    private Date windowEnd;
     private String resultDetail;
     private String errorMessage;
 
@@ -64,6 +69,14 @@ public class SupportAutoInspectionTargetResult extends BaseEntity
     public void setEvaluationRule(String evaluationRule) { this.evaluationRule = evaluationRule; }
     public String getBaselineFlag() { return baselineFlag; }
     public void setBaselineFlag(String baselineFlag) { this.baselineFlag = baselineFlag; }
+    public String getComparisonScope() { return comparisonScope; }
+    public void setComparisonScope(String comparisonScope) { this.comparisonScope = comparisonScope; }
+    public String getWindowKey() { return windowKey; }
+    public void setWindowKey(String windowKey) { this.windowKey = windowKey; }
+    public Date getWindowStart() { return windowStart; }
+    public void setWindowStart(Date windowStart) { this.windowStart = windowStart; }
+    public Date getWindowEnd() { return windowEnd; }
+    public void setWindowEnd(Date windowEnd) { this.windowEnd = windowEnd; }
     public String getResultDetail() { return resultDetail; }
     public void setResultDetail(String resultDetail) { this.resultDetail = resultDetail; }
     public String getErrorMessage() { return errorMessage; }

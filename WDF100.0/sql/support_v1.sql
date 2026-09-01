@@ -857,10 +857,10 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_plan (
   template_id     BIGINT        NOT NULL COMMENT '模板ID',
   plan_name       VARCHAR(120)  NOT NULL COMMENT '计划名称',
   label_name      VARCHAR(64)   DEFAULT NULL COMMENT '标签名称',
-  plan_mode       VARCHAR(16)   DEFAULT 'ROUTINE' COMMENT '计划模式（ROUTINE例行 FREQUENT高频）',
+  plan_mode       VARCHAR(16)   DEFAULT 'ROUTINE' COMMENT '结果汇总方式（ROUTINE逐次记录 FREQUENT每日汇总）',
   cron_expression VARCHAR(255)  NOT NULL COMMENT '系统生成Cron表达式',
   cron_config     TEXT          COMMENT '可视化周期配置JSON',
-  health_config   TEXT          COMMENT '高频健康配置JSON',
+  health_config   TEXT          COMMENT '每日健康汇总配置JSON',
   job_id          BIGINT        DEFAULT NULL COMMENT '若依定时任务ID',
   report_style    VARCHAR(32)   DEFAULT 'STANDARD' COMMENT '报告样式',
   status          CHAR(1)       DEFAULT '0' COMMENT '状态（0正常 1暂停）',
@@ -956,6 +956,10 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_target_result (
   change_value    DECIMAL(30,2) DEFAULT NULL COMMENT '本次与上次变化量',
   evaluation_rule VARCHAR(500)  DEFAULT NULL COMMENT '本次判定公式',
   baseline_flag   CHAR(1)       DEFAULT 'N' COMMENT '是否本次建立基线（Y是 N否）',
+  comparison_scope VARCHAR(16)  DEFAULT 'CONTINUOUS' COMMENT '比较范围（CONTINUOUS连续 DAY按天 HOUR按小时）',
+  window_key      VARCHAR(64)   DEFAULT NULL COMMENT '本次统计窗口标识',
+  window_start    DATETIME      DEFAULT NULL COMMENT '本次统计窗口开始时间',
+  window_end      DATETIME      DEFAULT NULL COMMENT '本次统计窗口有效结束时间',
   result_detail   MEDIUMTEXT    DEFAULT NULL COMMENT '结果详情',
   error_message   MEDIUMTEXT    DEFAULT NULL COMMENT '异常原因',
   create_by       VARCHAR(64)   DEFAULT '' COMMENT '创建者',
@@ -973,7 +977,12 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_probe_state (
   step_id BIGINT NOT NULL COMMENT '模板步骤ID', target_id BIGINT NOT NULL COMMENT '目标ID',
   tool_code VARCHAR(64) NOT NULL COMMENT '工具编码', primary_value DECIMAL(30,2) DEFAULT NULL COMMENT '当前主观测值',
   secondary_value DECIMAL(30,2) DEFAULT NULL COMMENT '当前辅助观测值', observed_at DATETIME DEFAULT NULL COMMENT '最近采样时间',
-  last_activity_at DATETIME DEFAULT NULL COMMENT '最近活动时间', abnormal_streak INT DEFAULT 0 COMMENT '连续异常次数',
+  last_activity_at DATETIME DEFAULT NULL COMMENT '最近活动时间',
+  comparison_scope VARCHAR(16) DEFAULT 'CONTINUOUS' COMMENT '比较范围（CONTINUOUS连续 DAY按天 HOUR按小时）',
+  window_key VARCHAR(64) DEFAULT NULL COMMENT '当前统计窗口标识',
+  window_start DATETIME DEFAULT NULL COMMENT '当前统计窗口开始时间',
+  window_end DATETIME DEFAULT NULL COMMENT '当前统计窗口有效结束时间',
+  abnormal_streak INT DEFAULT 0 COMMENT '连续异常次数',
   normal_streak INT DEFAULT 0 COMMENT '连续恢复次数', state_status CHAR(1) DEFAULT '3' COMMENT '状态',
   state_detail VARCHAR(1000) DEFAULT NULL COMMENT '状态说明', create_by VARCHAR(64) DEFAULT '' COMMENT '创建者',
   create_time DATETIME DEFAULT NULL COMMENT '创建时间', update_by VARCHAR(64) DEFAULT '' COMMENT '更新者',
@@ -1351,3 +1360,42 @@ DROP TEMPORARY TABLE IF EXISTS tmp_v3162_daily_stats;
 DROP TEMPORARY TABLE IF EXISTS tmp_v3162_baseline_records;
 DROP TEMPORARY TABLE IF EXISTS tmp_v3162_baseline_steps;
 DROP TEMPORARY TABLE IF EXISTS tmp_v3162_baseline_targets;
+
+-- v4.1.0 自动化巡检统计窗口与统一计划语义
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_target_result' AND COLUMN_NAME = 'comparison_scope') = 0,
+  'ALTER TABLE sup_auto_inspection_target_result ADD COLUMN comparison_scope VARCHAR(16) DEFAULT ''CONTINUOUS'' COMMENT ''比较范围（CONTINUOUS连续 DAY按天 HOUR按小时）'' AFTER baseline_flag', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_target_result' AND COLUMN_NAME = 'window_key') = 0,
+  'ALTER TABLE sup_auto_inspection_target_result ADD COLUMN window_key VARCHAR(64) DEFAULT NULL COMMENT ''本次统计窗口标识'' AFTER comparison_scope', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_target_result' AND COLUMN_NAME = 'window_start') = 0,
+  'ALTER TABLE sup_auto_inspection_target_result ADD COLUMN window_start DATETIME DEFAULT NULL COMMENT ''本次统计窗口开始时间'' AFTER window_key', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_target_result' AND COLUMN_NAME = 'window_end') = 0,
+  'ALTER TABLE sup_auto_inspection_target_result ADD COLUMN window_end DATETIME DEFAULT NULL COMMENT ''本次统计窗口有效结束时间'' AFTER window_start', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_probe_state' AND COLUMN_NAME = 'comparison_scope') = 0,
+  'ALTER TABLE sup_auto_inspection_probe_state ADD COLUMN comparison_scope VARCHAR(16) DEFAULT ''CONTINUOUS'' COMMENT ''比较范围（CONTINUOUS连续 DAY按天 HOUR按小时）'' AFTER last_activity_at', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_probe_state' AND COLUMN_NAME = 'window_key') = 0,
+  'ALTER TABLE sup_auto_inspection_probe_state ADD COLUMN window_key VARCHAR(64) DEFAULT NULL COMMENT ''当前统计窗口标识'' AFTER comparison_scope', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_probe_state' AND COLUMN_NAME = 'window_start') = 0,
+  'ALTER TABLE sup_auto_inspection_probe_state ADD COLUMN window_start DATETIME DEFAULT NULL COMMENT ''当前统计窗口开始时间'' AFTER window_key', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_probe_state' AND COLUMN_NAME = 'window_end') = 0,
+  'ALTER TABLE sup_auto_inspection_probe_state ADD COLUMN window_end DATETIME DEFAULT NULL COMMENT ''当前统计窗口有效结束时间'' AFTER window_start', 'SELECT 1');
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+UPDATE sup_auto_inspection_target_result SET comparison_scope = 'CONTINUOUS'
+WHERE comparison_scope IS NULL OR comparison_scope = '';
+UPDATE sup_auto_inspection_probe_state
+SET comparison_scope = 'CONTINUOUS',
+    window_key = CASE WHEN window_key IS NULL OR window_key = '' THEN 'CONTINUOUS' ELSE window_key END,
+    window_end = COALESCE(window_end, observed_at)
+WHERE comparison_scope IS NULL OR comparison_scope = ''
+   OR window_key IS NULL OR window_key = '' OR window_end IS NULL;
+ALTER TABLE sup_auto_inspection_plan
+  MODIFY COLUMN plan_mode VARCHAR(16) DEFAULT 'ROUTINE'
+  COMMENT '结果汇总方式（ROUTINE逐次记录 FREQUENT每日汇总）';
+ALTER TABLE sup_auto_inspection_plan
+  MODIFY COLUMN health_config TEXT COMMENT '每日健康汇总配置JSON';

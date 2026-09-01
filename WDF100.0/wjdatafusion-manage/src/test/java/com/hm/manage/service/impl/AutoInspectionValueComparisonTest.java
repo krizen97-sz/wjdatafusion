@@ -61,6 +61,20 @@ class AutoInspectionValueComparisonTest
     }
 
     @Test
+    void newBusinessWindowKeepsPriorValueAsEvidenceWithoutCalculatingNegativeDelta()
+    {
+        AutoInspectionValueComparison.Evaluation result = AutoInspectionValueComparison.establishBaseline(
+                AutoInspectionValueComparison.RULE_MIN, BigDecimal.ONE,
+                BigDecimal.valueOf(3000), BigDecimal.valueOf(20000000), "统计周期已切换为按天累计");
+
+        assertEquals(AutoInspectionValueComparison.STATUS_NORMAL, result.status);
+        assertTrue(result.baseline);
+        assertEquals(BigDecimal.valueOf(20000000), result.previousValue);
+        assertNull(result.changeValue);
+        assertTrue(result.detail.contains("统计周期已切换"));
+    }
+
+    @Test
     void fixedComparisonKeepsExistingThresholdMeaning()
     {
         AutoInspectionValueComparison.Evaluation result = AutoInspectionValueComparison.evaluate(

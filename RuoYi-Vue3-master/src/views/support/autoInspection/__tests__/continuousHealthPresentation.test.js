@@ -61,9 +61,11 @@ test('a multi-plan day stays abnormal while any plan remains abnormal', () => {
   assert.equal(group.plans[0].planName, '数据库')
 })
 
-test('routine and frequent views use native tabs with restorable route state', () => {
+test('per-run and daily summary views use native tabs with restorable route state', () => {
   assert.ok(workspaceSource.includes('<strong>巡检总览</strong>'))
-  assert.ok(workspaceSource.includes('统一查看例行执行记录与高频每日健康'))
+  assert.ok(workspaceSource.includes('统一查看逐次执行记录与每日健康汇总'))
+  assert.ok(workspaceSource.includes('逐次执行记录'))
+  assert.ok(workspaceSource.includes('每日健康汇总'))
   assert.ok(workspaceSource.includes('<el-tabs v-model="recordViewMode" class="record-view-tabs motion-tabs" @tab-change="handleRecordViewChange">'))
   assert.ok(workspaceSource.includes('<el-tab-pane :name="PLAN_MODE_ROUTINE">'))
   assert.ok(workspaceSource.includes('<el-tab-pane :name="PLAN_MODE_FREQUENT">'))
@@ -121,5 +123,8 @@ test('workspace exposes plan mode, daily health and activity tools', () => {
 test('unexecuted state is distinct from a healthy comparison baseline', () => {
   assert.equal(healthStatusLabel('3'), '尚未执行')
   assert.ok(workspaceSource.includes('基线已建立'))
-  assert.ok(workspaceSource.includes('首次执行建立基线并按正常计入'))
+  assert.ok(workspaceSource.includes('新周期首次取值建立基线并按正常计入'))
+  assert.ok(workspaceSource.includes('每天重新累计'))
+  assert.ok(workspaceSource.includes('comparisonScopeOptions'))
+  assert.ok(!workspaceSource.includes("if (planForm.value.planMode === PLAN_MODE_FREQUENT) cfg.type = 'interval'"))
 })

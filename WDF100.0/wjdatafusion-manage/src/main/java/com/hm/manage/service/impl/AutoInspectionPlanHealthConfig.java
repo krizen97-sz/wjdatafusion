@@ -1,15 +1,20 @@
 package com.hm.manage.service.impl;
 
 import java.math.BigDecimal;
+import java.text.ParseException;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.TimeZone;
+import org.quartz.CronExpression;
 import com.alibaba.fastjson2.JSON;
-import com.hm.common.exception.ServiceException;
 import com.hm.common.utils.StringUtils;
 
 final class AutoInspectionPlanHealthConfig
@@ -70,24 +75,6 @@ final class AutoInspectionPlanHealthConfig
         return new AutoInspectionPlanHealthConfig(Math.max(1, intervalMinutes), start, end, delay,
                 target.max(BigDecimal.ZERO).min(new BigDecimal("100")), retention, abnormalRetention,
                 monitorStart);
-    }
-
-    static void validateFrequentCron(Object cronConfigValue)
-    {
-        Map<String, Object> config = parseMap(cronConfigValue);
-        if (!"interval".equalsIgnoreCase(text(config.get("type"))))
-        {
-            throw new ServiceException("高频监测计划必须使用间隔执行周期");
-        }
-        String unit = text(config.get("intervalUnit"));
-        if (!"minute".equalsIgnoreCase(unit) && !"hour".equalsIgnoreCase(unit))
-        {
-            throw new ServiceException("高频监测计划仅支持按分钟或小时执行");
-        }
-        if (positiveInt(config.get("interval"), 0) <= 0)
-        {
-            throw new ServiceException("高频监测执行间隔必须大于0");
-        }
     }
 
     Map<String, Object> toMap()
@@ -160,6 +147,50 @@ final class AutoInspectionPlanHealthConfig
             slot = slot.plusMinutes(intervalMinutes);
         }
         return count;
+    }
+
+    int expectedSlots(LocalDate date, LocalDateTime now, LocalDateTime notBefore,
+                      String cronExpression, ZoneId zoneId)
+    {
+        if (StringUtils.isBlank(cronExpression) || zoneId == null)
+        {
+            return expectedSlots(date, now, notBefore);
+        }
+        if (date == null || date.isAfter(now.toLocalDate()))
+        {
+            return 0;
+        }
+        try
+        {
+            CronExpression cron = new CronExpression(cronExpression.trim());
+            cron.setTimeZone(TimeZone.getTimeZone(zoneId));
+            LocalDateTime dayStart = date.atStartOfDay();
+            LocalDateTime searchStart = notBefore != null && notBefore.isAfter(dayStart)
+                    ? notBefore : dayStart;
+            LocalDateTime limit = date.equals(now.toLocalDate())
+                    ? now : date.plusDays(1).atStartOfDay().minusNanos(1);
+            ZonedDateTime cursor = searchStart.atZone(zoneId);
+            Date nextDate = cron.getNextValidTimeAfter(Date.from(cursor.minusNanos(1).toInstant()));
+            int count = 0;
+            while (nextDate != null)
+            {
+                LocalDateTime slot = nextDate.toInstant().atZone(zoneId).toLocalDateTime();
+                if (slot.isAfter(limit) || !slot.toLocalDate().equals(date))
+                {
+                    break;
+                }
+                if (isActive(slot) && (notBefore == null || !slot.isBefore(notBefore)))
+                {
+                    count++;
+                }
+                nextDate = cron.getNextValidTimeAfter(nextDate);
+            }
+            return count;
+        }
+        catch (ParseException ignored)
+        {
+            return expectedSlots(date, now, notBefore);
+        }
     }
 
     int getIntervalMinutes() { return intervalMinutes; }

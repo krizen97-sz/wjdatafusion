@@ -11,7 +11,7 @@
     <header class="cockpit-commandbar">
       <div>
         <h1>自动化巡检驾驶舱</h1>
-        <p>例行巡检与高频健康使用同一份当日结论，数据更新于 {{ dashboard.generatedTime || '-' }}</p>
+        <p>逐次执行与每日健康汇总使用同一份当日结论，数据更新于 {{ dashboard.generatedTime || '-' }}</p>
       </div>
       <div class="cockpit-commandbar__actions">
         <el-button class="motion-entry-action" data-motion-direction="forward" :icon="List" @click="openOverview()">巡检总览</el-button>
@@ -35,18 +35,18 @@
         <div class="cockpit-health-gauge__copy">
           <el-tag class="cockpit-overall-tag" :type="healthStatusType(overallStatus)" effect="plain">{{ healthStatusLabel(overallStatus) }}</el-tag>
           <strong>今日综合健康</strong>
-          <span>综合例行执行结果与高频计划应执行采样计算</span>
+          <span>综合逐次执行结果与每日汇总计划应执行采样计算</span>
         </div>
       </div>
 
       <dl class="cockpit-health-facts">
         <div>
-          <dt><el-icon><Clock /></el-icon>例行巡检</dt>
+          <dt><el-icon><Clock /></el-icon>逐次记录</dt>
           <dd>{{ routineSummary.recordCount || 0 }}<small>次</small></dd>
           <span>{{ routineRateDisplay }} 正常 · {{ routineSummary.abnormalTargetCount || 0 }} 个异常子项</span>
         </div>
         <div>
-          <dt><el-icon><Timer /></el-icon>高频健康</dt>
+          <dt><el-icon><Timer /></el-icon>每日汇总</dt>
           <dd>{{ frequentSummary.completedCount || 0 }}<small>/ {{ frequentSummary.expectedCount || 0 }}</small></dd>
           <span>{{ frequentRateDisplay }} 健康 · 缺失 {{ frequentSummary.missingCount || 0 }} 次</span>
         </div>
@@ -63,7 +63,7 @@
         <header class="cockpit-panel__head">
           <div>
             <h2>近七日综合健康趋势</h2>
-            <span class="cockpit-panel__description">折线为综合健康度，柱状分别表示例行次数和高频完成采样</span>
+            <span class="cockpit-panel__description">折线为综合健康度，柱状分别表示逐次记录和每日汇总完成采样</span>
           </div>
           <div class="cockpit-status-legend" aria-label="健康状态图例">
             <span><i class="is-normal"></i>健康</span>
@@ -94,7 +94,7 @@
         <header class="cockpit-panel__head">
           <div>
             <h2>今日计划状态</h2>
-            <span class="cockpit-panel__description">按计划周期筛选今天需要执行的例行与高频计划</span>
+            <span class="cockpit-panel__description">按计划周期筛选今天需要执行的全部计划</span>
           </div>
         </header>
         <div v-if="hasPlanData" ref="distributionChartRef" class="cockpit-chart cockpit-chart--distribution"></div>
@@ -115,7 +115,7 @@
           <span class="cockpit-panel__description">只展示按当前周期配置今天需要执行的计划，异常和需关注计划优先</span>
         </div>
         <div class="cockpit-plan-filters">
-          <el-segmented v-model="planModeFilter" class="motion-segmented cockpit-plan-mode" :options="planModeOptions" aria-label="今日计划类型筛选">
+          <el-segmented v-model="planModeFilter" class="motion-segmented cockpit-plan-mode" :options="planModeOptions" aria-label="今日计划结果汇总方式筛选">
             <template #default="{ item }">
               <span class="motion-control-label">
                 <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
@@ -142,10 +142,10 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="模式" width="110" align="center">
+        <el-table-column label="结果汇总" width="110" align="center">
           <template #default="scope">
             <el-tag :type="scope.row.planMode === 'FREQUENT' ? 'warning' : 'info'" effect="plain">
-              {{ scope.row.planMode === 'FREQUENT' ? '高频健康' : '例行巡检' }}
+              {{ scope.row.planMode === 'FREQUENT' ? '每日汇总' : '逐次记录' }}
             </el-tag>
           </template>
         </el-table-column>
@@ -192,7 +192,7 @@
         <header class="cockpit-panel__head">
           <div>
             <h2>待处理问题</h2>
-            <span class="cockpit-panel__description">例行异常、高频异常与采样缺失统一排列</span>
+            <span class="cockpit-panel__description">逐次异常、每日汇总异常与采样缺失统一排列</span>
           </div>
           <el-button link type="primary" @click="openOverview()">查看全部记录</el-button>
         </header>
@@ -204,7 +204,7 @@
               <strong>{{ item.issueTitle || '未命名问题' }}</strong>
               <p>{{ item.issueDetail || '暂无问题详情' }}</p>
             </div>
-            <em>{{ item.sourceMode === 'FREQUENT' ? '高频健康' : '例行巡检' }} · {{ item.inspectionTime || '今日' }}</em>
+            <em>{{ item.sourceMode === 'FREQUENT' ? '每日汇总' : '逐次记录' }} · {{ item.inspectionTime || '今日' }}</em>
             <el-icon><ArrowRight /></el-icon>
           </button>
         </div>
@@ -213,11 +213,11 @@
       <article class="cockpit-panel cockpit-recent-panel">
         <header class="cockpit-panel__head">
           <div>
-            <h2>最近例行执行</h2>
+            <h2>最近逐次执行</h2>
             <span class="cockpit-panel__description">用于快速回到完整步骤和目标明细</span>
           </div>
         </header>
-        <el-empty v-if="!dashboard.recentRecords.length" description="今天暂无例行巡检记录" :image-size="54" />
+        <el-empty v-if="!dashboard.recentRecords.length" description="今天暂无逐次执行记录" :image-size="54" />
         <div v-else class="cockpit-recent-list">
           <button v-for="record in dashboard.recentRecords" :key="record.recordId" type="button" @click="openRecord(record)">
             <span class="cockpit-status-marker" :class="`is-${record.resultStatus || '3'}`"></span>
@@ -275,8 +275,8 @@ const charts = {}
 
 const planModeOptions = [
   { label: '全部计划', value: 'ALL', icon: 'keyline-layout-dashboard' },
-  { label: '例行巡检', value: 'ROUTINE', icon: 'keyline-calendar-check' },
-  { label: '高频健康', value: 'FREQUENT', icon: 'keyline-activity' }
+  { label: '逐次记录', value: 'ROUTINE', icon: 'keyline-calendar-check' },
+  { label: '每日汇总', value: 'FREQUENT', icon: 'keyline-activity' }
 ]
 
 const healthOverview = computed(() => dashboard.value.healthOverview || {})
@@ -420,8 +420,8 @@ function renderTrendChart() {
     ],
     series: [
       { name: '综合健康度', type: 'line', yAxisIndex: 0, smooth: 0.25, symbolSize: 7, lineStyle: { width: 3 }, data: rows.map((row) => normalizeHealthScore(row.healthScore)) },
-      { name: '例行次数', type: 'bar', yAxisIndex: 1, barMaxWidth: 18, itemStyle: { color: palette.normal, opacity: 0.72 }, data: rows.map((row) => Number(row.routineTotal || 0)) },
-      { name: '高频完成', type: 'bar', yAxisIndex: 1, barMaxWidth: 18, itemStyle: { color: palette.warning, opacity: 0.66 }, data: rows.map((row) => Number(row.frequentCompleted || 0)) }
+      { name: '逐次记录', type: 'bar', yAxisIndex: 1, barMaxWidth: 18, itemStyle: { color: palette.normal, opacity: 0.72 }, data: rows.map((row) => Number(row.routineTotal || 0)) },
+      { name: '每日汇总完成', type: 'bar', yAxisIndex: 1, barMaxWidth: 18, itemStyle: { color: palette.warning, opacity: 0.66 }, data: rows.map((row) => Number(row.frequentCompleted || 0)) }
     ]
   }, true)
 }

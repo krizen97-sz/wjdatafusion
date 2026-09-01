@@ -26,6 +26,9 @@ class AutoInspectionHighFrequencyMapperContractTest
             assertTrue(source.contains("tr.previous_value as previousValue"));
             assertTrue(source.contains("tr.change_value as changeValue"));
             assertTrue(source.contains("tr.baseline_flag as baselineFlag"));
+            assertTrue(source.contains("tr.comparison_scope as comparisonScope"));
+            assertTrue(source.contains("tr.window_key as windowKey"));
+            assertTrue(source.contains("comparison_scope = values(comparison_scope)"));
         }
     }
 }

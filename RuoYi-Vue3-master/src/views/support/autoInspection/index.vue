@@ -5,7 +5,7 @@
         <header class="record-board__head">
           <div>
             <strong>巡检总览</strong>
-            <span>统一查看例行执行记录与高频每日健康</span>
+            <span>统一查看逐次执行记录与每日健康汇总</span>
           </div>
           <div class="record-board__actions">
             <el-button class="motion-entry-action" data-motion-direction="forward" type="primary" plain icon="DataAnalysis" @click="openCockpit">巡检驾驶舱</el-button>
@@ -18,7 +18,7 @@
             <template #label>
               <span class="record-view-tab-label motion-control-label">
                 <svg-icon icon-class="keyline-list-check" class="motion-control-label__icon" />
-                <span class="motion-control-label__text">例行巡检记录</span>
+                <span class="motion-control-label__text">逐次执行记录</span>
                 <small>{{ recordTotal }}条</small>
               </span>
             </template>
@@ -27,7 +27,7 @@
             <template #label>
               <span class="record-view-tab-label motion-control-label">
                 <svg-icon icon-class="keyline-activity" class="motion-control-label__icon" />
-                <span class="motion-control-label__text">高频每日健康</span>
+                <span class="motion-control-label__text">每日健康汇总</span>
                 <small :class="`is-${dashboardHealthOverview.frequentStatus || '3'}`">{{ formatResult(dashboardHealthOverview.frequentStatus) }}</small>
               </span>
             </template>
@@ -41,12 +41,12 @@
             <em>今日综合健康度</em>
           </div>
           <div>
-            <span>例行巡检</span>
+            <span>逐次记录</span>
             <strong>{{ formatResult(dashboardHealthOverview.routineStatus) }}</strong>
             <em>{{ dashboardHealthOverview.routineRecordCount || 0 }} 次执行</em>
           </div>
           <div>
-            <span>高频健康</span>
+            <span>每日汇总</span>
             <strong>{{ formatResult(dashboardHealthOverview.frequentStatus) }}</strong>
             <em>{{ dashboardHealthOverview.frequentCompletedCount || 0 }} / {{ dashboardHealthOverview.frequentExpectedCount || 0 }} 次采样</em>
           </div>
@@ -621,10 +621,10 @@
               style="width: 210px"
             />
           </el-form-item>
-          <el-form-item label="模式">
-            <el-select v-model="planQuery.planMode" clearable placeholder="全部模式" style="width: 140px">
-              <el-option label="例行巡检" :value="PLAN_MODE_ROUTINE" />
-              <el-option label="高频监测" :value="PLAN_MODE_FREQUENT" />
+          <el-form-item label="汇总方式">
+            <el-select v-model="planQuery.planMode" clearable placeholder="全部汇总方式" style="width: 140px">
+              <el-option label="逐次记录" :value="PLAN_MODE_ROUTINE" />
+              <el-option label="每日汇总" :value="PLAN_MODE_FREQUENT" />
             </el-select>
           </el-form-item>
           <el-form-item label="状态">
@@ -651,8 +651,8 @@
             <template #default="scope"><el-tag size="small" type="info" effect="plain">{{ scope.row.labelName || '未分类' }}</el-tag></template>
           </el-table-column>
           <el-table-column label="模板" prop="templateName" min-width="170" show-overflow-tooltip />
-          <el-table-column label="运行模式" width="105" align="center">
-            <template #default="scope"><el-tag :type="scope.row.planMode === PLAN_MODE_FREQUENT ? 'warning' : 'info'" effect="plain">{{ scope.row.planMode === PLAN_MODE_FREQUENT ? '高频监测' : '例行巡检' }}</el-tag></template>
+          <el-table-column label="结果汇总" width="105" align="center">
+            <template #default="scope"><el-tag :type="scope.row.planMode === PLAN_MODE_FREQUENT ? 'warning' : 'info'" effect="plain">{{ scope.row.planMode === PLAN_MODE_FREQUENT ? '每日汇总' : '逐次记录' }}</el-tag></template>
           </el-table-column>
           <el-table-column label="执行周期" min-width="200" show-overflow-tooltip>
             <template #default="scope">{{ formatCronConfig(scope.row) }}</template>
@@ -1104,6 +1104,12 @@
             </el-form-item>
             <el-form-item v-if="useGenericNumericRule" :label="comparisonThresholdLabel" class="step-rule-field step-rule-field--threshold">
               <el-input-number v-model="stepDraft.thresholdValue" :min="0" controls-position="right" style="width: 100%" />
+            </el-form-item>
+            <el-form-item v-if="useGenericNumericRule && stepDraft.stepParams.evaluationConfig.mode === EVALUATION_MODE_PREVIOUS" label="累计周期" class="step-rule-field step-rule-field--scope">
+              <el-select v-model="stepDraft.stepParams.evaluationConfig.scope" style="width: 100%">
+                <el-option v-for="item in comparisonScopeOptions" :key="item.value" :label="item.label" :value="item.value" />
+              </el-select>
+              <small>{{ comparisonScopeHint }}</small>
             </el-form-item>
             <el-form-item v-if="useGenericNumericRule" label="阈值单位" class="step-rule-field step-rule-field--unit">
               <el-input v-model="stepDraft.thresholdUnit" placeholder="条 / 个 / %" />
@@ -1942,7 +1948,7 @@
       <template #header="{ titleId, titleClass }"><div :id="titleId" :class="titleClass" class="dialog-title"><span>{{ planForm.planId ? '编辑计划' : '新增计划' }}</span><strong>可视化执行周期</strong></div></template>
       <el-form ref="planRef" :model="planForm" :rules="planRules" label-position="top" label-width="auto" class="inspection-standard-form plan-editor-form">
         <section class="plan-mode-section">
-          <el-form-item label="运行模式">
+          <el-form-item label="结果汇总方式">
             <el-segmented v-model="planForm.planMode" class="motion-segmented" :options="planModeOptions" @change="handlePlanModeChange">
               <template #default="{ item }">
                 <span class="motion-control-label">
@@ -1952,7 +1958,7 @@
               </template>
             </el-segmented>
           </el-form-item>
-          <span>{{ planForm.planMode === PLAN_MODE_FREQUENT ? '分钟级执行，结果按天汇总健康度。' : '按日、周或月执行，每次生成一条完整巡检记录。' }}</span>
+          <span>{{ planForm.planMode === PLAN_MODE_FREQUENT ? '执行周期可自由配置，结果按日期汇总健康度，原始执行可在日期详情中查看。' : '每次执行生成一条完整巡检记录，适合需要逐次确认和导出的任务。' }}</span>
         </section>
         <el-row :gutter="16">
           <el-col :span="12"><el-form-item label="计划名称" prop="planName"><el-input v-model="planForm.planName" /></el-form-item></el-col>
@@ -1982,13 +1988,12 @@
           <el-col :span="24">
             <el-form-item label="执行周期">
               <div class="schedule-box">
-                <el-radio-group v-if="planForm.planMode === PLAN_MODE_ROUTINE" v-model="planForm.cronConfig.type" @change="refreshPlanCron">
+                <el-radio-group v-model="planForm.cronConfig.type" @change="refreshPlanCron">
                   <el-radio-button value="daily">每日</el-radio-button>
                   <el-radio-button value="weekly">每周</el-radio-button>
                   <el-radio-button value="monthly">每月</el-radio-button>
                   <el-radio-button value="interval">间隔</el-radio-button>
                 </el-radio-group>
-                <el-tag v-else type="warning" effect="plain">高频间隔执行</el-tag>
                 <div class="schedule-form">
                   <el-time-picker v-if="planForm.cronConfig.type !== 'interval'" v-model="planForm.cronConfig.time" value-format="HH:mm:ss" placeholder="执行时间" @change="refreshPlanCron" />
                   <el-select v-if="planForm.cronConfig.type === 'weekly'" v-model="planForm.cronConfig.weekDays" multiple placeholder="选择星期" style="width: 280px" @change="refreshPlanCron">
@@ -2197,11 +2202,12 @@
                       </div>
                     </template>
                   </el-table-column>
-                  <el-table-column label="判定规则" min-width="220" show-overflow-tooltip>
+                  <el-table-column label="判定规则" min-width="260" show-overflow-tooltip>
                     <template #default="targetScope">
                       <div class="health-target-rule">
                         <span>{{ formatEvaluationMode(targetScope.row) }}</span>
                         <strong>{{ targetScope.row.evaluationRule || formatStepThreshold(group) }}</strong>
+                        <small v-if="targetScope.row.evaluationMode === EVALUATION_MODE_PREVIOUS">{{ formatComparisonWindow(targetScope.row) }}</small>
                       </div>
                     </template>
                   </el-table-column>
@@ -2356,6 +2362,9 @@ const TOOL_KAFKA_CONSUMER_PROGRESS = 'KAFKA_CONSUMER_PROGRESS'
 const TOOL_MQTT_TOPIC_ACTIVITY = 'MQTT_TOPIC_ACTIVITY'
 const EVALUATION_MODE_FIXED = 'FIXED'
 const EVALUATION_MODE_PREVIOUS = 'PREVIOUS'
+const COMPARISON_SCOPE_CONTINUOUS = 'CONTINUOUS'
+const COMPARISON_SCOPE_DAY = 'DAY'
+const COMPARISON_SCOPE_HOUR = 'HOUR'
 const KAFKA_METRIC_MAX_LAG = 'MAX_LAG'
 const KAFKA_METRIC_TOTAL_LAG = 'TOTAL_LAG'
 const KAFKA_METRIC_PRODUCED_OFFSET = 'PRODUCED_OFFSET'
@@ -2491,9 +2500,9 @@ const operationGuideSteps = [
     desc: '自动化巡检把现场服务器资产、巡检工具、模板、计划、记录、每日健康和周报串成闭环。',
     manual: [
       '现场融合管理负责维护现场、平台、服务器和设备资产；自动化巡检负责把这些资产变成可执行的检测目标。',
-      '日常值守先在巡检驾驶舱查看例行与高频合并后的健康结论；需要明细时进入巡检总览，配置变更时维护模板和计划。'
+      '日常值守先在巡检驾驶舱查看逐次执行与每日汇总形成的健康结论；需要明细时进入巡检总览，配置变更时维护模板和计划。'
     ],
-    actions: ['从巡检驾驶舱识别当日总体健康和待处理问题。', '从巡检总览下钻例行记录或高频每日健康。', '从巡检配置维护模板、步骤和计划。'],
+    actions: ['从巡检驾驶舱识别当日总体健康和待处理问题。', '从巡检总览下钻逐次记录或每日健康汇总。', '从巡检配置维护模板、步骤和计划。'],
     images: [
       guideImage('01-overview-records.png', '巡检总览优先展示记录和本周情况'),
       guideImage('15-site-management-relation.png', '现场融合管理提供服务器资产来源')
@@ -2536,7 +2545,7 @@ const operationGuideSteps = [
     manual: [
       'HTTP 和海康接口类步骤需要配置 URL、请求方式、结果路径、AppKey、Secret 和请求体模板；接口调用测试还支持 Header、Cookie、静态鉴权、请求体和多条件判断，支持 ${todayStart}、${todayEnd} 等日期变量。',
       '数据库工具使用只读 SQL 获取业务指标；FTP 和服务器目录工具支持一个步骤配置多个子项；服务器服务状态检测会清晰展示 active、inactive、failed 等状态规则。',
-      '所有数值型步骤都可选择“固定阈值”或“上次结果”。选择上次结果时，系统直接比较本次值与上次值的差值；首次成功采样只建立基线并按正常计入健康度。',
+      '所有数值型步骤都可选择“固定阈值”或“上次结果”。使用上次结果时还需选择连续、按天或按小时累计；新周期首次采样建立正常基线，同一周期内再计算变化量。',
       '执行策略可以设置异常复检次数、复检间隔，以及异常后继续或停止后续步骤。'
     ],
     actions: ['填写数据来源、结果判断和执行策略。', '使用日期变量生成当天接口参数。', '点击“测试并预览”核对真实返回值和可用字段。'],
@@ -2579,13 +2588,13 @@ const operationGuideSteps = [
     index: '07',
     title: '配置巡检计划',
     place: '巡检配置 / 巡检计划',
-    desc: '计划把模板交给平台定时任务调度，并区分例行巡检和高频健康监测。',
+    desc: '计划把模板交给平台定时任务调度，执行周期与结果汇总方式可以独立配置。',
     manual: [
       '巡检计划用于把一个已经验证过的模板交给平台定时任务调度。标签会作为计划目录，模板选择也会按标签树展开。',
-      '页面采用可视化周期配置，不要求用户手写 Cron；例行计划支持每日、每周、每月和间隔执行。',
-      '高频计划使用分钟或小时间隔，并配置生效时段、数据等待和健康目标，执行结果在巡检总览按天汇总。'
+      '页面采用可视化周期配置，不要求用户手写 Cron；所有计划都支持每日、每周、每月和间隔执行。',
+      '结果可选择逐次记录或每日汇总；每日汇总额外配置生效时段、数据等待和健康目标。'
     ],
-    actions: ['选择例行巡检或高频监测。', '选择巡检模板并配置可视化周期。', '高频计划到“高频每日健康”查看日期、计划和采样明细。'],
+    actions: ['选择逐次记录或每日汇总。', '选择巡检模板并配置可视化周期。', '每日汇总计划到“每日健康汇总”查看日期、计划和采样明细。'],
     images: [
       guideImage('11-plan-list.png', '巡检计划列表'),
       guideImage('12-plan-dialog.png', '新增巡检计划和可视化周期配置')
@@ -2595,13 +2604,13 @@ const operationGuideSteps = [
     index: '08',
     title: '看板分析和报告归档',
     place: '巡检驾驶舱 / 巡检总览 / 导出周月报',
-    desc: '驾驶舱统一展示例行与高频健康；巡检总览保留两类明细下钻和报告导出。',
+    desc: '驾驶舱统一展示逐次执行与每日汇总健康；巡检总览按结果用途保留两类明细下钻和报告导出。',
     manual: [
       '巡检驾驶舱通过图表统一查看综合健康度、近七日趋势、当前计划状态和待处理问题。',
-      '高频监测按天展示健康度、计划、异常摘要和缺失采样；点击“查看”打开分页执行记录，展开某一次后查看步骤、子项和判定依据。',
+      '每日汇总按天展示健康度、计划、异常摘要和缺失采样；点击“查看”打开分页执行记录，展开某一次后查看步骤、子项和判定依据。',
       '点击“导出周/月报”后，可选择自然周导出 Word 周报，也可选择月份批量导出该月所有自然周周报压缩包，周报开头包含巡检人员和用户签字确认区。'
     ],
-    actions: ['在驾驶舱统一查看例行与高频健康。', '按模板、计划、来源、结果筛选明细。', '按周或按月导出 Word 周报归档。'],
+    actions: ['在驾驶舱统一查看逐次执行与每日汇总健康。', '按模板、计划、来源、结果筛选明细。', '按周或按月导出 Word 周报归档。'],
     images: [
       guideImage('02-dashboard-drawer.png', '巡检看板图表和当月日历'),
       guideImage('03-report-export-week.png', '按周导出 Word 周报'),
@@ -2635,8 +2644,13 @@ const weekOptions = [
   { label: '周六', value: 'SAT' }
 ]
 const planModeOptions = [
-  { label: '例行巡检', value: PLAN_MODE_ROUTINE, icon: 'keyline-calendar-check' },
-  { label: '高频监测', value: PLAN_MODE_FREQUENT, icon: 'keyline-activity' }
+  { label: '逐次记录', value: PLAN_MODE_ROUTINE, icon: 'keyline-calendar-check' },
+  { label: '每日汇总', value: PLAN_MODE_FREQUENT, icon: 'keyline-activity' }
+]
+const comparisonScopeOptions = [
+  { label: '连续累计', value: COMPARISON_SCOPE_CONTINUOUS },
+  { label: '每天重新累计', value: COMPARISON_SCOPE_DAY },
+  { label: '每小时重新累计', value: COMPARISON_SCOPE_HOUR }
 ]
 const httpDatePlaceholders = [
   { value: '${today}', label: '当天日期', example: '2026-06-11' },
@@ -2946,7 +2960,13 @@ const evaluationModeHint = computed(() => {
   if (stepDraft.value.stepParams?.evaluationConfig?.mode !== EVALUATION_MODE_PREVIOUS) {
     return `正常条件：本次值${stepDraft.value.compareRule === 'MIN' ? '不低于' : '不高于'} ${stepDraft.value.thresholdValue ?? 0}${stepDraft.value.thresholdUnit || ''}`
   }
-  return `正常条件：本次值 - 上次值${stepDraft.value.compareRule === 'MIN' ? '不低于' : '不高于'} ${stepDraft.value.thresholdValue ?? 0}${stepDraft.value.thresholdUnit || ''}；首次执行建立基线并按正常计入，历史按同一计划、步骤和目标隔离。`
+  return `正常条件：本次值 - 同一累计周期内上次值${stepDraft.value.compareRule === 'MIN' ? '不低于' : '不高于'} ${stepDraft.value.thresholdValue ?? 0}${stepDraft.value.thresholdUnit || ''}；新周期首次取值建立基线并按正常计入。`
+})
+const comparisonScopeHint = computed(() => {
+  const scope = stepDraft.value.stepParams?.evaluationConfig?.scope
+  if (scope === COMPARISON_SCOPE_DAY) return '适合今日过车、今日违法等每天从零累计的数据。'
+  if (scope === COMPARISON_SCOPE_HOUR) return '适合每小时重新统计或归零的业务数量。'
+  return '适合 Kafka Offset、累计消息数等跨日期持续增长的数据。'
 })
 const stepTargetSectionTitle = computed(() => {
   if (stepToolContractIssue.value) return '工具配置不可用'
@@ -5140,21 +5160,34 @@ function isActivityTool(toolCode) {
 function defaultEvaluationConfig(toolCode = '') {
   return {
     mode: isActivityTool(toolCode) ? EVALUATION_MODE_PREVIOUS : EVALUATION_MODE_FIXED,
-    resetOnDecrease: isActivityTool(toolCode)
+    resetOnDecrease: isActivityTool(toolCode),
+    scope: COMPARISON_SCOPE_CONTINUOUS
   }
 }
 
-function normalizeEvaluationConfig(config = {}, toolCode = '') {
+function containsDailyComparisonPlaceholder(value) {
+  const text = JSON.stringify(value || {})
+  return ['${today}', '${todayStart}', '${todayEnd}', '${yyyyMMdd}'].some((placeholder) => text.includes(placeholder))
+}
+
+function inferComparisonScope(toolCode, context) {
+  return ['HTTP_COUNT', TOOL_DATABASE_QUERY].includes(toolCode) && containsDailyComparisonPlaceholder(context)
+    ? COMPARISON_SCOPE_DAY
+    : COMPARISON_SCOPE_CONTINUOUS
+}
+
+function normalizeEvaluationConfig(config = {}, toolCode = '', context = undefined) {
   const fallback = defaultEvaluationConfig(toolCode)
   return {
     mode: config.mode === EVALUATION_MODE_PREVIOUS ? EVALUATION_MODE_PREVIOUS : (config.mode === EVALUATION_MODE_FIXED ? EVALUATION_MODE_FIXED : fallback.mode),
-    resetOnDecrease: config.resetOnDecrease === true || config.resetOnDecrease === 'true' || (config.resetOnDecrease === undefined && fallback.resetOnDecrease)
+    resetOnDecrease: config.resetOnDecrease === true || config.resetOnDecrease === 'true' || (config.resetOnDecrease === undefined && fallback.resetOnDecrease),
+    scope: comparisonScopeOptions.some((item) => item.value === config.scope) ? config.scope : inferComparisonScope(toolCode, context)
   }
 }
 
 function ensureEvaluationConfig(step) {
   if (!step.stepParams || typeof step.stepParams !== 'object') step.stepParams = {}
-  step.stepParams.evaluationConfig = normalizeEvaluationConfig(step.stepParams.evaluationConfig, step.toolCode)
+  step.stepParams.evaluationConfig = normalizeEvaluationConfig(step.stepParams.evaluationConfig, step.toolCode, step)
   if (step.toolCode === 'KAFKA_LAG') step.stepParams.kafkaMetric = step.stepParams.kafkaMetric || KAFKA_METRIC_MAX_LAG
   if (isActivityTool(step.toolCode) && Number(step.thresholdValue || 0) <= 0) {
     step.thresholdValue = 1
@@ -5168,6 +5201,7 @@ function handleKafkaMetricChange(metric) {
   const usesOffset = [KAFKA_METRIC_PRODUCED_OFFSET, KAFKA_METRIC_CONSUMED_OFFSET].includes(metric)
   stepDraft.value.stepParams.evaluationConfig.mode = usesOffset ? EVALUATION_MODE_PREVIOUS : EVALUATION_MODE_FIXED
   stepDraft.value.stepParams.evaluationConfig.resetOnDecrease = usesOffset
+  stepDraft.value.stepParams.evaluationConfig.scope = COMPARISON_SCOPE_CONTINUOUS
   stepDraft.value.compareRule = usesOffset ? 'MIN' : 'MAX'
   stepDraft.value.thresholdValue = usesOffset ? 1 : 2000
 }
@@ -5273,7 +5307,7 @@ function normalizeStepTarget(target = {}, toolCode = '', fallbackName = '') {
 function normalizeStepForSave(step) {
   const next = cloneStep(step)
   const executionPolicy = normalizeExecutionPolicy(next.stepParams?.executionPolicy)
-  const evaluationConfig = normalizeEvaluationConfig(next.stepParams?.evaluationConfig, next.toolCode)
+  const evaluationConfig = normalizeEvaluationConfig(next.stepParams?.evaluationConfig, next.toolCode, next)
   const kafkaMetric = next.stepParams?.kafkaMetric || (next.toolCode === 'KAFKA_LAG' ? KAFKA_METRIC_MAX_LAG : undefined)
   if (next.toolCode === 'BIG_DATA_SERVER_DISK') {
     const servers = normalizeBigDataServerTargets(next.stepParams?.serverTargets || [])
@@ -5841,12 +5875,7 @@ function submitPlan() {
   })
 }
 
-function handlePlanModeChange(mode) {
-  if (mode === PLAN_MODE_FREQUENT) {
-    planForm.value.cronConfig.type = 'interval'
-    planForm.value.cronConfig.intervalUnit = 'minute'
-    if (!planForm.value.cronConfig.interval || planForm.value.cronConfig.interval > 59) planForm.value.cronConfig.interval = 5
-  }
+function handlePlanModeChange() {
   refreshPlanCron()
 }
 
@@ -5929,7 +5958,6 @@ function escapeHtml(value) {
 
 function refreshPlanCron() {
   const cfg = planForm.value.cronConfig
-  if (planForm.value.planMode === PLAN_MODE_FREQUENT) cfg.type = 'interval'
   const [hour, minute, second] = (cfg.time || '08:00:00').split(':')
   if (cfg.type === 'daily') planForm.value.cronExpression = `${second || '0'} ${minute || '0'} ${hour || '8'} * * ?`
   if (cfg.type === 'weekly') planForm.value.cronExpression = `${second || '0'} ${minute || '0'} ${hour || '8'} ? * ${(cfg.weekDays?.length ? cfg.weekDays : ['MON']).join(',')}`
@@ -5956,7 +5984,7 @@ function compatibleTargets(step) {
 function normalizeStepFromServer(step) {
   const params = parseCronConfig(step.stepParams) || {}
   params.executionPolicy = normalizeExecutionPolicy(params.executionPolicy)
-  params.evaluationConfig = normalizeEvaluationConfig(params.evaluationConfig, step.toolCode)
+  params.evaluationConfig = normalizeEvaluationConfig(params.evaluationConfig, step.toolCode, { ...step, stepParams: params })
   if (step.toolCode === 'KAFKA_LAG') params.kafkaMetric = params.kafkaMetric || KAFKA_METRIC_MAX_LAG
   const thresholdValue = isActivityTool(step.toolCode) && Number(step.thresholdValue || 0) <= 0
     ? 1
@@ -6447,11 +6475,22 @@ function getRecordResultGroups(record = {}) {
 }
 
 function formatEvaluationMode(row) {
-  if (row?.baselineFlag === 'Y') return '首次建立基线'
+  if (row?.baselineFlag === 'Y') return row?.comparisonScope === COMPARISON_SCOPE_CONTINUOUS ? '首次建立基线' : '新周期基线'
   if (row?.toolCode === TOOL_HTTP_API_TEST) return '按返回条件判断'
   if (row?.toolCode === TOOL_SERVER_SERVICE_STATUS) return '按服务状态判断'
   if (!row?.evaluationRule) return '按工具规则判断'
   return row?.evaluationMode === EVALUATION_MODE_PREVIOUS ? '与上次结果比较' : '与固定阈值比较'
+}
+
+function formatComparisonWindow(row) {
+  const scope = row?.comparisonScope
+  const scopeLabel = scope === COMPARISON_SCOPE_DAY
+    ? '每天重新累计'
+    : scope === COMPARISON_SCOPE_HOUR
+      ? '每小时重新累计'
+      : '连续累计'
+  if (!row?.windowKey || scope === COMPARISON_SCOPE_CONTINUOUS) return scopeLabel
+  return `${scopeLabel} · ${String(row.windowKey).replace(/^(DAY|HOUR):/, '')}`
 }
 
 function formatMetricValue(value, unit = '') {
@@ -7094,6 +7133,14 @@ function resultTagType(value) {
   overflow: hidden;
   color: var(--app-text);
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-target-rule small {
+  overflow: hidden;
+  color: var(--app-muted);
+  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -9060,6 +9107,10 @@ function resultTagType(value) {
 }
 
 .step-rule-field--window {
+  grid-column: span 3;
+}
+
+.step-rule-field--scope {
   grid-column: span 3;
 }
 

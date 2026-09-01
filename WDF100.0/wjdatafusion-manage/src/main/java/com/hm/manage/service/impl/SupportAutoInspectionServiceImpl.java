@@ -1000,7 +1000,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         int completed = toInt(row.get("completedCount"), 0);
         LocalDateTime monitorStart = config.getMonitorStartTime() == null
                 ? toLocalDateTime(plan.get("createTime")) : config.getMonitorStartTime();
-        int expected = Math.max(completed, config.expectedSlots(date, now, monitorStart));
+        int expected = Math.max(completed, config.expectedSlots(date, now, monitorStart,
+                str(plan, "cronExpression"), ZoneId.systemDefault()));
         int normal = toInt(row.get("normalCount"), 0);
         int warning = toInt(row.get("warningCount"), 0);
         int abnormal = toInt(row.get("abnormalCount"), 0);
@@ -1235,7 +1236,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             item.put("planId", health.get("planId"));
             item.put("planName", health.get("planName"));
             item.put("templateName", health.get("templateName"));
-            item.put("issueTitle", StringUtils.defaultIfBlank(str(health, "planName"), "高频健康计划"));
+            item.put("issueTitle", StringUtils.defaultIfBlank(str(health, "planName"), "每日健康汇总计划"));
             item.put("issueDetail", StringUtils.defaultIfBlank(str(health, "abnormalSummary"),
                     "异常 " + toLongValue(health.get("abnormalCount")) + "，关注 "
                             + toLongValue(health.get("warningCount")) + "，缺失 "
@@ -1248,7 +1249,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             Map<String, Object> item = new LinkedHashMap<>(routine);
             item.put("sourceMode", AutoInspectionPlanHealthConfig.MODE_ROUTINE);
-            item.put("issueTitle", StringUtils.defaultIfBlank(str(routine, "stepName"), "例行巡检异常")
+            item.put("issueTitle", StringUtils.defaultIfBlank(str(routine, "stepName"), "逐次执行异常")
                     + " / " + StringUtils.defaultIfBlank(str(routine, "targetName"), "未命名目标"));
             item.put("issueDetail", StringUtils.defaultIfBlank(str(routine, "errorMessage"),
                     StringUtils.defaultIfBlank(str(routine, "actualText"), str(routine, "resultDetail"))));
@@ -2385,7 +2386,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             {
                 return selectRecordDetailMap(toLong(existing.get("recordId")));
             }
-            throw new ServiceException("高频巡检采样时隙保存失败，请稍后重试");
+            throw new ServiceException("每日汇总计划采样时隙保存失败，请稍后重试");
         }
 
         int enabledCount = 0;
@@ -2538,7 +2539,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         result.put("templateName", template.get("templateName"));
         result.put("planId", plan.get("planId"));
         result.put("planName", plan.get("planName"));
-        result.put("summary", "当前不在高频计划生效时段，本次不执行也不计入健康度");
+        result.put("summary", "当前不在每日汇总计划生效时段，本次不执行也不计入健康度");
         result.put("steps", new ArrayList<>());
         result.put("targetResults", new ArrayList<>());
         return result;
@@ -2580,8 +2581,40 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         return threshold;
     }
 
-    private boolean shouldResetComparisonBaseline(Map<String, Object> step)
+    private String resolveComparisonScope(Map<String, Object> step, Map<String, Object> target)
     {
+        Map<String, Object> params = readParams(step);
+        Map<String, Object> config = nestedMap(params.get("evaluationConfig"));
+        if (config.containsKey("scope"))
+        {
+            return AutoInspectionComparisonWindow.normalizeScope(config.get("scope"));
+        }
+        String toolCode = str(step, "toolCode");
+        if ((TOOL_HTTP_COUNT.equals(toolCode) || TOOL_DATABASE_QUERY.equals(toolCode))
+                && containsDailyTimePlaceholder(step, target))
+        {
+            return AutoInspectionComparisonWindow.SCOPE_DAY;
+        }
+        return AutoInspectionComparisonWindow.SCOPE_CONTINUOUS;
+    }
+
+    private boolean containsDailyTimePlaceholder(Map<String, Object> step, Map<String, Object> target)
+    {
+        String configuredText = StringUtils.defaultString(str(target, "url")) + " "
+                + StringUtils.defaultString(str(target, "extraParams")) + " "
+                + JSON.toJSONString(readParams(step));
+        return configuredText.contains("${today}")
+                || configuredText.contains("${todayStart}")
+                || configuredText.contains("${todayEnd}")
+                || configuredText.contains("${yyyyMMdd}");
+    }
+
+    private boolean shouldResetComparisonBaseline(Map<String, Object> step, String comparisonScope)
+    {
+        if (!AutoInspectionComparisonWindow.SCOPE_CONTINUOUS.equals(comparisonScope))
+        {
+            return false;
+        }
         Map<String, Object> params = readParams(step);
         Map<String, Object> config = nestedMap(params.get("evaluationConfig"));
         if (config.containsKey("resetOnDecrease"))
@@ -2601,11 +2634,15 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     private void applyPreviousComparison(ComparisonExecutionContext context, Map<String, Object> step,
-                                         TargetCheckResult result)
+                                         Map<String, Object> target, TargetCheckResult result)
     {
         Long stepId = toLong(step.get("stepId"));
         Long targetId = result.targetId;
         String toolCode = str(step, "toolCode");
+        String comparisonScope = resolveComparisonScope(step, target);
+        LocalDateTime observedAt = resolveWindowEnd(step);
+        AutoInspectionComparisonWindow.Window comparisonWindow =
+                AutoInspectionComparisonWindow.resolve(comparisonScope, observedAt);
         BigDecimal previousValue = null;
         Map<String, Object> previousRow = null;
         if (context != null && context.planId != null && stepId != null && targetId != null)
@@ -2614,15 +2651,30 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             previousValue = previousRow == null ? null : toBigDecimal(previousRow.get("primaryValue"));
         }
 
-        AutoInspectionValueComparison.Evaluation evaluation = AutoInspectionValueComparison.evaluate(
-                AutoInspectionValueComparison.MODE_PREVIOUS,
-                StringUtils.defaultIfBlank(str(step, "compareRule"), RULE_MIN),
-                resolveComparisonThreshold(step), result.actualValue, previousValue,
-                shouldResetComparisonBaseline(step));
+        String compareRule = StringUtils.defaultIfBlank(str(step, "compareRule"), RULE_MIN);
+        BigDecimal threshold = resolveComparisonThreshold(step);
+        LocalDateTime previousObservedAt = previousRow == null ? null
+                : toLocalDateTime(previousRow.get("observedAt"));
+        boolean windowChanged = previousRow != null && !AutoInspectionComparisonWindow.isSameWindow(
+                comparisonWindow, str(previousRow, "windowKey"), previousObservedAt);
+        AutoInspectionValueComparison.Evaluation evaluation = windowChanged
+                ? AutoInspectionValueComparison.establishBaseline(compareRule, threshold,
+                        result.actualValue, previousValue,
+                        "统计周期已切换为" + AutoInspectionComparisonWindow.scopeLabel(comparisonScope))
+                : AutoInspectionValueComparison.evaluate(
+                        AutoInspectionValueComparison.MODE_PREVIOUS, compareRule, threshold,
+                        result.actualValue, previousValue,
+                        shouldResetComparisonBaseline(step, comparisonScope));
         result.applyEvaluation(evaluation);
+        result.comparisonScope = comparisonScope;
+        result.windowKey = comparisonWindow.key();
+        result.windowStart = comparisonWindow.start();
+        result.windowEnd = comparisonWindow.end();
         String unit = StringUtils.defaultString(result.actualUnit);
         result.evaluationRule = evaluation.rule + unit;
         result.appendDetail("判定依据：" + evaluation.detail + (StringUtils.isBlank(unit) ? "" : "（单位：" + unit + "）"));
+        result.appendDetail("统计口径：" + AutoInspectionComparisonWindow.scopeLabel(comparisonScope)
+                + "；统计窗口：" + comparisonWindow.display());
 
         if (context == null || context.planId == null || stepId == null || targetId == null)
         {
@@ -2640,14 +2692,18 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         state.put("toolCode", toolCode);
         state.put("primaryValue", result.actualValue);
         state.put("secondaryValue", result.preview.get("secondaryValue"));
-        state.put("observedAt", toDate(context.observedAt));
-        state.put("lastActivityAt", toDate(context.observedAt));
+        state.put("comparisonScope", comparisonScope);
+        state.put("windowKey", comparisonWindow.key());
+        state.put("windowStart", comparisonWindow.start() == null ? null : toDate(comparisonWindow.start()));
+        state.put("windowEnd", toDate(comparisonWindow.end()));
+        state.put("observedAt", toDate(comparisonWindow.end()));
+        state.put("lastActivityAt", toDate(comparisonWindow.end()));
         state.put("abnormalStreak", RESULT_ABNORMAL.equals(result.status)
                 ? toInt(previousRow == null ? null : previousRow.get("abnormalStreak"), 0) + 1 : 0);
         state.put("normalStreak", RESULT_NORMAL.equals(result.status)
                 ? toInt(previousRow == null ? null : previousRow.get("normalStreak"), 0) + 1 : 0);
         state.put("stateStatus", result.status);
-        state.put("stateDetail", evaluation.detail);
+        state.put("stateDetail", evaluation.detail + "；统计窗口：" + comparisonWindow.display());
         state.put("createBy", "system");
         state.put("createTime", now);
         state.put("updateBy", "system");
@@ -2676,7 +2732,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         int skipped = toInt(stats == null ? null : stats.get("skippedCount"), 0);
         LocalDateTime monitorStart = config.getMonitorStartTime() == null
                 ? toLocalDateTime(plan.get("createTime")) : config.getMonitorStartTime();
-        int expected = Math.max(completed, config.expectedSlots(date, now, monitorStart));
+        int expected = Math.max(completed, config.expectedSlots(date, now, monitorStart,
+                str(plan, "cronExpression"), ZoneId.systemDefault()));
         int missing = Math.max(0, expected - completed);
         BigDecimal score = expected <= 0 ? BigDecimal.ZERO
                 : new BigDecimal(normal).multiply(new BigDecimal("100"))
@@ -2783,7 +2840,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 boolean sampled = RESULT_NORMAL.equals(result.status);
                 if (sampled)
                 {
-                    applyPreviousComparison(comparisonContext, step, result);
+                    applyPreviousComparison(comparisonContext, step, target, result);
                 }
                 if (attempt > 1)
                 {
@@ -2826,7 +2883,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             TargetCheckResult result = handler.handle(context);
             if (comparisonContext != null && usesPreviousComparison(step))
             {
-                applyPreviousComparison(comparisonContext, step, result);
+                applyPreviousComparison(comparisonContext, step, target, result);
             }
             else if (context.thresholdEnabled && !TOOL_HTTP_API_TEST.equals(str(step, "toolCode"))
                     && !usesPreviousComparison(step))
@@ -5677,10 +5734,6 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         Object cronConfig = plan.get("cronConfig");
         String planMode = AutoInspectionPlanHealthConfig.normalizeMode(plan.get("planMode"));
         plan.put("planMode", planMode);
-        if (AutoInspectionPlanHealthConfig.MODE_FREQUENT.equals(planMode))
-        {
-            AutoInspectionPlanHealthConfig.validateFrequentCron(cronConfig);
-        }
         AutoInspectionPlanHealthConfig healthConfig = AutoInspectionPlanHealthConfig.from(cronConfig,
                 plan.get("healthConfig"));
         plan.put("healthConfig", JSON.toJSONString(healthConfig.toMap()));
@@ -7227,6 +7280,10 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         private BigDecimal changeValue;
         private String evaluationRule = "";
         private boolean baseline;
+        private String comparisonScope = AutoInspectionComparisonWindow.SCOPE_CONTINUOUS;
+        private String windowKey = "";
+        private LocalDateTime windowStart;
+        private LocalDateTime windowEnd;
         private Map<String, Object> preview = new LinkedHashMap<>();
 
         private TargetCheckResult(Map<String, Object> target, String status, BigDecimal actualValue, String actualUnit, String detail)
@@ -7295,6 +7352,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             result.put("changeValue", changeValue);
             result.put("evaluationRule", evaluationRule);
             result.put("baselineFlag", baseline ? "Y" : "N");
+            result.put("comparisonScope", comparisonScope);
+            result.put("windowKey", windowKey);
+            result.put("windowStart", windowStart == null ? null : Date.from(
+                    windowStart.atZone(ZoneId.systemDefault()).toInstant()));
+            result.put("windowEnd", windowEnd == null ? null : Date.from(
+                    windowEnd.atZone(ZoneId.systemDefault()).toInstant()));
             result.put("resultDetail", limitTargetResultText(detail));
             result.put("errorMessage", limitTargetResultText(errorMessage));
             result.put("createBy", operator);

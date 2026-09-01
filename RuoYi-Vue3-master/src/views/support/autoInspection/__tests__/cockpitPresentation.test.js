@@ -42,7 +42,7 @@ test('health score and labels support normal warning abnormal and missing states
   assert.equal(healthStatusLabel(RESULT_SKIP), '未执行')
 })
 
-test('plan filters keep routine and frequent plans in one searchable collection', () => {
+test('plan filters keep per-run and daily-summary plans in one searchable collection', () => {
   const rows = [
     { planName: '每日平台巡检', templateName: '平台模板', labelName: '平台', planMode: 'ROUTINE' },
     { planName: 'Kafka分钟监测', templateName: '消息模板', labelName: '消息', planMode: 'FREQUENT' }
@@ -70,6 +70,10 @@ test('cockpit presents only today scheduled plans and their schedule', () => {
   assert.ok(cockpitSource.includes('label="今日安排"'))
   assert.ok(cockpitSource.includes("scope.row.todaySchedule || '-'"))
   assert.ok(cockpitSource.includes('今天没有需要执行的巡检计划'))
+  assert.ok(cockpitSource.includes('逐次记录'))
+  assert.ok(cockpitSource.includes('每日汇总'))
+  assert.ok(!cockpitSource.includes('例行巡检'))
+  assert.ok(!cockpitSource.includes('高频健康'))
 })
 
 test('cockpit navigation and compact plan filters remain clean at narrow widths', () => {
