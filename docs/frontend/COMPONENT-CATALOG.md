@@ -33,7 +33,7 @@
 | --- | --- | --- | --- |
 | 精准活动轨道 | `el-tabs.motion-tabs` | 应用级内容 Tabs | 不手写 div Tabs 或第二条活动线 |
 | 语义分段滑动面 | `el-segmented.motion-segmented` | 全部/异常/正常、业务/技术等互斥筛选 | 选中背景已表达状态，只用单层轻阴影，不叠加选中边框或下划线；不替代普通查询条件或多选 |
-| 图标文字标签 | `.motion-control-label` + `SvgIcon` | Tabs / Segmented 的 label/default slot | Segmented 文字使用 `--el-font-size-base`，图文依靠共享 `inline-flex` 自然居中；页面不缩小字号或重复添加纵向偏移；不写内联 SVG 或 Emoji |
+| 图标文字标签 | `.motion-control-label` + `SvgIcon` | Tabs / Segmented 的 label/default slot | 使用共享块级 Flex 居中，图标按当前字号使用 `1em`；状态只改颜色/字重，不添加 `translateY`、top 或 margin 纵向补偿；Segmented 文字使用 `--el-font-size-base`；不写内联 SVG 或 Emoji |
 | 应用入口反馈 | `.motion-entry-action`，必要时设置 `data-motion-direction` | 驾驶舱、编辑器、独立工作区入口 | 查询、重置、取消、表格行操作 |
 | 执行状态层 | `.motion-execute-action` + `v-motion-ripple` | 明确提交、上传、发布、扫描、执行 | 全局按钮、危险删除、link/text 按钮 |
 | 真实成功 Morph | `.is-motion-success` + `.motion-action-state` | 接口明确成功且原位确认有价值 | 定时器伪成功、异步后台任务假完成 |

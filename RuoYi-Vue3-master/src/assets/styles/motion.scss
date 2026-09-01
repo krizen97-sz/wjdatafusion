@@ -136,9 +136,8 @@
     background-color var(--motion-duration-fast) var(--motion-ease-standard);
 }
 
-.el-tabs__item.is-active .motion-control-label__icon {
+.motion-tabs .el-tabs__item.is-active .motion-control-label__icon {
   color: var(--el-color-primary);
-  transform: translateY(-1px);
 }
 
 .el-segmented {
@@ -170,7 +169,7 @@
 }
 
 .motion-control-label {
-  display: inline-flex;
+  display: flex;
   min-width: 0;
   align-items: center;
   justify-content: center;
@@ -180,15 +179,18 @@
 }
 
 .motion-control-label__icon {
-  width: 17px;
-  height: 17px;
-  flex: 0 0 17px;
+  display: block;
+  inline-size: 1em;
+  block-size: 1em;
+  flex: 0 0 1em;
   color: var(--app-muted);
 }
 
 .motion-control-label__text {
+  display: block;
   min-width: 0;
   overflow: hidden;
+  line-height: 1;
   text-overflow: ellipsis;
 }
 

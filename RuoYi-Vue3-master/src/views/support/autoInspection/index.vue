@@ -6921,12 +6921,6 @@ function resultTagType(value) {
   display: none;
 }
 
-.record-view-tab-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
 .record-view-tab-label small {
   color: var(--app-muted);
   font-size: 11px;

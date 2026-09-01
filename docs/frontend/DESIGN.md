@@ -320,8 +320,8 @@ default、card、border-card，也不要用 `div` 和绝对定位下划线模拟
 | 应用或工作区入口 | `.motion-entry-action` + `data-motion-direction` | 只移动方向图标，普通查询/重置不使用 |
 | 提交或执行 | `.motion-execute-action` + `v-motion-ripple` | 只绑定明确执行动作，loading/disabled/reduced-motion 自动停用 |
 | 真实成功反馈 | `.is-motion-success` + `.motion-action-state` | 必须来自真实业务结果，错误后立即恢复可执行态 |
-| 应用级 Tabs | `el-tabs.motion-tabs` + `.motion-control-label` | 复用原生 active bar，不自绘第二套下划线 |
-| 紧凑互斥筛选 | `el-segmented.motion-segmented` + option 图标 | 复用原生滑动选中面，只用单层轻阴影，不加选中边框或下划线；文字统一使用 `--el-font-size-base`，选中文字使用标题色，普通图标使用主色；图文依靠共享 `inline-flex` 自然居中，不叠加页面级纵向偏移；局部决定等宽、换行或横向滚动 |
+| 应用级 Tabs | `el-tabs.motion-tabs` + `.motion-control-label` | 复用原生 active bar，不自绘第二套下划线；图文使用共享块级 Flex 与 `1em` 图标，选中态不改变纵向几何 |
+| 紧凑互斥筛选 | `el-segmented.motion-segmented` + option 图标 | 复用原生滑动选中面，只用单层轻阴影，不加选中边框或下划线；文字统一使用 `--el-font-size-base`，选中文字使用标题色，普通图标使用主色；图文使用共享块级 Flex 与 `1em` 图标自然居中，不叠加 `translateY`、top 或 margin 纵向补偿；局部决定等宽、换行或横向滚动 |
 | 视图内容交接 | keyed `.motion-view-stage.is-forward/.is-backward` | 只在关系明确的相邻视图使用，不制造 `out-in` 空白 |
 | 真实阶段流程 | `el-steps` + keyed Vue `Transition` | 当前没有真实阶段数据的页面不得为了视觉效果新增 |
 

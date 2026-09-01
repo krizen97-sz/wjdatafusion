@@ -183,6 +183,9 @@ and never use it on table link actions or compact segmented items.
 Use `el-tabs` for related content views that remain part of one application task.
 
 - Use the label slot for an existing Element Plus or local Keyline icon plus text.
+- Keep the shared label in a block-level Flex formatting context and size its icon
+  from the current font (`1em`). Active, hover, and focus states may change color
+  or weight, but must not translate the icon or text vertically.
 - Reuse the native active-bar geometry; style it through semantic tokens rather
   than drawing a second absolutely positioned indicator.
 - Keep active state visible through indicator, text/icon change, and focus—not
@@ -210,9 +213,10 @@ view/technical view, all/abnormal/normal, or routine/frequent.
   rail or selection border. Use the moving surface, one light shadow, heading-color
   bold text, and primary/semantic icon state so the control remains vertically
   balanced without drawing a box around the selected label.
-- Measure icon and text centers on the rendered control. With the shared base
-  font size, the current system-font label and icon align without a vertical
-  offset; do not accumulate page-level `translateY` corrections.
+- Measure the whole label against the selected surface, not only the icon against
+  the text. Use the shared block-level Flex label and a font-relative icon size so
+  the parent line box cannot introduce baseline space. Do not accumulate
+  page-level or selected-state `translateY` corrections.
 - Use `--el-font-size-base` for Segmented label text so compact filters keep the
   same typography scale as adjacent Element Plus inputs and buttons. Compactness
   comes from padding and grouping, not from shrinking business labels.

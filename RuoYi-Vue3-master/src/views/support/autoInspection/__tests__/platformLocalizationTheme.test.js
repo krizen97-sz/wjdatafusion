@@ -164,6 +164,9 @@ test('precision rail motion is semantic, opt-in where needed and reduced-motion 
   assert.ok(motion.includes('0 1px 3px color-mix(in srgb, var(--app-heading) 10%, transparent)'))
   assert.ok(!motion.includes('inset 0 0 0 1px var(--surface-border-strong)'))
   assert.ok(!motion.includes('.el-segmented__item-selected::after'))
+  assert.match(motion, /\.motion-control-label\s*\{[^}]*display:\s*flex;[^}]*align-items:\s*center;/)
+  assert.match(motion, /\.motion-control-label__icon\s*\{[^}]*display:\s*block;[^}]*inline-size:\s*1em;[^}]*block-size:\s*1em;[^}]*flex:\s*0 0 1em;/)
+  assert.doesNotMatch(motion, /\.el-tabs__item\.is-active \.motion-control-label__icon\s*\{[^}]*transform:/)
   assert.match(motion, /\.motion-segmented \.motion-control-label__text\s*\{[\s\S]*?font-size:\s*var\(--el-font-size-base\)/)
   assert.ok(!motion.includes('transform: translateY(-2px)'))
   assert.match(motion, /\.motion-segmented[\s\S]*?\.motion-control-label__text\s*\{[\s\S]*?color:\s*var\(--app-heading\)/)
@@ -190,6 +193,7 @@ test('precision rail motion is semantic, opt-in where needed and reduced-motion 
   ]) {
     assert.ok(overview.includes(marker), `missing overview motion contract: ${marker}`)
   }
+  assert.ok(!overview.includes('.record-view-tab-label {\n  display: inline-flex;'))
   assert.ok(cockpit.includes('motion-segmented cockpit-plan-mode'))
   assert.ok(cockpit.includes('keyline-layout-dashboard'))
   assert.ok(cockpit.includes('class="cockpit-panel__description"'))

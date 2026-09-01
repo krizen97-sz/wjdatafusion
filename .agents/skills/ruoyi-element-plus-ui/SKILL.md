@@ -103,9 +103,11 @@ full mapping when Apple/HIG styling is explicit:
   icon nudge; explicit execution actions may add one bounded ripple; a real
   completed request may add a short success morph. One primary motion idea per
   interaction is the default.
-- Keep Segmented icon/text optical alignment in the shared motion label styles.
-  Do not add page-local top, margin, line-height, or transform fixes for the same
-  system-font baseline issue.
+- Keep Tabs and Segmented icon/text alignment structural in the shared motion
+  label styles: use one block-level Flex formatting context, center its children,
+  size icons relative to the current font, and let state change only color or
+  weight. Do not add page-local top, margin, line-height, pixel `translateY`, or
+  selected-state geometry fixes for a font or icon baseline symptom.
 - Segmented text uses the installed Element Plus base font-size token so it stays
   consistent with adjacent inputs and buttons. Do not preserve the component's
   smaller inherited size or replace the token with a page-specific pixel value.
