@@ -247,13 +247,13 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .el-button:not(.is-disabled):not(.is-loading):not(.is-link):not(.is-text):hover {
+  .el-button:not(.is-disabled):not(.is-loading):not(.is-link):not(.is-text):not(:active):hover {
     box-shadow: 0 4px 12px color-mix(in srgb, var(--app-heading) 10%, transparent);
     transform: translateY(-1px);
   }
 
-  .motion-entry-action:not(.is-disabled):not(.is-loading):hover .el-icon,
-  .motion-entry-action:not(.is-disabled):not(.is-loading):hover .svg-icon {
+  .motion-entry-action:not(.is-disabled):not(.is-loading):not(:active):hover .el-icon,
+  .motion-entry-action:not(.is-disabled):not(.is-loading):not(:active):hover .svg-icon {
     transform: translate(
       var(--motion-entry-shift-x, var(--motion-entry-shift)),
       var(--motion-entry-shift-y, 0px)

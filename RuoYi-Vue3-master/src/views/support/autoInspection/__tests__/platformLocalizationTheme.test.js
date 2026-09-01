@@ -165,6 +165,7 @@ test('precision rail motion is semantic, opt-in where needed and reduced-motion 
   assert.ok(motion.includes('.motion-entry-action'))
   assert.ok(motion.includes('.motion-execute-action'))
   assert.ok(motion.includes('.motion-view-stage'))
+  assert.ok(motion.includes(':not(:active):hover'))
   assert.ok(motion.includes('@media (prefers-reduced-motion: reduce)'))
   assert.ok(!motion.includes('animation: bounce'))
   assert.ok(!motion.includes('filter: drop-shadow'))
