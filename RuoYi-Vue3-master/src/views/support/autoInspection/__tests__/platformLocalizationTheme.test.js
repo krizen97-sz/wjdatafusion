@@ -161,7 +161,8 @@ test('precision rail motion is semantic, opt-in where needed and reduced-motion 
   assert.ok(!globalStyles.includes('icon-micro-pop'))
   assert.ok(!globalStyles.includes('icon-tone-glow'))
   assert.ok(motion.includes('.el-tabs__active-bar'))
-  assert.ok(motion.includes('.el-segmented__item-selected::after'))
+  assert.ok(motion.includes('inset 0 0 0 1px var(--surface-border-strong)'))
+  assert.ok(!motion.includes('.el-segmented__item-selected::after'))
   assert.ok(motion.includes('.motion-entry-action'))
   assert.ok(motion.includes('.motion-execute-action'))
   assert.ok(motion.includes('.motion-view-stage'))
@@ -192,7 +193,7 @@ test('precision rail motion is semantic, opt-in where needed and reduced-motion 
   assert.ok(!overview.includes('<el-steps'))
 })
 
-test('every business view Tabs and Segmented control uses the shared rail and an existing icon label', () => {
+test('every business view Tabs and Segmented control uses the shared interaction language and an existing icon label', () => {
   const files = collectVueFiles('src/views')
   let tabCount = 0
   let segmentedCount = 0

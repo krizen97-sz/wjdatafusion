@@ -16,7 +16,8 @@ frontend. It combines a restrained Apple HIG-inspired hierarchy with a visible,
 project-native continuity cue:
 
 - selection travels through the native Tabs active bar or Segmented selected
-  layer, with one short accent rail as the primary moving element;
+  surface. Tabs use one short accent rail; Segmented controls never stack an
+  underline beneath a selected background;
 - ordinary buttons use semantic surface change and a 1px press acknowledgment;
 - workspace entrances can nudge only their directional icon by up to 2px;
 - explicit submit/execute actions may use the bounded `v-motion-ripple` state
@@ -38,7 +39,7 @@ effect and at most one supporting effect.
 | --- | --- | --- | --- |
 | Dense CRUD table | color, focus, 1px press | none | lift on link actions, ripple, content slide |
 | Application-level Tabs | native active bar, icon/text state | short related-content handoff | card-style tabs, duplicate underline, scale |
-| Compact result filter | native selected thumb, semantic icon | short bottom rail | separate colored pill per state |
+| Compact result filter | native selected surface, semantic icon | neutral edge and light elevation | accent underline, separate colored pill per state |
 | Workspace entrance | normal button semantics | 2px directional icon nudge | permanent glow or whole-button travel |
 | Submit/execute action | real loading/error | bounded ripple, real success morph | timer success, repeated pulse, fake progress |
 | Audio/model/import flow | real `el-steps` state | keyed phase content, live-state pulse | invented phases, percentages, autoplay |
@@ -205,6 +206,9 @@ view/technical view, all/abnormal/normal, or routine/frequent.
 - Keep the native radio-group keyboard semantics and sliding selected layer.
 - Use the selected surface for current choice; semantic status icon color can
   remain meaningful, but never turn every segment into a different colored button.
+- When the selected surface already changes background, do not add a lower active
+  rail. Use the moving surface, a neutral one-pixel edge, light elevation, and
+  text/icon state so the control remains vertically balanced.
 - Use `block` only when equal-width distribution helps the local layout.
 - Keep labels short. At narrow widths, wrap the toolbar or allow an intentional
   local overflow strategy instead of shrinking targets below a usable size.
