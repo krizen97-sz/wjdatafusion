@@ -14,8 +14,8 @@ const apiSource = readFileSync(new URL('../../../../api/support/autoInspection/i
 
 test('daily health groups multiple plans into one date and preserves abnormal history', () => {
   const rows = groupDailyHealthRows([
-    { healthDate: '2026-08-24', planId: 1, planName: 'Kafka', expectedCount: 10, completedCount: 10, normalCount: 8, abnormalCount: 2, dayStatus: '2', lastResultStatus: '1' },
-    { healthDate: '2026-08-24', planId: 2, planName: 'MQTT', expectedCount: 10, completedCount: 9, normalCount: 9, missingCount: 1, dayStatus: '4', lastResultStatus: '1' }
+    { healthDate: '2026-08-24', planId: 1, planName: 'Kafka', scopeType: 'SITE', siteId: 2, siteName: '武进分局', expectedCount: 10, completedCount: 10, normalCount: 8, abnormalCount: 2, dayStatus: '2', lastResultStatus: '1' },
+    { healthDate: '2026-08-24', planId: 2, planName: 'MQTT', scopeType: 'MAIN_PLATFORM', siteId: 2, siteName: '武进分局', mainPlatformId: 19, mainPlatformName: 'TIM平台', expectedCount: 10, completedCount: 9, normalCount: 9, missingCount: 1, dayStatus: '4', lastResultStatus: '1' }
   ])
 
   assert.equal(rows.length, 1)
@@ -26,14 +26,19 @@ test('daily health groups multiple plans into one date and preserves abnormal hi
   assert.equal(healthStatusLabel(rows[0].dayStatus, rows[0].recovered), '异常已恢复')
 })
 
-test('monthly summary is weighted by expected slots', () => {
-  const summary = summarizeDailyHealth([
-    { expectedCount: 100, normalCount: 90, dayStatus: '2' },
-    { expectedCount: 10, normalCount: 10, dayStatus: '1' }
+test('monthly summary counts managed sites and excludes unassigned plans from health', () => {
+  const groups = groupDailyHealthRows([
+    { healthDate: '2026-08-24', planId: 1, scopeType: 'SITE', siteId: 2, siteName: '武进分局', expectedCount: 10, completedCount: 10, normalCount: 9, abnormalCount: 1, dayStatus: '2' },
+    { healthDate: '2026-08-24', planId: 2, scopeType: 'MAIN_PLATFORM', siteId: 2, siteName: '武进分局', mainPlatformId: 19, mainPlatformName: 'TIM平台', expectedCount: 10, completedCount: 10, normalCount: 10, dayStatus: '1' },
+    { healthDate: '2026-08-25', planId: 3, scopeType: 'SITE', siteId: 3, siteName: '市局', expectedCount: 1, completedCount: 1, normalCount: 1, dayStatus: '1' },
+    { healthDate: '2026-08-25', planId: 4, planName: '历史待归属', expectedCount: 1, completedCount: 1, normalCount: 1, dayStatus: '1' }
   ])
+  const summary = summarizeDailyHealth(groups)
   assert.equal(summary.dayCount, 2)
-  assert.equal(summary.healthScore, 90.9)
-  assert.equal(summary.abnormalDays, 1)
+  assert.equal(summary.siteCount, 2)
+  assert.equal(summary.platformCount, 1)
+  assert.equal(summary.abnormalSiteCount, 1)
+  assert.equal(summary.unassignedPlanCount, 1)
 })
 
 test('daily health pagination keeps complete date groups together', () => {
@@ -50,8 +55,8 @@ test('daily health pagination keeps complete date groups together', () => {
 
 test('a multi-plan day stays abnormal while any plan remains abnormal', () => {
   const [group] = groupDailyHealthRows([
-    { healthDate: '2026-08-29', planId: 1, planName: 'Kafka', expectedCount: 20, completedCount: 20, normalCount: 18, abnormalCount: 2, dayStatus: '2', lastResultStatus: '1', abnormalSummary: 'Kafka异常已恢复' },
-    { healthDate: '2026-08-29', planId: 2, planName: '数据库', expectedCount: 10, completedCount: 10, normalCount: 8, abnormalCount: 2, dayStatus: '2', lastResultStatus: '2', abnormalSummary: '数据库异常仍在持续' }
+    { healthDate: '2026-08-29', planId: 1, planName: 'Kafka', scopeType: 'SITE', siteId: 2, siteName: '武进分局', expectedCount: 20, completedCount: 20, normalCount: 18, abnormalCount: 2, dayStatus: '2', lastResultStatus: '1', abnormalSummary: 'Kafka异常已恢复' },
+    { healthDate: '2026-08-29', planId: 2, planName: '数据库', scopeType: 'MAIN_PLATFORM', siteId: 2, siteName: '武进分局', mainPlatformId: 19, mainPlatformName: 'TIM平台', expectedCount: 10, completedCount: 10, normalCount: 8, abnormalCount: 2, dayStatus: '2', lastResultStatus: '2', abnormalSummary: '数据库异常仍在持续' }
   ])
 
   assert.equal(group.plans.length, 2)
@@ -61,22 +66,13 @@ test('a multi-plan day stays abnormal while any plan remains abnormal', () => {
   assert.equal(group.plans[0].planName, '数据库')
 })
 
-test('per-run and daily summary views use native tabs with restorable route state', () => {
+test('overview uses one scope health path and keeps execution records in a drawer', () => {
   assert.ok(workspaceSource.includes('<strong>巡检总览</strong>'))
-  assert.ok(workspaceSource.includes('统一查看逐次执行记录与每日健康汇总'))
-  assert.ok(workspaceSource.includes('逐次执行记录'))
-  assert.ok(workspaceSource.includes('每日健康汇总'))
-  assert.ok(workspaceSource.includes('<el-tabs v-model="recordViewMode" class="record-view-tabs motion-tabs" @tab-change="handleRecordViewChange">'))
-  assert.ok(workspaceSource.includes('<el-tab-pane :name="PLAN_MODE_ROUTINE">'))
-  assert.ok(workspaceSource.includes('<el-tab-pane :name="PLAN_MODE_FREQUENT">'))
-  assert.ok(workspaceSource.includes('icon-class="keyline-list-check"'))
-  assert.ok(workspaceSource.includes('icon-class="keyline-activity"'))
-  assert.ok(workspaceSource.includes('class="record-view-stage motion-view-stage"'))
-  assert.ok(workspaceSource.includes("route.query.view === 'frequent' ? PLAN_MODE_FREQUENT : PLAN_MODE_ROUTINE"))
-  assert.ok(workspaceSource.includes("const nextView = mode === PLAN_MODE_FREQUENT ? 'frequent' : 'routine'"))
-  assert.ok(workspaceSource.includes('router.replace({ path: route.path, query: nextQuery })'))
-  assert.ok(!workspaceSource.includes('<el-segmented v-model="recordViewMode"'))
-  assert.ok(!workspaceSource.includes('recordViewOptions'))
+  assert.ok(workspaceSource.includes('按日期查看现场与主平台健康'))
+  assert.ok(workspaceSource.includes('v-model="recordArchiveDrawerOpen"'))
+  assert.ok(workspaceSource.includes('>全部执行记录</el-button>'))
+  assert.ok(workspaceSource.includes(':scope-options="inspectionScopeTree"'))
+  assert.ok(!workspaceSource.includes('<el-tabs v-model="recordViewMode"'))
 })
 
 test('workspace exposes plan mode, daily health and activity tools', () => {
@@ -85,10 +81,12 @@ test('workspace exposes plan mode, daily health and activity tools', () => {
   }
   assert.ok(apiSource.includes("/support/autoInspection/health/daily"))
   assert.ok(apiSource.includes("/support/autoInspection/health/samples"))
+  assert.ok(apiSource.includes("/support/autoInspection/scopes"))
   assert.ok(apiSource.includes('healthConfig: stringifyConfig(data.healthConfig)'))
   assert.ok(panelSource.includes('>查看</el-button>'))
   assert.ok(!panelSource.includes('查看当日结果'))
-  assert.ok(panelSource.includes('v-for="plan in scope.row.plans'))
+  assert.ok(panelSource.includes('v-for="site in scope.row.sites"'))
+  assert.ok(panelSource.includes('v-for="plan in platformScope.row.plans"'))
   assert.ok(panelSource.includes('planId: plan.planId'))
   assert.ok(panelSource.includes('continuous-health-plan-link'))
   assert.ok(panelSource.includes('QuestionFilled'))
@@ -97,7 +95,7 @@ test('workspace exposes plan mode, daily health and activity tools', () => {
   assert.ok(panelSource.includes('class="auto-table record-table record-table--daily continuous-health-table"'))
   assert.ok(panelSource.includes('label="归属日期"'))
   assert.ok(panelSource.includes('class="record-date-cell"'))
-  assert.ok(panelSource.includes('class="record-result-summary"'))
+  assert.ok(panelSource.includes('class="site-health-block"'))
   assert.ok(panelSource.includes('class="record-count-cell"'))
   assert.ok(panelSource.includes('presentInspectionDate'))
   assert.ok(panelSource.includes(':data="pagedRows"'))

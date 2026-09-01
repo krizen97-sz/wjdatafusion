@@ -11,7 +11,7 @@
     <header class="cockpit-commandbar">
       <div>
         <h1>自动化巡检驾驶舱</h1>
-        <p>逐次执行与每日健康汇总使用同一份当日结论，数据更新于 {{ dashboard.generatedTime || '-' }}</p>
+        <p>按现场和主平台查看今日巡检健康，数据更新于 {{ dashboard.generatedTime || '-' }}</p>
       </div>
       <div class="cockpit-commandbar__actions">
         <el-button class="motion-entry-action" data-motion-direction="forward" :icon="List" @click="openOverview()">巡检总览</el-button>
@@ -29,31 +29,26 @@
       <el-button type="primary" plain :icon="Refresh" @click="loadDashboard">重新加载</el-button>
     </section>
 
-    <section v-loading="loading" class="cockpit-health-band" :class="`is-${overallStatus}`">
-      <div class="cockpit-health-gauge">
-        <div ref="healthGaugeRef" class="cockpit-health-gauge__chart" :aria-label="`今日综合健康度 ${healthScoreDisplay}`"></div>
-        <div class="cockpit-health-gauge__copy">
-          <el-tag class="cockpit-overall-tag" :type="healthStatusType(overallStatus)" effect="plain">{{ healthStatusLabel(overallStatus) }}</el-tag>
-          <strong>今日综合健康</strong>
-          <span>综合逐次执行结果与每日汇总计划应执行采样计算</span>
-        </div>
+    <section v-loading="loading" class="cockpit-health-band cockpit-scope-band">
+      <div class="cockpit-scope-band__title">
+        <strong>今日纳管范围</strong>
+        <span>健康度按现场和主平台分别计算，不再用一个全局分数覆盖差异。</span>
       </div>
-
-      <dl class="cockpit-health-facts">
+      <dl class="cockpit-health-facts cockpit-scope-facts">
         <div>
-          <dt><el-icon><Clock /></el-icon>逐次记录</dt>
-          <dd>{{ routineSummary.recordCount || 0 }}<small>次</small></dd>
-          <span>{{ routineRateDisplay }} 正常 · {{ routineSummary.abnormalTargetCount || 0 }} 个异常子项</span>
+          <dt><el-icon><Clock /></el-icon>现场</dt>
+          <dd>{{ scopeSummary.siteCount }}<small>个</small></dd>
+          <span>异常 {{ scopeSummary.abnormalSiteCount }} · 关注 {{ scopeSummary.warningSiteCount }}</span>
         </div>
         <div>
-          <dt><el-icon><Timer /></el-icon>每日汇总</dt>
-          <dd>{{ frequentSummary.completedCount || 0 }}<small>/ {{ frequentSummary.expectedCount || 0 }}</small></dd>
-          <span>{{ frequentRateDisplay }} 健康 · 缺失 {{ frequentSummary.missingCount || 0 }} 次</span>
+          <dt><el-icon><Timer /></el-icon>主平台</dt>
+          <dd>{{ scopeSummary.platformCount }}<small>个</small></dd>
+          <span>作为现场下的最深健康层级</span>
         </div>
         <div>
-          <dt><el-icon><Warning /></el-icon>当前问题</dt>
-          <dd>{{ healthOverview.issueCount || 0 }}<small>项</small></dd>
-          <span>异常与缺失统一进入问题清单</span>
+          <dt><el-icon><Warning /></el-icon>待归属计划</dt>
+          <dd>{{ scopeSummary.unassignedPlanCount }}<small>个</small></dd>
+          <span>待归属计划不参与现场健康计算</span>
         </div>
       </dl>
     </section>
@@ -62,8 +57,8 @@
       <article class="cockpit-panel cockpit-panel--trend">
         <header class="cockpit-panel__head">
           <div>
-            <h2>近七日综合健康趋势</h2>
-            <span class="cockpit-panel__description">折线为综合健康度，柱状分别表示逐次记录和每日汇总完成采样</span>
+            <h2>近七日执行趋势</h2>
+            <span class="cockpit-panel__description">展示全部计划每日应执行、已完成和异常变化，现场差异请在下方健康清单查看</span>
           </div>
           <div class="cockpit-status-legend" aria-label="健康状态图例">
             <span><i class="is-normal"></i>健康</span>
@@ -93,8 +88,8 @@
       <article class="cockpit-panel cockpit-panel--distribution">
         <header class="cockpit-panel__head">
           <div>
-            <h2>今日计划状态</h2>
-            <span class="cockpit-panel__description">按计划周期筛选今天需要执行的全部计划</span>
+            <h2>今日现场状态</h2>
+            <span class="cockpit-panel__description">按现场结论统计健康、关注、异常与未执行数量</span>
           </div>
         </header>
         <div v-if="hasPlanData" ref="distributionChartRef" class="cockpit-chart cockpit-chart--distribution"></div>
@@ -102,8 +97,8 @@
           <el-button class="motion-entry-action" data-motion-direction="forward" type="primary" plain :icon="Setting" @click="openConfig">新增执行计划</el-button>
         </el-empty>
         <div class="cockpit-coverage">
-          <span><strong>{{ activePlanCount }}</strong>今日计划</span>
-          <span><strong>{{ checkedPlanCount }}</strong>今日已检测</span>
+          <span><strong>{{ activePlanCount }}</strong>纳管现场</span>
+          <span><strong>{{ checkedPlanCount }}</strong>已形成结论</span>
         </div>
       </article>
     </section>
@@ -111,22 +106,14 @@
     <section class="cockpit-panel cockpit-plan-panel">
       <header class="cockpit-panel__head cockpit-panel__head--controls">
         <div>
-          <h2>今日计划健康清单</h2>
-          <span class="cockpit-panel__description">只展示按当前周期配置今天需要执行的计划，异常和需关注计划优先</span>
+          <h2>今日现场与主平台健康</h2>
+          <span class="cockpit-panel__description">现场为第一层，主平台为最深健康层级；计划作为计算依据保留在行内</span>
         </div>
         <div class="cockpit-plan-filters">
-          <el-segmented v-model="planModeFilter" class="motion-segmented cockpit-plan-mode" :options="planModeOptions" aria-label="今日计划结果汇总方式筛选">
-            <template #default="{ item }">
-              <span class="motion-control-label">
-                <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
-                <span class="motion-control-label__text">{{ item.label }}</span>
-              </span>
-            </template>
-          </el-segmented>
-          <el-input v-model="planKeyword" clearable :prefix-icon="Search" placeholder="搜索计划、模板或标签" />
+          <el-input v-model="planKeyword" clearable :prefix-icon="Search" placeholder="搜索现场、主平台、计划或模板" />
         </div>
       </header>
-      <el-table :data="filteredPlanHealth" class="cockpit-plan-table" empty-text="今天没有需要执行的巡检计划">
+      <el-table :data="filteredScopeHealth" row-key="scopeKey" default-expand-all class="cockpit-plan-table" empty-text="今天没有已归属的巡检计划">
         <el-table-column label="状态" width="94" align="center">
           <template #default="scope">
             <el-tag :type="healthStatusType(scope.row.resultStatus)" effect="plain">
@@ -134,26 +121,16 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="计划与模板" min-width="220">
+        <el-table-column label="现场 / 主平台" min-width="220">
           <template #default="scope">
             <div class="cockpit-plan-name">
-              <strong>{{ scope.row.planName || '未命名计划' }}</strong>
-              <span>{{ scope.row.templateName || '未绑定模板' }}</span>
+              <strong>{{ scope.row.scopeName }}</strong>
+              <span>{{ scope.row.scopeType === 'SITE' ? '现场健康' : `所属现场：${scope.row.siteName}` }}</span>
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="结果汇总" width="110" align="center">
-          <template #default="scope">
-            <el-tag :type="scope.row.planMode === 'FREQUENT' ? 'warning' : 'info'" effect="plain">
-              {{ scope.row.planMode === 'FREQUENT' ? '每日汇总' : '逐次记录' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="标签" prop="labelName" width="120" show-overflow-tooltip>
-          <template #default="scope">{{ scope.row.labelName || '未分类' }}</template>
-        </el-table-column>
-        <el-table-column label="今日安排" prop="todaySchedule" width="150" align="center">
-          <template #default="scope">{{ scope.row.todaySchedule || '-' }}</template>
+        <el-table-column label="巡检计划" min-width="240" show-overflow-tooltip>
+          <template #default="scope">{{ scope.row.plans.map((plan) => plan.planName || '未命名计划').join('、') || '未配置计划' }}</template>
         </el-table-column>
         <el-table-column label="健康度" width="190">
           <template #default="scope">
@@ -169,19 +146,14 @@
           </template>
         </el-table-column>
         <el-table-column label="完成情况" width="140" align="center">
-          <template #default="scope">
-            {{ scope.row.completedCount || 0 }} / {{ scope.row.expectedCount || 0 }}
-          </template>
+          <template #default="scope">{{ scope.row.completedCount || 0 }} / {{ scope.row.expectedCount || 0 }}</template>
         </el-table-column>
-        <el-table-column label="最近执行" prop="latestRunTime" width="170" align="center">
-          <template #default="scope">{{ scope.row.latestRunTime || '今日未执行' }}</template>
-        </el-table-column>
-        <el-table-column label="当前结论" prop="issueSummary" min-width="260" show-overflow-tooltip>
+        <el-table-column label="当前结论" prop="issueSummary" min-width="240" show-overflow-tooltip>
           <template #default="scope">{{ scope.row.issueSummary || '当前未记录异常' }}</template>
         </el-table-column>
         <el-table-column label="操作" width="90" fixed="right" align="center">
           <template #default="scope">
-            <el-button link type="primary" :icon="View" @click="openPlanDetail(scope.row)">查看</el-button>
+            <el-button link type="primary" :icon="View" @click="openScopeDetail(scope.row)">查看</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -192,7 +164,7 @@
         <header class="cockpit-panel__head">
           <div>
             <h2>待处理问题</h2>
-            <span class="cockpit-panel__description">逐次异常、每日汇总异常与采样缺失统一排列</span>
+            <span class="cockpit-panel__description">计划异常、目标异常与缺失执行统一排列</span>
           </div>
           <el-button link type="primary" @click="openOverview()">查看全部记录</el-button>
         </header>
@@ -204,7 +176,7 @@
               <strong>{{ item.issueTitle || '未命名问题' }}</strong>
               <p>{{ item.issueDetail || '暂无问题详情' }}</p>
             </div>
-            <em>{{ item.sourceMode === 'FREQUENT' ? '每日汇总' : '逐次记录' }} · {{ item.inspectionTime || '今日' }}</em>
+            <em>{{ item.sourceMode === 'FREQUENT' ? '计划健康' : '执行记录' }} · {{ item.inspectionTime || '今日' }}</em>
             <el-icon><ArrowRight /></el-icon>
           </button>
         </div>
@@ -213,11 +185,11 @@
       <article class="cockpit-panel cockpit-recent-panel">
         <header class="cockpit-panel__head">
           <div>
-            <h2>最近逐次执行</h2>
+            <h2>最近执行记录</h2>
             <span class="cockpit-panel__description">用于快速回到完整步骤和目标明细</span>
           </div>
         </header>
-        <el-empty v-if="!dashboard.recentRecords.length" description="今天暂无逐次执行记录" :image-size="54" />
+        <el-empty v-if="!dashboard.recentRecords.length" description="今天暂无执行记录" :image-size="54" />
         <div v-else class="cockpit-recent-list">
           <button v-for="record in dashboard.recentRecords" :key="record.recordId" type="button" @click="openRecord(record)">
             <span class="cockpit-status-marker" :class="`is-${record.resultStatus || '3'}`"></span>
@@ -251,14 +223,16 @@ import useSettingsStore from '@/store/modules/settings'
 import {
   RESULT_SKIP,
   buildCurrentStatusDistribution,
-  filterPlanHealth,
+  filterScopeHealth,
   formatHealthScore,
   formatShortDate,
+  groupPlanHealthByScope,
   healthStatusColor,
   healthStatusLabel,
   healthStatusType,
   normalizeCockpitDashboard,
-  normalizeHealthScore
+  normalizeHealthScore,
+  summarizeScopeHealth
 } from './cockpitPresentation'
 
 const router = useRouter()
@@ -266,18 +240,11 @@ const settingsStore = useSettingsStore()
 const loading = ref(false)
 const dashboardError = ref('')
 const dashboard = ref(normalizeCockpitDashboard())
-const planModeFilter = ref('ALL')
 const planKeyword = ref('')
 const healthGaugeRef = ref(null)
 const trendChartRef = ref(null)
 const distributionChartRef = ref(null)
 const charts = {}
-
-const planModeOptions = [
-  { label: '全部计划', value: 'ALL', icon: 'keyline-layout-dashboard' },
-  { label: '逐次记录', value: 'ROUTINE', icon: 'keyline-calendar-check' },
-  { label: '每日汇总', value: 'FREQUENT', icon: 'keyline-activity' }
-]
 
 const healthOverview = computed(() => dashboard.value.healthOverview || {})
 const routineSummary = computed(() => dashboard.value.routineSummary || {})
@@ -288,21 +255,19 @@ const routineRateDisplay = computed(() => (!routineSummary.value.status || routi
   ? '--'
   : (routineSummary.value.successRate || '0%'))
 const frequentRateDisplay = computed(() => formatHealthScore(frequentSummary.value.healthScore, frequentSummary.value.status || RESULT_SKIP))
-const filteredPlanHealth = computed(() => filterPlanHealth(
-  dashboard.value.currentPlanHealth,
-  planModeFilter.value,
-  planKeyword.value
-))
-const statusDistribution = computed(() => buildCurrentStatusDistribution(dashboard.value.currentPlanHealth))
-const activePlanCount = computed(() => dashboard.value.currentPlanHealth.length)
-const checkedPlanCount = computed(() => dashboard.value.currentPlanHealth.filter((row) => row.resultStatus !== RESULT_SKIP).length)
+const scopeHealth = computed(() => groupPlanHealthByScope(dashboard.value.currentPlanHealth))
+const scopeSummary = computed(() => summarizeScopeHealth(scopeHealth.value.sites, scopeHealth.value.unassigned))
+const filteredScopeHealth = computed(() => filterScopeHealth(scopeHealth.value.sites, planKeyword.value))
+const statusDistribution = computed(() => buildCurrentStatusDistribution(scopeHealth.value.sites))
+const activePlanCount = computed(() => scopeHealth.value.sites.length)
+const checkedPlanCount = computed(() => scopeHealth.value.sites.filter((row) => row.resultStatus !== RESULT_SKIP).length)
 const hasPlanData = computed(() => activePlanCount.value > 0)
 const hasTrendData = computed(() => dashboard.value.combinedTrend.some((row) => (
-  Number(row.routineTotal || 0) + Number(row.frequentExpected || 0)
+  Number(row.frequentExpected || 0)
 ) > 0))
 
 watch(() => settingsStore.isDark, () => nextTick(renderCharts))
-watch([filteredPlanHealth, statusDistribution], () => nextTick(renderDistributionChart), { deep: true })
+watch([filteredScopeHealth, statusDistribution], () => nextTick(renderDistributionChart), { deep: true })
 
 onMounted(() => {
   window.addEventListener('resize', resizeCharts)
@@ -356,7 +321,6 @@ function ensureChart(key, element) {
 }
 
 function renderCharts() {
-  renderHealthGauge()
   renderTrendChart()
   renderDistributionChart()
 }
@@ -419,9 +383,9 @@ function renderTrendChart() {
       { type: 'value', minInterval: 1, axisLabel: { color: palette.muted }, splitLine: { show: false } }
     ],
     series: [
-      { name: '综合健康度', type: 'line', yAxisIndex: 0, smooth: 0.25, symbolSize: 7, lineStyle: { width: 3 }, data: rows.map((row) => normalizeHealthScore(row.healthScore)) },
-      { name: '逐次记录', type: 'bar', yAxisIndex: 1, barMaxWidth: 18, itemStyle: { color: palette.normal, opacity: 0.72 }, data: rows.map((row) => Number(row.routineTotal || 0)) },
-      { name: '每日汇总完成', type: 'bar', yAxisIndex: 1, barMaxWidth: 18, itemStyle: { color: palette.warning, opacity: 0.66 }, data: rows.map((row) => Number(row.frequentCompleted || 0)) }
+      { name: '按计划健康度', type: 'line', yAxisIndex: 0, smooth: 0.25, symbolSize: 7, lineStyle: { width: 3 }, data: rows.map((row) => normalizeHealthScore(row.healthScore)) },
+      { name: '应执行', type: 'bar', yAxisIndex: 1, barMaxWidth: 18, itemStyle: { color: palette.warning, opacity: 0.58 }, data: rows.map((row) => Number(row.frequentExpected || 0)) },
+      { name: '已完成', type: 'bar', yAxisIndex: 1, barMaxWidth: 18, itemStyle: { color: palette.normal, opacity: 0.72 }, data: rows.map((row) => Number(row.frequentCompleted || 0)) }
     ]
   }, true)
 }
@@ -474,12 +438,15 @@ function openRecord(record) {
   openOverview({ recordId: record.recordId })
 }
 
-function openPlanDetail(plan) {
-  if (plan.planMode === 'FREQUENT') {
-    openOverview({ view: 'frequent', planId: plan.planId })
-  } else {
-    openOverview({ recordId: plan.recordId || undefined, planId: plan.planId })
-  }
+function openScopeDetail(scope) {
+  const today = new Date()
+  const date = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, '0'), String(today.getDate()).padStart(2, '0')].join('-')
+  openOverview({
+    date,
+    scopeKey: scope.scopeKey,
+    siteId: scope.siteId,
+    mainPlatformId: scope.mainPlatformId || undefined
+  })
 }
 
 function openIssue(item) {
@@ -581,6 +548,35 @@ function issueKey(item) {
   grid-template-columns: 360px minmax(0, 1fr);
   min-height: 178px;
   overflow: hidden;
+}
+
+.cockpit-scope-band {
+  grid-template-columns: 320px minmax(0, 1fr);
+  min-height: 132px;
+}
+
+.cockpit-scope-band__title {
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  padding: 18px 22px;
+  border-right: 1px solid var(--surface-border);
+}
+
+.cockpit-scope-band__title strong {
+  color: var(--app-heading);
+  font-size: 17px;
+}
+
+.cockpit-scope-band__title span {
+  color: var(--app-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cockpit-scope-facts > div {
+  padding-top: 16px;
+  padding-bottom: 16px;
 }
 
 .cockpit-health-gauge {

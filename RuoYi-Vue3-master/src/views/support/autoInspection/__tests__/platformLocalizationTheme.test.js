@@ -184,9 +184,8 @@ test('precision rail motion is semantic, opt-in where needed and reduced-motion 
   assert.ok(ripple.includes('prefers-reduced-motion: reduce'))
 
   for (const marker of [
-    'record-view-tabs motion-tabs',
-    'keyline-list-check',
-    'keyline-activity',
+    'recordArchiveDrawerOpen',
+    ':scope-options="inspectionScopeTree"',
     'health-sample-filters',
     'v-motion-ripple',
     'targetPreviewSucceeded'
@@ -194,8 +193,8 @@ test('precision rail motion is semantic, opt-in where needed and reduced-motion 
     assert.ok(overview.includes(marker), `missing overview motion contract: ${marker}`)
   }
   assert.ok(!overview.includes('.record-view-tab-label {\n  display: inline-flex;'))
-  assert.ok(cockpit.includes('motion-segmented cockpit-plan-mode'))
-  assert.ok(cockpit.includes('keyline-layout-dashboard'))
+  assert.ok(cockpit.includes('row-key="scopeKey"'))
+  assert.ok(cockpit.includes('今日现场与主平台健康'))
   assert.ok(cockpit.includes('class="cockpit-panel__description"'))
   assert.ok(!cockpit.includes('.cockpit-panel__head span {'))
   assert.ok(recordDrawer.includes('operation-filter motion-segmented'))
@@ -233,8 +232,8 @@ test('every business view Tabs and Segmented control uses the shared interaction
     }
   }
 
-  assert.ok(tabCount >= 11, 'the repository-wide Tabs inventory unexpectedly shrank')
-  assert.ok(segmentedCount >= 12, 'the repository-wide Segmented inventory unexpectedly shrank')
+  assert.ok(tabCount >= 10, 'the repository-wide Tabs inventory unexpectedly shrank')
+  assert.ok(segmentedCount >= 11, 'the repository-wide Segmented inventory unexpectedly shrank')
 })
 
 test('cockpit survives production compilation contract', () => {

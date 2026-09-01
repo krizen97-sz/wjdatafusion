@@ -115,6 +115,7 @@ import com.hm.manage.domain.vo.AutoInspectionDashboardVo;
 import com.hm.manage.domain.vo.AutoInspectionRecordDetailVo;
 import com.hm.manage.domain.vo.AutoInspectionRunResultVo;
 import com.hm.manage.domain.vo.AutoInspectionServerAssetNodeVo;
+import com.hm.manage.domain.vo.AutoInspectionScopeNodeVo;
 import com.hm.manage.domain.vo.AutoInspectionTargetPreviewVo;
 import com.hm.manage.domain.vo.SupportAutoInspectionExportVo;
 import com.hm.manage.mapper.SupportAutoInspectionMapper;
@@ -144,6 +145,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     private static final String ENABLED = "Y";
     private static final String STATUS_NORMAL = "0";
     private static final String STATUS_DISABLED = "1";
+    private static final String SCOPE_SITE = "SITE";
+    private static final String SCOPE_MAIN_PLATFORM = "MAIN_PLATFORM";
     private static final String RULE_MIN = "MIN";
     private static final String RULE_MAX = "MAX";
     private static final String REPORT_STANDARD = "STANDARD";
@@ -311,6 +314,52 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             }
         }
         return new ArrayList<>(siteMap.values());
+    }
+
+    @Override
+    public List<AutoInspectionScopeNodeVo> selectScopeTree()
+    {
+        Map<Long, AutoInspectionScopeNodeVo> sites = new LinkedHashMap<>();
+        for (Map<String, Object> row : autoInspectionMapper.selectScopeTreeRows())
+        {
+            Long siteId = toLong(row.get("siteId"));
+            if (siteId == null)
+            {
+                continue;
+            }
+            AutoInspectionScopeNodeVo site = sites.computeIfAbsent(siteId, ignored ->
+            {
+                AutoInspectionScopeNodeVo node = new AutoInspectionScopeNodeVo();
+                String key = SCOPE_SITE + ":" + siteId;
+                node.setId(key);
+                node.setValue(key);
+                node.setLabel(StringUtils.defaultIfBlank(str(row, "siteName"), "未命名现场"));
+                node.setScopeType(SCOPE_SITE);
+                node.setSiteId(siteId);
+                node.setSiteName(str(row, "siteName"));
+                node.setSiteCode(str(row, "siteCode"));
+                return node;
+            });
+            Long mainPlatformId = toLong(row.get("mainPlatformId"));
+            if (mainPlatformId == null)
+            {
+                continue;
+            }
+            AutoInspectionScopeNodeVo platform = new AutoInspectionScopeNodeVo();
+            String key = SCOPE_MAIN_PLATFORM + ":" + mainPlatformId;
+            platform.setId(key);
+            platform.setValue(key);
+            platform.setLabel(StringUtils.defaultIfBlank(str(row, "mainPlatformName"), "未命名主平台"));
+            platform.setScopeType(SCOPE_MAIN_PLATFORM);
+            platform.setSiteId(siteId);
+            platform.setSiteName(site.getSiteName());
+            platform.setSiteCode(site.getSiteCode());
+            platform.setMainPlatformId(mainPlatformId);
+            platform.setMainPlatformName(str(row, "mainPlatformName"));
+            platform.setNetworkEnv(str(row, "networkEnv"));
+            site.getChildren().add(platform);
+        }
+        return new ArrayList<>(sites.values());
     }
 
     @Override
@@ -835,13 +884,16 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         healthQuery.put("beginDate", java.sql.Date.valueOf(queryBegin));
         healthQuery.put("endDate", java.sql.Date.valueOf(today));
         List<Map<String, Object>> dailyHealthRows = selectDailyHealthRows(healthQuery);
+        List<Map<String, Object>> assignedDailyHealthRows = dailyHealthRows.stream()
+                .filter(row -> toLong(row.get("siteId")) != null)
+                .collect(Collectors.toList());
         Map<String, Object> planQuery = new HashMap<>();
         planQuery.put("status", STATUS_NORMAL);
         List<Map<String, Object>> activePlans = autoInspectionMapper.selectPlanList(planQuery);
         List<Map<String, Object>> todayPlans = selectTodayScheduledPlans(activePlans, today);
 
         Map<String, Object> routineSummary = buildDashboardSummary(today, records, steps, targets);
-        Map<String, Object> frequentSummary = buildFrequentDashboardSummary(today, dailyHealthRows);
+        Map<String, Object> frequentSummary = buildFrequentDashboardSummary(today, assignedDailyHealthRows);
         List<Map<String, Object>> routineTrend = buildDashboardTrend(trendBegin, today, records);
 
         Map<String, Object> dashboard = new LinkedHashMap<>();
@@ -850,7 +902,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         dashboard.put("healthOverview", buildCombinedHealthOverview(routineSummary, frequentSummary));
         dashboard.put("weekSummary", buildDashboardWeekSummary(weekBegin, today, records));
         dashboard.put("trend", routineTrend);
-        dashboard.put("combinedTrend", buildCombinedHealthTrend(routineTrend, dailyHealthRows));
+        dashboard.put("combinedTrend", buildCombinedHealthTrend(routineTrend, assignedDailyHealthRows));
         dashboard.put("calendar", buildDashboardCalendar(today, records));
         dashboard.put("toolStats", buildDashboardToolStats(today, records, steps, targets));
         List<Map<String, Object>> latestAbnormalTargets = buildLatestAbnormalTargets(today, records, targets);
@@ -883,7 +935,8 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         params.put("resultStatus", List.of(RESULT_NORMAL, RESULT_ABNORMAL, RESULT_SKIP, RESULT_WARNING)
                 .contains(resultStatus) ? resultStatus : null);
         params.put("sourceType", SOURCE_AUTO);
-        params.put("runMode", AutoInspectionPlanHealthConfig.MODE_FREQUENT);
+        params.put("siteId", query.getSiteId());
+        params.put("mainPlatformId", query.getMainPlatformId());
         params.put("beginTime", toDate(date.atStartOfDay()));
         params.put("endTime", toDate(date.plusDays(1).atStartOfDay()));
         List<Map<String, Object>> records = autoInspectionMapper.selectRecordList(params);
@@ -942,12 +995,21 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         if ((begin == null || !today.isBefore(begin)) && (end == null || !today.isAfter(end)))
         {
             Map<String, Object> planQuery = new HashMap<>();
-            planQuery.put("planMode", AutoInspectionPlanHealthConfig.MODE_FREQUENT);
             planQuery.put("status", STATUS_NORMAL);
             Long planId = toLong(params.get("planId"));
             if (planId != null)
             {
                 planQuery.put("planId", planId);
+            }
+            Long siteId = toLong(params.get("siteId"));
+            if (siteId != null)
+            {
+                planQuery.put("siteId", siteId);
+            }
+            Long mainPlatformId = toLong(params.get("mainPlatformId"));
+            if (mainPlatformId != null)
+            {
+                planQuery.put("mainPlatformId", mainPlatformId);
             }
             Map<Long, Map<String, Object>> todayRows = rows.stream()
                     .filter(row -> today.equals(toLocalDate(row.get("healthDate"))))
@@ -983,6 +1045,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         row.put("planName", plan.get("planName"));
         row.put("templateId", plan.get("templateId"));
         row.put("templateName", plan.get("templateName"));
+        row.put("scopeType", plan.get("scopeType"));
+        row.put("siteId", plan.get("siteId"));
+        row.put("siteName", plan.get("siteName"));
+        row.put("mainPlatformId", plan.get("mainPlatformId"));
+        row.put("mainPlatformName", plan.get("mainPlatformName"));
         row.put("completedCount", 0);
         row.put("normalCount", 0);
         row.put("warningCount", 0);
@@ -1056,25 +1123,21 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                                                              Map<String, Object> frequentSummary)
     {
         long routineTotal = toLongValue(routineSummary.get("recordCount"));
-        long routineNormal = toLongValue(routineSummary.get("normalCount"));
-        long frequentExpected = toLongValue(frequentSummary.get("expectedCount"));
-        long frequentNormal = toLongValue(frequentSummary.get("normalCount"));
-        long totalChecks = routineTotal + frequentExpected;
-        long normalChecks = routineNormal + frequentNormal;
+        long expected = toLongValue(frequentSummary.get("expectedCount"));
+        long normal = toLongValue(frequentSummary.get("normalCount"));
         String routineStatus = str(routineSummary, "status");
-        String frequentStatus = str(frequentSummary, "status");
+        String dailyStatus = str(frequentSummary, "status");
 
         Map<String, Object> overview = new LinkedHashMap<>();
-        overview.put("healthScore", percentageValue(normalChecks, totalChecks));
-        overview.put("healthRate", formatPercent(normalChecks, totalChecks));
-        overview.put("status", mergeHealthStatus(routineStatus, frequentStatus));
+        overview.put("healthScore", percentageValue(normal, expected));
+        overview.put("healthRate", formatPercent(normal, expected));
+        overview.put("status", dailyStatus);
         overview.put("routineStatus", routineStatus);
-        overview.put("frequentStatus", frequentStatus);
+        overview.put("frequentStatus", dailyStatus);
         overview.put("routineRecordCount", routineTotal);
-        overview.put("frequentExpectedCount", frequentExpected);
+        overview.put("frequentExpectedCount", expected);
         overview.put("frequentCompletedCount", frequentSummary.get("completedCount"));
-        overview.put("issueCount", toLongValue(routineSummary.get("abnormalTargetCount"))
-                + toLongValue(frequentSummary.get("abnormalCount"))
+        overview.put("issueCount", toLongValue(frequentSummary.get("abnormalCount"))
                 + toLongValue(frequentSummary.get("warningCount"))
                 + toLongValue(frequentSummary.get("missingCount")));
         return overview;
@@ -1101,7 +1164,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             long frequentWarning = sumLong(frequentRows, "warningCount");
             long frequentAbnormal = sumLong(frequentRows, "abnormalCount");
             long frequentMissing = sumLong(frequentRows, "missingCount");
-            long totalChecks = routineTotal + frequentExpected;
+            long totalChecks = frequentExpected;
 
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("date", date);
@@ -1114,9 +1177,9 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             item.put("frequentWarning", frequentWarning);
             item.put("frequentAbnormal", frequentAbnormal);
             item.put("frequentMissing", frequentMissing);
-            item.put("healthScore", percentageValue(routineNormal + frequentNormal, totalChecks));
-            item.put("status", resolveHealthStatus(routineAbnormal + frequentAbnormal,
-                    frequentWarning + frequentMissing, routineTotal + frequentCompleted));
+            item.put("healthScore", percentageValue(frequentNormal, totalChecks));
+            item.put("status", resolveHealthStatus(frequentAbnormal,
+                    frequentWarning + frequentMissing, frequentCompleted));
             result.add(item);
         }
         return result;
@@ -1127,16 +1190,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                                                               List<Map<String, Object>> routineRecords,
                                                               List<Map<String, Object>> dailyHealthRows)
     {
-        Map<Long, Map<String, Object>> latestRoutineByPlan = new LinkedHashMap<>();
-        for (Map<String, Object> record : routineRecords)
-        {
-            Long planId = toLong(record.get("planId"));
-            if (planId != null && isSameDate(record.get("inspectionTime"), today))
-            {
-                latestRoutineByPlan.putIfAbsent(planId, record);
-            }
-        }
-        Map<Long, Map<String, Object>> frequentByPlan = dailyHealthRows.stream()
+        Map<Long, Map<String, Object>> healthByPlan = dailyHealthRows.stream()
                 .filter(row -> isSameDate(row.get("healthDate"), today))
                 .filter(row -> toLong(row.get("planId")) != null)
                 .collect(Collectors.toMap(row -> toLong(row.get("planId")), row -> row,
@@ -1154,36 +1208,23 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
             row.put("templateName", plan.get("templateName"));
             row.put("labelName", plan.get("labelName"));
             row.put("planMode", mode);
+            row.put("scopeType", plan.get("scopeType"));
+            row.put("siteId", plan.get("siteId"));
+            row.put("siteName", plan.get("siteName"));
+            row.put("mainPlatformId", plan.get("mainPlatformId"));
+            row.put("mainPlatformName", plan.get("mainPlatformName"));
             row.put("todaySchedule", plan.get("todaySchedule"));
-            if (AutoInspectionPlanHealthConfig.MODE_FREQUENT.equals(mode))
-            {
-                Map<String, Object> health = frequentByPlan.get(planId);
-                row.put("resultStatus", health == null ? RESULT_SKIP : health.get("dayStatus"));
-                row.put("healthScore", health == null ? BigDecimal.ZERO : health.get("healthScore"));
-                row.put("completedCount", health == null ? 0 : health.get("completedCount"));
-                row.put("expectedCount", health == null ? 0 : health.get("expectedCount"));
-                row.put("abnormalCount", health == null ? 0 : health.get("abnormalCount"));
-                row.put("warningCount", health == null ? 0 : health.get("warningCount"));
-                row.put("missingCount", health == null ? 0 : health.get("missingCount"));
-                row.put("latestRunTime", health == null ? "" : formatDate(health.get("lastRunTime")));
-                row.put("issueSummary", health == null ? "今日尚未进入监测时段" : str(health, "abnormalSummary"));
-            }
-            else
-            {
-                Map<String, Object> record = latestRoutineByPlan.get(planId);
-                String status = record == null ? RESULT_SKIP : str(record, "resultStatus");
-                row.put("resultStatus", status);
-                row.put("healthScore", RESULT_NORMAL.equals(status) ? new BigDecimal("100") : BigDecimal.ZERO);
-                row.put("completedCount", record == null ? 0 : 1);
-                row.put("expectedCount", 1);
-                row.put("abnormalCount", record == null ? 0 : record.get("abnormalCount"));
-                row.put("warningCount", 0);
-                row.put("missingCount", record == null ? 1 : 0);
-                row.put("latestRunTime", record == null ? "" : formatDate(record.get("inspectionTime")));
-                row.put("recordId", record == null ? null : record.get("recordId"));
-                row.put("issueSummary", record == null ? "今日尚未执行" : StringUtils.defaultIfBlank(
-                        str(record, "abnormalSummary"), str(record, "summary")));
-            }
+            Map<String, Object> health = healthByPlan.get(planId);
+            row.put("resultStatus", health == null ? RESULT_SKIP : health.get("dayStatus"));
+            row.put("healthScore", health == null ? BigDecimal.ZERO : health.get("healthScore"));
+            row.put("completedCount", health == null ? 0 : health.get("completedCount"));
+            row.put("expectedCount", health == null ? 0 : health.get("expectedCount"));
+            row.put("abnormalCount", health == null ? 0 : health.get("abnormalCount"));
+            row.put("warningCount", health == null ? 0 : health.get("warningCount"));
+            row.put("missingCount", health == null ? 0 : health.get("missingCount"));
+            row.put("latestRunTime", health == null ? "" : formatDate(health.get("lastRunTime")));
+            row.put("issueSummary", health == null ? "等待今日计划执行" : StringUtils.defaultIfBlank(
+                    str(health, "abnormalSummary"), "当前未记录异常"));
             result.add(row);
         }
         result.sort(Comparator
@@ -2334,6 +2375,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 : AutoInspectionPlanHealthConfig.normalizeMode(plan.get("planMode"));
         boolean frequentAuto = SOURCE_AUTO.equals(sourceType)
                 && AutoInspectionPlanHealthConfig.MODE_FREQUENT.equals(configuredMode);
+        boolean scheduledPlanRun = SOURCE_AUTO.equals(sourceType) && plan != null;
         String runMode = frequentAuto ? AutoInspectionPlanHealthConfig.MODE_FREQUENT
                 : AutoInspectionPlanHealthConfig.MODE_ROUTINE;
         AutoInspectionPlanHealthConfig healthConfig = AutoInspectionPlanHealthConfig.from(
@@ -2364,6 +2406,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         record.put("templateName", template.get("templateName"));
         record.put("planId", plan == null ? null : plan.get("planId"));
         record.put("planName", plan == null ? null : plan.get("planName"));
+        record.put("scopeType", plan == null ? null : plan.get("scopeType"));
+        record.put("siteId", plan == null ? null : plan.get("siteId"));
+        record.put("siteName", plan == null ? null : plan.get("siteName"));
+        record.put("mainPlatformId", plan == null ? null : plan.get("mainPlatformId"));
+        record.put("mainPlatformName", plan == null ? null : plan.get("mainPlatformName"));
         record.put("reportStyle", plan == null ? REPORT_STANDARD : StringUtils.defaultIfBlank(str(plan, "reportStyle"), REPORT_STANDARD));
         record.put("enabledStepCount", 0);
         record.put("skippedStepCount", 0);
@@ -2518,9 +2565,12 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         record.put("updateBy", getCurrentUsername());
         record.put("updateTime", DateUtils.getNowDate());
         autoInspectionMapper.updateRecord(record);
-        if (frequentAuto)
+        if (scheduledPlanRun)
         {
             refreshDailyHealth(plan, executionTime.toLocalDate(), executionTime);
+        }
+        if (frequentAuto)
+        {
             cleanupExpiredFrequentRecords(healthConfig, executionTime);
         }
         return selectRecordDetailMap(toLong(record.get("recordId")));
@@ -2713,8 +2763,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
 
     private void refreshDailyHealth(Map<String, Object> plan, LocalDate date, LocalDateTime now)
     {
-        if (plan == null || date == null || !AutoInspectionPlanHealthConfig.MODE_FREQUENT.equals(
-                AutoInspectionPlanHealthConfig.normalizeMode(plan.get("planMode"))))
+        if (plan == null || date == null)
         {
             return;
         }
@@ -2748,6 +2797,11 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         summary.put("planName", plan.get("planName"));
         summary.put("templateId", plan.get("templateId"));
         summary.put("templateName", plan.get("templateName"));
+        summary.put("scopeType", plan.get("scopeType"));
+        summary.put("siteId", plan.get("siteId"));
+        summary.put("siteName", plan.get("siteName"));
+        summary.put("mainPlatformId", plan.get("mainPlatformId"));
+        summary.put("mainPlatformName", plan.get("mainPlatformName"));
         summary.put("expectedCount", expected);
         summary.put("completedCount", completed);
         summary.put("normalCount", normal);
@@ -5729,6 +5783,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         }
         requireTemplate(templateId);
         requireText(str(plan, "cronExpression"), "执行周期不能为空");
+        normalizePlanScope(plan);
         plan.put("status", STATUS_DISABLED.equals(str(plan, "status")) ? STATUS_DISABLED : STATUS_NORMAL);
         plan.put("reportStyle", StringUtils.defaultIfBlank(str(plan, "reportStyle"), REPORT_STANDARD));
         Object cronConfig = plan.get("cronConfig");
@@ -5741,6 +5796,50 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         {
             plan.put("cronConfig", JSON.toJSONString(cronConfig));
         }
+    }
+
+    private void normalizePlanScope(Map<String, Object> plan)
+    {
+        String scopeType = StringUtils.trimToEmpty(str(plan, "scopeType")).toUpperCase(Locale.ROOT);
+        if (SCOPE_SITE.equals(scopeType))
+        {
+            Long siteId = toLong(plan.get("siteId"));
+            if (siteId == null)
+            {
+                throw new ServiceException("请选择巡检计划所属现场");
+            }
+            Map<String, Object> site = autoInspectionMapper.selectSiteScopeById(siteId);
+            if (site == null)
+            {
+                throw new ServiceException("巡检计划所属现场不存在");
+            }
+            plan.put("scopeType", SCOPE_SITE);
+            plan.put("siteId", siteId);
+            plan.put("siteName", site.get("siteName"));
+            plan.put("mainPlatformId", null);
+            plan.put("mainPlatformName", null);
+            return;
+        }
+        if (SCOPE_MAIN_PLATFORM.equals(scopeType))
+        {
+            Long mainPlatformId = toLong(plan.get("mainPlatformId"));
+            if (mainPlatformId == null)
+            {
+                throw new ServiceException("请选择巡检计划所属主平台");
+            }
+            Map<String, Object> platform = autoInspectionMapper.selectMainPlatformScopeById(mainPlatformId);
+            if (platform == null || !"MAIN".equalsIgnoreCase(str(platform, "platformLevel")))
+            {
+                throw new ServiceException("巡检计划只能归属到主平台");
+            }
+            plan.put("scopeType", SCOPE_MAIN_PLATFORM);
+            plan.put("siteId", platform.get("siteId"));
+            plan.put("siteName", platform.get("siteName"));
+            plan.put("mainPlatformId", mainPlatformId);
+            plan.put("mainPlatformName", platform.get("mainPlatformName"));
+            return;
+        }
+        throw new ServiceException("请选择巡检计划的现场或主平台归属");
     }
 
     private void fillTemplateSteps(Map<String, Object> template)

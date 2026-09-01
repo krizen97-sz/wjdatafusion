@@ -107,6 +107,34 @@
                  s.server_address asc, s.server_id asc
     </select>
 
+    <select id="selectScopeTreeRows" resultType="java.util.HashMap">
+        select s.site_id as siteId, s.site_name as siteName, s.site_code as siteCode,
+               p.platform_id as mainPlatformId, p.platform_name as mainPlatformName,
+               p.network_env as networkEnv
+        from sup_site s
+        left join sup_platform p on p.site_id = s.site_id
+            and p.platform_level = 'MAIN' and p.status = '0'
+        where s.status = '0'
+        order by s.site_name asc, s.site_id asc, p.platform_name asc, p.platform_id asc
+    </select>
+
+    <select id="selectSiteScopeById" parameterType="Long" resultType="java.util.HashMap">
+        select site_id as siteId, site_name as siteName, site_code as siteCode, status
+        from sup_site
+        where site_id = #{siteId}
+    </select>
+
+    <select id="selectMainPlatformScopeById" parameterType="Long" resultType="java.util.HashMap">
+        select p.platform_id as mainPlatformId, p.platform_name as mainPlatformName,
+               p.platform_level as platformLevel, p.network_env as networkEnv,
+               p.status as platformStatus,
+               s.site_id as siteId, s.site_name as siteName, s.site_code as siteCode,
+               s.status as siteStatus
+        from sup_platform p
+        inner join sup_site s on s.site_id = p.site_id
+        where p.platform_id = #{mainPlatformId}
+    </select>
+
     <insert id="insertTarget" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="targetId">
         insert into sup_auto_inspection_target
         <trim prefix="(" suffix=")" suffixOverrides=",">
@@ -306,7 +334,10 @@
         select p.plan_id as planId, p.template_id as templateId, t.template_name as templateName,
                p.plan_name as planName, p.label_name as labelName, p.plan_mode as planMode,
                p.cron_expression as cronExpression, p.cron_config as cronConfig,
-               p.health_config as healthConfig, p.job_id as jobId, p.report_style as reportStyle,
+               p.health_config as healthConfig, p.scope_type as scopeType,
+               p.site_id as siteId, p.site_name as siteName,
+               p.main_platform_id as mainPlatformId, p.main_platform_name as mainPlatformName,
+               p.job_id as jobId, p.report_style as reportStyle,
                p.status, p.create_by as createBy, p.create_time as createTime,
                p.update_by as updateBy, p.update_time as updateTime, p.remark,
                (select count(1) from sup_auto_inspection_template_step s where s.template_id = p.template_id and s.enabled_flag = 'Y') as stepCount
@@ -318,6 +349,9 @@
             <if test="labelName != null and labelName != ''">and p.label_name = #{labelName}</if>
             <if test="planMode != null and planMode != ''">and p.plan_mode = #{planMode}</if>
             <if test="templateId != null and templateId != ''">and p.template_id = #{templateId}</if>
+            <if test="scopeType != null and scopeType != ''">and p.scope_type = #{scopeType}</if>
+            <if test="siteId != null">and p.site_id = #{siteId}</if>
+            <if test="mainPlatformId != null">and p.main_platform_id = #{mainPlatformId}</if>
             <if test="status != null and status != ''">and p.status = #{status}</if>
             <if test="reportStyle != null and reportStyle != ''">and p.report_style = #{reportStyle}</if>
         </where>
@@ -328,7 +362,10 @@
         select p.plan_id as planId, p.template_id as templateId, t.template_name as templateName,
                p.plan_name as planName, p.label_name as labelName, p.plan_mode as planMode,
                p.cron_expression as cronExpression, p.cron_config as cronConfig,
-               p.health_config as healthConfig, p.job_id as jobId, p.report_style as reportStyle,
+               p.health_config as healthConfig, p.scope_type as scopeType,
+               p.site_id as siteId, p.site_name as siteName,
+               p.main_platform_id as mainPlatformId, p.main_platform_name as mainPlatformName,
+               p.job_id as jobId, p.report_style as reportStyle,
                p.status, p.create_by as createBy, p.create_time as createTime,
                p.update_by as updateBy, p.update_time as updateTime, p.remark
         from sup_auto_inspection_plan p
@@ -338,10 +375,12 @@
 
     <insert id="insertPlan" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="planId">
         insert into sup_auto_inspection_plan(
-            template_id, plan_name, label_name, plan_mode, cron_expression, cron_config, health_config, job_id,
+            template_id, plan_name, label_name, plan_mode, cron_expression, cron_config, health_config,
+            scope_type, site_id, site_name, main_platform_id, main_platform_name, job_id,
             report_style, status, create_by, create_time, update_by, update_time, remark
         ) values (
-            #{templateId}, #{planName}, #{labelName}, #{planMode}, #{cronExpression}, #{cronConfig}, #{healthConfig}, #{jobId},
+            #{templateId}, #{planName}, #{labelName}, #{planMode}, #{cronExpression}, #{cronConfig}, #{healthConfig},
+            #{scopeType}, #{siteId}, #{siteName}, #{mainPlatformId}, #{mainPlatformName}, #{jobId},
             #{reportStyle}, #{status}, #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
         )
     </insert>
@@ -356,6 +395,11 @@
             <if test="cronExpression != null and cronExpression != ''">cron_expression = #{cronExpression},</if>
             <if test="cronConfig != null">cron_config = #{cronConfig},</if>
             <if test="healthConfig != null">health_config = #{healthConfig},</if>
+            scope_type = #{scopeType},
+            site_id = #{siteId},
+            site_name = #{siteName},
+            main_platform_id = #{mainPlatformId},
+            main_platform_name = #{mainPlatformName},
             <if test="jobId != null">job_id = #{jobId},</if>
             <if test="reportStyle != null and reportStyle != ''">report_style = #{reportStyle},</if>
             <if test="status != null and status != ''">status = #{status},</if>
@@ -393,7 +437,10 @@
                run_mode as runMode, schedule_slot_time as scheduleSlotTime, duration_ms as durationMs,
                result_status as resultStatus, executor_name as executorName,
                template_id as templateId, template_name as templateName,
-               plan_id as planId, plan_name as planName, report_style as reportStyle,
+               plan_id as planId, plan_name as planName,
+               scope_type as scopeType, site_id as siteId, site_name as siteName,
+               main_platform_id as mainPlatformId, main_platform_name as mainPlatformName,
+               report_style as reportStyle,
                enabled_step_count as enabledStepCount, skipped_step_count as skippedStepCount,
                target_count as targetCount, abnormal_count as abnormalCount, warning_count as warningCount,
                summary, abnormal_summary as abnormalSummary,
@@ -413,6 +460,12 @@
             <if test="resultStatus != null and resultStatus != ''">and result_status = #{resultStatus}</if>
             <if test="templateId != null">and template_id = #{templateId}</if>
             <if test="planId != null">and plan_id = #{planId}</if>
+            <if test="siteId != null">
+                and coalesce(site_id, (select p.site_id from sup_auto_inspection_plan p where p.plan_id = sup_auto_inspection_record.plan_id)) = #{siteId}
+            </if>
+            <if test="mainPlatformId != null">
+                and coalesce(main_platform_id, (select p.main_platform_id from sup_auto_inspection_plan p where p.plan_id = sup_auto_inspection_record.plan_id)) = #{mainPlatformId}
+            </if>
             <if test="templateName != null and templateName != ''">and template_name like concat('%', #{templateName}, '%')</if>
             <if test="planName != null and planName != ''">and plan_name like concat('%', #{planName}, '%')</if>
             <if test="executorName != null and executorName != ''">and executor_name like concat('%', #{executorName}, '%')</if>
@@ -427,7 +480,10 @@
                run_mode as runMode, schedule_slot_time as scheduleSlotTime, duration_ms as durationMs,
                result_status as resultStatus, executor_name as executorName,
                template_id as templateId, template_name as templateName,
-               plan_id as planId, plan_name as planName, report_style as reportStyle,
+               plan_id as planId, plan_name as planName,
+               scope_type as scopeType, site_id as siteId, site_name as siteName,
+               main_platform_id as mainPlatformId, main_platform_name as mainPlatformName,
+               report_style as reportStyle,
                enabled_step_count as enabledStepCount, skipped_step_count as skippedStepCount,
                target_count as targetCount, abnormal_count as abnormalCount, warning_count as warningCount,
                summary, abnormal_summary as abnormalSummary,
@@ -448,13 +504,15 @@
         insert into sup_auto_inspection_record(
             inspection_time, source_type, run_mode, schedule_slot_time, duration_ms,
             result_status, executor_name,
-            template_id, template_name, plan_id, plan_name, report_style,
+            template_id, template_name, plan_id, plan_name,
+            scope_type, site_id, site_name, main_platform_id, main_platform_name, report_style,
             enabled_step_count, skipped_step_count, target_count, abnormal_count, warning_count,
             summary, abnormal_summary, create_by, create_time, update_by, update_time, remark
         ) values (
             #{inspectionTime}, #{sourceType}, #{runMode}, #{scheduleSlotTime}, #{durationMs},
             #{resultStatus}, #{executorName},
-            #{templateId}, #{templateName}, #{planId}, #{planName}, #{reportStyle},
+            #{templateId}, #{templateName}, #{planId}, #{planName},
+            #{scopeType}, #{siteId}, #{siteName}, #{mainPlatformId}, #{mainPlatformName}, #{reportStyle},
             #{enabledStepCount}, #{skippedStepCount}, #{targetCount}, #{abnormalCount}, #{warningCount},
             #{summary}, #{abnormalSummary}, #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
         )
@@ -463,12 +521,14 @@
     <insert id="insertFrequentRecord" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="recordId">
         insert ignore into sup_auto_inspection_record(
             inspection_time, source_type, run_mode, schedule_slot_time, duration_ms,
-            result_status, executor_name, template_id, template_name, plan_id, plan_name, report_style,
+            result_status, executor_name, template_id, template_name, plan_id, plan_name,
+            scope_type, site_id, site_name, main_platform_id, main_platform_name, report_style,
             enabled_step_count, skipped_step_count, target_count, abnormal_count, warning_count,
             summary, abnormal_summary, create_by, create_time, update_by, update_time, remark
         ) values (
             #{inspectionTime}, #{sourceType}, #{runMode}, #{scheduleSlotTime}, #{durationMs},
-            #{resultStatus}, #{executorName}, #{templateId}, #{templateName}, #{planId}, #{planName}, #{reportStyle},
+            #{resultStatus}, #{executorName}, #{templateId}, #{templateName}, #{planId}, #{planName},
+            #{scopeType}, #{siteId}, #{siteName}, #{mainPlatformId}, #{mainPlatformName}, #{reportStyle},
             #{enabledStepCount}, #{skippedStepCount}, #{targetCount}, #{abnormalCount}, #{warningCount},
             #{summary}, #{abnormalSummary}, #{createBy}, #{createTime}, #{updateBy}, #{updateTime}, #{remark}
         )
@@ -649,19 +709,21 @@
                substring_index(group_concat(result_status order by inspection_time desc, record_id desc), ',', 1) as lastResultStatus,
                substring_index(group_concat(case when result_status in ('2', '4') then abnormal_summary end order by inspection_time desc, record_id desc separator '||'), '||', 1) as abnormalSummary
         from sup_auto_inspection_record
-        where plan_id = #{planId} and run_mode = 'FREQUENT' and source_type = 'AUTO'
+        where plan_id = #{planId} and source_type = 'AUTO'
           and inspection_time &gt;= #{beginTime} and inspection_time &lt; #{endTime}
     </select>
 
     <insert id="upsertDailyHealth" parameterType="java.util.HashMap" useGeneratedKeys="true" keyProperty="summaryId">
         insert into sup_auto_inspection_health_daily(
             health_date, plan_id, plan_name, template_id, template_name,
+            scope_type, site_id, site_name, main_platform_id, main_platform_name,
             expected_count, completed_count, normal_count, warning_count,
             abnormal_count, skipped_count, missing_count, health_score, health_target,
             day_status, first_abnormal_time, last_abnormal_time, last_run_time,
             last_result_status, abnormal_summary, create_by, create_time, update_by, update_time
         ) values (
             #{healthDate}, #{planId}, #{planName}, #{templateId}, #{templateName},
+            #{scopeType}, #{siteId}, #{siteName}, #{mainPlatformId}, #{mainPlatformName},
             #{expectedCount}, #{completedCount}, #{normalCount}, #{warningCount},
             #{abnormalCount}, #{skippedCount}, #{missingCount}, #{healthScore}, #{healthTarget},
             #{dayStatus}, #{firstAbnormalTime}, #{lastAbnormalTime}, #{lastRunTime},
@@ -669,6 +731,8 @@
         )
         on duplicate key update
             plan_name = values(plan_name), template_id = values(template_id), template_name = values(template_name),
+            scope_type = values(scope_type), site_id = values(site_id), site_name = values(site_name),
+            main_platform_id = values(main_platform_id), main_platform_name = values(main_platform_name),
             expected_count = values(expected_count), completed_count = values(completed_count),
             normal_count = values(normal_count), warning_count = values(warning_count),
             abnormal_count = values(abnormal_count), skipped_count = values(skipped_count),
@@ -680,8 +744,13 @@
     </insert>
 
     <select id="selectDailyHealthList" parameterType="java.util.HashMap" resultType="java.util.HashMap">
-        select summary_id as summaryId, health_date as healthDate, plan_id as planId, plan_name as planName,
-               template_id as templateId, template_name as templateName,
+        select h.summary_id as summaryId, h.health_date as healthDate, h.plan_id as planId, h.plan_name as planName,
+               h.template_id as templateId, h.template_name as templateName,
+               coalesce(h.scope_type, p.scope_type) as scopeType,
+               coalesce(h.site_id, p.site_id) as siteId,
+               coalesce(h.site_name, p.site_name) as siteName,
+               coalesce(h.main_platform_id, p.main_platform_id) as mainPlatformId,
+               coalesce(h.main_platform_name, p.main_platform_name) as mainPlatformName,
                expected_count as expectedCount, completed_count as completedCount,
                normal_count as normalCount, warning_count as warningCount,
                abnormal_count as abnormalCount, skipped_count as skippedCount,
@@ -689,14 +758,18 @@
                day_status as dayStatus, first_abnormal_time as firstAbnormalTime,
                last_abnormal_time as lastAbnormalTime, last_run_time as lastRunTime,
                last_result_status as lastResultStatus, abnormal_summary as abnormalSummary,
-               create_by as createBy, create_time as createTime, update_by as updateBy, update_time as updateTime
-        from sup_auto_inspection_health_daily
+               h.create_by as createBy, h.create_time as createTime,
+               h.update_by as updateBy, h.update_time as updateTime
+        from sup_auto_inspection_health_daily h
+        left join sup_auto_inspection_plan p on p.plan_id = h.plan_id
         <where>
-            <if test="planId != null">and plan_id = #{planId}</if>
-            <if test="beginDate != null">and health_date &gt;= #{beginDate}</if>
-            <if test="endDate != null">and health_date &lt;= #{endDate}</if>
+            <if test="planId != null">and h.plan_id = #{planId}</if>
+            <if test="siteId != null">and coalesce(h.site_id, p.site_id) = #{siteId}</if>
+            <if test="mainPlatformId != null">and coalesce(h.main_platform_id, p.main_platform_id) = #{mainPlatformId}</if>
+            <if test="beginDate != null">and h.health_date &gt;= #{beginDate}</if>
+            <if test="endDate != null">and h.health_date &lt;= #{endDate}</if>
         </where>
-        order by health_date desc, plan_name asc, plan_id asc
+        order by h.health_date desc, h.plan_name asc, h.plan_id asc
     </select>
 
     <select id="selectExpiredFrequentRecordIds" resultType="Long">

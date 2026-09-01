@@ -25,8 +25,9 @@ function normalizeTemplatePayload(data = {}) {
 }
 
 function normalizePlanPayload(data = {}) {
+  const { scopeKey, ...payload } = data
   return {
-    ...data,
+    ...payload,
     cronConfig: stringifyConfig(data.cronConfig),
     healthConfig: stringifyConfig(data.healthConfig)
   }
@@ -46,6 +47,10 @@ export function getAutoInspectionTarget(targetId) {
 
 export function listAutoInspectionServerAssets() {
   return request({ url: '/support/autoInspection/targets/server-assets', method: 'get' })
+}
+
+export function listAutoInspectionScopes() {
+  return request({ url: '/support/autoInspection/scopes', method: 'get' })
 }
 
 export function getAutoInspectionServerCredential(serverId, username) {

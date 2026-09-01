@@ -24,6 +24,11 @@ public class SupportAutoInspectionRecord extends BaseEntity
     private String templateName;
     private Long planId;
     private String planName;
+    private String scopeType;
+    private Long siteId;
+    private String siteName;
+    private Long mainPlatformId;
+    private String mainPlatformName;
     private String reportStyle;
     private Integer enabledStepCount;
     private Integer skippedStepCount;
@@ -57,6 +62,16 @@ public class SupportAutoInspectionRecord extends BaseEntity
     public void setPlanId(Long planId) { this.planId = planId; }
     public String getPlanName() { return planName; }
     public void setPlanName(String planName) { this.planName = planName; }
+    public String getScopeType() { return scopeType; }
+    public void setScopeType(String scopeType) { this.scopeType = scopeType; }
+    public Long getSiteId() { return siteId; }
+    public void setSiteId(Long siteId) { this.siteId = siteId; }
+    public String getSiteName() { return siteName; }
+    public void setSiteName(String siteName) { this.siteName = siteName; }
+    public Long getMainPlatformId() { return mainPlatformId; }
+    public void setMainPlatformId(Long mainPlatformId) { this.mainPlatformId = mainPlatformId; }
+    public String getMainPlatformName() { return mainPlatformName; }
+    public void setMainPlatformName(String mainPlatformName) { this.mainPlatformName = mainPlatformName; }
     public String getReportStyle() { return reportStyle; }
     public void setReportStyle(String reportStyle) { this.reportStyle = reportStyle; }
     public Integer getEnabledStepCount() { return enabledStepCount; }

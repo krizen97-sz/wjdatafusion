@@ -71,6 +71,13 @@ public class SupportAutoInspectionController extends BaseController
         return success(autoInspectionService.selectServerAssetTree());
     }
 
+    @PreAuthorize("@ss.hasPermi('support:autoInspection:query')")
+    @GetMapping("/scopes")
+    public AjaxResult scopes()
+    {
+        return success(autoInspectionService.selectScopeTree());
+    }
+
     @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
     @Log(title = "查看现场服务器巡检凭据", businessType = BusinessType.GRANT)
     @GetMapping("/targets/server-credentials/{serverId}")

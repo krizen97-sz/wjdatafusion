@@ -59,6 +59,124 @@ export function filterPlanHealth(rows = [], mode = 'ALL', keyword = '') {
   })
 }
 
+const STATUS_PRIORITY = {
+  [RESULT_ABNORMAL]: 4,
+  [RESULT_WARNING]: 3,
+  [RESULT_NORMAL]: 2,
+  [RESULT_SKIP]: 1
+}
+
+function aggregateScopePlans(plans = []) {
+  const expectedCount = plans.reduce((sum, row) => sum + Number(row.expectedCount || 0), 0)
+  const completedCount = plans.reduce((sum, row) => sum + Number(row.completedCount || 0), 0)
+  const normalCount = plans.reduce((sum, row) => sum + Number(row.normalCount || 0), 0)
+  const abnormalCount = plans.reduce((sum, row) => sum + Number(row.abnormalCount || 0), 0)
+  const warningCount = plans.reduce((sum, row) => sum + Number(row.warningCount || 0), 0)
+  const missingCount = plans.reduce((sum, row) => sum + Number(row.missingCount || 0), 0)
+  const resultStatus = plans.reduce((status, row) => (
+    (STATUS_PRIORITY[row.resultStatus] || 0) > (STATUS_PRIORITY[status] || 0) ? row.resultStatus : status
+  ), RESULT_SKIP)
+  return {
+    plans,
+    planCount: plans.length,
+    expectedCount,
+    completedCount,
+    normalCount,
+    abnormalCount,
+    warningCount,
+    missingCount,
+    resultStatus,
+    healthScore: expectedCount > 0 ? normalizeHealthScore((normalCount / expectedCount) * 100) : 0,
+    issueSummary: plans.find((row) => row.resultStatus === RESULT_ABNORMAL)?.issueSummary
+      || plans.find((row) => row.resultStatus === RESULT_WARNING)?.issueSummary
+      || '当前未记录异常'
+  }
+}
+
+export function groupPlanHealthByScope(rows = []) {
+  const sites = new Map()
+  const unassigned = []
+  rows.forEach((row) => {
+    const siteId = Number(row.siteId || 0)
+    if (!siteId) {
+      unassigned.push(row)
+      return
+    }
+    if (!sites.has(siteId)) {
+      sites.set(siteId, {
+        scopeKey: `SITE:${siteId}`,
+        scopeType: 'SITE',
+        siteId,
+        siteName: row.siteName || `现场 ${siteId}`,
+        scopeName: row.siteName || `现场 ${siteId}`,
+        sitePlans: [],
+        platformMap: new Map()
+      })
+    }
+    const site = sites.get(siteId)
+    const mainPlatformId = Number(row.mainPlatformId || 0)
+    if (row.scopeType === 'MAIN_PLATFORM' && mainPlatformId) {
+      if (!site.platformMap.has(mainPlatformId)) {
+        site.platformMap.set(mainPlatformId, {
+          scopeKey: `MAIN_PLATFORM:${mainPlatformId}`,
+          scopeType: 'MAIN_PLATFORM',
+          siteId,
+          siteName: site.siteName,
+          mainPlatformId,
+          mainPlatformName: row.mainPlatformName || `主平台 ${mainPlatformId}`,
+          scopeName: row.mainPlatformName || `主平台 ${mainPlatformId}`,
+          plans: []
+        })
+      }
+      site.platformMap.get(mainPlatformId).plans.push(row)
+    } else {
+      site.sitePlans.push(row)
+    }
+  })
+
+  const result = Array.from(sites.values()).map((site) => {
+    const children = Array.from(site.platformMap.values()).map((platform) => ({
+      ...platform,
+      ...aggregateScopePlans(platform.plans)
+    })).sort((left, right) => (STATUS_PRIORITY[right.resultStatus] || 0) - (STATUS_PRIORITY[left.resultStatus] || 0))
+    const plans = [...site.sitePlans, ...children.flatMap((platform) => platform.plans)]
+    return {
+      ...site,
+      children,
+      ...aggregateScopePlans(plans)
+    }
+  }).sort((left, right) => {
+    const statusDifference = (STATUS_PRIORITY[right.resultStatus] || 0) - (STATUS_PRIORITY[left.resultStatus] || 0)
+    return statusDifference || left.scopeName.localeCompare(right.scopeName, 'zh-CN')
+  })
+  return { sites: result, unassigned }
+}
+
+export function filterScopeHealth(rows = [], keyword = '') {
+  const normalizedKeyword = String(keyword || '').trim().toLowerCase()
+  if (!normalizedKeyword) return rows
+  return rows.reduce((result, site) => {
+    const siteMatched = [site.scopeName, ...site.plans.map((plan) => plan.planName), ...site.plans.map((plan) => plan.templateName)]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(normalizedKeyword))
+    const children = site.children.filter((platform) => [platform.scopeName, ...platform.plans.map((plan) => plan.planName), ...platform.plans.map((plan) => plan.templateName)]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(normalizedKeyword)))
+    if (siteMatched || children.length) result.push({ ...site, children: siteMatched ? site.children : children })
+    return result
+  }, [])
+}
+
+export function summarizeScopeHealth(sites = [], unassigned = []) {
+  return {
+    siteCount: sites.length,
+    platformCount: sites.reduce((sum, site) => sum + site.children.length, 0),
+    abnormalSiteCount: sites.filter((site) => site.resultStatus === RESULT_ABNORMAL).length,
+    warningSiteCount: sites.filter((site) => site.resultStatus === RESULT_WARNING).length,
+    unassignedPlanCount: unassigned.length
+  }
+}
+
 export function buildCurrentStatusDistribution(rows = []) {
   const counts = {
     [RESULT_NORMAL]: 0,

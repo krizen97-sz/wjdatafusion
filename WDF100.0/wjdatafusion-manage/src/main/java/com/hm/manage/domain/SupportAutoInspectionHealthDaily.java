@@ -16,6 +16,11 @@ public class SupportAutoInspectionHealthDaily extends BaseEntity
     private String planName;
     private Long templateId;
     private String templateName;
+    private String scopeType;
+    private Long siteId;
+    private String siteName;
+    private Long mainPlatformId;
+    private String mainPlatformName;
     private Integer expectedCount;
     private Integer completedCount;
     private Integer normalCount;
@@ -47,6 +52,16 @@ public class SupportAutoInspectionHealthDaily extends BaseEntity
     public void setTemplateId(Long templateId) { this.templateId = templateId; }
     public String getTemplateName() { return templateName; }
     public void setTemplateName(String templateName) { this.templateName = templateName; }
+    public String getScopeType() { return scopeType; }
+    public void setScopeType(String scopeType) { this.scopeType = scopeType; }
+    public Long getSiteId() { return siteId; }
+    public void setSiteId(Long siteId) { this.siteId = siteId; }
+    public String getSiteName() { return siteName; }
+    public void setSiteName(String siteName) { this.siteName = siteName; }
+    public Long getMainPlatformId() { return mainPlatformId; }
+    public void setMainPlatformId(Long mainPlatformId) { this.mainPlatformId = mainPlatformId; }
+    public String getMainPlatformName() { return mainPlatformName; }
+    public void setMainPlatformName(String mainPlatformName) { this.mainPlatformName = mainPlatformName; }
     public Integer getExpectedCount() { return expectedCount; }
     public void setExpectedCount(Integer expectedCount) { this.expectedCount = expectedCount; }
     public Integer getCompletedCount() { return completedCount; }

@@ -15,7 +15,7 @@ class AutoInspectionDashboardAggregationTest
     private final SupportAutoInspectionServiceImpl service = new SupportAutoInspectionServiceImpl();
 
     @Test
-    void combinedOverviewUsesRoutineRunsAndFrequentExpectedSamples() throws Exception
+    void combinedOverviewUsesUnifiedDailyPlanHealthWithoutDoubleCountingRuns() throws Exception
     {
         Map<String, Object> routine = mapOf(
                 "recordCount", 2L,
@@ -34,9 +34,9 @@ class AutoInspectionDashboardAggregationTest
         Map<String, Object> result = invoke("buildCombinedHealthOverview",
                 new Class<?>[] {Map.class, Map.class}, routine, frequent);
 
-        assertEquals(new BigDecimal("80.0"), result.get("healthScore"));
-        assertEquals("2", result.get("status"));
-        assertEquals(2L, result.get("issueCount"));
+        assertEquals(new BigDecimal("87.5"), result.get("healthScore"));
+        assertEquals("4", result.get("status"));
+        assertEquals(1L, result.get("issueCount"));
     }
 
     @Test
@@ -60,7 +60,7 @@ class AutoInspectionDashboardAggregationTest
         assertEquals(1, result.size());
         assertEquals("4", result.get(0).get("status"));
         assertEquals(1L, result.get(0).get("frequentMissing"));
-        assertEquals(new BigDecimal("84.6"), result.get(0).get("healthScore"));
+        assertEquals(new BigDecimal("83.3"), result.get(0).get("healthScore"));
     }
 
     @Test
@@ -80,14 +80,29 @@ class AutoInspectionDashboardAggregationTest
                 "planId", 9L,
                 "planName", "每日巡检",
                 "planMode", "ROUTINE",
+                "scopeType", "MAIN_PLATFORM",
+                "siteId", 2L,
+                "siteName", "武进分局",
+                "mainPlatformId", 19L,
+                "mainPlatformName", "TIM平台",
                 "todaySchedule", "08:00"));
+        List<Map<String, Object>> dailyHealth = List.of(mapOf(
+                "healthDate", java.sql.Date.valueOf("2026-08-31"),
+                "planId", 9L,
+                "dayStatus", "1",
+                "healthScore", new BigDecimal("100"),
+                "expectedCount", 1,
+                "completedCount", 1));
 
         List<Map<String, Object>> result = invoke("buildCurrentPlanHealth",
                 new Class<?>[] {java.time.LocalDate.class, List.class, List.class, List.class},
-                java.time.LocalDate.of(2026, 8, 31), plans, List.of(), List.of());
+                java.time.LocalDate.of(2026, 8, 31), plans, List.of(), dailyHealth);
 
         assertEquals(1, result.size());
         assertEquals("08:00", result.get(0).get("todaySchedule"));
+        assertEquals("MAIN_PLATFORM", result.get(0).get("scopeType"));
+        assertEquals("TIM平台", result.get(0).get("mainPlatformName"));
+        assertEquals("1", result.get(0).get("resultStatus"));
     }
 
     @SuppressWarnings("unchecked")

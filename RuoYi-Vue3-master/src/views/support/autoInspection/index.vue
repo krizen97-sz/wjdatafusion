@@ -5,60 +5,18 @@
         <header class="record-board__head">
           <div>
             <strong>巡检总览</strong>
-            <span>统一查看逐次执行记录与每日健康汇总</span>
+            <span>按日期查看现场与主平台健康，逐次执行保留为可下钻证据</span>
           </div>
           <div class="record-board__actions">
             <el-button class="motion-entry-action" data-motion-direction="forward" type="primary" plain icon="DataAnalysis" @click="openCockpit">巡检驾驶舱</el-button>
+            <el-button icon="List" @click="recordArchiveDrawerOpen = true">全部执行记录</el-button>
+            <el-button icon="Document" @click="openReportExportDialog" v-hasPermi="['support:autoInspection:export']">导出周/月报</el-button>
             <el-button icon="Refresh" @click="refreshCurrentRecordView">刷新</el-button>
           </div>
         </header>
 
-        <el-tabs v-model="recordViewMode" class="record-view-tabs motion-tabs" @tab-change="handleRecordViewChange">
-          <el-tab-pane :name="PLAN_MODE_ROUTINE">
-            <template #label>
-              <span class="record-view-tab-label motion-control-label">
-                <svg-icon icon-class="keyline-list-check" class="motion-control-label__icon" />
-                <span class="motion-control-label__text">逐次执行记录</span>
-                <small>{{ recordTotal }}条</small>
-              </span>
-            </template>
-          </el-tab-pane>
-          <el-tab-pane :name="PLAN_MODE_FREQUENT">
-            <template #label>
-              <span class="record-view-tab-label motion-control-label">
-                <svg-icon icon-class="keyline-activity" class="motion-control-label__icon" />
-                <span class="motion-control-label__text">每日健康汇总</span>
-                <small :class="`is-${dashboardHealthOverview.frequentStatus || '3'}`">{{ formatResult(dashboardHealthOverview.frequentStatus) }}</small>
-              </span>
-            </template>
-          </el-tab-pane>
-        </el-tabs>
-
-        <section class="unified-health-strip" :class="`is-${dashboardHealthOverview.status || '3'}`">
-          <div class="unified-health-strip__score">
-            <span class="status-dot" :class="`status-dot--${dashboardHealthOverview.status || '3'}`"></span>
-            <strong>{{ formatDashboardHealthScore(dashboardHealthOverview.healthScore, dashboardHealthOverview.status) }}</strong>
-            <em>今日综合健康度</em>
-          </div>
-          <div>
-            <span>逐次记录</span>
-            <strong>{{ formatResult(dashboardHealthOverview.routineStatus) }}</strong>
-            <em>{{ dashboardHealthOverview.routineRecordCount || 0 }} 次执行</em>
-          </div>
-          <div>
-            <span>每日汇总</span>
-            <strong>{{ formatResult(dashboardHealthOverview.frequentStatus) }}</strong>
-            <em>{{ dashboardHealthOverview.frequentCompletedCount || 0 }} / {{ dashboardHealthOverview.frequentExpectedCount || 0 }} 次采样</em>
-          </div>
-          <div>
-            <span>需要处理</span>
-            <strong>{{ dashboardHealthOverview.issueCount || 0 }} 项</strong>
-            <em>异常、关注与缺失</em>
-          </div>
-        </section>
-
-        <div :key="recordViewMode" class="record-view-stage motion-view-stage" :class="`is-${recordViewMotionDirection}`">
-        <template v-if="recordViewMode === PLAN_MODE_ROUTINE">
+        <div class="record-view-stage">
+        <el-drawer v-model="recordArchiveDrawerOpen" title="全部执行记录" size="1280px" append-to-body class="record-archive-drawer">
         <section class="dashboard-brief" :class="`dashboard-brief--${dashboardWeekSummary.status || '3'}`">
           <div class="dashboard-brief__status">
             <span class="status-dot" :class="`status-dot--${dashboardWeekSummary.status || '3'}`"></span>
@@ -226,15 +184,17 @@
         </el-table>
 
         <pagination v-show="recordTotal > 0" :total="recordTotal" v-model:page="recordQuery.pageNum" v-model:limit="recordQuery.pageSize" @pagination="getRecordList" />
-        </template>
+        </el-drawer>
         <ContinuousHealthPanel
-          v-else
           :loading="dailyHealthLoading"
           :rows="dailyHealthRows"
           :month="dailyHealthMonth"
+          :scope-key="dailyHealthScopeKey"
+          :scope-options="inspectionScopeTree"
           :plan-id="dailyHealthPlanId"
-          :plan-options="frequentPlanTreeOptions"
+          :plan-options="planTreeOptions"
           @update:month="dailyHealthMonth = $event"
+          @update:scope-key="dailyHealthScopeKey = $event"
           @update:plan-id="dailyHealthPlanId = $event"
           @day-results="openHealthSamples"
         />
@@ -621,11 +581,17 @@
               style="width: 210px"
             />
           </el-form-item>
-          <el-form-item label="汇总方式">
-            <el-select v-model="planQuery.planMode" clearable placeholder="全部汇总方式" style="width: 140px">
-              <el-option label="逐次记录" :value="PLAN_MODE_ROUTINE" />
-              <el-option label="每日汇总" :value="PLAN_MODE_FREQUENT" />
-            </el-select>
+          <el-form-item label="健康归属">
+            <el-tree-select
+              v-model="planQueryScopeKey"
+              :data="inspectionScopeTree"
+              node-key="value"
+              clearable
+              filterable
+              :render-after-expand="false"
+              placeholder="全部现场与主平台"
+              style="width: 230px"
+            />
           </el-form-item>
           <el-form-item label="状态">
             <el-select v-model="planQuery.status" clearable placeholder="全部状态" style="width: 140px">
@@ -651,8 +617,13 @@
             <template #default="scope"><el-tag size="small" type="info" effect="plain">{{ scope.row.labelName || '未分类' }}</el-tag></template>
           </el-table-column>
           <el-table-column label="模板" prop="templateName" min-width="170" show-overflow-tooltip />
-          <el-table-column label="结果汇总" width="105" align="center">
-            <template #default="scope"><el-tag :type="scope.row.planMode === PLAN_MODE_FREQUENT ? 'warning' : 'info'" effect="plain">{{ scope.row.planMode === PLAN_MODE_FREQUENT ? '每日汇总' : '逐次记录' }}</el-tag></template>
+          <el-table-column label="健康归属" min-width="190" show-overflow-tooltip>
+            <template #default="scope">
+              <div class="plan-scope-cell" :class="{ 'is-unassigned': !scope.row.scopeType }">
+                <strong>{{ formatPlanScope(scope.row) }}</strong>
+                <span>{{ scope.row.scopeType === 'MAIN_PLATFORM' ? scope.row.siteName : '现场级' }}</span>
+              </div>
+            </template>
           </el-table-column>
           <el-table-column label="执行周期" min-width="200" show-overflow-tooltip>
             <template #default="scope">{{ formatCronConfig(scope.row) }}</template>
@@ -1947,19 +1918,6 @@
     <el-dialog v-model="planDialogOpen" :aria-label="planForm.planId ? '编辑巡检计划' : '新增巡检计划'" width="860px" append-to-body class="auto-dialog">
       <template #header="{ titleId, titleClass }"><div :id="titleId" :class="titleClass" class="dialog-title"><span>{{ planForm.planId ? '编辑计划' : '新增计划' }}</span><strong>可视化执行周期</strong></div></template>
       <el-form ref="planRef" :model="planForm" :rules="planRules" label-position="top" label-width="auto" class="inspection-standard-form plan-editor-form">
-        <section class="plan-mode-section">
-          <el-form-item label="结果汇总方式">
-            <el-segmented v-model="planForm.planMode" class="motion-segmented" :options="planModeOptions" @change="handlePlanModeChange">
-              <template #default="{ item }">
-                <span class="motion-control-label">
-                  <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
-                  <span class="motion-control-label__text">{{ item.label }}</span>
-                </span>
-              </template>
-            </el-segmented>
-          </el-form-item>
-          <span>{{ planForm.planMode === PLAN_MODE_FREQUENT ? '执行周期可自由配置，结果按日期汇总健康度，原始执行可在日期详情中查看。' : '每次执行生成一条完整巡检记录，适合需要逐次确认和导出的任务。' }}</span>
-        </section>
         <el-row :gutter="16">
           <el-col :span="12"><el-form-item label="计划名称" prop="planName"><el-input v-model="planForm.planName" /></el-form-item></el-col>
           <el-col :span="12">
@@ -1967,6 +1925,20 @@
               <el-select v-model="planForm.labelName" filterable allow-create clearable default-first-option placeholder="选择或新增标签" style="width: 100%">
                 <el-option v-for="item in inspectionLabelOptions" :key="item" :label="item" :value="item" />
               </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="24">
+            <el-form-item label="健康归属" prop="scopeKey">
+              <el-tree-select
+                v-model="planForm.scopeKey"
+                :data="inspectionScopeTree"
+                node-key="value"
+                filterable
+                :render-after-expand="false"
+                placeholder="选择现场，或选择现场下的主平台"
+                style="width: 100%"
+                @change="handlePlanScopeChange"
+              />
             </el-form-item>
           </el-col>
           <el-col :span="12">
@@ -1984,7 +1956,8 @@
               />
             </el-form-item>
           </el-col>
-          <el-col :span="12"><el-form-item label="状态"><el-radio-group v-model="planForm.status"><el-radio value="0">启用</el-radio><el-radio value="1">暂停</el-radio></el-radio-group></el-form-item></el-col>
+          <el-col :span="6"><el-form-item label="状态"><el-radio-group v-model="planForm.status"><el-radio value="0">启用</el-radio><el-radio value="1">暂停</el-radio></el-radio-group></el-form-item></el-col>
+          <el-col :span="6"><el-form-item label="健康目标"><el-input-number v-model="planForm.healthConfig.healthTarget" :min="0" :max="100" :precision="1" controls-position="right" style="width: 100%" /></el-form-item></el-col>
           <el-col :span="24">
             <el-form-item label="执行周期">
               <div class="schedule-box">
@@ -2013,16 +1986,6 @@
                 <el-alert type="info" :closable="false" show-icon>
                   <template #title>系统生成周期：{{ planForm.cronExpression || '请完善周期配置' }}</template>
                 </el-alert>
-              </div>
-            </el-form-item>
-          </el-col>
-          <el-col v-if="planForm.planMode === PLAN_MODE_FREQUENT" :span="24">
-            <el-form-item label="健康汇总">
-              <div class="plan-health-config">
-                <label><span>生效开始</span><el-time-picker v-model="planForm.healthConfig.activeStartTime" format="HH:mm" value-format="HH:mm" /></label>
-                <label><span>生效结束</span><el-time-picker v-model="planForm.healthConfig.activeEndTime" format="HH:mm" value-format="HH:mm" /></label>
-                <label><span>数据等待</span><el-input-number v-model="planForm.healthConfig.dataDelayMinutes" :min="0" :max="120" controls-position="right" /><em>分钟</em></label>
-                <label><span>健康目标</span><el-input-number v-model="planForm.healthConfig.healthTarget" :min="0" :max="100" :precision="1" controls-position="right" /><em>%</em></label>
               </div>
             </el-form-item>
           </el-col>
@@ -2130,8 +2093,8 @@
     <el-drawer v-model="healthSampleDrawerOpen" size="1280px" append-to-body class="health-sample-drawer">
       <template #header="{ titleId, titleClass }">
         <div :id="titleId" :class="titleClass" class="dialog-title">
-          <span>高频每日检测</span>
-          <strong>{{ healthSampleContext.date }} · {{ healthSampleContext.planName || '当日全部计划' }}</strong>
+          <span>每日健康执行明细</span>
+          <strong>{{ healthSampleContext.date }} · {{ healthSampleContext.planName || healthSampleContext.mainPlatformName || healthSampleContext.siteName || '当日全部计划' }}</strong>
         </div>
       </template>
       <div class="health-sample-summary">
@@ -2335,6 +2298,7 @@ import {
   listAutoInspectionHealthSamples,
   listAutoInspectionPlan,
   listAutoInspectionRecord,
+  listAutoInspectionScopes,
   listAutoInspectionServerAssetTree,
   listAutoInspectionTarget,
   listAutoInspectionTemplate,
@@ -2383,6 +2347,7 @@ const serverAssetTree = ref([])
 const serverAssetMap = ref({})
 const serverAssetNodeMap = ref({})
 const serverAssetNodeKeysMap = ref({})
+const inspectionScopeTree = ref([])
 const allTemplateList = ref([])
 const allPlanList = ref([])
 const targetOptions = ref([])
@@ -2411,10 +2376,12 @@ const planList = ref([])
 const planTotal = ref(0)
 const planRunId = ref(null)
 const planQuery = ref({ pageNum: 1, pageSize: 10, planName: '', labelName: '', templateId: undefined, planMode: '', status: '' })
+const planQueryScopeKey = ref('')
 
 const dashboardLoading = ref(false)
 const dashboardData = ref(defaultDashboardData())
 const dashboardDrawerOpen = ref(false)
+const recordArchiveDrawerOpen = ref(false)
 const operationGuideOpen = ref(false)
 const weekBriefChartRef = ref(null)
 const trendChartRef = ref(null)
@@ -2426,10 +2393,11 @@ const recordList = ref([])
 const recordTotal = ref(0)
 const recordViewMode = ref(route.query.view === 'frequent' ? PLAN_MODE_FREQUENT : PLAN_MODE_ROUTINE)
 const recordViewMotionDirection = ref(recordViewMode.value === PLAN_MODE_FREQUENT ? 'forward' : 'backward')
-const recordQuery = ref({ pageNum: 1, pageSize: 20, templateId: undefined, planId: undefined, sourceType: '', resultStatus: '', runMode: PLAN_MODE_ROUTINE })
+const recordQuery = ref({ pageNum: 1, pageSize: 20, templateId: undefined, planId: undefined, sourceType: '', resultStatus: '', runMode: '' })
 const dailyHealthLoading = ref(false)
 const dailyHealthRows = ref([])
 const dailyHealthMonth = ref(formatMonthParam(new Date()))
+const dailyHealthScopeKey = ref('')
 const dailyHealthPlanId = ref(undefined)
 const applyingOverviewDeepLink = ref(false)
 const healthSampleDrawerOpen = ref(false)
@@ -2504,9 +2472,9 @@ const operationGuideSteps = [
     desc: '自动化巡检把现场服务器资产、巡检工具、模板、计划、记录、每日健康和周报串成闭环。',
     manual: [
       '现场融合管理负责维护现场、平台、服务器和设备资产；自动化巡检负责把这些资产变成可执行的检测目标。',
-      '日常值守先在巡检驾驶舱查看逐次执行与每日汇总形成的健康结论；需要明细时进入巡检总览，配置变更时维护模板和计划。'
+      '日常值守先在巡检驾驶舱查看现场和主平台健康；需要明细时进入巡检总览，配置变更时维护模板、计划和健康归属。'
     ],
-    actions: ['从巡检驾驶舱识别当日总体健康和待处理问题。', '从巡检总览下钻逐次记录或每日健康汇总。', '从巡检配置维护模板、步骤和计划。'],
+    actions: ['从巡检驾驶舱识别异常现场和主平台。', '从巡检总览下钻对应计划和执行记录。', '从巡检配置维护模板、步骤、计划和健康归属。'],
     images: [
       guideImage('01-overview-records.png', '巡检总览优先展示记录和本周情况'),
       guideImage('15-site-management-relation.png', '现场融合管理提供服务器资产来源')
@@ -2596,9 +2564,9 @@ const operationGuideSteps = [
     manual: [
       '巡检计划用于把一个已经验证过的模板交给平台定时任务调度。标签会作为计划目录，模板选择也会按标签树展开。',
       '页面采用可视化周期配置，不要求用户手写 Cron；所有计划都支持每日、每周、每月和间隔执行。',
-      '结果可选择逐次记录或每日汇总；每日汇总额外配置生效时段、数据等待和健康目标。'
+      '计划必须选择所属现场或主平台；所有定时执行统一形成每日健康，原始执行记录自动保留。'
     ],
-    actions: ['选择逐次记录或每日汇总。', '选择巡检模板并配置可视化周期。', '每日汇总计划到“每日健康汇总”查看日期、计划和采样明细。'],
+    actions: ['选择现场或主平台健康归属。', '选择巡检模板并配置可视化周期。', '到巡检总览按日期和归属查看健康及执行明细。'],
     images: [
       guideImage('11-plan-list.png', '巡检计划列表'),
       guideImage('12-plan-dialog.png', '新增巡检计划和可视化周期配置')
@@ -2608,13 +2576,13 @@ const operationGuideSteps = [
     index: '08',
     title: '看板分析和报告归档',
     place: '巡检驾驶舱 / 巡检总览 / 导出周月报',
-    desc: '驾驶舱统一展示逐次执行与每日汇总健康；巡检总览按结果用途保留两类明细下钻和报告导出。',
+    desc: '驾驶舱按现场和主平台展示健康；巡检总览统一按日期归属下钻，并保留完整执行证据和报告导出。',
     manual: [
-      '巡检驾驶舱通过图表统一查看综合健康度、近七日趋势、当前计划状态和待处理问题。',
-      '每日汇总按天展示健康度、计划、异常摘要和缺失采样；点击“查看”打开分页执行记录，展开某一次后查看步骤、子项和判定依据。',
+      '巡检驾驶舱通过图表查看近七日趋势，并分别展示现场和主平台的当日健康与待处理问题。',
+      '巡检总览按天展示现场、主平台、计划、异常摘要和缺失执行；点击“查看”打开分页执行记录，展开某一次后查看步骤、子项和判定依据。',
       '点击“导出周/月报”后，可选择自然周导出 Word 周报，也可选择月份批量导出该月所有自然周周报压缩包，周报开头包含巡检人员和用户签字确认区。'
     ],
-    actions: ['在驾驶舱统一查看逐次执行与每日汇总健康。', '按模板、计划、来源、结果筛选明细。', '按周或按月导出 Word 周报归档。'],
+    actions: ['在驾驶舱查看现场和主平台健康。', '按归属、模板、计划、来源和结果筛选明细。', '按周或按月导出 Word 周报归档。'],
     images: [
       guideImage('02-dashboard-drawer.png', '巡检看板图表和当月日历'),
       guideImage('03-report-export-week.png', '按周导出 Word 周报'),
@@ -2815,7 +2783,8 @@ const templateRules = {
 }
 const planRules = {
   planName: [{ required: true, message: '计划名称不能为空', trigger: 'blur' }],
-  templateId: [{ required: true, message: '请选择模板', trigger: 'change' }]
+  templateId: [{ required: true, message: '请选择模板', trigger: 'change' }],
+  scopeKey: [{ required: true, message: '请选择计划所属现场或主平台', trigger: 'change' }]
 }
 
 const activeStep = computed(() => templateForm.value.steps?.[activeStepIndex.value])
@@ -3143,19 +3112,8 @@ watch(activeTab, () => loadActiveTab())
 watch(configTab, () => {
   if (activeTab.value === 'config') loadConfigTab()
 })
-watch(recordViewMode, (mode) => {
-  if (!applyingOverviewDeepLink.value && mode === PLAN_MODE_FREQUENT) getDailyHealth()
-})
-watch(() => route.query.view, (view) => {
-  if (applyingOverviewDeepLink.value) return
-  const nextMode = view === 'frequent' ? PLAN_MODE_FREQUENT : PLAN_MODE_ROUTINE
-  if (recordViewMode.value !== nextMode) {
-    recordViewMotionDirection.value = nextMode === PLAN_MODE_FREQUENT ? 'forward' : 'backward'
-    recordViewMode.value = nextMode
-  }
-})
-watch([dailyHealthMonth, dailyHealthPlanId], () => {
-  if (!applyingOverviewDeepLink.value && recordViewMode.value === PLAN_MODE_FREQUENT) getDailyHealth()
+watch([dailyHealthMonth, dailyHealthScopeKey, dailyHealthPlanId], () => {
+  if (!applyingOverviewDeepLink.value && activeTab.value === 'dashboard') getDailyHealth()
 })
 
 watch(dashboardDrawerOpen, (open) => {
@@ -3182,18 +3140,22 @@ onBeforeUnmount(() => {
 })
 
 async function initPage() {
-  await Promise.all([getTools(), getServerAssetTree()])
-  await Promise.all([getDashboard(), getTemplateList(), getTemplateOptions(), getPlanList(), getPlanOptions(), getRecordList()])
+  await Promise.all([getTools(), getServerAssetTree(), getInspectionScopeTree()])
+  await Promise.all([getDashboard(), getTemplateList(), getTemplateOptions(), getPlanList(), getPlanOptions(), getRecordList(), getDailyHealth()])
   await applyOverviewDeepLink()
 }
 
 async function applyOverviewDeepLink() {
-  if (route.query.view === 'frequent') {
+  if (route.query.view === 'frequent' || route.query.date) {
     const focusDate = String(route.query.date || '')
     applyingOverviewDeepLink.value = true
     try {
       recordViewMode.value = PLAN_MODE_FREQUENT
       dailyHealthPlanId.value = route.query.planId ? Number(route.query.planId) : undefined
+      dailyHealthScopeKey.value = String(route.query.scopeKey || (
+        route.query.mainPlatformId ? `MAIN_PLATFORM:${route.query.mainPlatformId}`
+          : route.query.siteId ? `SITE:${route.query.siteId}` : ''
+      ))
       if (/^\d{4}-\d{2}-\d{2}$/.test(focusDate)) dailyHealthMonth.value = focusDate.slice(0, 7)
       await getDailyHealth()
       if (route.query.openSamples === '1' && focusDate && dailyHealthPlanId.value) {
@@ -3270,7 +3232,7 @@ function resolveAutoInspectionPath(tab) {
 function loadActiveTab() {
   if (activeTab.value === 'dashboard') {
     getDashboard()
-    refreshCurrentRecordView()
+    getDailyHealth()
   }
   if (activeTab.value === 'config') loadConfigTab()
   if (activeTab.value === 'record') {
@@ -3303,6 +3265,12 @@ function getServerAssetTree() {
     serverAssetMap.value = indexed.serverMap
     serverAssetNodeMap.value = indexed.nodeMap
     serverAssetNodeKeysMap.value = indexed.nodeKeysMap
+  })
+}
+
+function getInspectionScopeTree() {
+  return listAutoInspectionScopes().then((res) => {
+    inspectionScopeTree.value = res.data || []
   })
 }
 
@@ -3650,7 +3618,7 @@ function getTargetOptions() {
 
 function getPlanList() {
   planLoading.value = true
-  return listAutoInspectionPlan(planQuery.value).then((res) => {
+  return listAutoInspectionPlan({ ...planQuery.value, ...resolveInspectionScopeQuery(planQueryScopeKey.value) }).then((res) => {
     planList.value = res.rows || []
     planTotal.value = res.total || 0
   }).finally(() => { planLoading.value = false })
@@ -3664,7 +3632,7 @@ function getPlanOptions() {
 
 function getRecordList() {
   recordLoading.value = true
-  return listAutoInspectionRecord({ ...recordQuery.value, runMode: PLAN_MODE_ROUTINE }).then((res) => {
+  return listAutoInspectionRecord(recordQuery.value).then((res) => {
     recordList.value = res.rows || []
     recordTotal.value = res.total || 0
   }).finally(() => { recordLoading.value = false })
@@ -3672,30 +3640,45 @@ function getRecordList() {
 
 function getDailyHealth() {
   const range = resolveMonthDateRange(dailyHealthMonth.value)
+  const scopeQuery = resolveInspectionScopeQuery(dailyHealthScopeKey.value)
   dailyHealthLoading.value = true
   return listAutoInspectionDailyHealth({
     beginDate: range.begin,
     endDate: range.end,
-    planId: dailyHealthPlanId.value
+    planId: dailyHealthPlanId.value,
+    ...scopeQuery
   }).then((res) => {
     dailyHealthRows.value = res.data || []
   }).finally(() => { dailyHealthLoading.value = false })
 }
 
 function refreshCurrentRecordView() {
-  if (recordViewMode.value === PLAN_MODE_FREQUENT) return getDailyHealth()
-  return getRecordList()
+  return Promise.all([getDailyHealth(), getRecordList(), getDashboard()])
 }
 
-function openHealthSamples({ date, group, planId, planName }) {
+function resolveInspectionScopeQuery(scopeKey) {
+  const [scopeType, rawId] = String(scopeKey || '').split(':')
+  const id = Number(rawId)
+  if (!id) return {}
+  if (scopeType === 'SITE') return { siteId: id }
+  if (scopeType === 'MAIN_PLATFORM') return { mainPlatformId: id }
+  return {}
+}
+
+function openHealthSamples({ date, group, planId, planName, siteId, siteName, mainPlatformId, mainPlatformName }) {
   const singlePlan = Array.isArray(group?.plans) && group.plans.length === 1 ? group.plans[0] : null
   const resolvedPlanId = planId ?? group?.planId ?? singlePlan?.planId
   const resolvedPlanName = planName ?? group?.planName ?? singlePlan?.planName ?? ''
+  const activeScope = resolveInspectionScopeQuery(dailyHealthScopeKey.value)
   healthSampleContext.value = {
     date,
     group: group || {},
     planId: resolvedPlanId,
-    planName: resolvedPlanName
+    planName: resolvedPlanName,
+    siteId: siteId ?? activeScope.siteId,
+    siteName: siteName || '',
+    mainPlatformId: mainPlatformId ?? activeScope.mainPlatformId,
+    mainPlatformName: mainPlatformName || ''
   }
   healthSampleQuery.value.pageNum = 1
   healthSampleExpandedKeys.value = []
@@ -3705,7 +3688,7 @@ function openHealthSamples({ date, group, planId, planName }) {
 }
 
 function getHealthSamples() {
-  const { date, planId } = healthSampleContext.value
+  const { date, planId, siteId, mainPlatformId } = healthSampleContext.value
   if (!date) return Promise.resolve()
   healthSampleExpandedKeys.value = []
   healthSampleLoading.value = true
@@ -3713,6 +3696,8 @@ function getHealthSamples() {
     ...healthSampleQuery.value,
     healthDate: date,
     planId: planId ?? dailyHealthPlanId.value,
+    siteId,
+    mainPlatformId,
     resultStatus: healthSampleResultStatus.value === 'ALL' ? undefined : healthSampleResultStatus.value
   }).then((res) => {
     healthSampleRows.value = res.rows || []
@@ -3971,11 +3956,12 @@ function resetTargetQuery() {
 
 function resetPlanQuery() {
   planQuery.value = { pageNum: 1, pageSize: 10, planName: '', labelName: '', templateId: undefined, planMode: '', status: '' }
+  planQueryScopeKey.value = ''
   getPlanList()
 }
 
 function resetRecordQuery() {
-  recordQuery.value = { pageNum: 1, pageSize: 20, templateId: undefined, planId: undefined, sourceType: '', resultStatus: '', runMode: PLAN_MODE_ROUTINE }
+  recordQuery.value = { pageNum: 1, pageSize: 20, templateId: undefined, planId: undefined, sourceType: '', resultStatus: '', runMode: '' }
   getRecordList()
 }
 
@@ -5842,6 +5828,7 @@ function handleUpdatePlan(row) {
     data.cronConfig = parseCronConfig(data.cronConfig) || defaultPlanForm().cronConfig
     data.healthConfig = normalizePlanHealthConfig(data.healthConfig)
     data.planMode = data.planMode === PLAN_MODE_FREQUENT ? PLAN_MODE_FREQUENT : PLAN_MODE_ROUTINE
+    data.scopeKey = resolvePlanScopeKey(data)
     planForm.value = data
     refreshPlanCron()
     planDialogOpen.value = true
@@ -5865,6 +5852,26 @@ function submitPlan() {
 
 function handlePlanModeChange() {
   refreshPlanCron()
+}
+
+function resolvePlanScopeKey(plan) {
+  if (plan?.scopeType === 'MAIN_PLATFORM' && plan.mainPlatformId) return `MAIN_PLATFORM:${plan.mainPlatformId}`
+  if (plan?.scopeType === 'SITE' && plan.siteId) return `SITE:${plan.siteId}`
+  return ''
+}
+
+function handlePlanScopeChange(scopeKey) {
+  const [scopeType, rawId] = String(scopeKey || '').split(':')
+  const id = Number(rawId)
+  planForm.value.scopeType = id ? scopeType : ''
+  planForm.value.siteId = scopeType === 'SITE' && id ? id : undefined
+  planForm.value.mainPlatformId = scopeType === 'MAIN_PLATFORM' && id ? id : undefined
+}
+
+function formatPlanScope(plan) {
+  if (plan?.scopeType === 'MAIN_PLATFORM') return plan.mainPlatformName || '未命名主平台'
+  if (plan?.scopeType === 'SITE') return plan.siteName || '未命名现场'
+  return '待归属'
 }
 
 function handlePlanStatusChange(row) {
@@ -6061,6 +6068,10 @@ function defaultPlanForm() {
     planName: '',
     labelName: '',
     templateId: undefined,
+    scopeKey: '',
+    scopeType: '',
+    siteId: undefined,
+    mainPlatformId: undefined,
     planMode: PLAN_MODE_ROUTINE,
     reportStyle: 'STANDARD',
     status: '0',
@@ -10888,6 +10899,33 @@ function resultTagType(value) {
 
 .soft-status-tag {
   border-radius: 999px;
+}
+
+.plan-scope-cell {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.plan-scope-cell strong,
+.plan-scope-cell span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.plan-scope-cell strong {
+  color: var(--app-heading);
+  font-size: 13px;
+}
+
+.plan-scope-cell span {
+  color: var(--app-muted);
+  font-size: 11px;
+}
+
+.plan-scope-cell.is-unassigned strong {
+  color: var(--el-color-warning-dark-2);
 }
 
 @media (max-width: 1200px) {

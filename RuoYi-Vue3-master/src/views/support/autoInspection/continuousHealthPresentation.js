@@ -26,76 +26,152 @@ export function healthStatusType(status) {
   return 'info'
 }
 
+function normalizePlanRow(source) {
+  return {
+    ...source,
+    healthDate: normalizeHealthDate(source.healthDate),
+    healthScore: clampHealthScore(source.healthScore),
+    expectedCount: Number(source.expectedCount || 0),
+    completedCount: Number(source.completedCount || 0),
+    normalCount: Number(source.normalCount || 0),
+    warningCount: Number(source.warningCount || 0),
+    abnormalCount: Number(source.abnormalCount || 0),
+    skippedCount: Number(source.skippedCount || 0),
+    missingCount: Number(source.missingCount || 0)
+  }
+}
+
+function aggregatePlanRows(plans = []) {
+  const result = {
+    plans,
+    dayStatus: '3',
+    expectedCount: 0,
+    completedCount: 0,
+    normalCount: 0,
+    warningCount: 0,
+    abnormalCount: 0,
+    skippedCount: 0,
+    missingCount: 0,
+    healthScore: 0,
+    abnormalSummary: '',
+    recovered: false
+  }
+  plans.forEach((plan) => {
+    ;['expectedCount', 'completedCount', 'normalCount', 'warningCount', 'abnormalCount', 'skippedCount', 'missingCount']
+      .forEach((key) => { result[key] += Number(plan[key] || 0) })
+    if ((STATUS_PRIORITY[plan.dayStatus] || 0) > (STATUS_PRIORITY[result.dayStatus] || 0)) result.dayStatus = plan.dayStatus
+  })
+  const denominator = Math.max(result.expectedCount, result.completedCount)
+  result.healthScore = denominator > 0 ? Number(((result.normalCount / denominator) * 100).toFixed(2)) : 0
+  result.recovered = result.dayStatus === '2' && plans.length > 0 && plans.every((plan) => plan.lastResultStatus !== '2')
+  const summaryPlan = plans.find((plan) => plan.dayStatus === '2' && plan.lastResultStatus === '2' && plan.abnormalSummary)
+    || plans.find((plan) => plan.dayStatus === '2' && plan.abnormalSummary)
+    || plans.find((plan) => plan.dayStatus === '4' && plan.abnormalSummary)
+    || plans.find((plan) => plan.abnormalSummary)
+  result.abnormalSummary = summaryPlan?.abnormalSummary || ''
+  return result
+}
+
+function compareHealthRows(left, right) {
+  const statusDifference = (STATUS_PRIORITY[right.dayStatus] || 0) - (STATUS_PRIORITY[left.dayStatus] || 0)
+  if (statusDifference) return statusDifference
+  const ongoingDifference = Number(right.lastResultStatus === '2') - Number(left.lastResultStatus === '2')
+  if (ongoingDifference) return ongoingDifference
+  return String(left.name || left.planName || '').localeCompare(String(right.name || right.planName || ''), 'zh-CN')
+}
+
 export function groupDailyHealthRows(rows = []) {
   const groups = new Map()
   rows.forEach((source) => {
     const date = normalizeHealthDate(source.healthDate)
     if (!date) return
-    const plan = {
-      ...source,
-      healthDate: date,
-      healthScore: clampHealthScore(source.healthScore),
-      expectedCount: Number(source.expectedCount || 0),
-      completedCount: Number(source.completedCount || 0),
-      normalCount: Number(source.normalCount || 0),
-      warningCount: Number(source.warningCount || 0),
-      abnormalCount: Number(source.abnormalCount || 0),
-      skippedCount: Number(source.skippedCount || 0),
-      missingCount: Number(source.missingCount || 0)
-    }
+    const plan = normalizePlanRow(source)
     if (!groups.has(date)) {
       groups.set(date, {
         healthDate: date,
-        dayStatus: '3',
         plans: [],
-        expectedCount: 0,
-        completedCount: 0,
-        normalCount: 0,
-        warningCount: 0,
-        abnormalCount: 0,
-        skippedCount: 0,
-        missingCount: 0,
-        healthScore: 0,
-        abnormalSummary: '',
-        recovered: false
+        siteMap: new Map(),
+        unassignedPlans: []
       })
     }
     const group = groups.get(date)
     group.plans.push(plan)
-    ;['expectedCount', 'completedCount', 'normalCount', 'warningCount', 'abnormalCount', 'skippedCount', 'missingCount']
-      .forEach((key) => { group[key] += plan[key] })
-    if ((STATUS_PRIORITY[plan.dayStatus] || 0) > (STATUS_PRIORITY[group.dayStatus] || 0)) group.dayStatus = plan.dayStatus
+    const siteId = Number(plan.siteId || 0)
+    if (!siteId) {
+      group.unassignedPlans.push(plan)
+      return
+    }
+    if (!group.siteMap.has(siteId)) {
+      group.siteMap.set(siteId, {
+        siteId,
+        siteName: plan.siteName || `现场 ${siteId}`,
+        name: plan.siteName || `现场 ${siteId}`,
+        sitePlans: [],
+        platformMap: new Map()
+      })
+    }
+    const site = group.siteMap.get(siteId)
+    const mainPlatformId = Number(plan.mainPlatformId || 0)
+    if (plan.scopeType === 'MAIN_PLATFORM' && mainPlatformId) {
+      if (!site.platformMap.has(mainPlatformId)) {
+        site.platformMap.set(mainPlatformId, {
+          mainPlatformId,
+          mainPlatformName: plan.mainPlatformName || `主平台 ${mainPlatformId}`,
+          name: plan.mainPlatformName || `主平台 ${mainPlatformId}`,
+          plans: []
+        })
+      }
+      site.platformMap.get(mainPlatformId).plans.push(plan)
+    } else {
+      site.sitePlans.push(plan)
+    }
   })
 
   return Array.from(groups.values()).map((group) => {
-    const denominator = Math.max(group.expectedCount, group.completedCount)
-    group.healthScore = denominator > 0 ? Number(((group.normalCount / denominator) * 100).toFixed(2)) : 0
-    group.recovered = group.dayStatus === '2' && group.plans.every((plan) => plan.lastResultStatus !== '2')
-    group.plans.sort((a, b) => {
-      const statusDifference = (STATUS_PRIORITY[b.dayStatus] || 0) - (STATUS_PRIORITY[a.dayStatus] || 0)
-      if (statusDifference) return statusDifference
-      const ongoingDifference = Number(b.lastResultStatus === '2') - Number(a.lastResultStatus === '2')
-      if (ongoingDifference) return ongoingDifference
-      return String(a.planName || '').localeCompare(String(b.planName || ''), 'zh-CN')
-    })
-    const summaryPlan = group.plans.find((plan) => plan.dayStatus === '2' && plan.lastResultStatus === '2' && plan.abnormalSummary)
-      || group.plans.find((plan) => plan.dayStatus === '2' && plan.abnormalSummary)
-      || group.plans.find((plan) => plan.dayStatus === '4' && plan.abnormalSummary)
-      || group.plans.find((plan) => plan.abnormalSummary)
-    group.abnormalSummary = summaryPlan?.abnormalSummary || ''
-    return group
+    const sites = Array.from(group.siteMap.values()).map((site) => {
+      const platforms = Array.from(site.platformMap.values()).map((platform) => ({
+        ...platform,
+        ...aggregatePlanRows(platform.plans.sort(compareHealthRows))
+      })).sort(compareHealthRows)
+      const allPlans = [...site.sitePlans, ...platforms.flatMap((platform) => platform.plans)]
+      return {
+        ...site,
+        platforms,
+        ...aggregatePlanRows(allPlans.sort(compareHealthRows))
+      }
+    }).sort(compareHealthRows)
+    const assignedPlans = sites.flatMap((site) => site.plans)
+    return {
+      healthDate: group.healthDate,
+      sites,
+      unassignedPlans: group.unassignedPlans.sort(compareHealthRows),
+      ...aggregatePlanRows(assignedPlans),
+      planCount: group.plans.length,
+      assignedPlanCount: assignedPlans.length
+    }
   }).sort((a, b) => b.healthDate.localeCompare(a.healthDate))
 }
 
 export function summarizeDailyHealth(groups = []) {
   const active = groups.filter((item) => Number(item.completedCount || 0) > 0 || Number(item.expectedCount || 0) > 0)
-  const expected = active.reduce((sum, item) => sum + Number(item.expectedCount || 0), 0)
-  const normal = active.reduce((sum, item) => sum + Number(item.normalCount || 0), 0)
+  const siteKeys = new Set()
+  const platformKeys = new Set()
+  const abnormalSites = new Set()
+  const unassignedPlans = new Set()
+  groups.forEach((group) => {
+    group.sites?.forEach((site) => {
+      siteKeys.add(site.siteId)
+      if (site.dayStatus === '2') abnormalSites.add(site.siteId)
+      site.platforms?.forEach((platform) => platformKeys.add(`${site.siteId}:${platform.mainPlatformId}`))
+    })
+    group.unassignedPlans?.forEach((plan) => unassignedPlans.add(plan.planId || plan.planName))
+  })
   return {
     dayCount: active.length,
-    healthScore: expected > 0 ? Number(((normal / expected) * 100).toFixed(1)) : 0,
-    abnormalDays: active.filter((item) => item.dayStatus === '2').length,
-    warningDays: active.filter((item) => item.dayStatus === '4').length
+    siteCount: siteKeys.size,
+    platformCount: platformKeys.size,
+    abnormalSiteCount: abnormalSites.size,
+    unassignedPlanCount: unassignedPlans.size
   }
 }
 

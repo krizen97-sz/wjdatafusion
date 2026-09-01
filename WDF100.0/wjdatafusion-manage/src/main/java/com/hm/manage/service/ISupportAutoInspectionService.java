@@ -25,6 +25,7 @@ import com.hm.manage.domain.vo.AutoInspectionDashboardVo;
 import com.hm.manage.domain.vo.AutoInspectionRecordDetailVo;
 import com.hm.manage.domain.vo.AutoInspectionRunResultVo;
 import com.hm.manage.domain.vo.AutoInspectionServerAssetNodeVo;
+import com.hm.manage.domain.vo.AutoInspectionScopeNodeVo;
 import com.hm.manage.domain.vo.AutoInspectionTargetPreviewVo;
 
 public interface ISupportAutoInspectionService
@@ -36,6 +37,8 @@ public interface ISupportAutoInspectionService
     SupportAutoInspectionTarget selectTargetById(Long targetId);
 
     List<AutoInspectionServerAssetNodeVo> selectServerAssetTree();
+
+    List<AutoInspectionScopeNodeVo> selectScopeTree();
 
     AutoInspectionCredentialVo selectServerCredentialPlain(Long serverId, String username);
 

@@ -20,6 +20,12 @@ public interface SupportAutoInspectionMapper
 
     List<Map<String, Object>> selectServerAssetTreeRows();
 
+    List<Map<String, Object>> selectScopeTreeRows();
+
+    Map<String, Object> selectSiteScopeById(Long siteId);
+
+    Map<String, Object> selectMainPlatformScopeById(Long mainPlatformId);
+
     int insertTarget(Map<String, Object> target);
 
     int updateTarget(Map<String, Object> target);

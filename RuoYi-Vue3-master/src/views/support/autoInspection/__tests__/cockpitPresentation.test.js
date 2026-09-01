@@ -8,10 +8,13 @@ import {
   RESULT_WARNING,
   buildCurrentStatusDistribution,
   filterPlanHealth,
+  filterScopeHealth,
   formatHealthScore,
+  groupPlanHealthByScope,
   healthStatusLabel,
   normalizeCockpitDashboard,
-  normalizeHealthScore
+  normalizeHealthScore,
+  summarizeScopeHealth
 } from '../cockpitPresentation.js'
 
 const cockpitSource = readFileSync(new URL('../cockpit.vue', import.meta.url), 'utf8')
@@ -64,16 +67,35 @@ test('current status distribution always exposes all four business states', () =
   assert.deepEqual(result.map((item) => item.value), [2, 1, 1, 0])
 })
 
-test('cockpit presents only today scheduled plans and their schedule', () => {
-  assert.ok(cockpitSource.includes('<h2>今日计划状态</h2>'))
-  assert.ok(cockpitSource.includes('<h2>今日计划健康清单</h2>'))
-  assert.ok(cockpitSource.includes('label="今日安排"'))
-  assert.ok(cockpitSource.includes("scope.row.todaySchedule || '-'"))
-  assert.ok(cockpitSource.includes('今天没有需要执行的巡检计划'))
-  assert.ok(cockpitSource.includes('逐次记录'))
-  assert.ok(cockpitSource.includes('每日汇总'))
-  assert.ok(!cockpitSource.includes('例行巡检'))
-  assert.ok(!cockpitSource.includes('高频健康'))
+test('cockpit groups today plans by site and main platform', () => {
+  const grouped = groupPlanHealthByScope([
+    { planId: 1, planName: '现场公共巡检', scopeType: 'SITE', siteId: 2, siteName: '武进分局', expectedCount: 1, completedCount: 1, normalCount: 1, resultStatus: RESULT_NORMAL },
+    { planId: 2, planName: 'TIM巡检', scopeType: 'MAIN_PLATFORM', siteId: 2, siteName: '武进分局', mainPlatformId: 19, mainPlatformName: 'TIM平台', expectedCount: 12, completedCount: 11, normalCount: 10, warningCount: 1, resultStatus: RESULT_WARNING },
+    { planId: 3, planName: '待归属计划', expectedCount: 1, completedCount: 1, normalCount: 1, resultStatus: RESULT_NORMAL }
+  ])
+
+  assert.equal(grouped.sites.length, 1)
+  assert.equal(grouped.sites[0].children.length, 1)
+  assert.equal(grouped.sites[0].resultStatus, RESULT_WARNING)
+  assert.equal(grouped.unassigned.length, 1)
+  assert.equal(filterScopeHealth(grouped.sites, 'TIM').length, 1)
+  assert.deepEqual(summarizeScopeHealth(grouped.sites, grouped.unassigned), {
+    siteCount: 1,
+    platformCount: 1,
+    abnormalSiteCount: 0,
+    warningSiteCount: 1,
+    unassignedPlanCount: 1
+  })
+})
+
+test('cockpit presents today health by site and main platform', () => {
+  assert.ok(cockpitSource.includes('<h2>今日现场状态</h2>'))
+  assert.ok(cockpitSource.includes('<h2>今日现场与主平台健康</h2>'))
+  assert.ok(cockpitSource.includes('row-key="scopeKey"'))
+  assert.ok(cockpitSource.includes('scope.row.scopeName'))
+  assert.ok(cockpitSource.includes('主平台为最深健康层级'))
+  assert.ok(cockpitSource.includes('待归属计划不参与现场健康计算'))
+  assert.ok(!cockpitSource.includes('今日计划健康清单'))
 })
 
 test('cockpit navigation and compact plan filters remain clean at narrow widths', () => {

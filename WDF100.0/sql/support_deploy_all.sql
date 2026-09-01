@@ -1223,10 +1223,15 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_plan (
   template_id     BIGINT        NOT NULL COMMENT '模板ID',
   plan_name       VARCHAR(120)  NOT NULL COMMENT '计划名称',
   label_name      VARCHAR(64)   DEFAULT NULL COMMENT '标签名称',
-  plan_mode       VARCHAR(16)   DEFAULT 'ROUTINE' COMMENT '结果汇总方式（ROUTINE逐次记录 FREQUENT每日汇总）',
+  plan_mode       VARCHAR(16)   DEFAULT 'ROUTINE' COMMENT '历史执行模式兼容字段（ROUTINE/FREQUENT）',
   cron_expression VARCHAR(255)  NOT NULL COMMENT '系统生成Cron表达式',
   cron_config     TEXT          COMMENT '可视化周期配置JSON',
   health_config   TEXT          COMMENT '每日健康汇总配置JSON',
+  scope_type      VARCHAR(20)   DEFAULT NULL COMMENT '健康归属类型（SITE现场 MAIN_PLATFORM主平台）',
+  site_id         BIGINT        DEFAULT NULL COMMENT '所属现场ID',
+  site_name       VARCHAR(100)  DEFAULT NULL COMMENT '所属现场名称快照',
+  main_platform_id BIGINT       DEFAULT NULL COMMENT '所属主平台ID',
+  main_platform_name VARCHAR(120) DEFAULT NULL COMMENT '所属主平台名称快照',
   job_id          BIGINT        DEFAULT NULL COMMENT '若依定时任务ID',
   report_style    VARCHAR(32)   DEFAULT 'STANDARD' COMMENT '报告样式',
   status          CHAR(1)       DEFAULT '0' COMMENT '状态（0正常 1暂停）',
@@ -1239,6 +1244,8 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_plan (
   KEY idx_sup_auto_plan_label_status (label_name, status),
   KEY idx_sup_auto_plan_template (template_id),
   KEY idx_sup_auto_plan_status (status),
+  KEY idx_sup_auto_plan_site_status (site_id, status),
+  KEY idx_sup_auto_plan_main_status (main_platform_id, status),
   KEY idx_sup_auto_plan_job (job_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='自动化巡检计划';
 
@@ -1246,7 +1253,7 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_record (
   record_id          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '记录ID',
   inspection_time    DATETIME     NOT NULL COMMENT '巡检时间',
   source_type        VARCHAR(16)  DEFAULT 'AUTO' COMMENT '执行来源（AUTO自动 MANUAL手动）',
-  run_mode           VARCHAR(16)  DEFAULT 'ROUTINE' COMMENT '运行模式（ROUTINE例行 FREQUENT高频）',
+  run_mode           VARCHAR(16)  DEFAULT 'ROUTINE' COMMENT '历史执行模式兼容字段（ROUTINE/FREQUENT）',
   schedule_slot_time DATETIME     DEFAULT NULL COMMENT '高频计划归一化采样时隙',
   duration_ms        BIGINT       DEFAULT NULL COMMENT '执行耗时毫秒',
   result_status      CHAR(1)      DEFAULT '3' COMMENT '巡检结果（1正常 2异常 3未检测 4关注）',
@@ -1255,6 +1262,11 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_record (
   template_name      VARCHAR(120) DEFAULT NULL COMMENT '模板名称',
   plan_id            BIGINT       DEFAULT NULL COMMENT '计划ID',
   plan_name          VARCHAR(120) DEFAULT NULL COMMENT '计划名称',
+  scope_type         VARCHAR(20)  DEFAULT NULL COMMENT '执行时健康归属类型快照',
+  site_id            BIGINT       DEFAULT NULL COMMENT '执行时所属现场ID快照',
+  site_name          VARCHAR(100) DEFAULT NULL COMMENT '执行时所属现场名称快照',
+  main_platform_id   BIGINT       DEFAULT NULL COMMENT '执行时所属主平台ID快照',
+  main_platform_name VARCHAR(120) DEFAULT NULL COMMENT '执行时所属主平台名称快照',
   report_style       VARCHAR(32)  DEFAULT 'STANDARD' COMMENT '报告样式',
   enabled_step_count INT          DEFAULT 0 COMMENT '启用步骤数',
   skipped_step_count INT          DEFAULT 0 COMMENT '跳过步骤数',
@@ -1272,6 +1284,8 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_record (
   KEY idx_sup_auto_record_time (inspection_time),
   KEY idx_sup_auto_record_result (result_status, inspection_time),
   KEY idx_sup_auto_record_plan (plan_id, inspection_time),
+  KEY idx_sup_auto_record_site_time (site_id, inspection_time),
+  KEY idx_sup_auto_record_main_time (main_platform_id, inspection_time),
   UNIQUE KEY uk_sup_auto_record_plan_slot (plan_id, schedule_slot_time),
   KEY idx_sup_auto_record_mode_time (run_mode, inspection_time),
   KEY idx_sup_auto_record_template (template_id, inspection_time)
@@ -1368,10 +1382,15 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_probe_state (
 CREATE TABLE IF NOT EXISTS sup_auto_inspection_health_daily (
   summary_id          BIGINT        NOT NULL AUTO_INCREMENT COMMENT '汇总ID',
   health_date         DATE          NOT NULL COMMENT '健康日期',
-  plan_id             BIGINT        NOT NULL COMMENT '高频计划ID',
+  plan_id             BIGINT        NOT NULL COMMENT '巡检计划ID',
   plan_name           VARCHAR(120)  NOT NULL COMMENT '计划名称快照',
   template_id         BIGINT        DEFAULT NULL COMMENT '模板ID',
   template_name       VARCHAR(120)  DEFAULT NULL COMMENT '模板名称快照',
+  scope_type          VARCHAR(20)   DEFAULT NULL COMMENT '健康归属类型快照',
+  site_id             BIGINT        DEFAULT NULL COMMENT '所属现场ID快照',
+  site_name           VARCHAR(100)  DEFAULT NULL COMMENT '所属现场名称快照',
+  main_platform_id    BIGINT        DEFAULT NULL COMMENT '所属主平台ID快照',
+  main_platform_name  VARCHAR(120)  DEFAULT NULL COMMENT '所属主平台名称快照',
   expected_count      INT           DEFAULT 0 COMMENT '截至当前应执行次数',
   completed_count     INT           DEFAULT 0 COMMENT '实际完成次数',
   normal_count        INT           DEFAULT 0 COMMENT '正常采样次数',
@@ -1394,8 +1413,10 @@ CREATE TABLE IF NOT EXISTS sup_auto_inspection_health_daily (
   PRIMARY KEY (summary_id),
   UNIQUE KEY uk_sup_auto_health_day_plan (health_date, plan_id),
   KEY idx_sup_auto_health_plan_date (plan_id, health_date),
-  KEY idx_sup_auto_health_status_date (day_status, health_date)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='自动化巡检高频每日健康汇总';
+  KEY idx_sup_auto_health_status_date (day_status, health_date),
+  KEY idx_sup_auto_health_site_date (site_id, health_date),
+  KEY idx_sup_auto_health_main_date (main_platform_id, health_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='自动化巡检计划每日健康汇总';
 
 INSERT INTO sup_auto_inspection_tool(tool_code, tool_name, tool_type, value_unit, default_compare_rule, default_threshold_value, default_timeout_seconds, default_time_window_minutes, param_schema, built_in_flag, status, create_by, create_time, remark)
 SELECT 'KAFKA_LAG', 'Kafka消费组指标检测', 'KAFKA_LAG', '条', 'MAX', 2000, 10, 0, '{"fields":["topic","consumerGroup","kafkaMetric","evaluationConfig"]}', 'Y', '0', 'admin', NOW(), '一次采集Kafka积压和Offset指标，支持固定阈值或上次结果比较'
@@ -1787,6 +1808,84 @@ ALTER TABLE sup_auto_inspection_plan
   COMMENT '结果汇总方式（ROUTINE逐次记录 FREQUENT每日汇总）';
 ALTER TABLE sup_auto_inspection_plan
   MODIFY COLUMN health_config TEXT COMMENT '每日健康汇总配置JSON';
+
+-- v4.2.0 自动化巡检现场与主平台健康归属
+SET @parts = CONCAT_WS(', ',
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_plan' AND COLUMN_NAME = 'scope_type') = 0, 'ADD COLUMN scope_type VARCHAR(20) DEFAULT NULL COMMENT ''健康归属类型（SITE现场 MAIN_PLATFORM主平台）'' AFTER health_config', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_plan' AND COLUMN_NAME = 'site_id') = 0, 'ADD COLUMN site_id BIGINT DEFAULT NULL COMMENT ''所属现场ID'' AFTER scope_type', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_plan' AND COLUMN_NAME = 'site_name') = 0, 'ADD COLUMN site_name VARCHAR(100) DEFAULT NULL COMMENT ''所属现场名称快照'' AFTER site_id', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_plan' AND COLUMN_NAME = 'main_platform_id') = 0, 'ADD COLUMN main_platform_id BIGINT DEFAULT NULL COMMENT ''所属主平台ID'' AFTER site_name', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_plan' AND COLUMN_NAME = 'main_platform_name') = 0, 'ADD COLUMN main_platform_name VARCHAR(120) DEFAULT NULL COMMENT ''所属主平台名称快照'' AFTER main_platform_id', NULL));
+SET @ddl = IF(@parts = '', 'SELECT 1', CONCAT('ALTER TABLE sup_auto_inspection_plan ', @parts));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @parts = CONCAT_WS(', ',
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_record' AND COLUMN_NAME = 'scope_type') = 0, 'ADD COLUMN scope_type VARCHAR(20) DEFAULT NULL COMMENT ''执行时健康归属类型快照'' AFTER plan_name', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_record' AND COLUMN_NAME = 'site_id') = 0, 'ADD COLUMN site_id BIGINT DEFAULT NULL COMMENT ''执行时所属现场ID快照'' AFTER scope_type', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_record' AND COLUMN_NAME = 'site_name') = 0, 'ADD COLUMN site_name VARCHAR(100) DEFAULT NULL COMMENT ''执行时所属现场名称快照'' AFTER site_id', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_record' AND COLUMN_NAME = 'main_platform_id') = 0, 'ADD COLUMN main_platform_id BIGINT DEFAULT NULL COMMENT ''执行时所属主平台ID快照'' AFTER site_name', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_record' AND COLUMN_NAME = 'main_platform_name') = 0, 'ADD COLUMN main_platform_name VARCHAR(120) DEFAULT NULL COMMENT ''执行时所属主平台名称快照'' AFTER main_platform_id', NULL));
+SET @ddl = IF(@parts = '', 'SELECT 1', CONCAT('ALTER TABLE sup_auto_inspection_record ', @parts));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @parts = CONCAT_WS(', ',
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_health_daily' AND COLUMN_NAME = 'scope_type') = 0, 'ADD COLUMN scope_type VARCHAR(20) DEFAULT NULL COMMENT ''健康归属类型快照'' AFTER template_name', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_health_daily' AND COLUMN_NAME = 'site_id') = 0, 'ADD COLUMN site_id BIGINT DEFAULT NULL COMMENT ''所属现场ID快照'' AFTER scope_type', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_health_daily' AND COLUMN_NAME = 'site_name') = 0, 'ADD COLUMN site_name VARCHAR(100) DEFAULT NULL COMMENT ''所属现场名称快照'' AFTER site_id', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_health_daily' AND COLUMN_NAME = 'main_platform_id') = 0, 'ADD COLUMN main_platform_id BIGINT DEFAULT NULL COMMENT ''所属主平台ID快照'' AFTER site_name', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_health_daily' AND COLUMN_NAME = 'main_platform_name') = 0, 'ADD COLUMN main_platform_name VARCHAR(120) DEFAULT NULL COMMENT ''所属主平台名称快照'' AFTER main_platform_id', NULL));
+SET @ddl = IF(@parts = '', 'SELECT 1', CONCAT('ALTER TABLE sup_auto_inspection_health_daily ', @parts));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @parts = CONCAT_WS(', ',
+  IF((SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_plan' AND INDEX_NAME = 'idx_sup_auto_plan_site_status') = 0, 'ADD INDEX idx_sup_auto_plan_site_status(site_id, status)', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_plan' AND INDEX_NAME = 'idx_sup_auto_plan_main_status') = 0, 'ADD INDEX idx_sup_auto_plan_main_status(main_platform_id, status)', NULL));
+SET @ddl = IF(@parts = '', 'SELECT 1', CONCAT('ALTER TABLE sup_auto_inspection_plan ', @parts));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @parts = CONCAT_WS(', ',
+  IF((SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_record' AND INDEX_NAME = 'idx_sup_auto_record_site_time') = 0, 'ADD INDEX idx_sup_auto_record_site_time(site_id, inspection_time)', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_record' AND INDEX_NAME = 'idx_sup_auto_record_main_time') = 0, 'ADD INDEX idx_sup_auto_record_main_time(main_platform_id, inspection_time)', NULL));
+SET @ddl = IF(@parts = '', 'SELECT 1', CONCAT('ALTER TABLE sup_auto_inspection_record ', @parts));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @parts = CONCAT_WS(', ',
+  IF((SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_health_daily' AND INDEX_NAME = 'idx_sup_auto_health_site_date') = 0, 'ADD INDEX idx_sup_auto_health_site_date(site_id, health_date)', NULL),
+  IF((SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_auto_inspection_health_daily' AND INDEX_NAME = 'idx_sup_auto_health_main_date') = 0, 'ADD INDEX idx_sup_auto_health_main_date(main_platform_id, health_date)', NULL));
+SET @ddl = IF(@parts = '', 'SELECT 1', CONCAT('ALTER TABLE sup_auto_inspection_health_daily ', @parts));
+PREPARE stmt FROM @ddl; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+UPDATE sup_auto_inspection_record r JOIN sup_auto_inspection_plan p ON p.plan_id = r.plan_id
+SET r.scope_type = p.scope_type, r.site_id = p.site_id, r.site_name = p.site_name,
+    r.main_platform_id = p.main_platform_id, r.main_platform_name = p.main_platform_name
+WHERE r.scope_type IS NULL AND p.scope_type IS NOT NULL;
+
+INSERT IGNORE INTO sup_auto_inspection_health_daily(
+  health_date, plan_id, plan_name, template_id, template_name, scope_type, site_id, site_name, main_platform_id, main_platform_name,
+  expected_count, completed_count, normal_count, warning_count, abnormal_count, skipped_count, missing_count, health_score, health_target,
+  day_status, first_abnormal_time, last_abnormal_time, last_run_time, last_result_status, abnormal_summary,
+  create_by, create_time, update_by, update_time)
+SELECT DATE(r.inspection_time), r.plan_id, COALESCE(MAX(r.plan_name), MAX(p.plan_name), '未命名计划'), MAX(r.template_id), MAX(r.template_name),
+       MAX(COALESCE(r.scope_type, p.scope_type)), MAX(COALESCE(r.site_id, p.site_id)), MAX(COALESCE(r.site_name, p.site_name)),
+       MAX(COALESCE(r.main_platform_id, p.main_platform_id)), MAX(COALESCE(r.main_platform_name, p.main_platform_name)),
+       COUNT(1), COUNT(1), SUM(r.result_status = '1'), SUM(r.result_status = '4'), SUM(r.result_status = '2'), SUM(r.result_status = '3'), 0,
+       ROUND(SUM(r.result_status = '1') * 100 / COUNT(1), 2), 99,
+       CASE WHEN SUM(r.result_status = '2') > 0 THEN '2' WHEN SUM(r.result_status = '4') > 0 THEN '4' WHEN SUM(r.result_status = '1') > 0 THEN '1' ELSE '3' END,
+       MIN(CASE WHEN r.result_status = '2' THEN r.inspection_time END), MAX(CASE WHEN r.result_status = '2' THEN r.inspection_time END), MAX(r.inspection_time),
+       SUBSTRING_INDEX(GROUP_CONCAT(r.result_status ORDER BY r.inspection_time DESC, r.record_id DESC), ',', 1),
+       SUBSTRING_INDEX(GROUP_CONCAT(CASE WHEN r.result_status IN ('2', '4') THEN r.abnormal_summary END ORDER BY r.inspection_time DESC, r.record_id DESC SEPARATOR '||'), '||', 1),
+       'system', NOW(), 'system', NOW()
+FROM sup_auto_inspection_record r LEFT JOIN sup_auto_inspection_plan p ON p.plan_id = r.plan_id
+WHERE r.source_type = 'AUTO' AND r.plan_id IS NOT NULL GROUP BY DATE(r.inspection_time), r.plan_id;
+
+UPDATE sup_auto_inspection_health_daily h JOIN sup_auto_inspection_plan p ON p.plan_id = h.plan_id
+SET h.scope_type = p.scope_type, h.site_id = p.site_id, h.site_name = p.site_name,
+    h.main_platform_id = p.main_platform_id, h.main_platform_name = p.main_platform_name
+WHERE h.scope_type IS NULL AND p.scope_type IS NOT NULL;
+
+ALTER TABLE sup_auto_inspection_plan MODIFY COLUMN plan_mode VARCHAR(16) DEFAULT 'ROUTINE' COMMENT '历史执行模式兼容字段（ROUTINE/FREQUENT）';
+ALTER TABLE sup_auto_inspection_record MODIFY COLUMN run_mode VARCHAR(16) DEFAULT 'ROUTINE' COMMENT '历史执行模式兼容字段（ROUTINE/FREQUENT）';
+ALTER TABLE sup_auto_inspection_health_daily COMMENT='自动化巡检计划每日健康汇总';
 
 -- v3.17.0 现场融合机房三维摆放与设备上联拓扑
 SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'sup_equipment_room' AND COLUMN_NAME = 'room_width') = 0,

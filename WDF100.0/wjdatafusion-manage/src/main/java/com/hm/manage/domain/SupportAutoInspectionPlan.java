@@ -15,6 +15,11 @@ public class SupportAutoInspectionPlan extends BaseEntity
     private String cronExpression;
     private String cronConfig;
     private String healthConfig;
+    private String scopeType;
+    private Long siteId;
+    private String siteName;
+    private Long mainPlatformId;
+    private String mainPlatformName;
     private Long jobId;
     private String reportStyle;
     private String status;
@@ -38,6 +43,16 @@ public class SupportAutoInspectionPlan extends BaseEntity
     public void setCronConfig(String cronConfig) { this.cronConfig = cronConfig; }
     public String getHealthConfig() { return healthConfig; }
     public void setHealthConfig(String healthConfig) { this.healthConfig = healthConfig; }
+    public String getScopeType() { return scopeType; }
+    public void setScopeType(String scopeType) { this.scopeType = scopeType; }
+    public Long getSiteId() { return siteId; }
+    public void setSiteId(Long siteId) { this.siteId = siteId; }
+    public String getSiteName() { return siteName; }
+    public void setSiteName(String siteName) { this.siteName = siteName; }
+    public Long getMainPlatformId() { return mainPlatformId; }
+    public void setMainPlatformId(Long mainPlatformId) { this.mainPlatformId = mainPlatformId; }
+    public String getMainPlatformName() { return mainPlatformName; }
+    public void setMainPlatformName(String mainPlatformName) { this.mainPlatformName = mainPlatformName; }
     public Long getJobId() { return jobId; }
     public void setJobId(Long jobId) { this.jobId = jobId; }
     public String getReportStyle() { return reportStyle; }
