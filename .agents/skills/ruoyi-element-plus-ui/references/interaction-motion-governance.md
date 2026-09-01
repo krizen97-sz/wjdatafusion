@@ -39,7 +39,7 @@ effect and at most one supporting effect.
 | --- | --- | --- | --- |
 | Dense CRUD table | color, focus, 1px press | none | lift on link actions, ripple, content slide |
 | Application-level Tabs | native active bar, icon/text state | short related-content handoff | card-style tabs, duplicate underline, scale |
-| Compact result filter | native selected surface, semantic icon | neutral edge and light elevation | accent underline, separate colored pill per state |
+| Compact result filter | native selected surface, semantic icon | one light shadow | selected border, accent underline, separate colored pill per state |
 | Workspace entrance | normal button semantics | 2px directional icon nudge | permanent glow or whole-button travel |
 | Submit/execute action | real loading/error | bounded ripple, real success morph | timer success, repeated pulse, fake progress |
 | Audio/model/import flow | real `el-steps` state | keyed phase content, live-state pulse | invented phases, percentages, autoplay |
@@ -207,9 +207,9 @@ view/technical view, all/abnormal/normal, or routine/frequent.
 - Use the selected surface for current choice; semantic status icon color can
   remain meaningful, but never turn every segment into a different colored button.
 - When the selected surface already changes background, do not add a lower active
-  rail. Use the moving surface, a neutral one-pixel edge, light elevation, and
-  heading-color bold text plus primary/semantic icon state so the control remains
-  vertically balanced without over-coloring the label.
+  rail or selection border. Use the moving surface, one light shadow, heading-color
+  bold text, and primary/semantic icon state so the control remains vertically
+  balanced without drawing a box around the selected label.
 - Use `block` only when equal-width distribution helps the local layout.
 - Keep labels short. At narrow widths, wrap the toolbar or allow an intentional
   local overflow strategy instead of shrinking targets below a usable size.

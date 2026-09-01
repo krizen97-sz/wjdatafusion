@@ -157,9 +157,7 @@
 
 .el-segmented__item-selected {
   border-radius: calc(var(--motion-control-radius) - 2px);
-  box-shadow:
-    0 1px 2px color-mix(in srgb, var(--app-heading) 8%, transparent),
-    inset 0 0 0 1px var(--surface-border-strong);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--app-heading) 10%, transparent);
   transition:
     transform var(--motion-duration-base) var(--motion-ease-standard),
     width var(--motion-duration-base) var(--motion-ease-standard),

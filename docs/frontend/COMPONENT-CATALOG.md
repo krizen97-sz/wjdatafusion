@@ -32,7 +32,7 @@
 | 能力 | 用法 | 适用场景 | 禁止范围 |
 | --- | --- | --- | --- |
 | 精准活动轨道 | `el-tabs.motion-tabs` | 应用级内容 Tabs | 不手写 div Tabs 或第二条活动线 |
-| 语义分段滑动面 | `el-segmented.motion-segmented` | 全部/异常/正常、业务/技术等互斥筛选 | 选中背景已表达状态，不叠加下划线；不替代普通查询条件或多选 |
+| 语义分段滑动面 | `el-segmented.motion-segmented` | 全部/异常/正常、业务/技术等互斥筛选 | 选中背景已表达状态，只用单层轻阴影，不叠加选中边框或下划线；不替代普通查询条件或多选 |
 | 图标文字标签 | `.motion-control-label` + `SvgIcon` | Tabs / Segmented 的 label/default slot | 不写内联 SVG 或 Emoji |
 | 应用入口反馈 | `.motion-entry-action`，必要时设置 `data-motion-direction` | 驾驶舱、编辑器、独立工作区入口 | 查询、重置、取消、表格行操作 |
 | 执行状态层 | `.motion-execute-action` + `v-motion-ripple` | 明确提交、上传、发布、扫描、执行 | 全局按钮、危险删除、link/text 按钮 |

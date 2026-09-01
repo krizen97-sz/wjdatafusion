@@ -77,7 +77,8 @@ full mapping when Apple/HIG styling is explicit:
 
 - The selected RYNEW direction is **Precision Rail**: Tabs use the native moving
   active bar, while Segmented controls use their native moving selected surface
-  without a second underline. Ordinary actions use quiet surface and 1px press
+  without a second underline or selected border; one light shadow is the only
+  selected-surface depth cue. Ordinary actions use quiet surface and 1px press
   feedback; entry, ripple, success morph, and directional content are explicit
   opt-ins. Do not reintroduce the historical icon pop/scale/glow style.
 - Motion must explain feedback, state, continuity, or progress. Routine admin
