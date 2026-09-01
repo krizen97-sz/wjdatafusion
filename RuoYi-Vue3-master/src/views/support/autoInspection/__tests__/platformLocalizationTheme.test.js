@@ -192,6 +192,8 @@ test('precision rail motion is semantic, opt-in where needed and reduced-motion 
   }
   assert.ok(cockpit.includes('motion-segmented cockpit-plan-mode'))
   assert.ok(cockpit.includes('keyline-layout-dashboard'))
+  assert.ok(cockpit.includes('class="cockpit-panel__description"'))
+  assert.ok(!cockpit.includes('.cockpit-panel__head span {'))
   assert.ok(recordDrawer.includes('operation-filter motion-segmented'))
   assert.ok(documentWorkspace.includes('permission-filter motion-segmented'))
   assert.ok(!overview.includes('<el-steps'))

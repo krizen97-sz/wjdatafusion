@@ -63,7 +63,7 @@
         <header class="cockpit-panel__head">
           <div>
             <h2>近七日综合健康趋势</h2>
-            <span>折线为综合健康度，柱状分别表示例行次数和高频完成采样</span>
+            <span class="cockpit-panel__description">折线为综合健康度，柱状分别表示例行次数和高频完成采样</span>
           </div>
           <div class="cockpit-status-legend" aria-label="健康状态图例">
             <span><i class="is-normal"></i>健康</span>
@@ -94,7 +94,7 @@
         <header class="cockpit-panel__head">
           <div>
             <h2>今日计划状态</h2>
-            <span>按计划周期筛选今天需要执行的例行与高频计划</span>
+            <span class="cockpit-panel__description">按计划周期筛选今天需要执行的例行与高频计划</span>
           </div>
         </header>
         <div v-if="hasPlanData" ref="distributionChartRef" class="cockpit-chart cockpit-chart--distribution"></div>
@@ -112,7 +112,7 @@
       <header class="cockpit-panel__head cockpit-panel__head--controls">
         <div>
           <h2>今日计划健康清单</h2>
-          <span>只展示按当前周期配置今天需要执行的计划，异常和需关注计划优先</span>
+          <span class="cockpit-panel__description">只展示按当前周期配置今天需要执行的计划，异常和需关注计划优先</span>
         </div>
         <div class="cockpit-plan-filters">
           <el-segmented v-model="planModeFilter" class="motion-segmented cockpit-plan-mode" :options="planModeOptions" aria-label="今日计划类型筛选">
@@ -192,7 +192,7 @@
         <header class="cockpit-panel__head">
           <div>
             <h2>待处理问题</h2>
-            <span>例行异常、高频异常与采样缺失统一排列</span>
+            <span class="cockpit-panel__description">例行异常、高频异常与采样缺失统一排列</span>
           </div>
           <el-button link type="primary" @click="openOverview()">查看全部记录</el-button>
         </header>
@@ -214,7 +214,7 @@
         <header class="cockpit-panel__head">
           <div>
             <h2>最近例行执行</h2>
-            <span>用于快速回到完整步骤和目标明细</span>
+            <span class="cockpit-panel__description">用于快速回到完整步骤和目标明细</span>
           </div>
         </header>
         <el-empty v-if="!dashboard.recentRecords.length" description="今天暂无例行巡检记录" :image-size="54" />
@@ -530,7 +530,7 @@ function issueKey(item) {
 }
 
 .cockpit-commandbar p,
-.cockpit-panel__head span {
+.cockpit-panel__description {
   margin: 4px 0 0;
   color: var(--app-muted);
   font-size: 12px;
