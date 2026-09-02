@@ -88,17 +88,36 @@
         v-else
         :key="day.healthDate"
         class="continuous-health-day"
-        :class="{ 'continuous-health-day--abnormal': day.dayStatus === '2' }"
+        :class="{
+          'continuous-health-day--abnormal': day.dayStatus === '2',
+          'is-expanded': expandedDate === day.healthDate
+        }"
       >
         <header class="continuous-health-day__head">
-          <div class="continuous-health-day__date">
-            <strong>{{ datePresentation(day.healthDate).label }}</strong>
-            <span>{{ datePresentation(day.healthDate).dateKey || '-' }} · {{ datePresentation(day.healthDate).weekday }}</span>
-          </div>
-          <div class="continuous-health-day__status">
-            <el-tag :type="healthStatusType(day.dayStatus)" effect="plain">
-              {{ healthStatusLabel(day.dayStatus, day.recovered) }}
-            </el-tag>
+          <button
+            type="button"
+            class="continuous-health-day__toggle"
+            :aria-expanded="expandedDate === day.healthDate"
+            :aria-controls="`continuous-health-day-${day.healthDate}`"
+            @click="toggleDay(day.healthDate)"
+          >
+            <span class="continuous-health-day__date">
+              <strong>{{ datePresentation(day.healthDate).label }}</strong>
+              <span>{{ datePresentation(day.healthDate).dateKey || '-' }} · {{ datePresentation(day.healthDate).weekday }}</span>
+            </span>
+            <span class="continuous-health-day__status">
+              <el-tag :type="healthStatusType(day.dayStatus)" effect="plain">
+                {{ healthStatusLabel(day.dayStatus, day.recovered) }}
+              </el-tag>
+            </span>
+            <span class="continuous-health-day__facts">
+              <span>现场 <strong>{{ day.sites.length }}</strong></span>
+              <span>计划 <strong>{{ day.planCount }}</strong></span>
+              <span>完成 <strong>{{ day.completedCount }}/{{ day.expectedCount }}</strong></span>
+            </span>
+            <el-icon class="continuous-health-day__arrow"><ArrowRight /></el-icon>
+          </button>
+          <div class="continuous-health-day__actions">
             <el-popover placement="top" :width="360" trigger="click">
               <template #reference>
                 <el-button text circle class="continuous-health-status-help" aria-label="查看当日结论说明">
@@ -113,22 +132,22 @@
                 </div>
               </div>
             </el-popover>
-          </div>
-          <div class="continuous-health-day__facts">
-            <span>现场 <strong>{{ day.sites.length }}</strong></span>
-            <span>计划 <strong>{{ day.planCount }}</strong></span>
-            <span>完成 <strong>{{ day.completedCount }}/{{ day.expectedCount }}</strong></span>
             <el-button v-if="day.abnormalCount" link type="danger" @click="openDayResults(day, '2')">异常 {{ day.abnormalCount }}</el-button>
             <span v-else>异常 <strong>0</strong></span>
             <el-button v-if="day.warningCount" link type="warning" @click="openDayResults(day, '4')">关注 {{ day.warningCount }}</el-button>
             <span v-else>关注 <strong>0</strong></span>
             <el-button v-if="day.missingCount" link type="warning" @click="openDayResults(day, '3')">缺失 {{ day.missingCount }}</el-button>
             <span v-else>缺失 <strong>0</strong></span>
+            <el-button type="primary" link :icon="View" @click="openDayResults(day)">查看当天</el-button>
           </div>
-          <el-button type="primary" link :icon="View" @click="openDayResults(day)">查看当天</el-button>
         </header>
 
-        <div class="scope-health-detail">
+        <el-collapse-transition>
+        <div
+          v-show="expandedDate === day.healthDate"
+          :id="`continuous-health-day-${day.healthDate}`"
+          class="scope-health-detail"
+        >
           <el-alert
             v-if="day.unassignedPlans.length"
             type="warning"
@@ -243,6 +262,7 @@
               </el-table>
           </article>
         </div>
+        </el-collapse-transition>
       </section>
     </div>
 
@@ -284,16 +304,20 @@ const emit = defineEmits(['update:month', 'update:scopeKey', 'update:planId', 'd
 const groupedRows = computed(() => groupDailyHealthRows(props.rows))
 const pageNum = ref(1)
 const pageSize = ref(10)
+const expandedDate = ref('')
 const pagedRows = computed(() => paginateDailyHealthRows(groupedRows.value, pageNum.value, pageSize.value))
 const summary = computed(() => summarizeDailyHealth(groupedRows.value))
 
 watch(() => [props.month, props.scopeKey, props.planId], () => {
   pageNum.value = 1
+  expandedDate.value = resolveDefaultExpandedDate(groupedRows.value.map((item) => item.healthDate))
 })
 
 watch(() => groupedRows.value.map((item) => item.healthDate), (dates) => {
   const lastPage = Math.max(1, Math.ceil(dates.length / pageSize.value))
   if (pageNum.value > lastPage) pageNum.value = lastPage
+  const pageDates = paginateDailyHealthRows(dates, pageNum.value, pageSize.value)
+  if (!pageDates.includes(expandedDate.value)) expandedDate.value = resolveDefaultExpandedDate(pageDates)
 }, { immediate: true })
 
 function datePresentation(value) {
@@ -303,6 +327,25 @@ function datePresentation(value) {
 function handlePagination({ page, limit }) {
   pageNum.value = page
   pageSize.value = limit
+  expandedDate.value = resolveDefaultExpandedDate(paginateDailyHealthRows(
+    groupedRows.value.map((item) => item.healthDate),
+    page,
+    limit
+  ))
+}
+
+function todayDateKey() {
+  const today = new Date()
+  return [today.getFullYear(), String(today.getMonth() + 1).padStart(2, '0'), String(today.getDate()).padStart(2, '0')].join('-')
+}
+
+function resolveDefaultExpandedDate(dates = []) {
+  const today = todayDateKey()
+  return dates.includes(today) ? today : ''
+}
+
+function toggleDay(date) {
+  expandedDate.value = expandedDate.value === date ? '' : date
 }
 
 function emitResults(payload, resultStatus) {
@@ -487,13 +530,39 @@ const statusGuide = [
 
 .continuous-health-day__head {
   display: grid;
-  grid-template-columns: 154px 132px minmax(420px, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   min-height: 64px;
-  padding: 9px 14px;
+  padding-right: 14px;
   border-bottom: 1px solid var(--surface-border);
   background: var(--surface-muted);
+}
+
+.continuous-health-day__toggle {
+  display: grid;
+  grid-template-columns: 154px 132px minmax(260px, 1fr) 24px;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  min-height: 63px;
+  padding: 9px 12px 9px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--app-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.continuous-health-day__toggle:hover,
+.continuous-health-day__toggle:focus-visible {
+  background: var(--surface-hover);
+}
+
+.continuous-health-day__toggle:focus-visible {
+  outline: 2px solid var(--el-color-primary-light-5);
+  outline-offset: -2px;
 }
 
 .continuous-health-day__date {
@@ -520,15 +589,14 @@ const statusGuide = [
 .continuous-health-day__facts {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 14px;
   min-width: 0;
   color: var(--app-muted);
   font-size: 12px;
 }
 
-.continuous-health-day__facts > span,
-.continuous-health-day__facts > .el-button {
+.continuous-health-day__facts > span {
   flex: none;
 }
 
@@ -537,9 +605,33 @@ const statusGuide = [
   color: var(--app-heading);
 }
 
-.continuous-health-day__facts :deep(.el-button) {
-  height: auto;
-  padding: 2px 0;
+.continuous-health-day__arrow {
+  color: var(--app-muted);
+  font-size: 16px;
+  transition: transform 180ms ease;
+}
+
+.continuous-health-day.is-expanded .continuous-health-day__arrow {
+  transform: rotate(90deg);
+}
+
+.continuous-health-day__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 306px;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.continuous-health-day__actions > span,
+.continuous-health-day__actions > .el-button {
+  flex: none;
+}
+
+.continuous-health-day__actions strong {
+  color: var(--app-heading);
 }
 
 .scope-health-detail {
@@ -725,7 +817,11 @@ const statusGuide = [
   }
 
   .continuous-health-day__head {
-    grid-template-columns: 142px 124px minmax(360px, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .continuous-health-day__toggle {
+    grid-template-columns: 142px 124px minmax(220px, 1fr) 24px;
   }
 
   .continuous-health-day__facts {

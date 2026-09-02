@@ -196,6 +196,52 @@ export function buildCurrentStatusDistribution(rows = []) {
   ]
 }
 
+export function buildScopeHealthChartRows(sites = [], limit = 10) {
+  const rows = []
+  sites.forEach((site) => {
+    rows.push({
+      ...site,
+      chartName: site.scopeName,
+      scopePath: site.scopeName
+    })
+    site.children?.forEach((platform) => {
+      rows.push({
+        ...platform,
+        chartName: `${site.scopeName} / ${platform.scopeName}`,
+        scopePath: `${site.scopeName} / ${platform.scopeName}`
+      })
+    })
+  })
+  return rows
+    .sort((left, right) => {
+      const statusDifference = (STATUS_PRIORITY[right.resultStatus] || 0) - (STATUS_PRIORITY[left.resultStatus] || 0)
+      if (statusDifference) return statusDifference
+      const scoreDifference = normalizeHealthScore(left.healthScore) - normalizeHealthScore(right.healthScore)
+      return scoreDifference || left.chartName.localeCompare(right.chartName, 'zh-CN')
+    })
+    .slice(0, Math.max(1, Number(limit) || 10))
+}
+
+export function buildPlanCompletionRows(rows = [], limit = 8) {
+  return rows.map((row) => {
+    const expectedCount = Number(row.expectedCount || 0)
+    const completedCount = Number(row.completedCount || 0)
+    return {
+      ...row,
+      chartName: row.planName || '未命名计划',
+      expectedCount,
+      completedCount,
+      pendingCount: Math.max(expectedCount - completedCount, 0),
+      completionRate: expectedCount > 0 ? normalizeHealthScore((completedCount / expectedCount) * 100) : 0
+    }
+  }).sort((left, right) => {
+    const statusDifference = (STATUS_PRIORITY[right.resultStatus] || 0) - (STATUS_PRIORITY[left.resultStatus] || 0)
+    if (statusDifference) return statusDifference
+    const rateDifference = left.completionRate - right.completionRate
+    return rateDifference || left.chartName.localeCompare(right.chartName, 'zh-CN')
+  }).slice(0, Math.max(1, Number(limit) || 8))
+}
+
 export function formatShortDate(value) {
   const text = String(value || '')
   if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return text || '-'
