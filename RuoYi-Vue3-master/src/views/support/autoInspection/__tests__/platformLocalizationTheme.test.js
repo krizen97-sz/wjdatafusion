@@ -193,9 +193,10 @@ test('precision rail motion is semantic, opt-in where needed and reduced-motion 
     assert.ok(overview.includes(marker), `missing overview motion contract: ${marker}`)
   }
   assert.ok(!overview.includes('.record-view-tab-label {\n  display: inline-flex;'))
-  assert.ok(cockpit.includes('row-key="scopeKey"'))
-  assert.ok(cockpit.includes('今日现场与主平台健康'))
-  assert.ok(cockpit.includes('class="cockpit-panel__description"'))
+  assert.ok(cockpit.includes('class="cockpit-dashboard-grid"'))
+  assert.ok(cockpit.includes('<AutoInspectionChart'))
+  assert.ok(cockpit.includes('class="cockpit-chart-panel__head"'))
+  assert.ok(!cockpit.includes('<el-table'))
   assert.ok(!cockpit.includes('.cockpit-panel__head span {'))
   assert.ok(recordDrawer.includes('operation-filter motion-segmented'))
   assert.ok(documentWorkspace.includes('permission-filter motion-segmented'))

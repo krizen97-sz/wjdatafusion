@@ -76,6 +76,17 @@ function aggregateScopePlans(plans = []) {
   const resultStatus = plans.reduce((status, row) => (
     (STATUS_PRIORITY[row.resultStatus] || 0) > (STATUS_PRIORITY[status] || 0) ? row.resultStatus : status
   ), RESULT_SKIP)
+  const hasNormalCount = plans.some((row) => row.normalCount !== undefined && row.normalCount !== null)
+  const weightedHealth = plans.reduce((result, row) => {
+    const weight = Math.max(Number(row.expectedCount || 0), Number(row.completedCount || 0), 1)
+    return {
+      total: result.total + (normalizeHealthScore(row.healthScore) * weight),
+      weight: result.weight + weight
+    }
+  }, { total: 0, weight: 0 })
+  const healthScore = hasNormalCount && expectedCount > 0
+    ? normalizeHealthScore((normalCount / expectedCount) * 100)
+    : normalizeHealthScore(weightedHealth.weight > 0 ? weightedHealth.total / weightedHealth.weight : 0)
   return {
     plans,
     planCount: plans.length,
@@ -86,7 +97,7 @@ function aggregateScopePlans(plans = []) {
     warningCount,
     missingCount,
     resultStatus,
-    healthScore: expectedCount > 0 ? normalizeHealthScore((normalCount / expectedCount) * 100) : 0,
+    healthScore,
     issueSummary: plans.find((row) => row.resultStatus === RESULT_ABNORMAL)?.issueSummary
       || plans.find((row) => row.resultStatus === RESULT_WARNING)?.issueSummary
       || '当前未记录异常'
@@ -194,6 +205,73 @@ export function buildCurrentStatusDistribution(rows = []) {
     { name: '异常', status: RESULT_ABNORMAL, value: counts[RESULT_ABNORMAL] },
     { name: '未执行', status: RESULT_SKIP, value: counts[RESULT_SKIP] }
   ]
+}
+
+export function buildScopeHealthChartRows(sites = [], limit = 12) {
+  const rows = []
+  sites.forEach((site) => {
+    rows.push({
+      ...site,
+      chartName: site.scopeName,
+      scopePath: site.scopeName
+    })
+    site.children?.forEach((platform) => {
+      rows.push({
+        ...platform,
+        chartName: `${site.scopeName} / ${platform.scopeName}`,
+        scopePath: `${site.scopeName} / ${platform.scopeName}`
+      })
+    })
+  })
+  return rows.sort((left, right) => {
+    const statusDifference = (STATUS_PRIORITY[right.resultStatus] || 0) - (STATUS_PRIORITY[left.resultStatus] || 0)
+    if (statusDifference) return statusDifference
+    const scoreDifference = normalizeHealthScore(left.healthScore) - normalizeHealthScore(right.healthScore)
+    return scoreDifference || left.chartName.localeCompare(right.chartName, 'zh-CN')
+  }).slice(0, Math.max(1, Number(limit) || 12))
+}
+
+export function buildPlanCompletionRows(rows = [], limit = 10) {
+  return rows.map((row) => {
+    const expectedCount = Number(row.expectedCount || 0)
+    const completedCount = Number(row.completedCount || 0)
+    const unassigned = !Number(row.siteId || 0)
+    return {
+      ...row,
+      chartName: `${unassigned ? '待归属 · ' : ''}${row.planName || '未命名计划'}`,
+      expectedCount,
+      completedCount,
+      pendingCount: Math.max(expectedCount - completedCount, 0),
+      completionRate: expectedCount > 0 ? normalizeHealthScore((completedCount / expectedCount) * 100) : 0,
+      unassigned
+    }
+  }).sort((left, right) => {
+    if (left.unassigned !== right.unassigned) return Number(right.unassigned) - Number(left.unassigned)
+    const statusDifference = (STATUS_PRIORITY[right.resultStatus] || 0) - (STATUS_PRIORITY[left.resultStatus] || 0)
+    if (statusDifference) return statusDifference
+    const rateDifference = left.completionRate - right.completionRate
+    return rateDifference || left.chartName.localeCompare(right.chartName, 'zh-CN')
+  }).slice(0, Math.max(1, Number(limit) || 10))
+}
+
+export function buildIssueChartRows(rows = [], limit = 12) {
+  return rows.map((row) => ({
+    ...row,
+    chartName: row.issueTitle || row.planName || '未命名问题',
+    chartValue: row.resultStatus === RESULT_ABNORMAL ? 3 : row.resultStatus === RESULT_WARNING ? 2 : 1
+  })).sort((left, right) => {
+    const statusDifference = (STATUS_PRIORITY[right.resultStatus] || 0) - (STATUS_PRIORITY[left.resultStatus] || 0)
+    return statusDifference || left.chartName.localeCompare(right.chartName, 'zh-CN')
+  }).slice(0, Math.max(1, Number(limit) || 12))
+}
+
+export function buildRecentExecutionChartRows(rows = [], limit = 16) {
+  return rows.slice(0, Math.max(1, Number(limit) || 16)).map((row) => ({
+    ...row,
+    chartName: row.planName || row.templateName || '手动执行',
+    timeLabel: String(row.inspectionTime || '').slice(11, 16) || '未知时间',
+    statusLabel: healthStatusLabel(row.resultStatus)
+  })).reverse()
 }
 
 export function formatShortDate(value) {

@@ -7,6 +7,10 @@ import {
   RESULT_SKIP,
   RESULT_WARNING,
   buildCurrentStatusDistribution,
+  buildIssueChartRows,
+  buildPlanCompletionRows,
+  buildRecentExecutionChartRows,
+  buildScopeHealthChartRows,
   filterPlanHealth,
   filterScopeHealth,
   formatHealthScore,
@@ -18,6 +22,7 @@ import {
 } from '../cockpitPresentation.js'
 
 const cockpitSource = readFileSync(new URL('../cockpit.vue', import.meta.url), 'utf8')
+const chartSource = readFileSync(new URL('../components/AutoInspectionChart.vue', import.meta.url), 'utf8')
 
 test('cockpit normalizes mixed dashboard payloads without mutating source data', () => {
   const source = {
@@ -67,6 +72,29 @@ test('current status distribution always exposes all four business states', () =
   assert.deepEqual(result.map((item) => item.value), [2, 1, 1, 0])
 })
 
+test('full cockpit chart rows retain scope plan issue and record drill-down data', () => {
+  const scopeRows = buildScopeHealthChartRows([{
+    scopeKey: 'SITE:2', scopeName: '武进分局', resultStatus: RESULT_WARNING, healthScore: 82, expectedCount: 10, completedCount: 9,
+    children: [{ scopeKey: 'MAIN_PLATFORM:19', scopeName: 'TIM平台', resultStatus: RESULT_ABNORMAL, healthScore: 60, expectedCount: 5, completedCount: 3 }]
+  }])
+  assert.deepEqual(scopeRows.map((row) => row.scopeKey), ['MAIN_PLATFORM:19', 'SITE:2'])
+
+  const planRows = buildPlanCompletionRows([
+    { planId: 1, planName: '正常计划', siteId: 2, resultStatus: RESULT_NORMAL, expectedCount: 10, completedCount: 10 },
+    { planId: 2, planName: '待归属计划', resultStatus: RESULT_WARNING, expectedCount: 10, completedCount: 6 }
+  ])
+  assert.equal(planRows[0].chartName, '待归属 · 待归属计划')
+  assert.equal(planRows[0].completionRate, 60)
+
+  const issues = buildIssueChartRows([{ issueTitle: 'Kafka停滞', resultStatus: RESULT_ABNORMAL, planId: 2 }])
+  assert.equal(issues[0].chartValue, 3)
+  assert.equal(issues[0].planId, 2)
+
+  const records = buildRecentExecutionChartRows([{ recordId: 9, planName: '巡检计划', inspectionTime: '2026-09-02 14:10:00', resultStatus: RESULT_NORMAL }])
+  assert.equal(records[0].timeLabel, '14:10')
+  assert.equal(records[0].statusLabel, '健康')
+})
+
 test('cockpit groups today plans by site and main platform', () => {
   const grouped = groupPlanHealthByScope([
     { planId: 1, planName: '现场公共巡检', scopeType: 'SITE', siteId: 2, siteName: '武进分局', expectedCount: 1, completedCount: 1, normalCount: 1, resultStatus: RESULT_NORMAL },
@@ -88,26 +116,42 @@ test('cockpit groups today plans by site and main platform', () => {
   })
 })
 
-test('cockpit presents today health by site and main platform', () => {
-  assert.ok(cockpitSource.includes('<h2>今日现场状态</h2>'))
-  assert.ok(cockpitSource.includes('<h2>今日现场与主平台健康</h2>'))
-  assert.ok(cockpitSource.includes('row-key="scopeKey"'))
-  assert.ok(cockpitSource.includes('scope.row.scopeName'))
-  assert.ok(cockpitSource.includes('主平台为最深健康层级'))
-  assert.ok(cockpitSource.includes('待归属计划不参与现场健康计算'))
-  assert.ok(cockpitSource.indexOf('label="现场 / 主平台"') < cockpitSource.indexOf('label="状态"'))
-  assert.ok(cockpitSource.includes(':row-class-name="scopeRowClassName"'))
-  assert.ok(cockpitSource.includes('cockpit-scope-row--site'))
-  assert.ok(!cockpitSource.includes('scopeRankChartRef'))
-  assert.ok(!cockpitSource.includes('planCompletionChartRef'))
-  assert.ok(!cockpitSource.includes('scopeTableVisible'))
-  assert.ok(!cockpitSource.includes('今日计划健康清单'))
+test('scope aggregation uses dashboard health scores when normal counts are absent', () => {
+  const grouped = groupPlanHealthByScope([
+    { planId: 1, planName: '现场计划', scopeType: 'SITE', siteId: 2, siteName: '武进分局', expectedCount: 10, completedCount: 8, healthScore: 80, resultStatus: RESULT_WARNING },
+    { planId: 2, planName: '平台计划', scopeType: 'MAIN_PLATFORM', siteId: 2, siteName: '武进分局', mainPlatformId: 19, mainPlatformName: 'TIM平台', expectedCount: 10, completedCount: 6, healthScore: 60, resultStatus: RESULT_ABNORMAL }
+  ])
+
+  assert.equal(grouped.sites[0].healthScore, 70)
+  assert.equal(grouped.sites[0].children[0].healthScore, 60)
 })
 
-test('cockpit navigation and compact plan filters remain clean at narrow widths', () => {
-  assert.equal(cockpitSource.match(/@click="openOverview\(\)"/g)?.length, 2)
-  assert.ok(!cockpitSource.includes('@click="openOverview"'))
-  assert.ok(cockpitSource.includes('@media (max-width: 900px)'))
-  assert.ok(cockpitSource.includes('.cockpit-panel__head--controls'))
-  assert.ok(cockpitSource.includes('flex-direction: column'))
+test('cockpit is a chart-only dashboard with six drill-down charts', () => {
+  for (const title of ['近七日巡检趋势', '今日健康构成', '现场与主平台健康度', '计划执行完成度', '待处理问题分布', '最近执行时间轴']) {
+    assert.ok(cockpitSource.includes(`<h2>${title}</h2>`), `missing chart title: ${title}`)
+  }
+  assert.equal(cockpitSource.match(/<AutoInspectionChart/g)?.length, 6)
+  assert.ok(cockpitSource.includes('@chart-click="handleTrendClick"'))
+  assert.ok(cockpitSource.includes('@chart-click="handleStatusClick"'))
+  assert.ok(cockpitSource.includes('@chart-click="handleScopeClick"'))
+  assert.ok(cockpitSource.includes('@chart-click="handlePlanClick"'))
+  assert.ok(cockpitSource.includes('@chart-click="handleIssueClick"'))
+  assert.ok(cockpitSource.includes('@chart-click="handleRecordClick"'))
+  assert.ok(!cockpitSource.includes('<el-table'))
+  assert.ok(!cockpitSource.includes('cockpit-issue-list'))
+  assert.ok(!cockpitSource.includes('cockpit-recent-list'))
+  assert.ok(!cockpitSource.includes('cockpit-health-facts'))
+  assert.ok(chartSource.includes("import * as echarts from 'echarts'"))
+  assert.ok(chartSource.includes('ResizeObserver'))
+  assert.ok(chartSource.includes("emit('chart-click', params)"))
+  assert.ok(chartSource.includes('role="img"'))
+})
+
+test('cockpit keeps desktop command navigation and theme-safe chart layout', () => {
+  assert.ok(cockpitSource.includes('@click="openOverview"'))
+  assert.ok(cockpitSource.includes('@click="openConfig"'))
+  assert.ok(cockpitSource.includes('grid-template-columns: repeat(12, minmax(0, 1fr))'))
+  assert.ok(cockpitSource.includes('settingsStore.isDark'))
+  assert.ok(cockpitSource.includes('animation: false'))
+  assert.ok(cockpitSource.includes('@media (max-width: 1280px)'))
 })
