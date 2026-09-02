@@ -40,13 +40,6 @@
       </el-form-item>
     </el-form>
 
-    <div class="continuous-health-summary">
-      <span><em>纳管现场</em><strong>{{ summary.siteCount }}</strong></span>
-      <span><em>纳管主平台</em><strong>{{ summary.platformCount }}</strong></span>
-      <span class="is-danger"><em>本月异常现场</em><strong>{{ summary.abnormalSiteCount }}</strong></span>
-      <span class="is-warning"><em>待归属计划</em><strong>{{ summary.unassignedPlanCount }}</strong></span>
-    </div>
-
     <el-table
       v-loading="loading"
       :data="pagedRows"
@@ -268,8 +261,7 @@ import {
   groupDailyHealthRows,
   healthStatusLabel,
   healthStatusType,
-  paginateDailyHealthRows,
-  summarizeDailyHealth
+  paginateDailyHealthRows
 } from '../continuousHealthPresentation'
 import { presentInspectionDate } from '../overviewPresentation'
 
@@ -290,7 +282,6 @@ const pageNum = ref(1)
 const pageSize = ref(20)
 const expandedDates = ref([])
 const pagedRows = computed(() => paginateDailyHealthRows(groupedRows.value, pageNum.value, pageSize.value))
-const summary = computed(() => summarizeDailyHealth(groupedRows.value))
 
 watch(() => [props.month, props.scopeKey, props.planId], () => {
   pageNum.value = 1
@@ -333,13 +324,6 @@ const statusGuide = [
 <style scoped>
 .continuous-health-panel { min-width: 0; }
 .continuous-health-query-bar { margin-bottom: 12px; padding: 12px 12px 0; border: 1px solid var(--surface-border); border-radius: 8px; background: var(--surface-muted); }
-.continuous-health-summary { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); overflow: hidden; border: 1px solid var(--surface-border); border-radius: 7px; background: var(--surface-muted); }
-.continuous-health-summary > span { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 16px; border-right: 1px solid var(--surface-border); }
-.continuous-health-summary > span:last-child { border-right: 0; }
-.continuous-health-summary em { color: var(--app-muted); font-style: normal; font-size: 12px; }
-.continuous-health-summary strong { color: var(--app-heading); font-size: 20px; }
-.continuous-health-summary .is-danger strong { color: var(--health-danger); }
-.continuous-health-summary .is-warning strong { color: var(--health-warning); }
 .continuous-health-table { margin-top: 14px; }
 .record-table--daily :deep(.el-table__cell) { padding: 8px 0; }
 .record-table--daily :deep(.record-table-row--abnormal > td.el-table__cell) { background: var(--el-color-danger-light-9); }
