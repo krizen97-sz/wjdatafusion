@@ -197,6 +197,7 @@
           @update:scope-key="dailyHealthScopeKey = $event"
           @update:plan-id="dailyHealthPlanId = $event"
           @day-results="openHealthSamples"
+          @manage-unassigned="switchConfigTab('plan')"
         />
         </div>
       </section>
@@ -2259,6 +2260,7 @@ import {
 } from '@element-plus/icons-vue'
 import InspectionFlowCanvas from './components/InspectionFlowCanvas.vue'
 import ContinuousHealthPanel from './components/ContinuousHealthPanel.vue'
+import { groupDailyHealthRows } from './continuousHealthPresentation'
 import { hydrateDatabaseTarget, normalizeDatabaseTargetConfig } from './databaseTargetConfig'
 import {
   COMPARISON_SCOPE_CONTINUOUS,
@@ -3158,11 +3160,29 @@ async function applyOverviewDeepLink() {
       ))
       if (/^\d{4}-\d{2}-\d{2}$/.test(focusDate)) dailyHealthMonth.value = focusDate.slice(0, 7)
       await getDailyHealth()
-      if (route.query.openSamples === '1' && focusDate && dailyHealthPlanId.value) {
-        const plan = dailyHealthRows.value.find((item) => (
-          String(item.healthDate || '') === focusDate && Number(item.planId) === Number(dailyHealthPlanId.value)
-        ))
-        if (plan) await openHealthSamples({ date: focusDate, group: plan })
+      if (route.query.openSamples === '1' && focusDate) {
+        const dateGroup = groupDailyHealthRows(dailyHealthRows.value).find((item) => item.healthDate === focusDate)
+        const site = dateGroup?.sites.find((item) => Number(item.siteId) === Number(route.query.siteId))
+        const platform = site?.platforms.find((item) => Number(item.mainPlatformId) === Number(route.query.mainPlatformId))
+        const plan = dailyHealthPlanId.value
+          ? dailyHealthRows.value.find((item) => (
+            String(item.healthDate || '') === focusDate && Number(item.planId) === Number(dailyHealthPlanId.value)
+          ))
+          : null
+        const group = plan || platform || site || dateGroup
+        if (group) {
+          await openHealthSamples({
+            date: focusDate,
+            group,
+            planId: plan?.planId,
+            planName: plan?.planName,
+            siteId: site?.siteId,
+            siteName: site?.siteName,
+            mainPlatformId: platform?.mainPlatformId,
+            mainPlatformName: platform?.mainPlatformName,
+            resultStatus: route.query.resultStatus
+          })
+        }
       }
     } finally {
       applyingOverviewDeepLink.value = false
@@ -3665,7 +3685,7 @@ function resolveInspectionScopeQuery(scopeKey) {
   return {}
 }
 
-function openHealthSamples({ date, group, planId, planName, siteId, siteName, mainPlatformId, mainPlatformName }) {
+function openHealthSamples({ date, group, planId, planName, siteId, siteName, mainPlatformId, mainPlatformName, resultStatus }) {
   const singlePlan = Array.isArray(group?.plans) && group.plans.length === 1 ? group.plans[0] : null
   const resolvedPlanId = planId ?? group?.planId ?? singlePlan?.planId
   const resolvedPlanName = planName ?? group?.planName ?? singlePlan?.planName ?? ''
@@ -3682,7 +3702,7 @@ function openHealthSamples({ date, group, planId, planName, siteId, siteName, ma
   }
   healthSampleQuery.value.pageNum = 1
   healthSampleExpandedKeys.value = []
-  healthSampleResultStatus.value = 'ALL'
+  healthSampleResultStatus.value = ['1', '2', '3', '4'].includes(String(resultStatus || '')) ? String(resultStatus) : 'ALL'
   healthSampleDrawerOpen.value = true
   return getHealthSamples()
 }

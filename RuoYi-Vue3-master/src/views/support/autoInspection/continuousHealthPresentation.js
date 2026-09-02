@@ -157,11 +157,13 @@ export function summarizeDailyHealth(groups = []) {
   const siteKeys = new Set()
   const platformKeys = new Set()
   const abnormalSites = new Set()
+  const warningSites = new Set()
   const unassignedPlans = new Set()
   groups.forEach((group) => {
     group.sites?.forEach((site) => {
       siteKeys.add(site.siteId)
       if (site.dayStatus === '2') abnormalSites.add(site.siteId)
+      if (site.dayStatus === '4') warningSites.add(site.siteId)
       site.platforms?.forEach((platform) => platformKeys.add(`${site.siteId}:${platform.mainPlatformId}`))
     })
     group.unassignedPlans?.forEach((plan) => unassignedPlans.add(plan.planId || plan.planName))
@@ -171,6 +173,7 @@ export function summarizeDailyHealth(groups = []) {
     siteCount: siteKeys.size,
     platformCount: platformKeys.size,
     abnormalSiteCount: abnormalSites.size,
+    warningSiteCount: warningSites.size,
     unassignedPlanCount: unassignedPlans.size
   }
 }

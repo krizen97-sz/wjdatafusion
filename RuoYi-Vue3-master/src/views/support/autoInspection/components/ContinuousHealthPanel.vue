@@ -40,40 +40,109 @@
       </el-form-item>
     </el-form>
 
-    <div class="continuous-health-summary">
-      <span><em>纳管现场</em><strong>{{ summary.siteCount }}</strong></span>
-      <span><em>纳管主平台</em><strong>{{ summary.platformCount }}</strong></span>
-      <span class="is-danger"><em>本月异常现场</em><strong>{{ summary.abnormalSiteCount }}</strong></span>
-      <span class="is-warning"><em>待归属计划</em><strong>{{ summary.unassignedPlanCount }}</strong></span>
+    <div class="continuous-health-metrics" aria-label="本月巡检健康范围">
+      <div class="continuous-health-metric">
+        <el-icon><OfficeBuilding /></el-icon>
+        <span><em>现场范围</em><strong>{{ summary.siteCount }}<small>个</small></strong></span>
+      </div>
+      <div class="continuous-health-metric">
+        <el-icon><Monitor /></el-icon>
+        <span><em>主平台范围</em><strong>{{ summary.platformCount }}<small>个</small></strong></span>
+      </div>
+      <button
+        type="button"
+        class="continuous-health-metric continuous-health-metric--action is-danger"
+        :disabled="!summary.abnormalSiteCount"
+        @click="openMonthlyIssue('2')"
+      >
+        <el-icon><WarningFilled /></el-icon>
+        <span><em>异常现场</em><strong>{{ summary.abnormalSiteCount }}<small>个</small></strong></span>
+        <span class="continuous-health-metric__cue">定位异常<el-icon><ArrowRight /></el-icon></span>
+      </button>
+      <button
+        type="button"
+        class="continuous-health-metric continuous-health-metric--action is-warning"
+        :disabled="!summary.warningSiteCount"
+        @click="openMonthlyIssue('4')"
+      >
+        <el-icon><BellFilled /></el-icon>
+        <span><em>关注现场</em><strong>{{ summary.warningSiteCount }}<small>个</small></strong></span>
+        <span class="continuous-health-metric__cue">查看关注<el-icon><ArrowRight /></el-icon></span>
+      </button>
+      <button
+        type="button"
+        class="continuous-health-metric continuous-health-metric--action is-warning"
+        :disabled="!summary.unassignedPlanCount"
+        @click="$emit('manage-unassigned')"
+      >
+        <el-icon><Link /></el-icon>
+        <span><em>待归属计划</em><strong>{{ summary.unassignedPlanCount }}<small>个</small></strong></span>
+        <span class="continuous-health-metric__cue">前往配置<el-icon><ArrowRight /></el-icon></span>
+      </button>
     </div>
 
-    <el-table
-      v-loading="loading"
-      :data="pagedRows"
-      row-key="healthDate"
-      :expand-row-keys="expandedDates"
-      :row-class-name="dailyHealthRowClass"
-      class="auto-table record-table record-table--daily continuous-health-table"
-      empty-text="当前月份暂无巡检健康记录"
-      @expand-change="handleExpandChange"
-    >
-      <el-table-column type="expand" width="46">
-        <template #default="scope">
-          <div class="scope-health-detail">
-            <el-alert
-              v-if="scope.row.unassignedPlans.length"
-              type="warning"
-              :closable="false"
-              show-icon
-              title="存在待归属计划"
-            >
-              <template #default>
-                {{ scope.row.unassignedPlans.map((plan) => plan.planName || '未命名计划').join('、') }}，请在巡检配置中补充所属现场或主平台；这些计划暂不参与健康度计算。
+    <div v-loading="loading" class="continuous-health-day-list">
+      <el-empty v-if="!pagedRows.length" description="当前月份暂无巡检健康记录" :image-size="64" />
+      <section
+        v-for="day in pagedRows"
+        v-else
+        :key="day.healthDate"
+        class="continuous-health-day"
+        :class="{ 'continuous-health-day--abnormal': day.dayStatus === '2' }"
+      >
+        <header class="continuous-health-day__head">
+          <div class="continuous-health-day__date">
+            <strong>{{ datePresentation(day.healthDate).label }}</strong>
+            <span>{{ datePresentation(day.healthDate).dateKey || '-' }} · {{ datePresentation(day.healthDate).weekday }}</span>
+          </div>
+          <div class="continuous-health-day__status">
+            <el-tag :type="healthStatusType(day.dayStatus)" effect="plain">
+              {{ healthStatusLabel(day.dayStatus, day.recovered) }}
+            </el-tag>
+            <el-popover placement="top" :width="360" trigger="click">
+              <template #reference>
+                <el-button text circle class="continuous-health-status-help" aria-label="查看当日结论说明">
+                  <el-icon><QuestionFilled /></el-icon>
+                </el-button>
               </template>
-            </el-alert>
+              <div class="continuous-health-status-guide">
+                <strong>当日结论说明</strong>
+                <div v-for="item in statusGuide" :key="item.label">
+                  <el-tag size="small" effect="plain" :type="item.type">{{ item.label }}</el-tag>
+                  <span>{{ item.description }}</span>
+                </div>
+              </div>
+            </el-popover>
+          </div>
+          <div class="continuous-health-day__facts">
+            <span>现场 <strong>{{ day.sites.length }}</strong></span>
+            <span>计划 <strong>{{ day.planCount }}</strong></span>
+            <span>完成 <strong>{{ day.completedCount }}/{{ day.expectedCount }}</strong></span>
+            <el-button v-if="day.abnormalCount" link type="danger" @click="openDayResults(day, '2')">异常 {{ day.abnormalCount }}</el-button>
+            <span v-else>异常 <strong>0</strong></span>
+            <el-button v-if="day.warningCount" link type="warning" @click="openDayResults(day, '4')">关注 {{ day.warningCount }}</el-button>
+            <span v-else>关注 <strong>0</strong></span>
+            <el-button v-if="day.missingCount" link type="warning" @click="openDayResults(day, '3')">缺失 {{ day.missingCount }}</el-button>
+            <span v-else>缺失 <strong>0</strong></span>
+          </div>
+          <el-button type="primary" link :icon="View" @click="openDayResults(day)">查看当天</el-button>
+        </header>
 
-            <el-empty v-if="!scope.row.sites.length" description="当天还没有可归属到现场的巡检结果" :image-size="54" />
-            <article v-for="site in scope.row.sites" v-else :key="`${scope.row.healthDate}-${site.siteId}`" class="site-health-block">
+        <div class="scope-health-detail">
+          <el-alert
+            v-if="day.unassignedPlans.length"
+            type="warning"
+            :closable="false"
+            show-icon
+            title="存在待归属计划"
+          >
+            <template #default>
+              {{ day.unassignedPlans.map((plan) => plan.planName || '未命名计划').join('、') }}，请在巡检配置中补充所属现场或主平台；这些计划暂不参与健康度计算。
+            </template>
+          </el-alert>
+
+          <el-empty v-if="!day.sites.length" description="当天还没有可归属到现场的巡检结果" :image-size="54" />
+          <article v-for="site in day.sites" v-else :key="`${day.healthDate}-${site.siteId}`" class="site-health-block">
               <header class="site-health-head">
                 <div class="site-health-title">
                   <span class="status-dot" :class="`status-dot--${site.dayStatus || '3'}`"></span>
@@ -93,7 +162,7 @@
                   type="primary"
                   link
                   :icon="View"
-                  @click="$emit('day-results', { date: scope.row.healthDate, group: site, siteId: site.siteId, siteName: site.siteName })"
+                  @click="openSiteResults(day, site)"
                 >查看现场</el-button>
               </header>
 
@@ -104,7 +173,7 @@
                   :key="plan.planId"
                   type="primary"
                   link
-                  @click="$emit('day-results', { date: scope.row.healthDate, group: plan, planId: plan.planId, planName: plan.planName })"
+                  @click="openPlanResults(day, plan)"
                 >{{ plan.planName || '未命名计划' }}</el-button>
               </div>
 
@@ -141,7 +210,7 @@
                         type="primary"
                         link
                         class="continuous-health-plan-link"
-                        @click="$emit('day-results', { date: scope.row.healthDate, group: plan, planId: plan.planId, planName: plan.planName })"
+                        @click="openPlanResults(day, plan)"
                       >{{ plan.planName || '未命名计划' }}</el-button>
                     </div>
                   </template>
@@ -151,10 +220,13 @@
                 </el-table-column>
                 <el-table-column label="异常 / 关注 / 缺失" width="150" align="center">
                   <template #default="platformScope">
-                    <div class="record-count-cell">
-                      <span :class="{ 'has-abnormal': platformScope.row.abnormalCount > 0 }">{{ platformScope.row.abnormalCount }}</span>
-                      <span :class="{ 'has-warning': platformScope.row.warningCount > 0 }">{{ platformScope.row.warningCount }}</span>
-                      <span :class="{ 'has-warning': platformScope.row.missingCount > 0 }">{{ platformScope.row.missingCount }}</span>
+                    <div class="record-count-cell" aria-label="异常、关注和缺失数量">
+                      <el-button v-if="platformScope.row.abnormalCount" link type="danger" @click="openPlatformResults(day, site, platformScope.row, '2')">{{ platformScope.row.abnormalCount }}</el-button>
+                      <span v-else>0</span>
+                      <el-button v-if="platformScope.row.warningCount" link type="warning" @click="openPlatformResults(day, site, platformScope.row, '4')">{{ platformScope.row.warningCount }}</el-button>
+                      <span v-else>0</span>
+                      <el-button v-if="platformScope.row.missingCount" link type="warning" @click="openPlatformResults(day, site, platformScope.row, '3')">{{ platformScope.row.missingCount }}</el-button>
+                      <span v-else>0</span>
                     </div>
                   </template>
                 </el-table-column>
@@ -164,91 +236,15 @@
                       type="primary"
                       link
                       :icon="View"
-                      @click="$emit('day-results', {
-                        date: scope.row.healthDate,
-                        group: platformScope.row,
-                        siteId: site.siteId,
-                        siteName: site.siteName,
-                        mainPlatformId: platformScope.row.mainPlatformId,
-                        mainPlatformName: platformScope.row.mainPlatformName
-                      })"
+                      @click="openPlatformResults(day, site, platformScope.row)"
                     >查看</el-button>
                   </template>
                 </el-table-column>
               </el-table>
-            </article>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column label="归属日期" width="138" align="center" fixed="left">
-        <template #default="scope">
-          <div class="record-date-cell">
-            <strong>{{ datePresentation(scope.row.healthDate).label }}</strong>
-            <span>{{ datePresentation(scope.row.healthDate).dateKey || '-' }} {{ datePresentation(scope.row.healthDate).weekday }}</span>
-            <em>现场 {{ scope.row.sites.length }} · 计划 {{ scope.row.planCount }}</em>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column width="142" align="center">
-        <template #header>
-          <div class="continuous-health-status-header">
-            <span>当日结论</span>
-            <el-popover placement="top" :width="360" trigger="click">
-              <template #reference>
-                <el-button text circle class="continuous-health-status-help" aria-label="查看当日结论说明">
-                  <el-icon><QuestionFilled /></el-icon>
-                </el-button>
-              </template>
-              <div class="continuous-health-status-guide">
-                <strong>当日结论说明</strong>
-                <div v-for="item in statusGuide" :key="item.label">
-                  <el-tag size="small" effect="plain" :type="item.type">{{ item.label }}</el-tag>
-                  <span>{{ item.description }}</span>
-                </div>
-              </div>
-            </el-popover>
-          </div>
-        </template>
-        <template #default="scope">
-          <el-tag :type="healthStatusType(scope.row.dayStatus)" effect="plain">
-            {{ healthStatusLabel(scope.row.dayStatus, scope.row.recovered) }}
-          </el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="现场状态" min-width="220">
-        <template #default="scope">
-          <div class="date-site-summary">
-            <span v-for="site in scope.row.sites.slice(0, 3)" :key="site.siteId">
-              <i :class="`status-dot status-dot--${site.dayStatus || '3'}`"></i>
-              <strong>{{ site.siteName }}</strong>
-              <em>{{ clampHealthScore(site.healthScore) }}%</em>
-            </span>
-            <small v-if="scope.row.sites.length > 3">另有 {{ scope.row.sites.length - 3 }} 个现场</small>
-            <small v-if="!scope.row.sites.length">暂无已归属现场</small>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column label="完成 / 应执行" width="125" align="center">
-        <template #default="scope">{{ scope.row.completedCount }} / {{ scope.row.expectedCount }}</template>
-      </el-table-column>
-      <el-table-column label="异常 / 关注 / 缺失" width="150" align="center">
-        <template #default="scope">
-          <div class="record-count-cell">
-            <span :class="{ 'has-abnormal': scope.row.abnormalCount > 0 }">{{ scope.row.abnormalCount }}</span>
-            <span :class="{ 'has-warning': scope.row.warningCount > 0 }">{{ scope.row.warningCount }}</span>
-            <span :class="{ 'has-warning': scope.row.missingCount > 0 }">{{ scope.row.missingCount }}</span>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column label="结果摘要" min-width="240" show-overflow-tooltip>
-        <template #default="scope">{{ scope.row.abnormalSummary || '当天未记录异常' }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="94" fixed="right" align="center">
-        <template #default="scope">
-          <el-button type="primary" link :icon="View" @click="$emit('day-results', { date: scope.row.healthDate, group: scope.row })">查看</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+          </article>
+        </div>
+      </section>
+    </div>
 
     <pagination
       v-show="groupedRows.length > 0"
@@ -262,7 +258,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { QuestionFilled, View } from '@element-plus/icons-vue'
+import { ArrowRight, BellFilled, Link, Monitor, OfficeBuilding, QuestionFilled, View, WarningFilled } from '@element-plus/icons-vue'
 import {
   clampHealthScore,
   groupDailyHealthRows,
@@ -283,42 +279,67 @@ const props = defineProps({
   planOptions: { type: Array, default: () => [] }
 })
 
-defineEmits(['update:month', 'update:scopeKey', 'update:planId', 'day-results'])
+const emit = defineEmits(['update:month', 'update:scopeKey', 'update:planId', 'day-results', 'manage-unassigned'])
 
 const groupedRows = computed(() => groupDailyHealthRows(props.rows))
 const pageNum = ref(1)
-const pageSize = ref(20)
-const expandedDates = ref([])
+const pageSize = ref(10)
 const pagedRows = computed(() => paginateDailyHealthRows(groupedRows.value, pageNum.value, pageSize.value))
 const summary = computed(() => summarizeDailyHealth(groupedRows.value))
 
 watch(() => [props.month, props.scopeKey, props.planId], () => {
   pageNum.value = 1
-  expandedDates.value = []
 })
 
 watch(() => groupedRows.value.map((item) => item.healthDate), (dates) => {
   const lastPage = Math.max(1, Math.ceil(dates.length / pageSize.value))
   if (pageNum.value > lastPage) pageNum.value = lastPage
-  if (!expandedDates.value.length && dates.length) expandedDates.value = [dates[0]]
 }, { immediate: true })
 
 function datePresentation(value) {
   return presentInspectionDate(value)
 }
 
-function dailyHealthRowClass({ row }) {
-  return row?.dayStatus === '2' ? 'record-table-row--abnormal' : ''
-}
-
 function handlePagination({ page, limit }) {
   pageNum.value = page
   pageSize.value = limit
-  expandedDates.value = []
 }
 
-function handleExpandChange(row, expandedRows = []) {
-  expandedDates.value = expandedRows.some((item) => item.healthDate === row.healthDate) ? [row.healthDate] : []
+function emitResults(payload, resultStatus) {
+  emit('day-results', { ...payload, resultStatus })
+}
+
+function openDayResults(day, resultStatus) {
+  emitResults({ date: day.healthDate, group: day }, resultStatus)
+}
+
+function openSiteResults(day, site, resultStatus) {
+  emitResults({ date: day.healthDate, group: site, siteId: site.siteId, siteName: site.siteName }, resultStatus)
+}
+
+function openPlanResults(day, plan) {
+  emitResults({ date: day.healthDate, group: plan, planId: plan.planId, planName: plan.planName })
+}
+
+function openPlatformResults(day, site, platform, resultStatus) {
+  emitResults({
+    date: day.healthDate,
+    group: platform,
+    siteId: site.siteId,
+    siteName: site.siteName,
+    mainPlatformId: platform.mainPlatformId,
+    mainPlatformName: platform.mainPlatformName
+  }, resultStatus)
+}
+
+function openMonthlyIssue(status) {
+  for (const day of groupedRows.value) {
+    const site = day.sites.find((item) => item.dayStatus === status)
+    if (site) {
+      openSiteResults(day, site, status)
+      return
+    }
+  }
 }
 
 const statusGuide = [
@@ -331,50 +352,384 @@ const statusGuide = [
 </script>
 
 <style scoped>
-.continuous-health-panel { min-width: 0; }
-.continuous-health-query-bar { margin-bottom: 12px; padding: 12px 12px 0; border: 1px solid var(--surface-border); border-radius: 8px; background: var(--surface-muted); }
-.continuous-health-summary { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); overflow: hidden; border: 1px solid var(--surface-border); border-radius: 7px; background: var(--surface-muted); }
-.continuous-health-summary > span { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 12px 16px; border-right: 1px solid var(--surface-border); }
-.continuous-health-summary > span:last-child { border-right: 0; }
-.continuous-health-summary em { color: var(--app-muted); font-style: normal; font-size: 12px; }
-.continuous-health-summary strong { color: var(--app-heading); font-size: 20px; }
-.continuous-health-summary .is-danger strong { color: var(--health-danger); }
-.continuous-health-summary .is-warning strong { color: var(--health-warning); }
-.continuous-health-table { margin-top: 14px; }
-.record-table--daily :deep(.el-table__cell) { padding: 8px 0; }
-.record-table--daily :deep(.record-table-row--abnormal > td.el-table__cell) { background: var(--el-color-danger-light-9); }
-.scope-health-detail { display: grid; gap: 12px; padding: 8px 12px 14px 52px; }
-.site-health-block { overflow: hidden; border: 1px solid var(--surface-border); border-radius: 7px; background: var(--surface-raised); }
-.site-health-head { display: grid; grid-template-columns: minmax(220px, 1fr) 180px auto auto; align-items: center; gap: 16px; padding: 12px 14px; border-bottom: 1px solid var(--surface-border); background: var(--surface-muted); }
-.site-health-title { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.site-health-title > div, .platform-health-name { display: grid; gap: 2px; min-width: 0; }
-.site-health-title strong, .platform-health-name strong { overflow: hidden; color: var(--app-heading); text-overflow: ellipsis; white-space: nowrap; }
-.site-health-title span, .platform-health-name span { color: var(--app-muted); font-size: 11px; }
-.site-health-score, .continuous-health-score { display: grid; grid-template-columns: minmax(70px, 1fr) 48px; align-items: center; gap: 10px; }
-.site-health-score strong, .continuous-health-score strong { color: var(--app-text); font-size: 13px; text-align: right; }
-.site-public-plans { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 6px 14px; border-bottom: 1px solid var(--surface-border); }
-.site-public-plans > span { flex: none; color: var(--app-muted); font-size: 12px; }
-.platform-health-table { width: 100%; }
-.continuous-health-plans { display: grid; justify-items: start; gap: 1px; min-width: 0; padding: 2px 0; }
-.continuous-health-plan-link { display: flex; justify-content: flex-start; max-width: 100%; height: auto; min-height: 24px; margin: 0; padding: 2px 0; font-size: 13px; }
-.continuous-health-plan-link :deep(span) { display: block; overflow: hidden; max-width: 100%; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
-.record-date-cell { display: grid; gap: 2px; justify-items: center; line-height: 1.3; }
-.record-date-cell strong { color: var(--app-heading); font-size: 15px; }
-.record-date-cell span, .record-date-cell em { color: var(--app-muted); font-size: 10px; font-style: normal; }
-.record-date-cell em { margin-top: 3px; color: var(--app-text); }
-.date-site-summary { display: grid; gap: 4px; min-width: 0; }
-.date-site-summary > span { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 7px; }
-.date-site-summary strong { overflow: hidden; color: var(--app-heading); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.date-site-summary em, .date-site-summary small { color: var(--app-muted); font-size: 11px; font-style: normal; }
-.date-site-summary .status-dot { width: 7px; height: 7px; }
-.record-count-cell { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
-.record-count-cell span { padding: 3px 5px; border-radius: 4px; background: var(--surface-subtle); color: var(--app-muted); font-size: 11px; }
-.record-count-cell .has-abnormal { background: var(--el-color-danger-light-9); color: var(--el-color-danger); }
-.record-count-cell .has-warning { background: var(--el-color-warning-light-9); color: var(--el-color-warning-dark-2); }
-.continuous-health-status-header { display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
-.continuous-health-status-help { width: 24px; height: 24px; color: var(--app-muted); }
-.continuous-health-status-guide { display: grid; gap: 9px; }
-.continuous-health-status-guide > strong { color: var(--app-heading); font-size: 14px; }
-.continuous-health-status-guide > div { display: grid; grid-template-columns: 86px minmax(0, 1fr); align-items: start; gap: 10px; }
-.continuous-health-status-guide span { color: var(--app-text); font-size: 12px; line-height: 1.55; }
+.continuous-health-panel {
+  min-width: 0;
+}
+
+.continuous-health-query-bar {
+  margin-bottom: 12px;
+  padding: 12px 12px 0;
+  border: 1px solid var(--surface-border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.continuous-health-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(148px, 1fr));
+  overflow: hidden;
+  border-block: 1px solid var(--surface-border);
+  background: var(--surface-strong);
+}
+
+.continuous-health-metric {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 66px;
+  padding: 10px 14px;
+  border: 0;
+  border-right: 1px solid var(--surface-border);
+  background: transparent;
+  color: var(--app-text);
+  font: inherit;
+  text-align: left;
+}
+
+.continuous-health-metric:last-child {
+  border-right: 0;
+}
+
+.continuous-health-metric > .el-icon {
+  color: var(--app-muted);
+  font-size: 21px;
+}
+
+.continuous-health-metric > span:not(.continuous-health-metric__cue) {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.continuous-health-metric em,
+.continuous-health-metric small {
+  color: var(--app-muted);
+  font-style: normal;
+  font-weight: 500;
+}
+
+.continuous-health-metric em {
+  font-size: 11px;
+}
+
+.continuous-health-metric strong {
+  color: var(--app-heading);
+  font-size: 21px;
+  line-height: 1;
+}
+
+.continuous-health-metric small {
+  margin-left: 4px;
+  font-size: 11px;
+}
+
+.continuous-health-metric--action {
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.continuous-health-metric--action:hover:not(:disabled),
+.continuous-health-metric--action:focus-visible {
+  background: var(--surface-muted);
+}
+
+.continuous-health-metric--action:focus-visible {
+  outline: 2px solid var(--el-color-primary-light-5);
+  outline-offset: -2px;
+}
+
+.continuous-health-metric--action:disabled {
+  cursor: default;
+  opacity: .62;
+}
+
+.continuous-health-metric--action.is-danger > .el-icon,
+.continuous-health-metric--action.is-danger strong {
+  color: var(--health-danger);
+}
+
+.continuous-health-metric--action.is-warning > .el-icon,
+.continuous-health-metric--action.is-warning strong {
+  color: var(--health-warning);
+}
+
+.continuous-health-metric__cue {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--app-muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.continuous-health-metric__cue .el-icon {
+  font-size: 12px;
+}
+
+.continuous-health-day-list {
+  display: grid;
+  gap: 18px;
+  min-height: 160px;
+  margin-top: 16px;
+}
+
+.continuous-health-day {
+  min-width: 0;
+  border-top: 2px solid var(--surface-border-strong);
+}
+
+.continuous-health-day--abnormal {
+  border-top-color: var(--health-danger);
+}
+
+.continuous-health-day__head {
+  display: grid;
+  grid-template-columns: 154px 132px minmax(420px, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-height: 64px;
+  padding: 9px 14px;
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-muted);
+}
+
+.continuous-health-day__date {
+  display: grid;
+  gap: 3px;
+}
+
+.continuous-health-day__date strong {
+  color: var(--app-heading);
+  font-size: 16px;
+}
+
+.continuous-health-day__date span {
+  color: var(--app-muted);
+  font-size: 11px;
+}
+
+.continuous-health-day__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.continuous-health-day__facts {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  min-width: 0;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.continuous-health-day__facts > span,
+.continuous-health-day__facts > .el-button {
+  flex: none;
+}
+
+.continuous-health-day__facts strong {
+  margin-left: 3px;
+  color: var(--app-heading);
+}
+
+.continuous-health-day__facts :deep(.el-button) {
+  height: auto;
+  padding: 2px 0;
+}
+
+.scope-health-detail {
+  display: grid;
+  gap: 12px;
+  padding: 12px 0 0;
+}
+
+.site-health-block {
+  overflow: hidden;
+  border: 1px solid var(--surface-border);
+  border-radius: 7px;
+  background: var(--surface-raised);
+}
+
+.site-health-head {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 180px auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--surface-border);
+  background: var(--surface-muted);
+}
+
+.site-health-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.site-health-title > div,
+.platform-health-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.site-health-title strong,
+.platform-health-name strong {
+  overflow: hidden;
+  color: var(--app-heading);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-health-title span,
+.platform-health-name span {
+  color: var(--app-muted);
+  font-size: 11px;
+}
+
+.site-health-score,
+.continuous-health-score {
+  display: grid;
+  grid-template-columns: minmax(70px, 1fr) 48px;
+  align-items: center;
+  gap: 10px;
+}
+
+.site-health-score strong,
+.continuous-health-score strong {
+  color: var(--app-text);
+  font-size: 13px;
+  text-align: right;
+}
+
+.site-public-plans {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--surface-border);
+}
+
+.site-public-plans > span {
+  flex: none;
+  color: var(--app-muted);
+  font-size: 12px;
+}
+
+.platform-health-table {
+  width: 100%;
+}
+
+.continuous-health-plans {
+  display: grid;
+  justify-items: start;
+  gap: 1px;
+  min-width: 0;
+  padding: 2px 0;
+}
+
+.continuous-health-plan-link {
+  display: flex;
+  justify-content: flex-start;
+  max-width: 100%;
+  height: auto;
+  min-height: 24px;
+  margin: 0;
+  padding: 2px 0;
+  font-size: 13px;
+}
+
+.continuous-health-plan-link :deep(span) {
+  display: block;
+  overflow: hidden;
+  max-width: 100%;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-count-cell {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 4px;
+}
+
+.record-count-cell span,
+.record-count-cell :deep(.el-button) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  margin: 0;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--surface-subtle);
+  color: var(--app-muted);
+  font-size: 11px;
+}
+
+.record-count-cell :deep(.el-button--danger) {
+  background: var(--el-color-danger-light-9);
+  color: var(--el-color-danger);
+}
+
+.record-count-cell :deep(.el-button--warning) {
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning-dark-2);
+}
+
+.continuous-health-status-help {
+  width: 24px;
+  height: 24px;
+  color: var(--app-muted);
+}
+
+.continuous-health-status-guide {
+  display: grid;
+  gap: 9px;
+}
+
+.continuous-health-status-guide > strong {
+  color: var(--app-heading);
+  font-size: 14px;
+}
+
+.continuous-health-status-guide > div {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+}
+
+.continuous-health-status-guide span {
+  color: var(--app-text);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+@media (max-width: 1280px) {
+  .continuous-health-metric__cue {
+    display: none;
+  }
+
+  .continuous-health-metric--action {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+
+  .continuous-health-day__head {
+    grid-template-columns: 142px 124px minmax(360px, 1fr) auto;
+  }
+
+  .continuous-health-day__facts {
+    gap: 10px;
+  }
+}
 </style>

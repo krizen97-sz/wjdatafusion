@@ -31,26 +31,49 @@
 
     <section v-loading="loading" class="cockpit-health-band cockpit-scope-band">
       <div class="cockpit-scope-band__title">
-        <strong>今日纳管范围</strong>
+        <strong>今日健康范围</strong>
         <span>健康度按现场和主平台分别计算，不再用一个全局分数覆盖差异。</span>
       </div>
-      <dl class="cockpit-health-facts cockpit-scope-facts">
-        <div>
-          <dt><el-icon><Clock /></el-icon>现场</dt>
-          <dd>{{ scopeSummary.siteCount }}<small>个</small></dd>
-          <span>异常 {{ scopeSummary.abnormalSiteCount }} · 关注 {{ scopeSummary.warningSiteCount }}</span>
+      <div class="cockpit-scope-metrics" aria-label="今日现场与主平台健康范围">
+        <div class="cockpit-scope-metric">
+          <el-icon><OfficeBuilding /></el-icon>
+          <span><em>现场范围</em><strong>{{ scopeSummary.siteCount }}<small>个</small></strong></span>
         </div>
-        <div>
-          <dt><el-icon><Timer /></el-icon>主平台</dt>
-          <dd>{{ scopeSummary.platformCount }}<small>个</small></dd>
-          <span>作为现场下的最深健康层级</span>
+        <div class="cockpit-scope-metric">
+          <el-icon><Monitor /></el-icon>
+          <span><em>主平台范围</em><strong>{{ scopeSummary.platformCount }}<small>个</small></strong></span>
         </div>
-        <div>
-          <dt><el-icon><Warning /></el-icon>待归属计划</dt>
-          <dd>{{ scopeSummary.unassignedPlanCount }}<small>个</small></dd>
-          <span>待归属计划不参与现场健康计算</span>
-        </div>
-      </dl>
+        <button
+          type="button"
+          class="cockpit-scope-metric cockpit-scope-metric--action is-danger"
+          :disabled="!scopeSummary.abnormalSiteCount"
+          @click="openScopeIssue('2')"
+        >
+          <el-icon><WarningFilled /></el-icon>
+          <span><em>异常现场</em><strong>{{ scopeSummary.abnormalSiteCount }}<small>个</small></strong></span>
+          <el-icon class="cockpit-scope-metric__arrow"><ArrowRight /></el-icon>
+        </button>
+        <button
+          type="button"
+          class="cockpit-scope-metric cockpit-scope-metric--action is-warning"
+          :disabled="!scopeSummary.warningSiteCount"
+          @click="openScopeIssue('4')"
+        >
+          <el-icon><BellFilled /></el-icon>
+          <span><em>关注现场</em><strong>{{ scopeSummary.warningSiteCount }}<small>个</small></strong></span>
+          <el-icon class="cockpit-scope-metric__arrow"><ArrowRight /></el-icon>
+        </button>
+        <button
+          type="button"
+          class="cockpit-scope-metric cockpit-scope-metric--action is-warning"
+          :disabled="!scopeSummary.unassignedPlanCount"
+          @click="openUnassignedPlans"
+        >
+          <el-icon><Link /></el-icon>
+          <span><em>待归属计划</em><strong>{{ scopeSummary.unassignedPlanCount }}<small>个</small></strong></span>
+          <el-icon class="cockpit-scope-metric__arrow"><ArrowRight /></el-icon>
+        </button>
+      </div>
     </section>
 
     <section class="cockpit-chart-grid">
@@ -97,8 +120,8 @@
           <el-button class="motion-entry-action" data-motion-direction="forward" type="primary" plain :icon="Setting" @click="openConfig">新增执行计划</el-button>
         </el-empty>
         <div class="cockpit-coverage">
-          <span><strong>{{ activePlanCount }}</strong>纳管现场</span>
-          <span><strong>{{ checkedPlanCount }}</strong>已形成结论</span>
+          <span><el-icon><OfficeBuilding /></el-icon><strong>{{ activePlanCount }}</strong><em>现场范围</em></span>
+          <span><el-icon><CircleCheckFilled /></el-icon><strong>{{ checkedPlanCount }}</strong><em>已形成结论</em></span>
         </div>
       </article>
     </section>
@@ -114,19 +137,19 @@
         </div>
       </header>
       <el-table :data="filteredScopeHealth" row-key="scopeKey" default-expand-all class="cockpit-plan-table" empty-text="今天没有已归属的巡检计划">
-        <el-table-column label="状态" width="94" align="center">
-          <template #default="scope">
-            <el-tag :type="healthStatusType(scope.row.resultStatus)" effect="plain">
-              {{ healthStatusLabel(scope.row.resultStatus) }}
-            </el-tag>
-          </template>
-        </el-table-column>
         <el-table-column label="现场 / 主平台" min-width="220">
           <template #default="scope">
             <div class="cockpit-plan-name">
               <strong>{{ scope.row.scopeName }}</strong>
               <span>{{ scope.row.scopeType === 'SITE' ? '现场健康' : `所属现场：${scope.row.siteName}` }}</span>
             </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="104" align="center">
+          <template #default="scope">
+            <el-tag :type="healthStatusType(scope.row.resultStatus)" effect="plain">
+              {{ healthStatusLabel(scope.row.resultStatus) }}
+            </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="巡检计划" min-width="240" show-overflow-tooltip>
@@ -209,14 +232,18 @@
 import * as echarts from 'echarts'
 import {
   ArrowRight,
-  Clock,
+  BellFilled,
+  CircleCheckFilled,
+  Link,
   List,
+  Monitor,
+  OfficeBuilding,
   Refresh,
   Search,
   Setting,
-  Timer,
   View,
-  Warning
+  Warning,
+  WarningFilled
 } from '@element-plus/icons-vue'
 import { getAutoInspectionDashboard } from '@/api/support/autoInspection'
 import useSettingsStore from '@/store/modules/settings'
@@ -438,15 +465,26 @@ function openRecord(record) {
   openOverview({ recordId: record.recordId })
 }
 
-function openScopeDetail(scope) {
+function openScopeDetail(scope, resultStatus) {
   const today = new Date()
   const date = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, '0'), String(today.getDate()).padStart(2, '0')].join('-')
   openOverview({
     date,
     scopeKey: scope.scopeKey,
     siteId: scope.siteId,
-    mainPlatformId: scope.mainPlatformId || undefined
+    mainPlatformId: scope.mainPlatformId || undefined,
+    openSamples: resultStatus ? '1' : undefined,
+    resultStatus: resultStatus || undefined
   })
+}
+
+function openScopeIssue(status) {
+  const scope = scopeHealth.value.sites.find((item) => item.resultStatus === status)
+  if (scope) openScopeDetail(scope, status)
+}
+
+function openUnassignedPlans() {
+  navigateModulePage({ path: '/autoInspection/config', query: { tab: 'plan' } })
 }
 
 function openIssue(item) {
@@ -551,8 +589,8 @@ function issueKey(item) {
 }
 
 .cockpit-scope-band {
-  grid-template-columns: 320px minmax(0, 1fr);
-  min-height: 132px;
+  grid-template-columns: 270px minmax(0, 1fr);
+  min-height: 112px;
 }
 
 .cockpit-scope-band__title {
@@ -574,9 +612,100 @@ function issueKey(item) {
   line-height: 1.6;
 }
 
-.cockpit-scope-facts > div {
-  padding-top: 16px;
-  padding-bottom: 16px;
+.cockpit-scope-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(128px, 1fr));
+  min-width: 0;
+}
+
+.cockpit-scope-metric {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 0;
+  border-right: 1px solid var(--surface-border);
+  background: transparent;
+  color: var(--app-text);
+  font: inherit;
+  text-align: left;
+}
+
+.cockpit-scope-metric:last-child {
+  border-right: 0;
+}
+
+.cockpit-scope-metric > .el-icon {
+  color: var(--app-muted);
+  font-size: 21px;
+}
+
+.cockpit-scope-metric > span {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.cockpit-scope-metric em,
+.cockpit-scope-metric small {
+  color: var(--app-muted);
+  font-style: normal;
+  font-weight: 500;
+}
+
+.cockpit-scope-metric em {
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cockpit-scope-metric strong {
+  color: var(--app-heading);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.cockpit-scope-metric small {
+  margin-left: 4px;
+  font-size: 11px;
+}
+
+.cockpit-scope-metric--action {
+  grid-template-columns: 28px minmax(0, 1fr) 16px;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+
+.cockpit-scope-metric--action:hover:not(:disabled),
+.cockpit-scope-metric--action:focus-visible {
+  background: var(--surface-muted);
+}
+
+.cockpit-scope-metric--action:focus-visible {
+  outline: 2px solid var(--el-color-primary-light-5);
+  outline-offset: -2px;
+}
+
+.cockpit-scope-metric--action:disabled {
+  cursor: default;
+  opacity: .62;
+}
+
+.cockpit-scope-metric--action.is-danger > .el-icon:first-child,
+.cockpit-scope-metric--action.is-danger strong {
+  color: var(--health-danger);
+}
+
+.cockpit-scope-metric--action.is-warning > .el-icon:first-child,
+.cockpit-scope-metric--action.is-warning strong {
+  color: var(--health-warning);
+}
+
+.cockpit-scope-metric__arrow {
+  font-size: 13px !important;
 }
 
 .cockpit-health-gauge {
@@ -796,12 +925,22 @@ function issueKey(item) {
 
 .cockpit-coverage span {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: center;
   gap: 7px;
   padding: 12px;
   color: var(--app-muted);
   font-size: 12px;
+}
+
+.cockpit-coverage .el-icon {
+  color: var(--app-muted);
+  font-size: 16px;
+}
+
+.cockpit-coverage em {
+  color: var(--app-muted);
+  font-style: normal;
 }
 
 .cockpit-coverage span + span {
@@ -815,6 +954,10 @@ function issueKey(item) {
 
 .cockpit-plan-table :deep(.el-table__cell) {
   padding: 9px 0;
+}
+
+.cockpit-plan-table :deep(.el-table__expand-icon) {
+  margin-right: 6px;
 }
 
 .cockpit-plan-name {
