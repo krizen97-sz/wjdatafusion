@@ -7,8 +7,6 @@ import {
   RESULT_SKIP,
   RESULT_WARNING,
   buildCurrentStatusDistribution,
-  buildPlanCompletionRows,
-  buildScopeHealthChartRows,
   filterPlanHealth,
   filterScopeHealth,
   formatHealthScore,
@@ -69,24 +67,6 @@ test('current status distribution always exposes all four business states', () =
   assert.deepEqual(result.map((item) => item.value), [2, 1, 1, 0])
 })
 
-test('cockpit chart rows prioritize unhealthy scopes and incomplete plans', () => {
-  const sites = [{
-    scopeKey: 'SITE:2', scopeName: '武进分局', resultStatus: RESULT_WARNING, healthScore: 82, expectedCount: 10, completedCount: 9,
-    children: [{ scopeKey: 'MAIN_PLATFORM:19', scopeName: 'TIM平台', siteName: '武进分局', resultStatus: RESULT_ABNORMAL, healthScore: 60, expectedCount: 5, completedCount: 3 }]
-  }]
-  const scopeRows = buildScopeHealthChartRows(sites)
-  assert.deepEqual(scopeRows.map((row) => row.scopeKey), ['MAIN_PLATFORM:19', 'SITE:2'])
-  assert.equal(scopeRows[0].chartName, '武进分局 / TIM平台')
-
-  const planRows = buildPlanCompletionRows([
-    { planId: 1, planName: '正常计划', resultStatus: RESULT_NORMAL, expectedCount: 10, completedCount: 10 },
-    { planId: 2, planName: '异常计划', resultStatus: RESULT_ABNORMAL, expectedCount: 10, completedCount: 6 }
-  ])
-  assert.deepEqual(planRows.map((row) => row.planId), [2, 1])
-  assert.equal(planRows[0].completionRate, 60)
-  assert.equal(planRows[0].pendingCount, 4)
-})
-
 test('cockpit groups today plans by site and main platform', () => {
   const grouped = groupPlanHealthByScope([
     { planId: 1, planName: '现场公共巡检', scopeType: 'SITE', siteId: 2, siteName: '武进分局', expectedCount: 1, completedCount: 1, normalCount: 1, resultStatus: RESULT_NORMAL },
@@ -109,25 +89,18 @@ test('cockpit groups today plans by site and main platform', () => {
 })
 
 test('cockpit presents today health by site and main platform', () => {
-  assert.ok(cockpitSource.includes('<h2>今日健康构成</h2>'))
-  assert.ok(cockpitSource.includes('<h2>现场与主平台健康排行</h2>'))
-  assert.ok(cockpitSource.includes('<h2>计划执行完成度</h2>'))
-  assert.ok(cockpitSource.includes('<h2>现场与主平台明细</h2>'))
+  assert.ok(cockpitSource.includes('<h2>今日现场状态</h2>'))
+  assert.ok(cockpitSource.includes('<h2>今日现场与主平台健康</h2>'))
   assert.ok(cockpitSource.includes('row-key="scopeKey"'))
   assert.ok(cockpitSource.includes('scope.row.scopeName'))
-  assert.ok(cockpitSource.includes('健康度按现场和主平台分别计算'))
-  assert.ok(cockpitSource.includes('class="cockpit-scope-metrics"'))
-  assert.ok(cockpitSource.includes('<OfficeBuilding />'))
-  assert.ok(cockpitSource.includes('<Monitor />'))
-  assert.ok(cockpitSource.includes('@click="openScopeIssue(\'2\')"'))
-  assert.ok(cockpitSource.includes('@click="openScopeIssue(\'4\')"'))
-  assert.ok(cockpitSource.includes('@click="openUnassignedPlans"'))
+  assert.ok(cockpitSource.includes('主平台为最深健康层级'))
+  assert.ok(cockpitSource.includes('待归属计划不参与现场健康计算'))
   assert.ok(cockpitSource.indexOf('label="现场 / 主平台"') < cockpitSource.indexOf('label="状态"'))
-  assert.ok(cockpitSource.includes("openSamples: resultStatus ? '1' : undefined"))
-  assert.ok(cockpitSource.includes('ref="scopeRankChartRef"'))
-  assert.ok(cockpitSource.includes('ref="planCompletionChartRef"'))
-  assert.ok(cockpitSource.includes("type: 'pie'"))
-  assert.ok(cockpitSource.includes('scopeTableVisible = !scopeTableVisible'))
+  assert.ok(cockpitSource.includes(':row-class-name="scopeRowClassName"'))
+  assert.ok(cockpitSource.includes('cockpit-scope-row--site'))
+  assert.ok(!cockpitSource.includes('scopeRankChartRef'))
+  assert.ok(!cockpitSource.includes('planCompletionChartRef'))
+  assert.ok(!cockpitSource.includes('scopeTableVisible'))
   assert.ok(!cockpitSource.includes('今日计划健康清单'))
 })
 

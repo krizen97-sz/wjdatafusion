@@ -31,49 +31,26 @@
 
     <section v-loading="loading" class="cockpit-health-band cockpit-scope-band">
       <div class="cockpit-scope-band__title">
-        <strong>今日健康范围</strong>
+        <strong>今日纳管范围</strong>
         <span>健康度按现场和主平台分别计算，不再用一个全局分数覆盖差异。</span>
       </div>
-      <div class="cockpit-scope-metrics" aria-label="今日现场与主平台健康范围">
-        <div class="cockpit-scope-metric">
-          <el-icon><OfficeBuilding /></el-icon>
-          <span><em>现场范围</em><strong>{{ scopeSummary.siteCount }}<small>个</small></strong></span>
+      <dl class="cockpit-health-facts cockpit-scope-facts">
+        <div>
+          <dt><el-icon><Clock /></el-icon>现场</dt>
+          <dd>{{ scopeSummary.siteCount }}<small>个</small></dd>
+          <span>异常 {{ scopeSummary.abnormalSiteCount }} · 关注 {{ scopeSummary.warningSiteCount }}</span>
         </div>
-        <div class="cockpit-scope-metric">
-          <el-icon><Monitor /></el-icon>
-          <span><em>主平台范围</em><strong>{{ scopeSummary.platformCount }}<small>个</small></strong></span>
+        <div>
+          <dt><el-icon><Timer /></el-icon>主平台</dt>
+          <dd>{{ scopeSummary.platformCount }}<small>个</small></dd>
+          <span>作为现场下的最深健康层级</span>
         </div>
-        <button
-          type="button"
-          class="cockpit-scope-metric cockpit-scope-metric--action is-danger"
-          :disabled="!scopeSummary.abnormalSiteCount"
-          @click="openScopeIssue('2')"
-        >
-          <el-icon><WarningFilled /></el-icon>
-          <span><em>异常现场</em><strong>{{ scopeSummary.abnormalSiteCount }}<small>个</small></strong></span>
-          <el-icon class="cockpit-scope-metric__arrow"><ArrowRight /></el-icon>
-        </button>
-        <button
-          type="button"
-          class="cockpit-scope-metric cockpit-scope-metric--action is-warning"
-          :disabled="!scopeSummary.warningSiteCount"
-          @click="openScopeIssue('4')"
-        >
-          <el-icon><BellFilled /></el-icon>
-          <span><em>关注现场</em><strong>{{ scopeSummary.warningSiteCount }}<small>个</small></strong></span>
-          <el-icon class="cockpit-scope-metric__arrow"><ArrowRight /></el-icon>
-        </button>
-        <button
-          type="button"
-          class="cockpit-scope-metric cockpit-scope-metric--action is-warning"
-          :disabled="!scopeSummary.unassignedPlanCount"
-          @click="openUnassignedPlans"
-        >
-          <el-icon><Link /></el-icon>
-          <span><em>待归属计划</em><strong>{{ scopeSummary.unassignedPlanCount }}<small>个</small></strong></span>
-          <el-icon class="cockpit-scope-metric__arrow"><ArrowRight /></el-icon>
-        </button>
-      </div>
+        <div>
+          <dt><el-icon><Warning /></el-icon>待归属计划</dt>
+          <dd>{{ scopeSummary.unassignedPlanCount }}<small>个</small></dd>
+          <span>待归属计划不参与现场健康计算</span>
+        </div>
+      </dl>
     </section>
 
     <section class="cockpit-chart-grid">
@@ -81,7 +58,7 @@
         <header class="cockpit-panel__head">
           <div>
             <h2>近七日执行趋势</h2>
-            <span class="cockpit-panel__description">展示全部计划每日应执行、已完成和异常变化，现场差异请在下方健康排行查看</span>
+            <span class="cockpit-panel__description">展示全部计划每日应执行、已完成和异常变化，现场差异请在下方健康清单查看</span>
           </div>
           <div class="cockpit-status-legend" aria-label="健康状态图例">
             <span><i class="is-normal"></i>健康</span>
@@ -90,7 +67,7 @@
             <span><i class="is-idle"></i>未执行</span>
           </div>
         </header>
-        <div v-if="hasTrendData" ref="trendChartRef" class="cockpit-chart cockpit-chart--trend" role="img" aria-label="近七日巡检健康与执行趋势图"></div>
+        <div v-if="hasTrendData" ref="trendChartRef" class="cockpit-chart cockpit-chart--trend"></div>
         <el-empty v-else class="cockpit-chart-empty" description="近七日还没有可汇总的巡检数据" :image-size="48">
           <el-button class="motion-entry-action" data-motion-direction="forward" type="primary" plain :icon="Setting" @click="openConfig">配置巡检计划</el-button>
         </el-empty>
@@ -111,63 +88,39 @@
       <article class="cockpit-panel cockpit-panel--distribution">
         <header class="cockpit-panel__head">
           <div>
-            <h2>今日健康构成</h2>
+            <h2>今日现场状态</h2>
             <span class="cockpit-panel__description">按现场结论统计健康、关注、异常与未执行数量</span>
           </div>
         </header>
-        <div v-if="hasPlanData" ref="distributionChartRef" class="cockpit-chart cockpit-chart--distribution" role="img" aria-label="今日现场健康状态构成图"></div>
+        <div v-if="hasPlanData" ref="distributionChartRef" class="cockpit-chart cockpit-chart--distribution"></div>
         <el-empty v-else class="cockpit-chart-empty cockpit-chart-empty--small" description="今天没有需要执行的巡检计划" :image-size="48">
           <el-button class="motion-entry-action" data-motion-direction="forward" type="primary" plain :icon="Setting" @click="openConfig">新增执行计划</el-button>
         </el-empty>
         <div class="cockpit-coverage">
-          <span><el-icon><OfficeBuilding /></el-icon><strong>{{ activePlanCount }}</strong><em>现场范围</em></span>
-          <span><el-icon><CircleCheckFilled /></el-icon><strong>{{ checkedPlanCount }}</strong><em>已形成结论</em></span>
+          <span><strong>{{ activePlanCount }}</strong>纳管现场</span>
+          <span><strong>{{ checkedPlanCount }}</strong>已形成结论</span>
         </div>
-      </article>
-    </section>
-
-    <section class="cockpit-chart-grid cockpit-chart-grid--secondary">
-      <article class="cockpit-panel cockpit-panel--scope-ranking">
-        <header class="cockpit-panel__head">
-          <div>
-            <h2>现场与主平台健康排行</h2>
-            <span class="cockpit-panel__description">优先展示异常和低健康度范围，点击图形可进入对应明细</span>
-          </div>
-          <el-tag v-if="scopeChartRows.length" effect="plain" type="info">{{ scopeChartRows.length }} 个范围</el-tag>
-        </header>
-        <div v-if="hasScopeChartData" ref="scopeRankChartRef" class="cockpit-chart cockpit-chart--scope-ranking" role="img" aria-label="现场与主平台健康度排行图"></div>
-        <el-empty v-else class="cockpit-chart-empty cockpit-chart-empty--ranking" description="今天暂无现场或主平台健康数据" :image-size="48" />
-      </article>
-
-      <article class="cockpit-panel cockpit-panel--completion">
-        <header class="cockpit-panel__head">
-          <div>
-            <h2>计划执行完成度</h2>
-            <span class="cockpit-panel__description">已完成与待执行数量对照，点击计划可查看当天执行结果</span>
-          </div>
-          <el-tag v-if="planCompletionRows.length" effect="plain" type="info">{{ planCompletionRows.length }} 个计划</el-tag>
-        </header>
-        <div v-if="hasPlanCompletionData" ref="planCompletionChartRef" class="cockpit-chart cockpit-chart--completion" role="img" aria-label="巡检计划执行完成度图"></div>
-        <el-empty v-else class="cockpit-chart-empty cockpit-chart-empty--ranking" description="今天暂无计划执行数据" :image-size="48" />
       </article>
     </section>
 
     <section class="cockpit-panel cockpit-plan-panel">
       <header class="cockpit-panel__head cockpit-panel__head--controls">
         <div>
-          <h2>现场与主平台明细</h2>
-          <span class="cockpit-panel__description">图表用于值守判断，展开明细后可按现场、主平台、计划或模板检索取证</span>
+          <h2>今日现场与主平台健康</h2>
+          <span class="cockpit-panel__description">现场为第一层，主平台为最深健康层级；计划作为计算依据保留在行内</span>
         </div>
         <div class="cockpit-plan-filters">
-          <el-input v-if="scopeTableVisible" v-model="planKeyword" clearable :prefix-icon="Search" placeholder="搜索现场、主平台、计划或模板" />
-          <el-button :icon="List" @click="scopeTableVisible = !scopeTableVisible">
-            {{ scopeTableVisible ? '收起明细' : '展开明细' }}
-          </el-button>
+          <el-input v-model="planKeyword" clearable :prefix-icon="Search" placeholder="搜索现场、主平台、计划或模板" />
         </div>
       </header>
-      <el-collapse-transition>
-      <div v-show="scopeTableVisible" class="cockpit-plan-table-wrap">
-      <el-table :data="filteredScopeHealth" row-key="scopeKey" default-expand-all class="cockpit-plan-table" empty-text="今天没有已归属的巡检计划">
+      <el-table
+        :data="filteredScopeHealth"
+        row-key="scopeKey"
+        default-expand-all
+        :row-class-name="scopeRowClassName"
+        class="cockpit-plan-table"
+        empty-text="今天没有已归属的巡检计划"
+      >
         <el-table-column label="现场 / 主平台" min-width="220">
           <template #default="scope">
             <div class="cockpit-plan-name">
@@ -211,8 +164,6 @@
           </template>
         </el-table-column>
       </el-table>
-      </div>
-      </el-collapse-transition>
     </section>
 
     <section class="cockpit-bottom-grid">
@@ -265,27 +216,22 @@
 import * as echarts from 'echarts'
 import {
   ArrowRight,
-  BellFilled,
-  CircleCheckFilled,
-  Link,
+  Clock,
   List,
-  Monitor,
-  OfficeBuilding,
   Refresh,
   Search,
   Setting,
+  Timer,
   View,
-  Warning,
-  WarningFilled
+  Warning
 } from '@element-plus/icons-vue'
 import { getAutoInspectionDashboard } from '@/api/support/autoInspection'
 import useSettingsStore from '@/store/modules/settings'
 import {
   RESULT_SKIP,
   buildCurrentStatusDistribution,
-  buildPlanCompletionRows,
-  buildScopeHealthChartRows,
   filterScopeHealth,
+  formatHealthScore,
   formatShortDate,
   groupPlanHealthByScope,
   healthStatusColor,
@@ -302,30 +248,33 @@ const loading = ref(false)
 const dashboardError = ref('')
 const dashboard = ref(normalizeCockpitDashboard())
 const planKeyword = ref('')
-const scopeTableVisible = ref(false)
+const healthGaugeRef = ref(null)
 const trendChartRef = ref(null)
 const distributionChartRef = ref(null)
-const scopeRankChartRef = ref(null)
-const planCompletionChartRef = ref(null)
 const charts = {}
 
+const healthOverview = computed(() => dashboard.value.healthOverview || {})
+const routineSummary = computed(() => dashboard.value.routineSummary || {})
+const frequentSummary = computed(() => dashboard.value.frequentSummary || {})
+const overallStatus = computed(() => healthOverview.value.status || RESULT_SKIP)
+const healthScoreDisplay = computed(() => formatHealthScore(healthOverview.value.healthScore, overallStatus.value))
+const routineRateDisplay = computed(() => (!routineSummary.value.status || routineSummary.value.status === RESULT_SKIP)
+  ? '--'
+  : (routineSummary.value.successRate || '0%'))
+const frequentRateDisplay = computed(() => formatHealthScore(frequentSummary.value.healthScore, frequentSummary.value.status || RESULT_SKIP))
 const scopeHealth = computed(() => groupPlanHealthByScope(dashboard.value.currentPlanHealth))
 const scopeSummary = computed(() => summarizeScopeHealth(scopeHealth.value.sites, scopeHealth.value.unassigned))
 const filteredScopeHealth = computed(() => filterScopeHealth(scopeHealth.value.sites, planKeyword.value))
 const statusDistribution = computed(() => buildCurrentStatusDistribution(scopeHealth.value.sites))
-const scopeChartRows = computed(() => buildScopeHealthChartRows(scopeHealth.value.sites, 10))
-const planCompletionRows = computed(() => buildPlanCompletionRows(dashboard.value.currentPlanHealth, 8))
 const activePlanCount = computed(() => scopeHealth.value.sites.length)
 const checkedPlanCount = computed(() => scopeHealth.value.sites.filter((row) => row.resultStatus !== RESULT_SKIP).length)
 const hasPlanData = computed(() => activePlanCount.value > 0)
-const hasScopeChartData = computed(() => scopeChartRows.value.length > 0)
-const hasPlanCompletionData = computed(() => planCompletionRows.value.length > 0)
 const hasTrendData = computed(() => dashboard.value.combinedTrend.some((row) => (
   Number(row.frequentExpected || 0)
 ) > 0))
 
 watch(() => settingsStore.isDark, () => nextTick(renderCharts))
-watch([statusDistribution, scopeChartRows, planCompletionRows], () => nextTick(renderCharts), { deep: true })
+watch([filteredScopeHealth, statusDistribution], () => nextTick(renderDistributionChart), { deep: true })
 
 onMounted(() => {
   window.addEventListener('resize', resizeCharts)
@@ -381,8 +330,43 @@ function ensureChart(key, element) {
 function renderCharts() {
   renderTrendChart()
   renderDistributionChart()
-  renderScopeRankChart()
-  renderPlanCompletionChart()
+}
+
+function renderHealthGauge() {
+  const chart = ensureChart('healthGauge', healthGaugeRef.value)
+  if (!chart) return
+  const palette = chartPalette()
+  const score = normalizeHealthScore(healthOverview.value.healthScore)
+  const status = overallStatus.value
+  chart.setOption({
+    animation: false,
+    series: [{
+      type: 'gauge',
+      startAngle: 210,
+      endAngle: -30,
+      min: 0,
+      max: 100,
+      radius: '92%',
+      center: ['50%', '54%'],
+      progress: { show: true, roundCap: true, width: 12, itemStyle: { color: healthStatusColor(status, palette) } },
+      axisLine: { lineStyle: { width: 12, color: [[1, palette.grid]] } },
+      axisTick: { show: false },
+      splitLine: { show: false },
+      axisLabel: { show: false },
+      pointer: { show: false },
+      anchor: { show: false },
+      title: { offsetCenter: [0, '62%'], color: palette.muted, fontSize: 12 },
+      detail: {
+        valueAnimation: false,
+        offsetCenter: [0, '-2%'],
+        formatter: status === RESULT_SKIP ? '--' : '{value}%',
+        color: palette.heading,
+        fontSize: 28,
+        fontWeight: 700
+      },
+      data: [{ value: score, name: '当日健康度' }]
+    }]
+  }, true)
 }
 
 function renderTrendChart() {
@@ -424,109 +408,17 @@ function renderDistributionChart() {
   const rows = statusDistribution.value
   chart.setOption({
     animation: false,
-    tooltip: { trigger: 'item', confine: true, backgroundColor: readThemeToken('--surface-strong', '#fff'), borderColor: palette.grid, textStyle: { color: palette.text }, formatter: '{b}：{c} 个现场（{d}%）' },
-    legend: { bottom: 8, left: 'center', textStyle: { color: palette.muted }, itemWidth: 10, itemHeight: 10 },
-    title: { text: String(activePlanCount.value), subtext: '现场', left: 'center', top: '34%', textStyle: { color: palette.heading, fontSize: 26 }, subtextStyle: { color: palette.muted, fontSize: 11 } },
-    series: [{
-      type: 'pie',
-      radius: ['54%', '75%'],
-      center: ['50%', '43%'],
-      avoidLabelOverlap: true,
-      label: { color: palette.text, formatter: '{b}\n{c}' },
-      labelLine: { lineStyle: { color: palette.grid } },
-      data: rows.map((row) => ({ name: row.name, value: row.value, status: row.status, itemStyle: { color: healthStatusColor(row.status, palette) } }))
-    }]
-  }, true)
-  chart.off('click')
-  chart.on('click', ({ data }) => {
-    if (data?.status) openScopeIssue(data.status)
-  })
-}
-
-function renderScopeRankChart() {
-  if (!hasScopeChartData.value) {
-    charts.scopeRank?.clear()
-    return
-  }
-  const chart = ensureChart('scopeRank', scopeRankChartRef.value)
-  if (!chart) return
-  const palette = chartPalette()
-  const rows = [...scopeChartRows.value].reverse()
-  chart.setOption({
-    animation: false,
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'shadow' },
-      confine: true,
-      backgroundColor: readThemeToken('--surface-strong', '#fff'),
-      borderColor: palette.grid,
-      textStyle: { color: palette.text },
-      formatter: (params = []) => {
-        const row = rows[params[0]?.dataIndex]
-        if (!row) return ''
-        return `${row.scopePath}<br/>健康度：${normalizeHealthScore(row.healthScore)}%<br/>状态：${healthStatusLabel(row.resultStatus)}<br/>完成：${row.completedCount || 0} / ${row.expectedCount || 0}`
-      }
-    },
-    grid: { left: 174, right: 54, top: 18, bottom: 24 },
-    xAxis: { type: 'value', min: 0, max: 100, axisLabel: { color: palette.muted, formatter: '{value}%' }, splitLine: { lineStyle: { color: palette.grid } } },
-    yAxis: { type: 'category', data: rows.map((row) => row.chartName), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: palette.text, width: 154, overflow: 'truncate' } },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, confine: true, backgroundColor: readThemeToken('--surface-strong', '#fff'), borderColor: palette.grid, textStyle: { color: palette.text } },
+    grid: { left: 58, right: 24, top: 12, bottom: 20 },
+    xAxis: { type: 'value', minInterval: 1, axisLabel: { color: palette.muted }, splitLine: { lineStyle: { color: palette.grid } } },
+    yAxis: { type: 'category', data: rows.map((row) => row.name), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: palette.text } },
     series: [{
       type: 'bar',
-      barMaxWidth: 14,
-      showBackground: true,
-      backgroundStyle: { color: readThemeToken('--surface-subtle', palette.grid) },
-      label: { show: true, position: 'right', color: palette.muted, formatter: '{c}%' },
-      data: rows.map((row) => ({ value: normalizeHealthScore(row.healthScore), itemStyle: { color: healthStatusColor(row.resultStatus, palette), borderRadius: [0, 4, 4, 0] } }))
+      barWidth: 14,
+      label: { show: true, position: 'right', color: palette.muted },
+      data: rows.map((row) => ({ value: row.value, itemStyle: { color: healthStatusColor(row.status, palette), borderRadius: 2 } }))
     }]
   }, true)
-  chart.off('click')
-  chart.on('click', ({ dataIndex }) => {
-    const row = rows[dataIndex]
-    if (row) openScopeDetail(row, ['2', '4'].includes(row.resultStatus) ? row.resultStatus : undefined)
-  })
-}
-
-function renderPlanCompletionChart() {
-  if (!hasPlanCompletionData.value) {
-    charts.planCompletion?.clear()
-    return
-  }
-  const chart = ensureChart('planCompletion', planCompletionChartRef.value)
-  if (!chart) return
-  const palette = chartPalette()
-  const rows = [...planCompletionRows.value].reverse()
-  chart.setOption({
-    animation: false,
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'shadow' },
-      confine: true,
-      backgroundColor: readThemeToken('--surface-strong', '#fff'),
-      borderColor: palette.grid,
-      textStyle: { color: palette.text },
-      formatter: (params = []) => {
-        const row = rows[params[0]?.dataIndex]
-        if (!row) return ''
-        return `${row.chartName}<br/>完成度：${row.completionRate}%<br/>已完成：${row.completedCount} / ${row.expectedCount}<br/>异常：${row.abnormalCount || 0}，关注：${row.warningCount || 0}，缺失：${row.missingCount || 0}`
-      }
-    },
-    grid: { left: 148, right: 54, top: 18, bottom: 24 },
-    xAxis: { type: 'value', min: 0, max: 100, axisLabel: { color: palette.muted, formatter: '{value}%' }, splitLine: { lineStyle: { color: palette.grid } } },
-    yAxis: { type: 'category', data: rows.map((row) => row.chartName), axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: palette.text, width: 128, overflow: 'truncate' } },
-    series: [{
-      type: 'bar',
-      barMaxWidth: 14,
-      showBackground: true,
-      backgroundStyle: { color: readThemeToken('--surface-subtle', palette.grid) },
-      label: { show: true, position: 'right', color: palette.muted, formatter: '{c}%' },
-      data: rows.map((row) => ({ value: row.completionRate, itemStyle: { color: healthStatusColor(row.resultStatus, palette), borderRadius: [0, 4, 4, 0] } }))
-    }]
-  }, true)
-  chart.off('click')
-  chart.on('click', ({ dataIndex }) => {
-    const row = rows[dataIndex]
-    if (row) openPlanDetail(row)
-  })
 }
 
 function resizeCharts() {
@@ -535,6 +427,10 @@ function resizeCharts() {
 
 function statusColor(status) {
   return healthStatusColor(status, chartPalette())
+}
+
+function scopeRowClassName({ row }) {
+  return row?.scopeType === 'SITE' ? 'cockpit-scope-row--site' : 'cockpit-scope-row--platform'
 }
 
 function openOverview(extraQuery = {}) {
@@ -553,37 +449,15 @@ function openRecord(record) {
   openOverview({ recordId: record.recordId })
 }
 
-function todayDateKey() {
+function openScopeDetail(scope) {
   const today = new Date()
-  return [today.getFullYear(), String(today.getMonth() + 1).padStart(2, '0'), String(today.getDate()).padStart(2, '0')].join('-')
-}
-
-function openScopeDetail(scope, resultStatus) {
+  const date = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, '0'), String(today.getDate()).padStart(2, '0')].join('-')
   openOverview({
-    date: todayDateKey(),
+    date,
     scopeKey: scope.scopeKey,
     siteId: scope.siteId,
-    mainPlatformId: scope.mainPlatformId || undefined,
-    openSamples: resultStatus ? '1' : undefined,
-    resultStatus: resultStatus || undefined
+    mainPlatformId: scope.mainPlatformId || undefined
   })
-}
-
-function openPlanDetail(plan) {
-  openOverview({
-    date: todayDateKey(),
-    planId: plan.planId,
-    openSamples: '1'
-  })
-}
-
-function openScopeIssue(status) {
-  const scope = scopeHealth.value.sites.find((item) => item.resultStatus === status)
-  if (scope) openScopeDetail(scope, status)
-}
-
-function openUnassignedPlans() {
-  navigateModulePage({ path: '/autoInspection/config', query: { tab: 'plan' } })
 }
 
 function openIssue(item) {
@@ -688,8 +562,8 @@ function issueKey(item) {
 }
 
 .cockpit-scope-band {
-  grid-template-columns: 270px minmax(0, 1fr);
-  min-height: 112px;
+  grid-template-columns: 320px minmax(0, 1fr);
+  min-height: 132px;
 }
 
 .cockpit-scope-band__title {
@@ -711,100 +585,97 @@ function issueKey(item) {
   line-height: 1.6;
 }
 
-.cockpit-scope-metrics {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(128px, 1fr));
-  min-width: 0;
+.cockpit-scope-facts > div {
+  padding-top: 16px;
+  padding-bottom: 16px;
 }
 
-.cockpit-scope-metric {
+.cockpit-health-gauge {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
+  grid-template-columns: 166px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  min-width: 0;
-  padding: 14px 16px;
-  border: 0;
+  gap: 4px;
+  padding: 12px 18px;
   border-right: 1px solid var(--surface-border);
-  background: transparent;
-  color: var(--app-text);
-  font: inherit;
-  text-align: left;
 }
 
-.cockpit-scope-metric:last-child {
+.cockpit-health-gauge__chart {
+  width: 160px;
+  height: 148px;
+}
+
+.cockpit-health-gauge__copy {
+  display: grid;
+  align-content: center;
+  justify-items: start;
+  gap: 6px;
+}
+
+:deep(.cockpit-overall-tag.el-tag--info) {
+  border-color: var(--surface-border-strong);
+  background: var(--surface-subtle);
+  color: var(--app-text);
+}
+
+.cockpit-health-gauge__copy strong {
+  color: var(--app-heading);
+  font-size: 17px;
+}
+
+.cockpit-health-gauge__copy span {
+  color: var(--app-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.cockpit-health-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+
+.cockpit-health-facts > div {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 20px 24px;
+  border-right: 1px solid var(--surface-border);
+}
+
+.cockpit-health-facts > div:last-child {
   border-right: 0;
 }
 
-.cockpit-scope-metric > .el-icon {
+.cockpit-health-facts dt {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   color: var(--app-muted);
-  font-size: 21px;
+  font-size: 12px;
 }
 
-.cockpit-scope-metric > span {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-}
-
-.cockpit-scope-metric em,
-.cockpit-scope-metric small {
-  color: var(--app-muted);
-  font-style: normal;
-  font-weight: 500;
-}
-
-.cockpit-scope-metric em {
-  overflow: hidden;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.cockpit-scope-metric strong {
+.cockpit-health-facts dd {
+  margin: 0;
   color: var(--app-heading);
-  font-size: 22px;
+  font-size: 30px;
+  font-weight: 700;
   line-height: 1;
 }
 
-.cockpit-scope-metric small {
-  margin-left: 4px;
-  font-size: 11px;
+.cockpit-health-facts dd small {
+  margin-left: 5px;
+  color: var(--app-muted);
+  font-size: 13px;
+  font-weight: 500;
 }
 
-.cockpit-scope-metric--action {
-  grid-template-columns: 28px minmax(0, 1fr) 16px;
-  cursor: pointer;
-  transition: background-color 160ms ease;
-}
-
-.cockpit-scope-metric--action:hover:not(:disabled),
-.cockpit-scope-metric--action:focus-visible {
-  background: var(--surface-muted);
-}
-
-.cockpit-scope-metric--action:focus-visible {
-  outline: 2px solid var(--el-color-primary-light-5);
-  outline-offset: -2px;
-}
-
-.cockpit-scope-metric--action:disabled {
-  cursor: default;
-  opacity: .62;
-}
-
-.cockpit-scope-metric--action.is-danger > .el-icon:first-child,
-.cockpit-scope-metric--action.is-danger strong {
-  color: var(--health-danger);
-}
-
-.cockpit-scope-metric--action.is-warning > .el-icon:first-child,
-.cockpit-scope-metric--action.is-warning strong {
-  color: var(--health-warning);
-}
-
-.cockpit-scope-metric__arrow {
-  font-size: 13px !important;
+.cockpit-health-facts span {
+  overflow: hidden;
+  color: var(--app-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cockpit-chart-grid,
@@ -812,10 +683,6 @@ function issueKey(item) {
   display: grid;
   grid-template-columns: minmax(0, 1.7fr) minmax(320px, .8fr);
   gap: 14px;
-}
-
-.cockpit-chart-grid--secondary {
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
 }
 
 .cockpit-panel {
@@ -888,12 +755,6 @@ function issueKey(item) {
   padding: 10px 12px;
 }
 
-.cockpit-chart--scope-ranking,
-.cockpit-chart--completion {
-  height: 318px;
-  padding: 8px 12px 4px;
-}
-
 .cockpit-chart-empty {
   display: grid;
   align-content: center;
@@ -902,10 +763,6 @@ function issueKey(item) {
 
 .cockpit-chart-empty--small {
   min-height: 260px;
-}
-
-.cockpit-chart-empty--ranking {
-  min-height: 318px;
 }
 
 .cockpit-day-track {
@@ -950,22 +807,12 @@ function issueKey(item) {
 
 .cockpit-coverage span {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: center;
   gap: 7px;
   padding: 12px;
   color: var(--app-muted);
   font-size: 12px;
-}
-
-.cockpit-coverage .el-icon {
-  color: var(--app-muted);
-  font-size: 16px;
-}
-
-.cockpit-coverage em {
-  color: var(--app-muted);
-  font-style: normal;
 }
 
 .cockpit-coverage span + span {
@@ -981,12 +828,20 @@ function issueKey(item) {
   padding: 9px 0;
 }
 
-.cockpit-plan-table-wrap {
-  min-width: 0;
-}
-
 .cockpit-plan-table :deep(.el-table__expand-icon) {
   margin-right: 6px;
+}
+
+.cockpit-plan-table :deep(.cockpit-scope-row--site > td.el-table__cell) {
+  background: var(--surface-muted);
+}
+
+.cockpit-plan-table :deep(.cockpit-scope-row--site .cockpit-plan-name strong) {
+  font-weight: 600;
+}
+
+.cockpit-plan-table :deep(.cockpit-scope-row--platform .cockpit-plan-name span) {
+  color: var(--app-muted);
 }
 
 .cockpit-plan-name {
