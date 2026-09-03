@@ -63,8 +63,7 @@ function observeChart() {
   if (!chartRef.value || typeof ResizeObserver === 'undefined') return
   if (!resizeObserver) resizeObserver = new ResizeObserver(() => {
     if (!active || !chartRef.value?.clientWidth || !chartRef.value.clientHeight) return
-    if (chartInstance) chartInstance.resize()
-    else renderChart()
+    renderChart()
   })
   resizeObserver.disconnect()
   resizeObserver.observe(chartRef.value)

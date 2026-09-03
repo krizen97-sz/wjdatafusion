@@ -9,9 +9,9 @@
       <div class="cockpit-commandbar__identity">
         <h1>自动化巡检驾驶舱</h1>
         <div class="cockpit-commandbar__meta" role="status" aria-live="polite">
-          <span>{{ dashboardDateKey() }}</span>
-          <span>{{ dashboard.generatedTime ? `更新于 ${dashboard.generatedTime.slice(11)}` : '等待首次同步' }}</span>
-          <el-text v-if="dashboardError && loadedOnce" type="warning" size="small">上次成功数据</el-text>
+          <span>{{ displayUpdatedTime ? displayUpdatedTime.slice(0, 10) : dashboardDateKey() }}</span>
+          <span>{{ displayUpdatedTime ? `更新于 ${displayUpdatedTime.slice(11)}` : '等待首次同步' }}</span>
+          <el-text v-if="activeView === 'overview' && dashboardError && loadedOnce" type="warning" size="small">上次成功数据</el-text>
         </div>
       </div>
       <div class="cockpit-commandbar__actions">
@@ -22,18 +22,44 @@
         <el-space :size="8" wrap>
           <el-button class="motion-entry-action" data-motion-direction="forward" :icon="List" @click="openOverview()">巡检总览</el-button>
           <el-button class="motion-entry-action" data-motion-direction="forward" :icon="Setting" @click="openConfig">巡检配置</el-button>
-          <el-tooltip v-if="isFullscreenSupported" :content="isFullscreen ? '退出全屏值守' : '全屏值守'" :teleported="!isFullscreen">
+          <el-tooltip v-if="isFullscreenSupported" :content="isFullscreen ? '退出全屏值守' : '全屏值守'" append-to=".inspection-cockpit">
             <el-button
               :icon="isFullscreen ? ScaleToOriginal : FullScreen"
               :aria-label="isFullscreen ? '退出全屏值守' : '全屏值守'"
               @click="toggleFullscreen"
             />
           </el-tooltip>
-          <el-button type="primary" :icon="Refresh" :loading="refreshing" @click="loadDashboard">刷新数据</el-button>
+          <el-button type="primary" :icon="Refresh" :loading="activeView === 'metrics' ? metricsRefreshing : refreshing" @click="refreshActiveView">刷新数据</el-button>
         </el-space>
       </div>
     </header>
 
+    <el-tabs v-model="activeView" class="cockpit-views motion-tabs">
+      <el-tab-pane name="metrics" lazy>
+        <template #label>
+          <span class="motion-control-label">
+            <svg-icon icon-class="chart" class="motion-control-label__icon" />
+            <span class="motion-control-label__text">计划指标</span>
+          </span>
+        </template>
+        <PlanMetricDashboard
+          ref="metricsRef"
+          :palette="palette"
+          :animate="animateCharts"
+          :auto-refresh="autoRefresh"
+          :active="activeView === 'metrics'"
+          @loading-change="metricsRefreshing = $event"
+          @updated="metricsUpdatedTime = $event"
+          @open-record="openOverview({ recordId: $event })"
+        />
+      </el-tab-pane>
+      <el-tab-pane name="overview" lazy>
+        <template #label>
+          <span class="motion-control-label">
+            <svg-icon icon-class="dashboard" class="motion-control-label__icon" />
+            <span class="motion-control-label__text">运行总览</span>
+          </span>
+        </template>
     <el-alert
       v-if="dashboardError"
       class="cockpit-error-state"
@@ -97,12 +123,12 @@
           <span>{{ scopeRows.length }} / {{ allScopeRows.length }} 个范围</span>
         </header>
         <div class="cockpit-scope-filters">
-          <el-select v-model="scopeType" size="small" aria-label="健康范围层级" :teleported="!isFullscreen">
+          <el-select v-model="scopeType" size="small" aria-label="健康范围层级" append-to=".inspection-cockpit">
             <el-option label="全部范围" value="ALL" />
             <el-option label="现场" value="SITE" />
             <el-option label="主平台" value="MAIN_PLATFORM" />
           </el-select>
-          <el-select v-model="scopeStatus" size="small" aria-label="健康范围状态" :teleported="!isFullscreen">
+          <el-select v-model="scopeStatus" size="small" aria-label="健康范围状态" append-to=".inspection-cockpit">
             <el-option label="全部状态" value="ALL" />
             <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
@@ -149,15 +175,19 @@
         />
       </article>
     </section>
+      </el-tab-pane>
+    </el-tabs>
   </div>
 </template>
 
 <script setup name="SupportAutoInspectionCockpit">
 import { Clock, DataLine, Finished, FullScreen, Histogram, List, PieChart, Refresh, ScaleToOriginal, Setting, Warning } from '@element-plus/icons-vue'
 import { useFullscreen, usePreferredReducedMotion } from '@vueuse/core'
+import { color as chartColor } from 'echarts'
 import { getAutoInspectionDashboard } from '@/api/support/autoInspection'
 import useSettingsStore from '@/store/modules/settings'
 import AutoInspectionChart from './components/AutoInspectionChart.vue'
+import PlanMetricDashboard from './components/PlanMetricDashboard.vue'
 import {
   RESULT_ABNORMAL, RESULT_NORMAL, RESULT_SKIP, RESULT_WARNING,
   buildIssueChartRows, buildPlanCompletionRows, buildRecentExecutionChartRows, buildScopeHealthChartRows,
@@ -167,9 +197,14 @@ import {
 import { buildIssueOption, buildPlanOption, buildRecordOption, buildScopeOption, buildStatusOption, buildTrendOption } from './cockpitChartOptions'
 
 const router = useRouter()
+const route = useRoute()
 const { proxy } = getCurrentInstance()
 const settingsStore = useSettingsStore()
 const cockpitRoot = ref(null)
+const activeView = ref(route.query.view === 'overview' ? 'overview' : 'metrics')
+const metricsRef = ref(null)
+const metricsRefreshing = ref(false)
+const metricsUpdatedTime = ref('')
 const { isFullscreen, isSupported: isFullscreenSupported, toggle: toggleNativeFullscreen } = useFullscreen(cockpitRoot)
 const preferredMotion = usePreferredReducedMotion()
 const animateCharts = computed(() => preferredMotion.value !== 'reduce')
@@ -179,6 +214,7 @@ const loading = computed(() => refreshing.value && !loadedOnce.value)
 const autoRefresh = ref(true)
 const dashboardError = ref('')
 const dashboard = ref(normalizeCockpitDashboard())
+const displayUpdatedTime = computed(() => activeView.value === 'metrics' ? metricsUpdatedTime.value : dashboard.value.generatedTime)
 const scopeType = ref('ALL')
 const scopeStatus = ref('ALL')
 const palette = shallowRef(readChartPalette())
@@ -235,22 +271,26 @@ function syncAutoRefresh() {
   stopAutoRefresh()
   if (!autoRefresh.value || !active || disposed) return
   refreshTimer = setInterval(() => {
-    if (document.visibilityState === 'visible') loadDashboard()
+    if (activeView.value === 'overview' && document.visibilityState === 'visible') loadDashboard()
   }, 30000)
 }
 
 function handleVisibilityChange() {
-  if (document.visibilityState === 'visible' && autoRefresh.value && active) loadDashboard()
+  if (activeView.value === 'overview' && document.visibilityState === 'visible' && autoRefresh.value && active) loadDashboard()
 }
 
 function readChartPalette() {
-  const styles = getComputedStyle(document.documentElement)
+  const styles = getComputedStyle(cockpitRoot.value || document.documentElement)
   const read = (name) => styles.getPropertyValue(name).trim()
+  const accent = read('--cockpit-accent') || read('--el-color-primary')
+  const white = read('--el-color-white') || '#ffffff'
+  const warning = read('--health-warning')
+  const danger = read('--health-danger')
   return {
-    heading: read('--app-heading'), text: read('--app-text'), muted: read('--app-muted'),
-    grid: read('--chart-grid'), surface: read('--surface-strong'), subtle: read('--surface-subtle'),
-    normal: read('--health-normal'), warning: read('--health-warning'), danger: read('--health-danger'), idle: read('--health-idle'),
-    primary: read('--el-color-primary'), warningSoft: read('--el-color-warning-light-9'), dangerSoft: read('--el-color-danger-light-9'),
+    heading: white, text: chartColor.modifyAlpha(white, 0.84), muted: chartColor.modifyAlpha(white, 0.58),
+    grid: chartColor.modifyAlpha(accent, 0.14), surface: read('--cockpit-panel') || read('--surface-strong'), subtle: chartColor.modifyAlpha(accent, 0.07),
+    normal: read('--health-normal'), warning, danger, idle: read('--health-idle'),
+    primary: accent, warningSoft: chartColor.modifyAlpha(warning, 0.12), dangerSoft: chartColor.modifyAlpha(danger, 0.12),
     fontFamily: getComputedStyle(document.body).fontFamily
   }
 }
@@ -264,9 +304,14 @@ function syncChartPalette() {
 }
 
 watch(autoRefresh, syncAutoRefresh)
+watch(activeView, (view) => {
+  router.replace({ query: { ...route.query, view } })
+  if (view === 'overview' && !loadedOnce.value) loadDashboard()
+})
+watch(() => route.query.view, (view) => { activeView.value = view === 'overview' ? 'overview' : 'metrics' })
 watch(() => [settingsStore.isDark, settingsStore.theme], syncChartPalette, { flush: 'post' })
 onMounted(() => {
-  loadDashboard()
+  if (activeView.value === 'overview') loadDashboard()
   syncAutoRefresh()
   syncChartPalette()
   document.addEventListener('visibilitychange', handleVisibilityChange)
@@ -283,6 +328,11 @@ onBeforeUnmount(() => {
 
 async function toggleFullscreen() {
   try { await toggleNativeFullscreen() } catch { proxy.$modal.msgWarning('当前浏览器无法切换全屏，请重试。') }
+}
+
+function refreshActiveView() {
+  if (activeView.value === 'metrics') return metricsRef.value?.refresh()
+  return loadDashboard()
 }
 
 function navigateModulePage(location) {
@@ -353,13 +403,53 @@ function handleRecordClick({ data }) {
 
 <style scoped lang="scss">
 .inspection-cockpit {
+  --cockpit-background: #080f1a;
+  --cockpit-panel: #111e2c;
+  --cockpit-accent: #63d6f5;
+  --app-heading: var(--el-color-white);
+  --app-text: color-mix(in srgb, var(--el-color-white) 84%, transparent);
+  --app-muted: color-mix(in srgb, var(--el-color-white) 58%, transparent);
+  --surface-strong: var(--cockpit-panel);
+  --surface-subtle: color-mix(in srgb, var(--cockpit-accent) 4%, transparent);
+  --surface-border: color-mix(in srgb, var(--cockpit-accent) 18%, transparent);
+  --surface-border-strong: color-mix(in srgb, var(--cockpit-accent) 38%, transparent);
+  --loading-mask-bg: color-mix(in srgb, var(--cockpit-background) 88%, transparent);
+  --el-bg-color: var(--cockpit-panel);
+  --el-bg-color-overlay: var(--cockpit-panel);
+  --el-fill-color-blank: var(--cockpit-panel);
+  --el-fill-color: color-mix(in srgb, var(--cockpit-accent) 10%, var(--cockpit-panel));
+  --el-fill-color-light: color-mix(in srgb, var(--cockpit-accent) 7%, var(--cockpit-panel));
+  --el-fill-color-lighter: var(--el-fill-color-light);
+  --el-fill-color-dark: var(--cockpit-background);
+  --el-color-primary: var(--cockpit-accent);
+  --el-color-primary-light-3: color-mix(in srgb, var(--cockpit-accent) 75%, var(--el-color-white));
+  --el-color-primary-light-5: color-mix(in srgb, var(--cockpit-accent) 45%, var(--cockpit-panel));
+  --el-color-primary-light-8: color-mix(in srgb, var(--cockpit-accent) 18%, var(--cockpit-panel));
+  --el-color-primary-light-9: var(--el-fill-color-light);
+  --el-color-primary-dark-2: color-mix(in srgb, var(--cockpit-accent) 80%, var(--el-color-black));
+  --el-color-danger-light-9: color-mix(in srgb, var(--el-color-danger) 12%, var(--cockpit-panel));
+  --el-color-warning-light-9: color-mix(in srgb, var(--el-color-warning) 12%, var(--cockpit-panel));
+  --el-color-info-light-9: var(--cockpit-panel);
+  --el-color-success-light-9: color-mix(in srgb, var(--el-color-success) 12%, var(--cockpit-panel));
+  --el-text-color-primary: var(--app-heading);
+  --el-text-color-regular: var(--app-text);
+  --el-text-color-secondary: var(--app-muted);
+  --el-text-color-placeholder: var(--app-muted);
+  --el-text-color-disabled: color-mix(in srgb, var(--el-color-white) 30%, transparent);
+  --el-border-color: var(--surface-border-strong);
+  --el-border-color-light: var(--surface-border);
+  --el-border-color-lighter: var(--surface-border);
+  position: relative;
+  color-scheme: dark;
   display: flex;
   flex-direction: column;
   gap: 12px;
   height: calc(100dvh - 84px);
   min-height: 640px;
   color: var(--app-text);
-  background: var(--page-bg);
+  background-color: var(--cockpit-background);
+  background-image: linear-gradient(var(--surface-subtle) 1px, transparent 1px), linear-gradient(90deg, var(--surface-subtle) 1px, transparent 1px);
+  background-size: 48px 48px;
 }
 
 .inspection-cockpit:fullscreen {
@@ -369,6 +459,7 @@ function handleRecordClick({ data }) {
 }
 
 .cockpit-commandbar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -379,17 +470,28 @@ function handleRecordClick({ data }) {
   border-bottom: 1px solid var(--surface-border-strong);
 }
 
+.cockpit-commandbar::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 84px;
+  height: 4px;
+  background: var(--cockpit-accent);
+  clip-path: polygon(0 0, 90% 0, 100% 100%, 0 100%);
+}
+
 .cockpit-commandbar__identity { min-width: 0; }
 
 .cockpit-commandbar h1,
-.cockpit-chart-panel__head h2 {
+:deep(.cockpit-chart-panel__head h2) {
   margin: 0;
   color: var(--app-heading);
   letter-spacing: 0;
   overflow-wrap: anywhere;
 }
 
-.cockpit-commandbar h1 { font-size: 20px; font-weight: 600; }
+.cockpit-commandbar h1 { font-size: 22px; font-weight: 600; }
 
 .cockpit-commandbar__meta,
 .cockpit-refresh-control {
@@ -413,12 +515,16 @@ function handleRecordClick({ data }) {
 
 .cockpit-refresh-control { gap: 6px; white-space: nowrap; }
 .cockpit-error-state { flex: 0 0 auto; }
+.cockpit-views { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.cockpit-views :deep(.el-tabs__header) { margin-bottom: 12px; }
+.cockpit-views :deep(.el-tabs__content) { flex: 1; min-height: 0; overflow: auto; }
+.cockpit-views :deep(.el-tab-pane) { display: flex; flex-direction: column; gap: 12px; height: 100%; }
 
 .cockpit-dashboard-grid {
   display: grid;
   flex: 1;
   grid-template-columns: repeat(12, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(260px, 1fr));
+  grid-template-rows: repeat(2, minmax(230px, 1fr));
   grid-template-areas:
     'status status status trend trend trend trend trend trend issues issues issues'
     'scope scope scope scope plan plan plan plan records records records records';
@@ -427,15 +533,16 @@ function handleRecordClick({ data }) {
   min-height: 0;
 }
 
-.cockpit-chart-panel {
+:deep(.cockpit-chart-panel) {
   display: flex;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--surface-border);
-  border-radius: 8px;
-  background: var(--surface-strong);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cockpit-panel) 78%, transparent);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
 }
 
 .cockpit-chart-panel--trend { grid-area: trend; }
@@ -445,25 +552,26 @@ function handleRecordClick({ data }) {
 .cockpit-chart-panel--issues { grid-area: issues; }
 .cockpit-chart-panel--records { grid-area: records; }
 
-.cockpit-chart-panel__head {
+:deep(.cockpit-chart-panel__head) {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex: 0 0 auto;
   flex-wrap: wrap;
   gap: 6px 12px;
-  min-height: 48px;
+  min-height: 44px;
   padding: 10px 12px;
   border-bottom: 1px solid var(--surface-border);
+  background: linear-gradient(90deg, var(--surface-subtle), transparent 70%);
 }
 
-.cockpit-chart-panel__title { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.cockpit-chart-panel__title > .el-icon { flex: 0 0 auto; color: var(--app-muted); }
-.cockpit-chart-panel__head h2 { font-size: 14px; font-weight: 600; }
-.cockpit-chart-panel__head > span { color: var(--app-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+:deep(.cockpit-chart-panel__title) { display: flex; align-items: center; gap: 6px; min-width: 0; }
+:deep(.cockpit-chart-panel__title > .el-icon) { flex: 0 0 auto; color: var(--cockpit-accent); }
+:deep(.cockpit-chart-panel__head h2) { font-size: 14px; font-weight: 600; }
+:deep(.cockpit-chart-panel__head > span) { color: var(--app-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .cockpit-chart-panel--trend .cockpit-chart-panel__title > .el-icon { color: var(--el-color-primary); }
 .cockpit-chart-panel--issues .cockpit-chart-panel__title > .el-icon { color: var(--health-warning); }
-.cockpit-chart { flex: 1; min-height: 0; }
+:deep(.cockpit-chart) { flex: 1; min-height: 0; }
 
 .cockpit-scope-filters {
   display: flex;
@@ -477,6 +585,7 @@ function handleRecordClick({ data }) {
 
 @media (max-width: 1280px) {
   .inspection-cockpit { height: auto; min-height: calc(100dvh - 84px); }
+  .cockpit-views :deep(.el-tabs__content) { overflow: visible; }
   .cockpit-commandbar { align-items: flex-start; flex-wrap: wrap; }
   .cockpit-dashboard-grid {
     flex: auto;

@@ -10,12 +10,12 @@ import {
   normalizeHealthScore
 } from './cockpitPresentation.js'
 
-function escapeHtml(value) {
+export function escapeHtml(value) {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;')
 }
 
-function baseOption(palette, animate) {
+export function baseOption(palette, animate) {
   return {
     animation: animate,
     animationDuration: 240,
@@ -27,7 +27,7 @@ function baseOption(palette, animate) {
   }
 }
 
-function tooltipStyle(palette) {
+export function tooltipStyle(palette) {
   return {
     confine: true,
     backgroundColor: palette.surface,

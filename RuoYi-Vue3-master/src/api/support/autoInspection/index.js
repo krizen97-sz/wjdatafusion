@@ -155,6 +155,10 @@ export function getAutoInspectionDashboard(query) {
   return request({ url: '/support/autoInspection/dashboard', method: 'get', params: query })
 }
 
+export function getAutoInspectionMetrics(query) {
+  return request({ url: '/support/autoInspection/dashboard/metrics', method: 'get', params: query })
+}
+
 export function listAutoInspectionDailyHealth(query) {
   return request({ url: '/support/autoInspection/health/daily', method: 'get', params: query })
 }

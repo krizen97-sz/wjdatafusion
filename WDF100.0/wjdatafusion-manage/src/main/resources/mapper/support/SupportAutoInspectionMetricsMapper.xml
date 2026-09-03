@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportAutoInspectionMetricsMapper">
+    <select id="selectPlans" resultType="com.hm.manage.domain.vo.AutoInspectionMetricsVo$PlanOption">
+        select p.plan_id as planId, p.plan_name as planName, p.site_name as siteName,
+               p.main_platform_name as mainPlatformName, p.status,
+               count(r.record_id) as recordCount, max(r.inspection_time) as lastSampleTime
+        from sup_auto_inspection_plan p
+        left join sup_auto_inspection_record r on r.plan_id = p.plan_id
+             and r.source_type = 'AUTO'
+             and r.inspection_time &gt;= #{beginTime} and r.inspection_time &lt; #{endTime}
+        group by p.plan_id, p.plan_name, p.site_name, p.main_platform_name, p.status
+        order by lastSampleTime desc, p.plan_id desc
+    </select>
+
+    <select id="selectSamples" resultType="com.hm.manage.domain.vo.AutoInspectionMetricSampleVo">
+        select tr.result_id as resultId, tr.record_id as recordId, r.inspection_time as sampleTime,
+               sr.step_id as stepId, sr.step_name as stepName, sr.tool_code as toolCode,
+               sr.tool_name as toolName, tr.target_id as targetId, tr.target_name as targetName,
+               tr.target_type as targetType, tr.actual_value as actualValue, tr.actual_unit as actualUnit,
+               tr.previous_value as previousValue, tr.change_value as changeValue,
+               tr.result_status as resultStatus, tr.evaluation_mode as evaluationMode,
+               tr.evaluation_rule as evaluationRule, tr.baseline_flag as baselineFlag,
+               tr.comparison_scope as comparisonScope, tr.window_key as windowKey
+        from sup_auto_inspection_record r
+        inner join sup_auto_inspection_target_result tr on tr.record_id = r.record_id
+        left join sup_auto_inspection_step_result sr on sr.step_result_id = tr.step_result_id
+        where r.plan_id = #{planId} and r.source_type = 'AUTO'
+          and r.inspection_time &gt;= #{beginTime} and r.inspection_time &lt; #{endTime}
+        order by r.inspection_time desc, tr.result_id desc
+        limit #{limit}
+    </select>
+
+    <select id="selectExecutions" resultType="com.hm.manage.domain.vo.AutoInspectionMetricsVo$ExecutionPoint">
+        select r.record_id as recordId, r.inspection_time as sampleTime,
+               r.duration_ms as durationMs, r.result_status as resultStatus
+        from sup_auto_inspection_record r
+        where r.plan_id = #{planId} and r.source_type = 'AUTO'
+          and r.inspection_time &gt;= #{beginTime} and r.inspection_time &lt; #{endTime}
+        order by r.inspection_time desc, r.record_id desc
+        limit #{limit}
+    </select>
+</mapper>
