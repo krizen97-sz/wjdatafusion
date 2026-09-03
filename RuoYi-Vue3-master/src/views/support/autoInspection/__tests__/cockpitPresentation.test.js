@@ -148,10 +148,11 @@ test('cockpit is a chart-only dashboard with six drill-down charts', () => {
 })
 
 test('cockpit keeps desktop command navigation and theme-safe chart layout', () => {
-  assert.ok(cockpitSource.includes('@click="openOverview"'))
+  assert.ok(cockpitSource.includes('@click="openOverview()"'))
   assert.ok(cockpitSource.includes('@click="openConfig"'))
   assert.ok(cockpitSource.includes('grid-template-columns: repeat(12, minmax(0, 1fr))'))
   assert.ok(cockpitSource.includes('settingsStore.isDark'))
-  assert.ok(cockpitSource.includes('animation: false'))
+  assert.ok(cockpitSource.includes('usePreferredReducedMotion'))
+  assert.ok(cockpitSource.includes('useFullscreen(cockpitRoot)'))
   assert.ok(cockpitSource.includes('@media (max-width: 1280px)'))
 })

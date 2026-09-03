@@ -266,12 +266,31 @@ export function buildIssueChartRows(rows = [], limit = 12) {
 }
 
 export function buildRecentExecutionChartRows(rows = [], limit = 16) {
-  return rows.slice(0, Math.max(1, Number(limit) || 16)).map((row) => ({
+  return rows.map((row) => ({
     ...row,
     chartName: row.planName || row.templateName || '手动执行',
+    timestamp: Date.parse(String(row.inspectionTime || '').replace(' ', 'T')),
     timeLabel: String(row.inspectionTime || '').slice(11, 16) || '未知时间',
     statusLabel: healthStatusLabel(row.resultStatus)
-  })).reverse()
+  })).filter((row) => Number.isFinite(row.timestamp))
+    .sort((left, right) => left.timestamp - right.timestamp || Number(left.recordId || 0) - Number(right.recordId || 0))
+    .slice(-Math.max(1, Number(limit) || 16))
+}
+
+export function filterScopeChartRows(rows = [], scopeType = 'ALL', resultStatus = 'ALL') {
+  return rows.filter((row) => (scopeType === 'ALL' || row.scopeType === scopeType)
+    && (resultStatus === 'ALL' || row.resultStatus === resultStatus))
+}
+
+export function resolveScopeChartRow(params = {}, rows = []) {
+  const scopeKey = params.data?.scopeKey || (params.componentType === 'yAxis' ? params.value : null)
+  return rows.find((row) => row.scopeKey === scopeKey)
+}
+
+export function resolvePlanChartRow(params = {}, rows = []) {
+  const planId = params.data?.planId || (params.componentType === 'yAxis' ? params.value : null)
+  if (planId == null || planId === '') return undefined
+  return rows.find((row) => String(row.planId) === String(planId))
 }
 
 export function formatShortDate(value) {
