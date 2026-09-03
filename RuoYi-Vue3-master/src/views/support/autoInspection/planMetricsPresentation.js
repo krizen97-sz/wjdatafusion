@@ -52,9 +52,11 @@ export function comparisonValues(metric) {
   return [latest.baselineFlag === 'Y' ? null : latest.previousValue ?? null, latest.value ?? null]
 }
 
-const compactNumber = (value) => new Intl.NumberFormat('zh-CN', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
+const chartNumber = (value) => new Intl.NumberFormat('zh-CN', {
+  notation: Math.abs(value) >= 1000000 ? 'compact' : 'standard', maximumSignificantDigits: 6
+}).format(value)
 
-function timeAxes(palette, unit = '') {
+function timeAxes(palette, unit = '', scale = true) {
   return {
     grid: { left: 58, right: 18, top: 28, bottom: 44 },
     xAxis: {
@@ -64,7 +66,7 @@ function timeAxes(palette, unit = '') {
         return `${String(time.getMonth() + 1).padStart(2, '0')}/${String(time.getDate()).padStart(2, '0')}\n${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`
       } }, splitLine: { show: false }
     },
-    yAxis: { type: 'value', scale: true, name: unit, nameTextStyle: { color: palette.muted }, axisLabel: { color: palette.muted, formatter: compactNumber }, splitLine: { lineStyle: { color: palette.grid, type: 'dashed' } } }
+    yAxis: { type: 'value', scale, name: unit, nameTextStyle: { color: palette.muted }, axisLabel: { color: palette.muted, formatter: chartNumber }, splitLine: { lineStyle: { color: palette.grid, type: 'dashed' } } }
   }
 }
 
@@ -96,10 +98,10 @@ export function buildMetricComparisonOption(metric, palette, animate = false) {
     grid: { left: 54, right: 16, top: 30, bottom: 28 },
     tooltip: { trigger: 'item', ...tooltipStyle(palette), formatter: ({ data }) => `${escapeHtml(data.name)}<br/>${escapeHtml(formatMetricValue(data.rawValue))} ${escapeHtml(metric?.unit || '')}` },
     xAxis: { type: 'category', data: ['上次采样', '最新采样'], axisLine: { lineStyle: { color: palette.grid } }, axisTick: { show: false }, axisLabel: { color: palette.text } },
-    yAxis: { type: 'value', name: metric?.unit || '', nameTextStyle: { color: palette.muted }, axisLabel: { color: palette.muted, formatter: compactNumber }, splitLine: { lineStyle: { color: palette.grid, type: 'dashed' } } },
+    yAxis: { type: 'value', name: metric?.unit || '', nameTextStyle: { color: palette.muted }, axisLabel: { color: palette.muted, formatter: chartNumber }, splitLine: { lineStyle: { color: palette.grid, type: 'dashed' } } },
     series: [{
       id: 'metric-comparison', type: 'bar', barMaxWidth: 34,
-      label: { show: true, position: 'top', color: palette.text, formatter: ({ value }) => value == null ? '--' : compactNumber(value) },
+      label: { show: true, position: 'top', color: palette.text, formatter: ({ value }) => value == null ? '--' : chartNumber(value) },
       data: values.map((value, index) => ({ name: index ? '最新采样' : '上次采样', rawValue: value, value: metricNumber(value), recordId: metric?.latest?.recordId, itemStyle: { color: index ? palette.primary : palette.muted, opacity: index ? 1 : 0.45 } }))
     }]
   }
@@ -108,7 +110,7 @@ export function buildMetricComparisonOption(metric, palette, animate = false) {
 export function buildMetricChangeOption(metric, palette, animate = false) {
   const points = metricPoints(metric)
   return {
-    ...baseOption(palette, animate), ...timeAxes(palette, metric?.unit),
+    ...baseOption(palette, animate), ...timeAxes(palette, metric?.unit, false),
     tooltip: { trigger: 'axis', ...tooltipStyle(palette), formatter: (params = []) => sourceTooltip(points.find((point) => point.resultId === params[0]?.data?.resultId), metric) },
     series: [{
       id: 'metric-change', name: '变化量', type: 'bar', barMaxWidth: 10,
@@ -122,13 +124,13 @@ export function buildMetricRangeOption(metric, palette, animate = false) {
   const names = ['最小值', '平均值', '最大值']
   return {
     ...baseOption(palette, animate),
-    grid: { left: 60, right: 52, top: 24, bottom: 24 },
+    grid: { left: 60, right: 78, top: 24, bottom: 24 },
     tooltip: { trigger: 'item', ...tooltipStyle(palette), formatter: ({ data }) => `${data.name}<br/>${escapeHtml(formatMetricValue(data.rawValue))} ${escapeHtml(metric?.unit || '')}` },
-    xAxis: { type: 'value', axisLabel: { color: palette.muted, formatter: compactNumber }, splitLine: { lineStyle: { color: palette.grid, type: 'dashed' } } },
+    xAxis: { type: 'value', axisLabel: { color: palette.muted, formatter: chartNumber, hideOverlap: true }, splitLine: { lineStyle: { color: palette.grid, type: 'dashed' } } },
     yAxis: { type: 'category', data: names, inverse: true, axisLine: { show: false }, axisTick: { show: false }, axisLabel: { color: palette.text } },
     series: [{
       id: 'metric-range', type: 'bar', barMaxWidth: 14,
-      label: { show: true, position: 'right', color: palette.text, formatter: ({ value }) => value == null ? '--' : compactNumber(value) },
+      label: { show: true, position: 'right', color: palette.text, formatter: ({ value }) => value == null ? '--' : chartNumber(value) },
       data: values.map((value, index) => ({ name: names[index], rawValue: value, value: metricNumber(value), itemStyle: { color: [palette.muted, palette.primary, palette.normal][index], opacity: 0.9 } }))
     }]
   }

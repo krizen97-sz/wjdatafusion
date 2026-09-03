@@ -63,6 +63,15 @@ test('comparison and range figures stay in one selected metric unit', () => {
   assert.deepEqual(ranges.series[0].data.map((row) => row.rawValue), ['0', '1', '2'])
 })
 
+test('nearby metric labels remain distinct and change bars include the zero baseline', () => {
+  const trend = buildMetricTrendOption(metric, palette)
+  assert.notEqual(trend.yAxis.axisLabel.formatter(13200), trend.yAxis.axisLabel.formatter(13400))
+  const comparison = buildMetricComparisonOption(metric, palette)
+  assert.equal(comparison.series[0].label.formatter({ value: 14373 }), '14,373')
+  assert.equal(comparison.series[0].label.formatter({ value: 14376 }), '14,376')
+  assert.equal(buildMetricChangeOption(metric, palette).yAxis.scale, false)
+})
+
 test('judgement and duration charts keep failed samples and valid zero-duration runs', () => {
   const status = buildMetricStatusOption(metric, palette)
   assert.equal(status.title.text, '3')
@@ -93,9 +102,19 @@ test('plan metrics use a new read-only endpoint, native filters, six charts, and
   assert.ok(component.includes('sequence !== requestSequence'))
   assert.ok(component.includes('snapshotDays === days.value'))
   assert.ok(component.includes('当前统计仅包含最近'))
-  assert.ok(component.includes('append-to=".inspection-cockpit"'))
+  assert.ok(component.includes(':append-to="overlayContainer || undefined"'))
+  assert.ok(cockpit.includes(':overlay-container="cockpitRoot"'))
   assert.ok(cockpit.includes('name="metrics"'))
   assert.ok(cockpit.includes('name="overview"'))
   assert.ok(api.includes("url: '/support/autoInspection/dashboard/metrics', method: 'get'"))
   assert.deepEqual(normalizeMetricDashboard().metrics, [])
+})
+
+test('fullscreen overlays follow the mounted element instead of an unresolved first-render selector', () => {
+  const component = readFileSync(new URL('../components/PlanMetricDashboard.vue', import.meta.url), 'utf8')
+  const cockpit = readFileSync(new URL('../cockpit.vue', import.meta.url), 'utf8')
+  assert.ok(cockpit.includes('ref="cockpitRoot"'))
+  assert.equal(cockpit.match(/:append-to="cockpitRoot \|\| undefined"/g)?.length, 3)
+  assert.equal(component.match(/:append-to="overlayContainer \|\| undefined"/g)?.length, 3)
+  assert.ok(![cockpit, component].some((source) => source.includes('append-to=".inspection-cockpit"')))
 })

@@ -2,7 +2,7 @@
   <div class="plan-metric-dashboard">
     <el-form :inline="true" class="plan-metric-query" @submit.prevent>
       <el-form-item label="巡检计划">
-        <el-select v-model="selectedPlanId" filterable class="metric-plan-select" placeholder="请选择计划" aria-label="统计巡检计划" append-to=".inspection-cockpit" @change="loadMetrics">
+        <el-select v-model="selectedPlanId" filterable class="metric-plan-select" placeholder="请选择计划" aria-label="统计巡检计划" :append-to="overlayContainer || undefined" @change="loadMetrics">
           <el-option v-for="plan in data.plans" :key="plan.planId" :value="plan.planId" :label="`${plan.planName}${plan.status === '1' ? '（暂停）' : ''}`" />
         </el-select>
       </el-form-item>
@@ -17,7 +17,7 @@
         </el-segmented>
       </el-form-item>
       <el-form-item label="统计项目">
-        <el-select v-model="selectedMetricKey" filterable class="metric-item-select" placeholder="暂无统计项目" aria-label="计划统计项目" append-to=".inspection-cockpit" @change="syncQuery">
+        <el-select v-model="selectedMetricKey" filterable class="metric-item-select" placeholder="暂无统计项目" aria-label="计划统计项目" :append-to="overlayContainer || undefined" @change="syncQuery">
           <el-option v-for="metric in data.metrics" :key="metric.metricKey" :value="metric.metricKey" :label="`${metric.metricName} · ${metric.unit || '未标注单位'}`" />
         </el-select>
       </el-form-item>
@@ -42,7 +42,7 @@
           <span>{{ selectedMetric?.unit || '未标注单位' }}</span>
         </header>
         <div class="metric-current-reading">
-          <el-tooltip :content="formatMetricValue(selectedMetric?.latest?.value)" append-to=".inspection-cockpit">
+          <el-tooltip :content="formatMetricValue(selectedMetric?.latest?.value)" :append-to="overlayContainer || undefined">
             <strong>{{ formatMetricValue(selectedMetric?.latest?.value) }}</strong>
           </el-tooltip>
           <span>{{ selectedMetric?.targetName || '未选择项目' }}<small>{{ selectedMetric?.latest?.sampleTime || '暂无采样时间' }}</small></span>
@@ -101,7 +101,8 @@ const props = defineProps({
   palette: { type: Object, required: true },
   animate: { type: Boolean, default: false },
   autoRefresh: { type: Boolean, default: true },
-  active: { type: Boolean, default: true }
+  active: { type: Boolean, default: true },
+  overlayContainer: { type: Object, default: null }
 })
 const emit = defineEmits(['open-record', 'loading-change', 'updated'])
 const route = useRoute()
@@ -230,8 +231,8 @@ defineExpose({ refresh: loadMetrics })
 .plan-metric-dashboard { display: flex; flex-direction: column; gap: 10px; height: 100%; min-height: 0; }
 .plan-metric-query { display: flex; flex-wrap: wrap; gap: 8px 16px; flex: 0 0 auto; }
 .plan-metric-query :deep(.el-form-item) { margin: 0; }
-.metric-plan-select { width: 270px; }
-.metric-item-select { width: 310px; }
+.plan-metric-query .metric-plan-select { width: 270px; }
+.plan-metric-query .metric-item-select { width: 310px; }
 .plan-metric-context { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px; flex: 0 0 auto; min-height: 26px; color: var(--app-muted); font-size: 12px; }
 .plan-metric-context__scope { color: var(--app-text); margin-right: auto; }
 .plan-metric-grid { display: grid; flex: 1; min-height: 0; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(220px, 1fr)); gap: 12px; }
@@ -252,7 +253,7 @@ defineExpose({ refresh: loadMetrics })
 @media (max-width: 800px) {
   .plan-metric-query { flex-direction: column; }
   .plan-metric-query :deep(.el-form-item__content) { min-width: 0; }
-  .metric-plan-select, .metric-item-select { width: 100%; }
+  .plan-metric-query .metric-plan-select, .plan-metric-query .metric-item-select { width: 100%; }
   .plan-metric-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(6, 320px); }
   .metric-panel--trend, .metric-panel--status, .metric-panel--comparison, .metric-panel--change, .metric-panel--range, .metric-panel--duration { grid-column: 1; grid-row: auto; }
   .metric-current-reading { gap: 8px; }

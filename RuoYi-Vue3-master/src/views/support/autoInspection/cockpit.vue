@@ -22,7 +22,7 @@
         <el-space :size="8" wrap>
           <el-button class="motion-entry-action" data-motion-direction="forward" :icon="List" @click="openOverview()">巡检总览</el-button>
           <el-button class="motion-entry-action" data-motion-direction="forward" :icon="Setting" @click="openConfig">巡检配置</el-button>
-          <el-tooltip v-if="isFullscreenSupported" :content="isFullscreen ? '退出全屏值守' : '全屏值守'" append-to=".inspection-cockpit">
+          <el-tooltip v-if="isFullscreenSupported" :content="isFullscreen ? '退出全屏值守' : '全屏值守'" :append-to="cockpitRoot || undefined">
             <el-button
               :icon="isFullscreen ? ScaleToOriginal : FullScreen"
               :aria-label="isFullscreen ? '退出全屏值守' : '全屏值守'"
@@ -48,6 +48,7 @@
           :animate="animateCharts"
           :auto-refresh="autoRefresh"
           :active="activeView === 'metrics'"
+          :overlay-container="cockpitRoot"
           @loading-change="metricsRefreshing = $event"
           @updated="metricsUpdatedTime = $event"
           @open-record="openOverview({ recordId: $event })"
@@ -123,12 +124,12 @@
           <span>{{ scopeRows.length }} / {{ allScopeRows.length }} 个范围</span>
         </header>
         <div class="cockpit-scope-filters">
-          <el-select v-model="scopeType" size="small" aria-label="健康范围层级" append-to=".inspection-cockpit">
+          <el-select v-model="scopeType" size="small" aria-label="健康范围层级" :append-to="cockpitRoot || undefined">
             <el-option label="全部范围" value="ALL" />
             <el-option label="现场" value="SITE" />
             <el-option label="主平台" value="MAIN_PLATFORM" />
           </el-select>
-          <el-select v-model="scopeStatus" size="small" aria-label="健康范围状态" append-to=".inspection-cockpit">
+          <el-select v-model="scopeStatus" size="small" aria-label="健康范围状态" :append-to="cockpitRoot || undefined">
             <el-option label="全部状态" value="ALL" />
             <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
@@ -409,7 +410,10 @@ function handleRecordClick({ data }) {
   --app-heading: var(--el-color-white);
   --app-text: color-mix(in srgb, var(--el-color-white) 84%, transparent);
   --app-muted: color-mix(in srgb, var(--el-color-white) 58%, transparent);
+  --surface-bg: var(--cockpit-panel);
   --surface-strong: var(--cockpit-panel);
+  --surface-muted: var(--cockpit-background);
+  --surface-hover: color-mix(in srgb, var(--cockpit-accent) 12%, var(--cockpit-panel));
   --surface-subtle: color-mix(in srgb, var(--cockpit-accent) 4%, transparent);
   --surface-border: color-mix(in srgb, var(--cockpit-accent) 18%, transparent);
   --surface-border-strong: color-mix(in srgb, var(--cockpit-accent) 38%, transparent);
