@@ -1,5 +1,59 @@
 <template>
-  <section>
+  <section :class="{ 'governance-test-compact': compact }">
+    <template v-if="compact">
+      <header class="governance-test-compact__toolbar">
+        <div><strong>{{ compactStep?.name || '流程测试' }}</strong><el-tag v-if="run" :type="runState(run.status, run.cleanupConfirmed).type" size="small">{{ runState(run.status, run.cleanupConfirmed).label }}</el-tag></div>
+        <div>
+          <el-select v-model="selectedRunId" class="governance-test-compact__history" size="small" placeholder="运行记录" aria-label="画布运行记录" :loading="historyLoading" @change="selectRun">
+            <el-option v-for="item in history" :key="item.id" :value="String(item.id)" :label="`${runState(item.status, item.cleanupConfirmed).label} · ${item.createdAt || item.id}`" />
+          </el-select>
+          <el-button v-if="run" size="small" icon="Refresh" :loading="detailLoading" aria-label="刷新测试结果" @click="refreshRun" />
+          <el-button v-if="activeRun" size="small" type="danger" plain :loading="cancelling" @click="cancelTest">取消测试</el-button>
+          <el-button v-else v-hasPermi="['governance:flow:test']" size="small" type="primary" icon="VideoPlay" :loading="submitting" :disabled="!canStart" @click="startTest">运行样本</el-button>
+        </div>
+      </header>
+      <el-alert v-if="requestError || pollError || run?.error" :title="requestError || pollError || run.error" type="error" :closable="false" />
+      <el-alert v-if="run?.status === 'CLEANUP_REQUIRED' || (run?.cleanupConfirmed === false && !activeRun)" title="测试资源尚未确认清理，请刷新结果核查。" type="warning" :closable="false" />
+      <el-tabs v-model="compactTab" class="motion-tabs">
+        <el-tab-pane label="样本输入" name="sample">
+          <el-form label-position="top" :disabled="submitting || activeRun || !!pendingHistoryRun || externalBusy">
+            <el-row :gutter="16">
+              <el-col :span="15"><el-form-item label="JSON 样本" :error="inputError"><el-input v-model="inputText" type="textarea" :rows="4" aria-label="画布 JSON 样本" spellcheck="false" /></el-form-item></el-col>
+              <el-col :span="9"><el-form-item label="参数覆盖（可选）"><el-input v-model="parameterText" type="textarea" :rows="4" aria-label="画布参数覆盖" placeholder="{}：使用已保存的节点配置" spellcheck="false" /></el-form-item></el-col>
+            </el-row>
+          </el-form>
+          <el-text type="info" size="small">仅使用合成或脱敏数据，最多 100 条 / 256 KB。测试会运行提交时的独立副本。</el-text>
+        </el-tab-pane>
+        <el-tab-pane label="节点结果" name="result">
+          <el-empty v-if="!run" description="运行样本后，选择节点查看输入与输出" :image-size="40" />
+          <template v-else>
+            <div class="governance-test-compact__meta"><el-text size="small">{{ compactStep ? `输入 ${optionalCount(compactStep.inputCount)} / 输出 ${optionalCount(compactStep.outputCount)} FlowFile` : '完整流程的结果采样' }}</el-text><el-text size="small" type="info">{{ cleanupLabel }} · 数据为有界预览</el-text></div>
+            <el-row v-if="compactStep" :gutter="16">
+              <el-col :span="12"><el-text size="small" type="info">输入样本</el-text><pre v-for="(sample, index) in compactStep.samples?.input || []" :key="index" class="governance-output">{{ displayJson(sample) }}</pre><p v-if="!compactStep.samples?.input?.length" class="governance-help">未返回输入采样</p></el-col>
+              <el-col :span="12"><el-text size="small" type="info">输出样本</el-text><pre v-for="(sample, index) in compactStep.samples?.output || []" :key="index" class="governance-output">{{ displayJson(sample) }}</pre><p v-if="!compactStep.samples?.output?.length" class="governance-help">未返回输出采样</p></el-col>
+            </el-row>
+            <template v-if="compactStep?.samples?.attributes?.length"><el-text size="small" type="info">字段属性</el-text><pre class="governance-output">{{ displayJson(compactStep.samples.attributes) }}</pre></template>
+            <template v-if="!compactStep"><el-empty v-if="!run.output?.length" :description="run.status === 'EMPTY' ? '引擎已确认空批次，未产生输出' : '尚未返回输出采样'" :image-size="40" /><pre v-for="(item, index) in run.output || []" :key="index" class="governance-output">{{ displayJson(item) }}</pre></template>
+          </template>
+        </el-tab-pane>
+        <el-tab-pane label="运行日志" name="logs">
+          <el-empty v-if="!run" description="尚无运行记录" :image-size="40" />
+          <template v-else>
+            <el-text size="small" type="info">{{ run.id }} · {{ run.createdAt }}</el-text>
+            <el-table :data="run.steps || []" size="small" row-key="id" empty-text="正在等待引擎返回步骤">
+              <el-table-column label="节点" prop="name" min-width="110" show-overflow-tooltip />
+              <el-table-column label="状态" width="110"><template #default="{ row }"><el-tag size="small" :type="runState(row.status).type">{{ runState(row.status).label }}</el-tag></template></el-table-column>
+              <el-table-column label="输入 / 输出" width="110"><template #default="{ row }">{{ optionalCount(row.inputCount) }} / {{ optionalCount(row.outputCount) }}</template></el-table-column>
+              <el-table-column label="运行消息" min-width="220" show-overflow-tooltip><template #default="{ row }">{{ (row.messages || []).map(message => typeof message === 'string' ? message : JSON.stringify(message)).join('；') }}</template></el-table-column>
+              <el-table-column width="72"><template #default="{ row }"><el-button link type="primary" @click="openStep(row)">详情</el-button></template></el-table-column>
+            </el-table>
+            <p class="governance-help governance-snapshot">提交快照：{{ run.definitionHash || '尚未返回' }} · {{ cleanupLabel }}</p>
+          </template>
+        </el-tab-pane>
+      </el-tabs>
+      <step-detail-drawer v-model="stepDrawerOpen" :step="selectedStep" />
+    </template>
+    <template v-else>
     <el-alert
       title="隔离样本测试"
       description="测试会读取已保存的流程，检查支持范围后创建独立测试副本。外部连接器、脚本或未支持的配置不会被执行。请仅输入合成或脱敏数据。"
@@ -92,6 +146,7 @@
       <el-empty v-else-if="!historyLoading && !detailLoading" description="提交测试后，可在此查看真实步骤状态和结果" />
       <step-detail-drawer v-model="stepDrawerOpen" :step="selectedStep" />
     </template>
+    </template>
   </section>
 </template>
 
@@ -101,8 +156,8 @@ import { cancelGovernanceTestRun, getGovernanceTestRun, listGovernanceTestRuns, 
 import { availabilityState, createFlowDraftStore, displayJson, errorMessage, isRunActive, optionalCount, parseTestRequest, runState } from '../workspaceRules'
 import StepDetailDrawer from './StepDetailDrawer.vue'
 
-const props = defineProps({ flow: { type: Object, default: null }, templates: { type: Array, default: () => [] }, engineReady: Boolean })
-const emit = defineEmits(['updated'])
+const props = defineProps({ flow: { type: Object, default: null }, templates: { type: Array, default: () => [] }, engineReady: Boolean, compact: Boolean, selectedNodeId: String, externalBusy: Boolean, beforeStart: Function })
+const emit = defineEmits(['updated', 'run-change', 'test-started', 'submission-change'])
 const { proxy } = getCurrentInstance()
 const template = computed(() => props.templates.find((item) => item.id === props.flow?.templateId))
 const templateUsable = computed(() => !template.value || availabilityState(template.value.availability).usable === true)
@@ -119,13 +174,15 @@ const detailLoading = ref(false)
 const history = ref([])
 const selectedRunId = ref('')
 const run = ref(null)
+const compactTab = ref('sample')
+const compactStep = computed(() => run.value?.steps?.find(step => step.id === props.selectedNodeId))
 const resultTab = ref('steps')
 const stepDrawerOpen = ref(false)
 const selectedStepId = ref('')
 const selectedStep = computed(() => run.value?.steps?.find((item) => item.id === selectedStepId.value) || null)
 const activeRun = computed(() => isRunActive(run.value))
 const pendingHistoryRun = computed(() => history.value.find((item) => isRunActive(item)))
-const canStart = computed(() => props.engineReady && props.flow?.engineId && templateUsable.value && !submitting.value && !activeRun.value && !pendingHistoryRun.value && !historyLoading.value && run.value?.status !== 'CLEANUP_REQUIRED')
+const canStart = computed(() => props.engineReady && props.flow?.engineId && templateUsable.value && !props.externalBusy && !submitting.value && !activeRun.value && !pendingHistoryRun.value && !historyLoading.value && run.value?.status !== 'CLEANUP_REQUIRED')
 const cleanupLabel = computed(() => run.value?.cleanupConfirmed === true ? '已确认清理' : activeRun.value ? '运行中' : '尚未确认')
 const snapshotTime = computed(() => run.value?.frozenAt || run.value?.definitionCapturedAt || '')
 const draftStore = createFlowDraftStore()
@@ -205,9 +262,13 @@ async function startTest() {
   const flowId = props.flow.id
   submitting.value = true
   try {
+    if (props.beforeStart && !await props.beforeStart()) return
+    if (currentGeneration !== generation) return
     const response = await startGovernanceTest(flowId, data)
     if (currentGeneration !== generation) return
     run.value = response.data
+    emit('test-started', run.value)
+    if (props.compact) compactTab.value = 'logs'
     selectedRunId.value = String(run.value.id)
     resultTab.value = 'steps'
     history.value = [run.value, ...history.value.filter((item) => String(item.id) !== selectedRunId.value)]
@@ -259,6 +320,9 @@ watch(() => props.flow?.id, (flowId, previousFlowId) => {
 onDeactivated(() => { suspended = true; stopPolling() })
 onActivated(() => { suspended = false; if (selectedRunId.value) refreshRun(false) })
 onBeforeUnmount(() => { ++generation; suspended = true; stopPolling() })
+watch(run, value => emit('run-change', value))
+watch(submitting, value => emit('submission-change', value), { flush: 'sync' })
+defineExpose({ showSample: () => { compactTab.value = 'sample' }, showResult: () => { compactTab.value = 'result' } })
 </script>
 
 <style scoped>
@@ -268,4 +332,10 @@ onBeforeUnmount(() => { ++generation; suspended = true; stopPolling() })
 .governance-snapshot { overflow-wrap: anywhere; }
 .governance-run-select { width: min(100%, 520px); min-width: 240px; }
 .governance-output { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--app-text); background: var(--surface-subtle); padding: var(--el-component-size-small); border-radius: var(--el-border-radius-base); max-height: 50vh; overflow: auto; }
+.governance-test-compact__toolbar, .governance-test-compact__toolbar > div, .governance-test-compact__meta { display: flex; align-items: center; justify-content: space-between; gap: var(--el-font-size-small); flex-wrap: wrap; }
+.governance-test-compact__toolbar { margin-bottom: var(--el-font-size-extra-small); }
+.governance-test-compact__toolbar > div { justify-content: flex-start; }
+.governance-test-compact__history { width: 190px; }
+.governance-test-compact .governance-output { padding: var(--el-font-size-small); margin-top: var(--el-font-size-extra-small); max-height: 200px; font-size: var(--el-font-size-small); }
+.governance-test-compact__meta { margin-bottom: var(--el-font-size-small); }
 </style>

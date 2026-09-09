@@ -34,6 +34,23 @@
   },
   "entries": [
     {
+      "id": "UIX-010-governance-flow-svg",
+      "rule": "business-inline-svg",
+      "paths": ["src/views/governance/components/FlowDiagram.vue"],
+      "linePattern": "data-ui-guard=[\\\"']flow[\\\"']",
+      "reason": "UIX-010 permits ETL connection geometry only; node and operation icons use the existing icon library.",
+      "owner": "data-governance",
+      "expires": null
+    },
+    {
+      "id": "UIX-010-governance-flow-positioning",
+      "rule": "absolute-layout",
+      "paths": ["src/views/governance/components/FlowDiagram.vue"],
+      "reason": "UIX-010 permits positions for DAG nodes, ports and bounded pan/zoom tools within the flow canvas; page layout remains Grid/Flex.",
+      "owner": "data-governance",
+      "expires": null
+    },
+    {
       "id": "UIX-002-chart-svg",
       "rule": "business-inline-svg",
       "paths": [

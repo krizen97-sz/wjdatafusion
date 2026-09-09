@@ -1,5 +1,5 @@
 <template>
-  <aside class="governance-node-config" aria-label="节点配置">
+  <section class="governance-node-config" role="complementary" aria-label="节点配置">
     <template v-if="node">
       <header class="governance-node-config__heading">
         <div class="governance-node-config__title">
@@ -130,7 +130,7 @@
       </footer>
     </template>
     <el-empty v-else description="选择画布节点以配置" :image-size="72" />
-  </aside>
+  </section>
 </template>
 
 <script setup>
@@ -215,7 +215,7 @@ defineExpose({ isDirty, discard })
 </script>
 
 <style scoped>
-.governance-node-config { width: 320px; min-width: 0; max-width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--surface-bg); border-left: 1px solid var(--surface-border); color: var(--app-text); }
+.governance-node-config { width: 100%; min-width: 0; max-width: 100%; height: 100%; min-height: 0; display: flex; flex-direction: column; background: var(--surface-bg); color: var(--app-text); }
 .governance-node-config__heading, .governance-node-config__body, .governance-node-config__footer { padding: calc(var(--el-component-size) / 2); }
 .governance-node-config__heading { border-bottom: 1px solid var(--surface-border); }
 .governance-node-config__title { display: flex; align-items: center; gap: calc(var(--el-component-size) / 4); }

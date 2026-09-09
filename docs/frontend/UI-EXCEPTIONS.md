@@ -27,10 +27,16 @@
 | UIX-007 | `src/views/tool/build` | 表单生成器的拖拽画布、属性编辑器和代码预览 | 不得将编辑器定位方式、色板或控件覆盖复制到业务页面 | 已复核 |
 | UIX-008 | `src/views/index.vue` | 按权限展示的现场工作台、变化摘要与快捷入口 | 不推广统计卡/工作台密度到普通列表页 | 已复核 |
 | UIX-009 | `src/views/support/version/index.vue` | 版本树、变更详情和脚本清单的 Read 型密集布局 | 折叠图标必须使用正式图标；普通表格/弹窗仍遵循全局规范 | 已复核 |
+| UIX-010 | `src/views/governance/components/FlowDiagram.vue` | ETL流程的SVG连线、箭头与分支标签；节点、端口及缩放工具在画布局部定位 | SVG不能画普通图标；配置、样本、状态、按钮、Tabs仍复用Element Plus；不扩散到管理列表 | 2026-09-09数据治理设计器 |
 
 这些登记只解释现有业务特例，不自动放行新代码。UI Guard 对新增内联 SVG
 或 Canvas 仍要求同时命中精确路径和 `data-ui-guard="chart|map|diagram|flow"`
 标记；该标记必须用于可视化根节点，不能放在普通操作图标上。
+
+UIX-010复用检索与参考适配详见`docs/DATA_GOVERNANCE_DESIGNER.md`。现有
+InspectionFlowCanvas只表达顺序列表，无法承载自由DAG；本例外仅允许流程本体的
+SVG几何和局部位置。通过拓扑规则测试、真实Chrome节点/连线/配置/样本执行及
+亮暗与窄屏检查复核。回退入口保留在“高级引擎管理”；无新运行时UI依赖。
 
 ## 3. 申请模板
 

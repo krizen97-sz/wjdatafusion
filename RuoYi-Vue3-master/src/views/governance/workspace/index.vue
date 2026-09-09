@@ -1,9 +1,9 @@
 <template>
-  <div class="app-container governance-workspace">
+  <div class="app-container governance-workspace" :class="{ 'is-designing': activeTab === 'designer' }">
     <div class="governance-project-bar mb16">
       <el-form :inline="true" class="governance-project-form">
         <el-form-item label="治理项目">
-          <el-select v-model="projectId" filterable placeholder="请选择项目" class="governance-project-select" :loading="workspaceLoading">
+          <el-select :model-value="projectId" filterable placeholder="请选择项目" class="governance-project-select" :loading="workspaceLoading" @change="changeProject">
             <el-option v-for="project in projects" :key="project.id" :label="project.name" :value="String(project.id)" />
           </el-select>
         </el-form-item>
@@ -18,9 +18,9 @@
 
     <el-alert v-if="workspaceError" :title="workspaceError" type="error" :closable="false" show-icon class="mb16" />
     <el-alert v-if="!engineReady && overview" :title="overview.engine?.message || '引擎暂不可用，请检查服务配置后刷新。'" type="warning" :closable="false" show-icon class="mb16" />
-    <p v-if="currentProject?.description" class="governance-description">{{ currentProject.description }}</p>
+    <p v-if="currentProject?.description && activeTab !== 'designer'" class="governance-description">{{ currentProject.description }}</p>
 
-    <el-tabs v-model="activeTab" class="motion-tabs">
+    <el-tabs v-model="activeTab" class="motion-tabs" :before-leave="beforeTabChange">
       <el-tab-pane label="流程" name="flows">
         <template #label><span class="motion-control-label"><svg-icon icon-class="tree" class="motion-control-label__icon" /><span class="motion-control-label__text">流程</span></span></template>
         <el-form v-show="showSearch" ref="queryRef" :inline="true" :model="query">
@@ -45,7 +45,12 @@
           </el-table-column>
         </el-table>
         <pagination v-show="filteredFlows.length > 0" :total="filteredFlows.length" v-model:page="query.pageNum" v-model:limit="query.pageSize" />
-        <p class="governance-description">设计器在新页签打开同源 NiFi 画布。保存后返回“样本测试”重新验证；未适配的业务组件不会被视为可执行。</p>
+        <p class="governance-description">在平台内拖拽组件、配置节点、连接分支，并通过样本查看每个节点的真实输出。</p>
+      </el-tab-pane>
+
+      <el-tab-pane label="流程设计" name="designer" lazy>
+        <template #label><span class="motion-control-label"><svg-icon icon-class="component" class="motion-control-label__icon" /><span class="motion-control-label__text">流程设计</span></span></template>
+        <flow-designer v-if="activeTab === 'designer'" ref="designerRef" :flow="selectedFlow" :flows="flows" :templates="templates" :engine-ready="engineReady" @select-flow="selectedFlowId = String($event)" @updated="refreshOverview" />
       </el-tab-pane>
 
       <el-tab-pane label="样本测试" name="tests" lazy>
@@ -98,7 +103,7 @@
             <el-option v-for="template in templates" :key="template.id" :value="template.id" :label="`${template.name}（${availabilityState(template.availability).label}）`" :disabled="!availabilityState(template.availability).usable" />
           </el-select>
         </el-form-item>
-        <el-form-item label="模板说明"><el-text type="info">{{ creationTemplate?.description || '创建空白流程后，在 NiFi 原生画布中拖入节点并配置。隔离样本测试仅执行当前已支持的安全节点。' }}</el-text></el-form-item>
+        <el-form-item label="模板说明"><el-text type="info">{{ creationTemplate?.description || '创建后进入流程设计器，从组件库拖入节点并配置。隔离样本测试仅执行已支持的节点。' }}</el-text></el-form-item>
       </el-form>
       <el-alert v-if="flowSubmitError" :title="flowSubmitError" type="error" :closable="false" />
       <template #footer><el-button :disabled="flowSubmitting" @click="flowDialogOpen = false">取消</el-button><el-button type="primary" :loading="flowSubmitting" @click="submitFlow">创建流程</el-button></template>
@@ -108,15 +113,17 @@
 
 <script setup name="GovernanceWorkspace">
 import { computed, getCurrentInstance, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import { createGovernanceFlow, createGovernanceProject, getGovernanceOverview, listGovernanceCatalog, listGovernanceFlows, listGovernanceProjects, listGovernanceTemplates } from '@/api/governance'
 import { availabilityState, catalogCategory, errorMessage, safeDesignerPath } from '../workspaceRules'
 import TestWorkbench from '../components/TestWorkbench.vue'
+import FlowDesigner from '../components/FlowDesigner.vue'
 
 const { proxy } = getCurrentInstance()
 const route = useRoute()
 const router = useRouter()
-const activeTab = ref(['flows', 'tests', 'catalog'].includes(route.query.tab) ? route.query.tab : 'flows')
+const activeTab = ref(['flows', 'designer', 'tests', 'catalog'].includes(route.query.tab) ? route.query.tab : 'flows')
+const designerRef = ref()
 const projectId = ref('')
 const selectedFlowId = ref('')
 const projects = ref([])
@@ -161,10 +168,12 @@ let disposed = false
 const templateFor = (flow) => templates.value.find((item) => item.id === flow.templateId)
 function designerFor(flow) { return flow?.engineId ? safeDesignerPath(flow.designerPath) : '' }
 function openDesigner(flow) {
-  const path = designerFor(flow)
-  if (!path || !engineReady.value) return
-  window.open(path, '_blank', 'noopener,noreferrer')
+  if (!flow || !engineReady.value) return
+  selectedFlowId.value = String(flow.id)
+  activeTab.value = 'designer'
 }
+async function beforeTabChange() { return await designerRef.value?.confirmLeave() ?? true }
+async function changeProject(id) { if (id !== projectId.value && await beforeTabChange()) projectId.value = id }
 
 function syncRoute() {
   router.replace({ query: { ...route.query, tab: activeTab.value, projectId: projectId.value || undefined, flowId: selectedFlowId.value || undefined } }).catch(() => {})
@@ -240,6 +249,7 @@ async function submitProject() {
   projectSubmitting.value = true
   projectSubmitError.value = ''
   try {
+    if (!await beforeTabChange()) return
     const response = await createGovernanceProject({ name: projectForm.name.trim(), description: projectForm.description.trim() })
     if (disposed) return
     projects.value = [...projects.value, response.data]
@@ -264,7 +274,8 @@ async function submitFlow() {
       selectedFlowId.value = String(response.data.id)
       await loadFlows()
     }
-    proxy.$modal.msgSuccess('流程已创建，可在原生画布继续设计')
+    activeTab.value = 'designer'
+    proxy.$modal.msgSuccess('流程已创建，可拖入组件继续设计')
     await refreshOverview()
   } catch (error) { flowSubmitError.value = errorMessage(error, '流程创建失败。') }
   finally { flowSubmitting.value = false }
@@ -279,7 +290,7 @@ watch(projectId, () => {
 })
 watch([activeTab, selectedFlowId], syncRoute)
 watch(() => route.query, (value) => {
-  if (['flows', 'tests', 'catalog'].includes(value.tab)) activeTab.value = value.tab
+  if (['flows', 'designer', 'tests', 'catalog'].includes(value.tab)) activeTab.value = value.tab
   const id = String(value.projectId || '')
   if (id && projects.value.some((item) => String(item.id) === id)) projectId.value = id
   const flowId = String(value.flowId || '')
@@ -288,6 +299,11 @@ watch(() => route.query, (value) => {
 watch(() => filteredFlows.value.length, (length) => { query.pageNum = Math.min(query.pageNum, Math.max(1, Math.ceil(length / query.pageSize))) })
 onMounted(loadWorkspace)
 onBeforeUnmount(() => { disposed = true; ++workspaceSequence; ++flowSequence })
+onBeforeRouteLeave(beforeTabChange)
+onBeforeRouteUpdate((to, from) => {
+  if (['projectId', 'flowId', 'tab'].some(key => to.query[key] !== from.query[key]) && designerRef.value?.hasUnsaved()) return beforeTabChange()
+  return true
+})
 </script>
 
 <style scoped>
@@ -298,4 +314,5 @@ onBeforeUnmount(() => { disposed = true; ++workspaceSequence; ++flowSequence })
 .governance-query-input { width: 200px; }
 .governance-description { color: var(--el-text-color-secondary); font-size: var(--el-font-size-small); line-height: 1.6; }
 .governance-full-width { width: 100%; }
+.governance-workspace.is-designing .governance-project-bar { margin-bottom: 0; }
 </style>
