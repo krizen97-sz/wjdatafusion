@@ -143,7 +143,7 @@ final class DataGovernanceSafeFlow
         catch (Exception e) { throw new ServiceException("测试定义哈希计算失败"); }
     }
 
-    private void validateProperties(JsonNode processor)
+    static void validateProperties(JsonNode processor)
     {
         String type = processor.path("type").asText();
         if (type.equals(STANDARD + "GenerateFlowFile")) return; // Sample text and generator settings are replaced, never evaluated from the saved source.

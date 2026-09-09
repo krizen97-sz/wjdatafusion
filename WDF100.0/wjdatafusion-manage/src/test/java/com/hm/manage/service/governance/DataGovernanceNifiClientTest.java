@@ -58,4 +58,14 @@ class DataGovernanceNifiClientTest
         assertThrows(ServiceException.class, () -> client.json("GET", "//other-host/", null));
         assertThrows(ServiceException.class, () -> client.json("GET", "/../access/token", null));
     }
+    @Test void staleRevisionOrChangedEngineStateReturnsRefreshConflictWithoutUpstreamDetails() throws Exception
+    {
+        var client = client();
+        server.createContext("/nifi-api/conflict", exchange -> {
+            byte[] body = "private-upstream-state".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(409, body.length); exchange.getResponseBody().write(body); exchange.close();
+        }); server.start();
+        var conflict = assertThrows(ServiceException.class, () -> client.json("PUT", "/conflict", java.util.Map.of()));
+        assertEquals(409, conflict.getCode()); assertTrue(conflict.getMessage().contains("刷新")); assertFalse(conflict.getMessage().contains("private-upstream-state"));
+    }
 }

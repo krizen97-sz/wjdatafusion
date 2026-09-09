@@ -159,6 +159,7 @@ public class DataGovernanceNifiClient
             if (status < 200 || status >= 300)
             {
                 if (status == 401) { token = null; tokenExpiry = Instant.EPOCH; }
+                if (status == 409) throw new ServiceException("流程版本或引擎状态已变化，请刷新画布后重试", 409);
                 throw new ServiceException("NiFi 请求失败 (HTTP " + status + ")");
             }
             try (InputStream in = connection.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream())
