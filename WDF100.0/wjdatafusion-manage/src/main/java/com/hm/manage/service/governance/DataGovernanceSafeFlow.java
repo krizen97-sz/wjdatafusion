@@ -15,7 +15,7 @@ import static com.hm.manage.service.governance.DataGovernanceEngine.*;
 final class DataGovernanceSafeFlow
 {
     static final Set<String> TYPES = Set.of(STANDARD + "GenerateFlowFile", STANDARD + "EvaluateJsonPath",
-        STANDARD + "RouteOnAttribute", STANDARD + "JoltTransformJSON", UPDATE, WRITER);
+        STANDARD + "RouteOnAttribute", JOLT, UPDATE, WRITER);
     final Map<String, JsonNode> processors = new LinkedHashMap<>();
     final List<JsonNode> connections = new ArrayList<>();
     final List<String> order = new ArrayList<>();
@@ -112,19 +112,23 @@ final class DataGovernanceSafeFlow
                 else if (!key.matches("sample\\.[A-Za-z0-9_.-]{1,64}") || !value.startsWith("$") || value.length() > 256)
                     unsupported("JSON 提取只支持 sample.* 字段和有限 JSONPath");
             }
-            else if (type.equals(STANDARD + "JoltTransformJSON"))
+            else if (type.equals(JOLT))
             {
-                if (!Set.of("Jolt Specification", "Jolt Transform", "Pretty Print", "Transform Cache Size", "Max String Length").contains(key))
+                if (!Set.of("Jolt Specification", "Jolt Transform", "Pretty Print", "Transform Cache Size", "Max String Length",
+                    "JSON Source", "Retain Unicode Escape Sequences").contains(key))
                     unsupported("不支持自定义 Jolt 类、模块目录或连接服务");
                 if (value.contains("${")) unsupported("Jolt 测试不允许环境表达式");
-                if (key.equals("Jolt Transform") && !Set.of("Chain", "Shift", "Default", "Remove", "Cardinality", "Sort").contains(value))
-                    unsupported("该 Jolt 操作尚未纳入测试白名单");
-                // Class-based operations in a Chain spec could load arbitrary code.
-                if (key.equals("Jolt Specification") && "Chain".equals(properties.path("Jolt Transform").asText("Chain")))
+                if (key.equals("Jolt Transform") && !value.equals("jolt-transform-chain"))
+                    unsupported("样本测试仅支持 Jolt Chain 的内置操作，高级模式尚未支持");
+                if (key.equals("JSON Source") && !value.equals("FLOW_FILE"))
+                    unsupported("Jolt 样本测试仅支持 FlowFile JSON 内容");
+                // NiFi also accepts a local file path here. Parse every spec as inline JSON before cloning.
+                if (key.equals("Jolt Specification"))
                 {
                     try
                     {
-                        JsonNode chain = new com.fasterxml.jackson.databind.ObjectMapper().readTree(value);
+                        JsonNode chain = new com.fasterxml.jackson.databind.ObjectMapper()
+                            .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(value);
                         if (!chain.isArray() || chain.size() > 20) unsupported("Jolt Chain 必须为不超过 20 个操作的数组");
                         for (JsonNode operation : chain)
                             if (!Set.of("shift", "default", "remove", "cardinality", "sort").contains(operation.path("operation").asText()))

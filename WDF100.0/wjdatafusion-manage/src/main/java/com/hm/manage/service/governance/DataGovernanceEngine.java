@@ -21,6 +21,7 @@ public class DataGovernanceEngine
     static final String CAPTURE = "RYNEW_GOV_CAPTURE";
     static final String STANDARD = "org.apache.nifi.processors.standard.";
     static final String UPDATE = "org.apache.nifi.processors.attributes.UpdateAttribute";
+    static final String JOLT = "org.apache.nifi.processors.jolt.JoltTransformJSON";
     static final String SAMPLE = "sample-safe-v1";
     static final String DELIMITED = "delimited-safe-v1";
     static final String WRITER = "com.hm.governance.nifi.DelimitedTextWriter";

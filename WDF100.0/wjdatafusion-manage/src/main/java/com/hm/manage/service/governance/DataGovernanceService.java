@@ -55,7 +55,8 @@ public class DataGovernanceService
         String[][] entries = {
             {"sample-input", "样本输入", "输入", "AVAILABLE", "GenerateFlowFile：只注入有界测试 JSON"},
             {"json-path", "JSON 字段提取", "转换", "AVAILABLE", "EvaluateJsonPath：提取到 sample.* 属性"},
-            {"json-jolt", "JSON 映射", "转换", "AVAILABLE", "JoltTransformJSON：安全内置操作，需要在画布配置规范"},
+            {"json-jolt", "JSON 映射", "转换", "AVAILABLE", "Jolt Chain：内联 shift/default/remove/cardinality/sort，使用 FlowFile 内容"},
+            {"json-jolt-advanced", "Jolt 高级转换", "转换", "ADAPTER_REQUIRED", "Custom/Modify、属性来源、模块目录及文件规范未纳入安全样本执行"},
             {"route", "条件路由", "控制", "AVAILABLE", "RouteOnAttribute：有限 sample.* 表达式"},
             {"attributes", "常量与属性", "转换", "AVAILABLE", "UpdateAttribute：仅 sample.* 字段"},
             {"capture", "结果观察", "输出", "AVAILABLE", "停止的观察节点前队列，读取真实引擎输出"},
@@ -66,7 +67,8 @@ public class DataGovernanceService
             {"ftp-delivery", "FTP 交付", "输出", "ADAPTER_REQUIRED", "需交付确认台账和协议适配，测试禁止访问实际目标"},
             {"business-script", "海康消息转换", "转换", "ADAPTER_REQUIRED", "需要迁移原 JavaScript 和数组、日期、空值语义"}
         };
-        for (String[] entry : entries) items.add(new CatalogItem(entry[0], entry[1], entry[2], entry[3], entry[4],
+        for (String[] entry : entries) items.add(new CatalogItem(entry[0], entry[1], entry[2],
+            entry[0].equals("json-jolt") ? engine.supports(JOLT) ? "AVAILABLE" : "ENGINE_REQUIRED" : entry[3], entry[4],
             entry[0].equals("sample-input") ? List.of() : List.of("JSON", "FLOWFILE"), List.of("FLOWFILE")));
         items.add(new CatalogItem("delimited-text-writer", "协议文本样本输出", "输出", engine.supports(WRITER) ? "AVAILABLE" : "ENGINE_REQUIRED",
             "只转换封闭 JSON 数组；无文件系统、网络或业务源目标访问", List.of("JSON_ARRAY"), List.of("TEXT")));

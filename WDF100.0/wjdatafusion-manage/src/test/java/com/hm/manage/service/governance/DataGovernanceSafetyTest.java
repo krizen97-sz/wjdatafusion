@@ -28,8 +28,19 @@ class DataGovernanceSafetyTest
     {
         assertThrows(DataGovernanceSafeFlow.UnsupportedFlow.class, () -> new DataGovernanceSafeFlow(blueprint(STANDARD + "InvokeHTTP", map("Remote URL", "https://example.invalid"))));
         assertThrows(DataGovernanceSafeFlow.UnsupportedFlow.class, () -> new DataGovernanceSafeFlow(blueprint(UPDATE, map("sample.value", "${DATABASE_PASSWORD}"))));
-        assertThrows(DataGovernanceSafeFlow.UnsupportedFlow.class, () -> new DataGovernanceSafeFlow(blueprint(STANDARD + "JoltTransformJSON", map("Custom Transformation Class Name", "custom.ExternalCode"))));
-        assertThrows(DataGovernanceSafeFlow.UnsupportedFlow.class, () -> new DataGovernanceSafeFlow(blueprint(STANDARD + "JoltTransformJSON", map("Jolt Transform", "Chain", "Jolt Specification", "[{\"operation\":\"CustomCode\",\"spec\":{}}]"))));
+        assertThrows(DataGovernanceSafeFlow.UnsupportedFlow.class, () -> new DataGovernanceSafeFlow(blueprint(JOLT, map("Custom Transformation Class Name", "custom.ExternalCode"))));
+        assertThrows(DataGovernanceSafeFlow.UnsupportedFlow.class, () -> new DataGovernanceSafeFlow(blueprint(JOLT, map("Jolt Transform", "jolt-transform-chain", "Jolt Specification", "[{\"operation\":\"CustomCode\",\"spec\":{}}]"))));
+    }
+    @Test void usesRealJoltTypeAndApiDefaultsAndRejectsFileOrAdvancedSpecs()
+    {
+        String spec = "[{\"operation\":\"shift\",\"spec\":{\"message\":\"renamed\"}},{\"operation\":\"default\",\"spec\":{\"origin\":\"nifi\"}}]";
+        ObjectNode safe = blueprint("org.apache.nifi.processors.jolt.JoltTransformJSON", map("Jolt Transform", "jolt-transform-chain",
+            "Jolt Specification", spec, "JSON Source", "FLOW_FILE", "Retain Unicode Escape Sequences", "false", "Transform Cache Size", "1", "Max String Length", "20 MB", "Pretty Print", "false"));
+        assertEquals(3, new DataGovernanceSafeFlow(safe).order.size());
+        assertThrows(DataGovernanceSafeFlow.UnsupportedFlow.class, () -> new DataGovernanceSafeFlow(blueprint(STANDARD + "JoltTransformJSON", map())));
+        assertThrows(DataGovernanceSafeFlow.UnsupportedFlow.class, () -> new DataGovernanceSafeFlow(blueprint(JOLT, map("Jolt Specification", "/private/spec.json"))));
+        assertThrows(DataGovernanceSafeFlow.UnsupportedFlow.class, () -> new DataGovernanceSafeFlow(blueprint(JOLT, map("Jolt Transform", "jolt-transform-modify-overwrite-beta", "Jolt Specification", "{}"))));
+        assertThrows(DataGovernanceSafeFlow.UnsupportedFlow.class, () -> new DataGovernanceSafeFlow(blueprint(JOLT, map("JSON Source", "ATTRIBUTE", "Jolt Specification", spec))));
     }
     @Test void acceptsEngineDefaultsButRejectsStatefulAttributeMutation()
     {

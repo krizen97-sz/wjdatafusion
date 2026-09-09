@@ -22,6 +22,7 @@ public final class DataGovernanceModels
     {
         public Samples(List<String> input, List<String> output) { this(input, output, List.of()); }
     }
+    /** inputCount/outputCount are NiFi FlowFile counts, not the number of business records inside JSON. */
     public record StepResult(String id, String name, String type, String status, long inputCount,
                              long outputCount, List<String> messages, Samples samples) { }
 
