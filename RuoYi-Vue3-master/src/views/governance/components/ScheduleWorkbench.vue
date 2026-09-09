@@ -88,7 +88,7 @@
     <el-dialog v-model="scheduleOpen" :title="cronEditorOpen ? '生成 Cron 表达式' : scheduleForm.id ? '编辑定时任务' : '新建定时任务'" width="720px" append-to-body destroy-on-close :close-on-click-modal="!savingSchedule" :close-on-press-escape="!savingSchedule" :show-close="!savingSchedule">
       <template v-if="cronEditorOpen">
         <el-alert title="生成器中的运行时间仅供参考；保存后以下方列表中服务端返回的时区与下次执行时间为准。" type="info" :closable="false" class="mb16" />
-        <Crontab :expression="scheduleForm.cron" @fill="fillCron" @hide="cronEditorOpen = false" />
+        <Crontab :expression="scheduleForm.cron" preserve-field-values @fill="fillCron" @hide="cronEditorOpen = false" />
       </template>
       <template v-else>
         <el-alert :title="scheduleForm.id ? '保存修改后任务自动暂停，需要再次显式启用。' : '保存后任务为暂停状态，需要在列表中显式启用。'" description="同一任务禁止并发，错过的触发不补跑。暂停只停止后续触发，已提交的运行仍会继续完成。" type="info" :closable="false" class="mb16" />

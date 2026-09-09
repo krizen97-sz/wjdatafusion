@@ -84,8 +84,8 @@ class DataGovernanceConnectionsTest
         assertThrows(ServiceException.class, () -> snapshotSql(new SnapshotRequest("pg_catalog", "pg_authid", List.of("rolname"), List.of())));
         assertThrows(ServiceException.class, () -> snapshotSql(new SnapshotRequest("public", "t", List.of("id", "id"), List.of())));
         String sql = snapshotSql(new SnapshotRequest("public", "字典", List.of("code", "name"), List.of("code")));
-        assertTrue(sql.contains("CASE WHEN")); assertTrue(sql.contains("octet_length(\"code\"::text)::bigint"));
-        assertTrue(sql.contains("AS __governance_oversize")); assertTrue(sql.endsWith("ORDER BY \"code\" LIMIT 1001"));
+        assertTrue(sql.contains("CASE WHEN")); assertTrue(sql.contains("octet_length(snapshot_source.\"code\"::text)::bigint"));
+        assertTrue(sql.contains("AS __governance_oversize")); assertTrue(sql.endsWith("ORDER BY snapshot_source.\"code\" LIMIT 1001"));
     }
     @Test void instanceLocksAreReleasedAndClosedStoresDoNotReopen() throws Exception
     {

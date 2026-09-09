@@ -133,9 +133,11 @@ import CrontabMonth from "./month.vue"
 import CrontabWeek from "./week.vue"
 import CrontabYear from "./year.vue"
 import CrontabResult from "./result.vue"
+import { shouldApplyCronUpdate } from './updatePolicy.js'
 const { proxy } = getCurrentInstance()
 const emit = defineEmits(['hide', 'fill'])
 const props = defineProps({
+    preserveFieldValues: { type: Boolean, default: false },
     hideComponent: {
         type: Array,
         default: () => [],
@@ -207,6 +209,7 @@ function tabCheck(index) {
 }
 // 由子组件触发，更改表达式组成的字段值
 function updateCrontabValue(name, value, from) {
+    if (!shouldApplyCronUpdate(name, from, props.preserveFieldValues)) return
     crontabValueObj.value[name] = value
 }
 // 表单选项的子组件校验数字格式（通过-props传递）

@@ -120,7 +120,7 @@ public class DataGovernanceEngine
             {
                 String lookup = createProcessor(groupId, "批次快照查表", LOOKUP, "", map(
                     "Lookup Rows", "[{\"camera_code\":\"CAM-001\",\"platform_code\":\"DEMO\",\"external_code\":\"EXT-001\",\"active\":\"Y\"}]",
-                    "Match Fields", "[{\"input\":\"/camera\",\"lookup\":\"camera_code\",\"type\":\"STRING\",\"operator\":\"EQ\"},{\"input\":\"/platform\",\"lookup\":\"platform_code\",\"type\":\"STRING\",\"operator\":\"EQ\"},{\"lookup\":\"active\",\"operator\":\"IS_NOT_NULL\"}]",
+                    "Match Fields", "[{\"input\":\"/camera\",\"lookup\":\"camera_code\",\"type\":\"STRING\",\"operator\":\"EQ\"},{\"input\":\"/platform\",\"lookup\":\"platform_code\",\"type\":\"STRING\",\"operator\":\"EQ\"},{\"lookup\":\"active\",\"type\":\"STRING\",\"operator\":\"IS_NOT_NULL\"}]",
                     "Return Fields", "[{\"lookup\":\"external_code\",\"output\":\"external_camera\",\"default\":\"0\"}]",
                     "Missing Match", "KEEP", "Multiple Matches", "FAIL"), List.of(), TEMPLATE_COLUMN).path("component").path("id").asText();
                 String capture = createProcessor(groupId, "查看测试结果", UPDATE, CAPTURE, map(), List.of("success"), 2 * TEMPLATE_COLUMN).path("component").path("id").asText();

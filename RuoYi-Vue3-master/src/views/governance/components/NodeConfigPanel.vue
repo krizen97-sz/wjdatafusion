@@ -53,6 +53,7 @@
               </template>
             </template>
 
+            <lookup-node-fields v-else-if="kind.key === 'lookup'" :properties="draft.properties" :readonly="locked" @update="({ key, value }) => setProperty(key, value)" @load-snapshot="emit('load-snapshot')" />
             <template v-else-if="kind.key === 'jolt'">
               <el-form-item label="JSON 转换规则">
                 <el-input :model-value="property('Jolt Specification')" type="textarea" :autosize="{ minRows: 10, maxRows: 22 }" spellcheck="false" placeholder='[{ "operation": "shift", "spec": { "message": "content" } }]' @update:model-value="setProperty('Jolt Specification', $event)" />
@@ -136,9 +137,10 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
 import { createNodeDraft, nodeDraftChanged, nodeDraftPayload, nodeDraftRowsError, nodeKind } from '../nodeCatalog.js'
+import LookupNodeFields from './LookupNodeFields.vue'
 
 const props = defineProps({ node: { type: Object, default: null }, saving: Boolean, readonly: Boolean })
-const emit = defineEmits(['save', 'remove', 'preview', 'dirty-change'])
+const emit = defineEmits(['save', 'remove', 'preview', 'dirty-change', 'load-snapshot'])
 const formRef = ref(null)
 const draft = ref(createNodeDraft(props.node))
 const submitting = ref(false)
@@ -211,7 +213,8 @@ function discard() { if (!busy.value) resetDraft() }
 function isDirty() { return dirty.value }
 function preview() { if (!busy.value) emit('preview') }
 function remove() { if (!locked.value) emit('remove') }
-defineExpose({ isDirty, discard })
+function applyLookupSnapshot(value) { if (kind.value.key === 'lookup' && !locked.value) setProperty('Lookup Rows', value) }
+defineExpose({ isDirty, discard, applyLookupSnapshot })
 </script>
 
 <style scoped>

@@ -2,6 +2,18 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { availabilityState, createFlowDraftStore, displayJson, isRunActive, optionalCount, parseTestRequest, runState, safeDesignerPath, SAMPLE_LIMIT } from '../workspaceRules.js'
 
+test('JSON previews retain large integer, decimal and negative-zero lexemes', () => {
+  const text = displayJson('{"id":9223372036854775807,"fraction":0.12345678901234567890,"zero":-0}')
+  assert.ok(text.includes('9223372036854775807'))
+  assert.ok(text.includes('0.12345678901234567890'))
+  assert.ok(text.includes('"zero": -0'))
+})
+test('JSON preview formatting preserves nested string payloads and bounded truncation', () => {
+  assert.equal(displayJson('{"message":"{\\"id\\":1}"}'), '{\n  "message": "{\\"id\\":1}"\n}')
+  assert.ok(displayJson('[1,2,3,4,5,6,7,8,9]', 8).includes('预览已截断'))
+  assert.equal(displayJson('plain|\u001ftext'), 'plain|\u001ftext')
+})
+
 test('engine links only accept the same-origin NiFi proxy and reject path escapes', () => {
   assert.equal(safeDesignerPath('/nifi/#/process-groups/group-1'), '/nifi/#/process-groups/group-1')
   for (const path of ['https://outside.invalid/nifi/', '//outside.invalid/nifi/', '/nifi/../../admin', '/nifi/%2e%2e/admin', '/nifi\\@outside.invalid', '/nifi/%5cadmin', 'javascript:alert(1)', '/nifievil/', '/nifi/\nadmin']) assert.equal(safeDesignerPath(path), '')

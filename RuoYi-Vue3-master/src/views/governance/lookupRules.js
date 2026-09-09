@@ -68,7 +68,7 @@ function inspectJson(raw, maxBytes) {
 
 export function parseLookupSnapshot(raw) {
   try {
-    const rows = inspectJson(raw, 256 * 1024)
+    const rows = inspectJson(raw, 64 * 1024)
     if (!Array.isArray(rows) || rows.some(row => !object(row))) throw new Error('字典快照必须是 JSON 对象数组')
     if (rows.length > 1000) throw new Error('字典快照最多包含 1000 条记录')
     return { valid: true, count: rows.length, error: '' }

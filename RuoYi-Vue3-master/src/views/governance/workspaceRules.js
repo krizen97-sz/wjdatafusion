@@ -90,9 +90,37 @@ export function displayJson(value, limit = 20000) {
   if (value === undefined || value === null) return ''
   let text = typeof value === 'string' ? value : JSON.stringify(value, null, 2)
   if (typeof value === 'string') {
-    try { text = JSON.stringify(JSON.parse(value), null, 2) } catch { /* Plain output is also valid. */ }
+    try { JSON.parse(value); text = formatJsonTokens(value, limit) } catch { /* Plain or incomplete output is also valid. */ }
   }
   return text.length > limit ? `${text.slice(0, limit)}\n[预览已截断；当前仅保留有界采样，不代表完整内容]` : text
+}
+
+// Inspect syntax without reserializing parsed numbers: dictionary IDs and decimals may exceed JS precision.
+function formatJsonTokens(source, limit) {
+  let output = '', depth = 0, quoted = false, escaped = false
+  for (let i = 0; i < source.length; i++) {
+    const char = source[i]
+    if (quoted) {
+      output += char
+      if (escaped) escaped = false
+      else if (char === '\\') escaped = true
+      else if (char === '"') quoted = false
+    } else if (char === '"') { quoted = true; output += char }
+    else if (/\s/.test(char)) continue
+    else if (char === '{' || char === '[') {
+      if (++depth > 40) return source
+      output += char
+      let next = i + 1
+      while (/\s/.test(source[next] || '') && next < source.length) next++
+      if (source[next] === (char === '{' ? '}' : ']')) { output += source[next]; i = next; depth-- }
+      else output += '\n' + '  '.repeat(depth)
+    } else if (char === '}' || char === ']') output += '\n' + '  '.repeat(--depth) + char
+    else if (char === ',') output += ',\n' + '  '.repeat(depth)
+    else if (char === ':') output += ': '
+    else output += char
+    if (output.length > limit) return output
+  }
+  return output
 }
 
 export function optionalCount(value) {

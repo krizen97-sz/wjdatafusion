@@ -39,7 +39,7 @@
           <el-empty v-if="!groups.length" description="没有匹配的组件" :image-size="44" />
           <section class="etl-palette__future">
             <h3>业务连接器</h3>
-            <p>Kafka、数据库与海康适配器</p>
+            <p>Kafka实时采集、FTP交付与海康业务链</p>
             <el-tag size="small" type="info" effect="plain">适配中</el-tag>
           </section>
         </el-scrollbar>
@@ -60,7 +60,7 @@
       </main>
       <section class="etl-inspector" aria-label="配置区域">
         <node-config-panel v-if="selectedNode" ref="configPanel" :node="selectedNode" :saving="busy" :readonly="!canEditGraph || !selectedNode.editable"
-          @save="saveNode" @remove="removeNode" @preview="previewNode" @dirty-change="configDirty = $event" />
+          @save="saveNode" @remove="removeNode" @preview="previewNode" @dirty-change="configDirty = $event" @load-snapshot="openSnapshot" />
         <section v-else-if="selectedEdge" class="etl-edge-inspector">
           <header><strong>分支连接</strong><el-icon :size="20"><Connection /></el-icon></header>
           <el-descriptions :column="1" direction="vertical">
@@ -78,6 +78,7 @@
         </section>
       </section>
     </div>
+    <snapshot-picker v-model="snapshotOpen" apply-to-node @loaded="loadSnapshot" />
     <el-dialog v-model="connectionOpen" title="添加分支连接" width="500px" append-to-body :close-on-click-modal="!busy" :show-close="!busy">
       <el-form label-position="top" :disabled="busy">
         <el-form-item label="流向"><el-text>{{ nodeName(connectionForm.sourceId) }} → {{ nodeName(connectionForm.targetId) }}</el-text></el-form-item>
@@ -97,6 +98,7 @@ import { errorMessage, runState, safeDesignerPath } from '../workspaceRules'
 import FlowDiagram from './FlowDiagram.vue'
 import NodeConfigPanel from './NodeConfigPanel.vue'
 import TestWorkbench from './TestWorkbench.vue'
+import SnapshotPicker from './SnapshotPicker.vue'
 
 const props = defineProps({ flow: Object, flows: { type: Array, default: () => [] }, templates: { type: Array, default: () => [] }, engineReady: Boolean })
 const emit = defineEmits(['select-flow', 'updated'])
@@ -106,6 +108,7 @@ const loadedFlowId = ref(''), nodeTypes = ref([]), error = ref(''), loading = re
 const search = ref(''), selectedNodeId = ref(''), selectedEdgeId = ref(''), configDirty = ref(false), configPanel = ref(), diagram = ref(), testPanel = ref()
 const testOpen = ref(false), run = ref(null), trustedRun = ref(''), testedSignature = ref('')
 const testSubmitting = ref(false), pendingTestSignature = ref('')
+const snapshotOpen = ref(false), snapshotTarget = ref('')
 const connectionOpen = ref(false), connectionForm = reactive({ sourceId: '', targetId: '', relationship: '' })
 let generation = 0, disposed = false
 const canEditGraph = computed(() => props.engineReady && graph.value.editable && !testSubmitting.value && loadedFlowId.value === props.flow?.id && proxy.$auth.hasPermi('governance:flow:edit'))
@@ -116,7 +119,7 @@ const enginePath = computed(() => safeDesignerPath(props.flow?.designerPath))
 const signature = computed(() => designSignature(graph.value))
 const resultStale = computed(() => !run.value || trustedRun.value !== run.value.id || testedSignature.value !== signature.value)
 const sourceRelationships = computed(() => graph.value.nodes.find(n => n.id === connectionForm.sourceId)?.relationships || [])
-const groups = computed(() => [{ key: 'source', label: '数据输入' }, { key: 'transform', label: '数据转换' }, { key: 'route', label: '连接与分流' }, { key: 'output', label: '数据输出' }].map(group => ({ ...group, items: NODE_KINDS.filter(k => k.category === group.key && `${k.label} ${k.description}`.includes(search.value.trim())) })).filter(group => group.items.length))
+const groups = computed(() => [{ key: 'source', label: '数据输入' }, { key: 'transform', label: '数据转换' }, { key: 'lookup', label: '数据查询' }, { key: 'route', label: '连接与分流' }, { key: 'output', label: '数据输出' }].map(group => ({ ...group, items: NODE_KINDS.filter(k => k.category === group.key && `${k.label} ${k.description}`.includes(search.value.trim())) })).filter(group => group.items.length))
 const nodeName = id => graph.value.nodes.find(n => n.id === id)?.name || '未选择节点'
 const available = kind => nodeTypes.value.some(type => type.type === kind.type && type.role === kind.role)
 
@@ -236,6 +239,12 @@ async function removeNode() {
 }
 function openTests() { testOpen.value = true; nextTick(() => testPanel.value?.showSample()) }
 function previewNode() { testOpen.value = true; nextTick(() => testPanel.value?.showResult()) }
+function openSnapshot() { if (selectedNode.value && !busy.value) { snapshotTarget.value = selectedNode.value.id; snapshotOpen.value = true } }
+function loadSnapshot(snapshot) {
+  if (selectedNode.value?.id !== snapshotTarget.value) { proxy.$modal.msgWarning('当前节点已变化，请重新加载字典快照'); return }
+  configPanel.value?.applyLookupSnapshot(snapshot.rowsJson)
+  proxy.$modal.msgSuccess(`已加载 ${snapshot.rowCount} 行字典，请保存节点配置`)
+}
 async function prepareTest() {
   if (busy.value || configDirty.value || !await loadGraph()) return false
   pendingTestSignature.value = signature.value
@@ -248,7 +257,7 @@ function beforeUnload(event) { if (configDirty.value || busy.value || testSubmit
 window.addEventListener('beforeunload', beforeUnload)
 watch(testOpen, async () => { await nextTick(); diagram.value?.fit() })
 watch(() => props.flow?.id, async () => {
-  ++generation; loadedFlowId.value = ''; configDirty.value = false; selectedNodeId.value = selectedEdgeId.value = ''; error.value = saveMessage.value = ''; trustedRun.value = ''; run.value = null
+  ++generation; snapshotOpen.value = false; loadedFlowId.value = ''; configDirty.value = false; selectedNodeId.value = selectedEdgeId.value = ''; error.value = saveMessage.value = ''; trustedRun.value = ''; run.value = null
   graph.value = { nodes: [], connections: [], editable: false, issues: [] }
   await loadGraph()
 }, { immediate: true })

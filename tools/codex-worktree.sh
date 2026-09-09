@@ -41,6 +41,7 @@ is_shared_path() {
     AGENTS.md|README.md|docs/CODEX_WORKTREES.md|tools/codex-worktree.sh|\
     RuoYi-Vue3-master/package.json|RuoYi-Vue3-master/src/router/index.js|\
     docs/frontend/UI-EXCEPTIONS.md|RuoYi-Vue3-master/scripts/ui-guard-allowlist.json|\
+    RuoYi-Vue3-master/src/components/Crontab/index.vue|RuoYi-Vue3-master/src/components/Crontab/updatePolicy.js|\
     RuoYi-Vue3-master/src/views/support/version/releaseNotes.js|\
     WDF100.0/pom.xml|WDF100.0/*/pom.xml|WDF100.0/sql/support_v1.sql|\
     WDF100.0/sql/support_deploy_all.sql|*/application.yml|*/application-*.yml|\

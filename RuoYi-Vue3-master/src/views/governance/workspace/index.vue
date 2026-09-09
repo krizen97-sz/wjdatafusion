@@ -82,6 +82,14 @@
           <el-table-column label="输入 / 输出" min-width="180"><template #default="{ row }">{{ (row.inputKinds || []).join('、') || '未声明' }} / {{ (row.outputKinds || []).join('、') || '未声明' }}</template></el-table-column>
         </el-table>
       </el-tab-pane>
+      <el-tab-pane label="发布与定时任务" name="schedules" lazy>
+        <template #label><span class="motion-control-label"><svg-icon icon-class="time" class="motion-control-label__icon" /><span class="motion-control-label__text">发布与定时任务</span></span></template>
+        <schedule-workbench v-if="activeTab === 'schedules'" :flows="flows" :selected-flow-id="selectedFlowId" :engine-ready="engineReady" @select-flow="selectedFlowId = String($event)" />
+      </el-tab-pane>
+      <el-tab-pane label="数据连接" name="connections" lazy>
+        <template #label><span class="motion-control-label"><svg-icon icon-class="server" class="motion-control-label__icon" /><span class="motion-control-label__text">数据连接</span></span></template>
+        <connection-workbench v-if="activeTab === 'connections'" :engine-ready="engineReady" />
+      </el-tab-pane>
     </el-tabs>
 
     <el-dialog v-model="projectDialogOpen" title="新建治理项目" width="500px" append-to-body :close-on-click-modal="!projectSubmitting" :show-close="!projectSubmitting">
@@ -118,11 +126,13 @@ import { createGovernanceFlow, createGovernanceProject, getGovernanceOverview, l
 import { availabilityState, catalogCategory, errorMessage, safeDesignerPath } from '../workspaceRules'
 import TestWorkbench from '../components/TestWorkbench.vue'
 import FlowDesigner from '../components/FlowDesigner.vue'
+import ScheduleWorkbench from '../components/ScheduleWorkbench.vue'
+import ConnectionWorkbench from '../components/ConnectionWorkbench.vue'
 
 const { proxy } = getCurrentInstance()
 const route = useRoute()
 const router = useRouter()
-const activeTab = ref(['flows', 'designer', 'tests', 'catalog'].includes(route.query.tab) ? route.query.tab : 'flows')
+const activeTab = ref(['flows', 'designer', 'tests', 'catalog', 'schedules', 'connections'].includes(route.query.tab) ? route.query.tab : 'flows')
 const designerRef = ref()
 const projectId = ref('')
 const selectedFlowId = ref('')
@@ -290,7 +300,7 @@ watch(projectId, () => {
 })
 watch([activeTab, selectedFlowId], syncRoute)
 watch(() => route.query, (value) => {
-  if (['flows', 'designer', 'tests', 'catalog'].includes(value.tab)) activeTab.value = value.tab
+  if (['flows', 'designer', 'tests', 'catalog', 'schedules', 'connections'].includes(value.tab)) activeTab.value = value.tab
   const id = String(value.projectId || '')
   if (id && projects.value.some((item) => String(item.id) === id)) projectId.value = id
   const flowId = String(value.flowId || '')

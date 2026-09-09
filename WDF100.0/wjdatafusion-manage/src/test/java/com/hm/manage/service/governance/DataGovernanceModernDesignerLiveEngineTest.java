@@ -42,8 +42,8 @@ class DataGovernanceModernDesignerLiveEngineTest
                 assertTrue(node.editable(), type.id() + ": " + node.issues()); assertEquals(type.role(), node.role());
                 created.put(type.id(), node);
             }
-            assertEquals(7, designer.design(flow.id()).nodes().size());
-            for (String unused : List.of("route", "jolt", "delimited"))
+            assertEquals(designer.nodeTypes().size(), designer.design(flow.id()).nodes().size());
+            for (String unused : created.keySet().stream().filter(key -> !List.of("source", "jsonpath", "attributes", "capture").contains(key)).toList())
             { DesignNode node = current(designer, flow.id(), created.get(unused).id()); designer.deleteNode(flow.id(), node.id(), node.version()); }
             String source = created.get("source").id(), json = created.get("jsonpath").id(), attributes = created.get("attributes").id(), capture = created.get("capture").id();
             designer.createConnection(flow.id(), new CreateDesignConnection(source, json, "success"));
@@ -72,7 +72,7 @@ class DataGovernanceModernDesignerLiveEngineTest
             for (DesignConnection edge : designer.design(flow.id()).connections()) designer.deleteConnection(flow.id(), edge.id(), edge.version());
             for (DesignNode node : designer.design(flow.id()).nodes()) designer.deleteNode(flow.id(), node.id(), node.version());
             assertTrue(designer.design(flow.id()).nodes().isEmpty()); assertTrue(designer.design(flow.id()).connections().isEmpty());
-            System.out.println("Modern designer real NiFi: seven node types, real CRUD/position/revision/dynamic removal, edited sample SHANGHAI, test cleanup confirmed");
+            System.out.println("Modern designer real NiFi: all advertised node types, real CRUD/position/revision/dynamic removal, edited sample SHANGHAI, test cleanup confirmed");
         }
         finally
         {

@@ -87,10 +87,10 @@ public class DataGovernanceConnections
         StoredProfile stored = profile(id, owner);
         acquire();
         long start = System.nanoTime();
-        try (Connection connection = open(stored); PreparedStatement query = connection.prepareStatement("SELECT 1"))
+        try (Connection connection = open(stored); PreparedStatement query = connection.prepareStatement("SELECT 1, current_setting('transaction_read_only')"))
         {
             query.setQueryTimeout(5);
-            try (ResultSet rows = query.executeQuery()) { if (!rows.next() || rows.getInt(1) != 1) reject("数据库未返回预期结果"); }
+            try (ResultSet rows = query.executeQuery()) { if (!rows.next() || rows.getInt(1) != 1 || !"on".equals(rows.getString(2))) reject("数据库未确认只读事务"); }
             connection.rollback();
             return Map.of("success", true, "readOnly", true, "elapsedMillis", (System.nanoTime() - start) / 1_000_000);
         }
@@ -145,15 +145,15 @@ public class DataGovernanceConnections
         String schema = identifier(request.schema() == null || request.schema().isBlank() ? "public" : request.schema());
         if (schema.toLowerCase(Locale.ROOT).startsWith("pg_") || schema.equalsIgnoreCase("information_schema")) reject("不允许读取系统目录");
         if (new HashSet<>(request.columns()).size() != request.columns().size()) reject("字典字段不能重复");
-        List<String> columns = request.columns().stream().map(DataGovernanceConnections::quoted).toList();
+        List<String> columns = request.columns().stream().map(column -> "snapshot_source." + quoted(column)).toList();
         List<String> order = request.orderBy() == null ? List.of() : request.orderBy();
         if (order.size() > 8 || !request.columns().containsAll(order)) reject("排序字段必须来自所选字典字段，最多 8 个");
         String rowBytes = columns.stream().map(column -> "COALESCE(octet_length(" + column + "::text)::bigint,0)").collect(java.util.stream.Collectors.joining("+"));
         String tooLarge = "(" + rowBytes + ")>65536";
         // Oversized values are never sent to the JDBC client. The flag makes this an explicit rejection, never a truncated snapshot.
         String projection = columns.stream().map(column -> "CASE WHEN " + tooLarge + " THEN NULL ELSE " + column + " END").collect(java.util.stream.Collectors.joining(","));
-        return "SELECT " + projection + ",(" + tooLarge + ") AS __governance_oversize FROM " + quoted(schema) + "." + quoted(request.table())
-            + (order.isEmpty() ? "" : " ORDER BY " + String.join(",", order.stream().map(DataGovernanceConnections::quoted).toList())) + " LIMIT 1001";
+        return "SELECT " + projection + ",(" + tooLarge + ") AS __governance_oversize FROM " + quoted(schema) + "." + quoted(request.table()) + " AS snapshot_source"
+            + (order.isEmpty() ? "" : " ORDER BY " + String.join(",", order.stream().map(column -> "snapshot_source." + quoted(column)).toList())) + " LIMIT 1001";
     }
     private Connection open(StoredProfile stored) throws Exception
     {

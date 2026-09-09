@@ -110,6 +110,8 @@ public class DataGovernanceTestRunner
                     if (edge.relation.equals("failure") && queued > 0) failure = true;
                     if (edge.relation.equals("empty") && queued > 0) emptyObserved = true;
                 }
+                attributes.stream().map(sample -> sample.get("governance.error")).filter(java.util.Objects::nonNull)
+                    .distinct().limit(3).forEach(code -> messages.add("组件诊断：" + code));
                 run.steps.add(new StepResult(oldId, definition.path("name").asText(), definition.path("type").asText(),
                     failure ? "FAILED" : inputCount == 0 && !oldId.equals(flow.source) ? "SKIPPED" : "SUCCEEDED",
                     inputCount, outputCount, messages, new Samples(inputSamples, outputSamples, attributes)));
@@ -183,7 +185,7 @@ public class DataGovernanceTestRunner
                         JsonNode detail = client.json("GET", "/flowfile-queues/" + edge.id + "/flowfiles/" + id(file.path("uuid").asText()), null);
                         Map<String, String> sample = new LinkedHashMap<>();
                         detail.path("flowFile").path("attributes").fields().forEachRemaining(entry -> {
-                            if (entry.getKey().startsWith("sample.") || Set.of("governance.lookup.input.records", "governance.lookup.output.records",
+                            if (entry.getKey().startsWith("sample.") || Set.of("governance.error", "governance.lookup.input.records", "governance.lookup.output.records",
                                 "governance.lookup.matched.records", "governance.lookup.unmatched.records", "governance.lookup.snapshot.sha256").contains(entry.getKey()))
                             {
                                 String value = entry.getValue().asText();

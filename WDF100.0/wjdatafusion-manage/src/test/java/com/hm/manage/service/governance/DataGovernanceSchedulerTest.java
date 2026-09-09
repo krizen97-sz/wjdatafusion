@@ -59,6 +59,20 @@ class DataGovernanceSchedulerTest
     private ScheduleSummary enable(ScheduleSummary schedule)
     { return scheduler.state(schedule.id(), new StateRequest(true, schedule.revision()), 7); }
 
+    @Test void brokenScheduleStorageDoesNotPreventPlatformStartup()
+    {
+        DataGovernanceScheduleStore broken = mock(DataGovernanceScheduleStore.class);
+        when(broken.schedules()).thenThrow(new ServiceException("synthetic storage failure"));
+        DataGovernanceScheduler unavailable = new DataGovernanceScheduler(service, broken, client, clock);
+        try
+        {
+            assertDoesNotThrow(unavailable::start);
+            assertThrows(ServiceException.class, () -> unavailable.schedules(7, null));
+            verify(service, never()).submitFrozen(any(), anyLong(), anyString());
+        }
+        finally { unavailable.close(); }
+    }
+
     @Test void publishedVersionsAreImmutablePrivateAndOwnerScoped() throws Exception
     {
         ReleaseSummary second = scheduler.publish(new PublishRequest(flowId, "版本二", "{}", Map.of()), 7);

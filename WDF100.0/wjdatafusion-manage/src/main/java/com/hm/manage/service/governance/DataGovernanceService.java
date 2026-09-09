@@ -62,10 +62,10 @@ public class DataGovernanceService
             {"route", "条件路由", "控制", "AVAILABLE", "RouteOnAttribute：有限 sample.* 表达式"},
             {"attributes", "常量与属性", "转换", "AVAILABLE", "UpdateAttribute：仅 sample.* 字段"},
             {"capture", "结果观察", "输出", "AVAILABLE", "停止的观察节点前队列，读取真实引擎输出"},
-            {"postgres-lookup", "PostgreSQL 多键查表", "查询", "ADAPTER_REQUIRED", "需要规则服务、快照缓存和未命中策略，暂不支持样本执行"},
+            {"postgres-lookup", "PostgreSQL 实时查表", "查询", "ADAPTER_REQUIRED", "逐批实时查询与长表缓存尚未接入；当前可用显式数据库快照与多条件快照查表"},
             {"kafka-consumer", "Kafka 消费", "输入", "ADAPTER_REQUIRED", "业务源需要独立连接与位点迁移，安全样本测试禁止连接"},
             {"kafka-producer", "Kafka 发送", "输出", "ADAPTER_REQUIRED", "业务目标需要确认与幂等策略，安全样本测试禁止发送"},
-            {"protocol-file", "跨网协议文件", "输出", "ADAPTER_REQUIRED", "需验证五列分隔字节、75/200 行、表头和批次关闭"},
+            {"protocol-file", "协议文件落盘与交付", "输出", "ADAPTER_REQUIRED", "文本编码已支持；实际文件清单、交付台账与整批成功后上传仍待接入"},
             {"ftp-delivery", "FTP 交付", "输出", "ADAPTER_REQUIRED", "需交付确认台账和协议适配，测试禁止访问实际目标"},
             {"business-script", "海康消息转换", "转换", "ADAPTER_REQUIRED", "需要迁移原 JavaScript 和数组、日期、空值语义"}
         };
