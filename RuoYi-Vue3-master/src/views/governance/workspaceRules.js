@@ -2,6 +2,7 @@ const RUN_STATES = {
   QUEUED: { label: '等待执行', type: 'info', active: true },
   RUNNING: { label: '正在执行', type: 'warning', active: true },
   SUCCEEDED: { label: '执行成功', type: 'success' },
+  EMPTY: { label: '空批次（引擎已确认）', type: 'success' },
   FAILED: { label: '执行失败', type: 'danger' },
   CANCELLED: { label: '已取消', type: 'info' },
   TIMED_OUT: { label: '执行超时', type: 'danger' },
@@ -15,15 +16,16 @@ const AVAILABILITY = {
   ADAPTER_REQUIRED: { label: '待适配', type: 'warning' },
   UNAVAILABLE: { label: '不可用', type: 'info' },
   UNSUPPORTED: { label: '暂不支持', type: 'info' },
-  NOT_INSTALLED: { label: '未安装', type: 'info' }
+  NOT_INSTALLED: { label: '未安装', type: 'info' },
+  ENGINE_REQUIRED: { label: '引擎组件未就绪', type: 'info', usable: false }
 }
 
 export const SAMPLE_LIMIT = 256 * 1024
 
 export function runState(status, cleanupConfirmed) {
   const value = String(status || '').toUpperCase()
-  if (value === 'SUCCEEDED' && cleanupConfirmed === false) {
-    return { label: '执行结束，清理待确认', type: 'warning', active: false }
+  if (['SUCCEEDED', 'EMPTY'].includes(value) && cleanupConfirmed === false) {
+    return { label: value === 'EMPTY' ? '空批次，清理待确认' : '执行结束，清理待确认', type: 'warning', active: false }
   }
   return RUN_STATES[value] || { label: value ? `未知状态：${value}` : '未返回状态', type: 'info', active: false }
 }
@@ -43,17 +45,33 @@ export function catalogCategory(value) {
 export function parseTestRequest(inputText, parameterText) {
   if (!String(inputText || '').trim()) throw new Error('请填写 JSON 样本。')
   if (new TextEncoder().encode(inputText).length > SAMPLE_LIMIT) throw new Error('样本不能超过 256 KB，请缩小测试数据。')
-  try { JSON.parse(inputText) } catch { throw new Error('样本不是有效的 JSON，请检查括号、引号和逗号。') }
+  let input
+  try { input = JSON.parse(inputText) } catch { throw new Error('样本不是有效的 JSON，请检查括号、引号和逗号。') }
+  if (input === null || typeof input !== 'object' || (Array.isArray(input) && input.length > 100)) {
+    throw new Error('样本必须为 JSON 对象或最多 100 条记录的数组（允许空数组）。')
+  }
   let parameters
-  try { parameters = JSON.parse(parameterText || '{}') } catch { throw new Error('模板参数不是有效的 JSON 对象。') }
+  try { parameters = JSON.parse(String(parameterText || '').trim() || '{}') } catch { throw new Error('可选参数不是有效的 JSON 对象。') }
   if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)) throw new Error('模板参数必须是 JSON 对象。')
   return { inputJson: inputText, parameters }
 }
 
-export function parameterDefaults(template) {
-  const schema = template?.parametersSchema
-  const properties = schema?.properties || {}
-  return Object.fromEntries(Object.entries(properties).filter(([, field]) => field && Object.hasOwn(field, 'default')).map(([name, field]) => [name, field.default]))
+// Drafts live only in this workspace's memory. Schema defaults are documentation,
+// not submitted overrides of the definition saved in the engine canvas.
+export function createFlowDraftStore() {
+  const drafts = new Map()
+  return {
+    read(flowId, template) {
+      const example = template?.parametersSchema?.inputExample
+      return { ...(drafts.get(String(flowId)) || {
+        inputText: typeof example === 'string' && example.trim() ? example : '{\n  "message": "样本消息"\n}',
+        parameterText: '{}'
+      }) }
+    },
+    write(flowId, draft) {
+      if (flowId) drafts.set(String(flowId), { inputText: draft.inputText, parameterText: draft.parameterText })
+    }
+  }
 }
 
 // Engine links remain inside the approved proxy prefix. Never attach credentials.
@@ -74,7 +92,7 @@ export function displayJson(value, limit = 20000) {
   if (typeof value === 'string') {
     try { text = JSON.stringify(JSON.parse(value), null, 2) } catch { /* Plain output is also valid. */ }
   }
-  return text.length > limit ? `${text.slice(0, limit)}\n[展示已截断；完整内容请以运行产物为准]` : text
+  return text.length > limit ? `${text.slice(0, limit)}\n[预览已截断；当前仅保留有界采样，不代表完整内容]` : text
 }
 
 export function optionalCount(value) {

@@ -7,7 +7,7 @@
         <el-descriptions-item label="输入 FlowFile">{{ optionalCount(step.inputCount) }}</el-descriptions-item>
         <el-descriptions-item label="输出 FlowFile">{{ optionalCount(step.outputCount) }}</el-descriptions-item>
       </el-descriptions>
-      <el-alert title="以下为引擎返回的采样内容。FlowFile 数量不等于业务记录数；未返回样本时不推断输入或输出。" type="info" :closable="false" class="mb16" />
+      <el-alert title="以下为引擎返回的有界预览：最多 10 条内容样本，单条最多 8192 字符，可能已截断。FlowFile 数量不等于业务记录数；未返回样本时不推断输入或输出。" type="info" :closable="false" class="mb16" />
       <el-tabs v-model="activeTab" class="motion-tabs">
         <el-tab-pane label="输入样本" name="input">
           <template #label><span class="motion-control-label"><svg-icon icon-class="form" class="motion-control-label__icon" /><span class="motion-control-label__text">输入样本</span></span></template>
@@ -24,6 +24,11 @@
           <el-empty v-if="!step.messages?.length" description="未返回运行消息" />
           <pre v-for="(message, index) in step.messages || []" :key="index" class="governance-output">{{ displayJson(message) }}</pre>
         </el-tab-pane>
+        <el-tab-pane label="字段属性" name="attributes">
+          <template #label><span class="motion-control-label"><svg-icon icon-class="form" class="motion-control-label__icon" /><span class="motion-control-label__text">字段属性</span></span></template>
+          <el-empty v-if="!attributeSamples.length" description="引擎未返回字段属性" />
+          <pre v-for="(attributes, index) in attributeSamples" :key="index" class="governance-output">{{ displayJson(attributes) }}</pre>
+        </el-tab-pane>
       </el-tabs>
     </template>
   </el-drawer>
@@ -39,6 +44,7 @@ const open = computed({ get: () => props.modelValue, set: (value) => emit('updat
 const activeTab = ref('input')
 const inputSamples = computed(() => Array.isArray(props.step?.samples?.input) ? props.step.samples.input : [])
 const outputSamples = computed(() => Array.isArray(props.step?.samples?.output) ? props.step.samples.output : [])
+const attributeSamples = computed(() => Array.isArray(props.step?.samples?.attributes) ? props.step.samples.attributes : [])
 watch(() => props.step?.id, () => { activeTab.value = 'input' })
 </script>
 

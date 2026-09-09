@@ -23,19 +23,20 @@
       <el-form label-position="top" :disabled="submitting || activeRun || !!pendingHistoryRun">
         <el-row :gutter="20">
           <el-col :xs="24" :lg="15">
-            <el-form-item label="输入样本（JSON，最大 256 KB）" :error="inputError">
+            <el-form-item label="输入样本（JSON 对象或 0–100 条数组，最大 256 KB）" :error="inputError">
               <el-input v-model="inputText" type="textarea" :rows="10" placeholder='例如：{"message":"样本消息"}' aria-label="输入 JSON 样本" spellcheck="false" />
             </el-form-item>
           </el-col>
           <el-col :xs="24" :lg="9">
-            <el-form-item label="模板参数（JSON 对象）">
-              <el-input v-model="parameterText" type="textarea" :rows="10" placeholder="{}" aria-label="模板参数 JSON 对象" spellcheck="false" />
+            <el-form-item label="可选参数覆盖（JSON 对象）">
+              <el-input v-model="parameterText" type="textarea" :rows="10" placeholder="{}：沿用画布已保存配置" aria-label="可选参数覆盖 JSON 对象" spellcheck="false" />
             </el-form-item>
           </el-col>
         </el-row>
       </el-form>
+      <p class="governance-help">可选参数留空或填写 {} 时沿用画布配置；仅显式填写的参数会覆盖本次测试。样本和参数草稿按流程保留在当前工作台内存中。</p>
       <el-descriptions v-if="parameterFields.length" :column="1" size="small" class="mb16">
-        <el-descriptions-item v-for="field in parameterFields" :key="field.name" :label="field.name">{{ field.description || field.type || '模板参数' }}<span v-if="field.default !== undefined">；默认值：{{ displayJson(field.default) || '空字符串' }}</span></el-descriptions-item>
+        <el-descriptions-item v-for="field in parameterFields" :key="field.name" :label="field.name">{{ field.description || field.type || '模板参数' }}<span v-if="field.default !== undefined">；模板参考默认值（不自动提交）：{{ displayJson(field.default) || '空字符串' }}</span></el-descriptions-item>
       </el-descriptions>
       <div class="governance-test-actions mb16">
         <el-button v-hasPermi="['governance:flow:test']" type="primary" icon="VideoPlay" :loading="submitting" :disabled="!canStart" @click="startTest">运行样本测试</el-button>
@@ -61,6 +62,8 @@
           <el-descriptions-item label="运行编号">{{ run.id }}</el-descriptions-item>
           <el-descriptions-item label="提交时间">{{ run.createdAt || '未返回' }}</el-descriptions-item>
           <el-descriptions-item label="测试资源清理">{{ cleanupLabel }}</el-descriptions-item>
+          <el-descriptions-item v-if="run.definitionHash" label="提交快照"><span class="governance-snapshot">{{ run.definitionHash }}</span></el-descriptions-item>
+          <el-descriptions-item v-if="snapshotTime" label="快照时间">{{ snapshotTime }}</el-descriptions-item>
         </el-descriptions>
         <el-alert v-if="run.error" :title="run.error" type="error" :closable="false" class="mb16" />
         <el-alert v-if="run.status === 'CLEANUP_REQUIRED'" title="测试资源清理未确认，需核查引擎中的测试副本。此次运行不能视为完整验收通过。" type="error" :closable="false" class="mb16" />
@@ -76,11 +79,12 @@
               <el-table-column label="运行消息" min-width="180" show-overflow-tooltip><template #default="{ row }">{{ (row.messages || []).map((item) => typeof item === 'string' ? item : JSON.stringify(item)).join('；') || '未返回' }}</template></el-table-column>
               <el-table-column label="操作" width="125" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="openStep(row)">输入 / 输出</el-button></template></el-table-column>
             </el-table>
-            <p class="governance-help">以上计数来自引擎；一个 FlowFile 可能包含多条业务记录。点击步骤查看实际采样内容。</p>
+            <p class="governance-help">以上计数来自引擎；一个 FlowFile 可能包含多条业务记录。点击步骤查看有界采样预览，内容可能已截断。</p>
           </el-tab-pane>
           <el-tab-pane label="结果输出" name="output">
             <template #label><span class="motion-control-label"><svg-icon icon-class="list" class="motion-control-label__icon" /><span class="motion-control-label__text">结果输出</span></span></template>
-            <el-empty v-if="!run.output?.length" description="引擎未返回结果内容" />
+            <p class="governance-help">结果为服务端保留的有界采样预览，可能已截断，不代表完整产物。</p>
+            <el-empty v-if="!run.output?.length" :description="run.status === 'EMPTY' ? '引擎已确认空批次，未产生输出数据' : '引擎未返回结果预览'" />
             <pre v-for="(item, index) in run.output || []" :key="index" class="governance-output">{{ displayJson(item) }}</pre>
           </el-tab-pane>
         </el-tabs>
@@ -94,7 +98,7 @@
 <script setup>
 import { computed, getCurrentInstance, onBeforeUnmount, onDeactivated, onActivated, ref, watch } from 'vue'
 import { cancelGovernanceTestRun, getGovernanceTestRun, listGovernanceTestRuns, startGovernanceTest } from '@/api/governance'
-import { availabilityState, displayJson, errorMessage, isRunActive, optionalCount, parameterDefaults, parseTestRequest, runState } from '../workspaceRules'
+import { availabilityState, createFlowDraftStore, displayJson, errorMessage, isRunActive, optionalCount, parseTestRequest, runState } from '../workspaceRules'
 import StepDetailDrawer from './StepDetailDrawer.vue'
 
 const props = defineProps({ flow: { type: Object, default: null }, templates: { type: Array, default: () => [] }, engineReady: Boolean })
@@ -123,6 +127,8 @@ const activeRun = computed(() => isRunActive(run.value))
 const pendingHistoryRun = computed(() => history.value.find((item) => isRunActive(item)))
 const canStart = computed(() => props.engineReady && props.flow?.engineId && templateUsable.value && !submitting.value && !activeRun.value && !pendingHistoryRun.value && !historyLoading.value && run.value?.status !== 'CLEANUP_REQUIRED')
 const cleanupLabel = computed(() => run.value?.cleanupConfirmed === true ? '已确认清理' : activeRun.value ? '运行中' : '尚未确认')
+const snapshotTime = computed(() => run.value?.frozenAt || run.value?.definitionCapturedAt || '')
+const draftStore = createFlowDraftStore()
 let pollTimer
 let generation = 0
 let detailSequence = 0
@@ -234,7 +240,8 @@ async function cancelTest() {
 
 function openStep(step) { selectedStepId.value = step.id; stepDrawerOpen.value = true }
 
-watch(() => props.flow?.id, () => {
+watch(() => props.flow?.id, (flowId, previousFlowId) => {
+  draftStore.write(previousFlowId, { inputText: inputText.value, parameterText: parameterText.value })
   ++generation
   stopPolling()
   selectedRunId.value = ''
@@ -243,8 +250,10 @@ watch(() => props.flow?.id, () => {
   inputError.value = requestError.value = pollError.value = ''
   submitting.value = cancelling.value = detailLoading.value = historyLoading.value = false
   stepDrawerOpen.value = false
-  parameterText.value = JSON.stringify(parameterDefaults(template.value), null, 2)
-  if (props.flow?.id) loadHistory(true)
+  const draft = draftStore.read(flowId, template.value)
+  inputText.value = draft.inputText
+  parameterText.value = draft.parameterText
+  if (flowId) loadHistory(true)
 }, { immediate: true })
 
 onDeactivated(() => { suspended = true; stopPolling() })
@@ -256,6 +265,7 @@ onBeforeUnmount(() => { ++generation; suspended = true; stopPolling() })
 .governance-test-heading, .governance-test-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--el-font-size-base); }
 .governance-test-actions { justify-content: flex-start; }
 .governance-help { color: var(--el-text-color-secondary); font-size: var(--el-font-size-small); line-height: 1.6; }
+.governance-snapshot { overflow-wrap: anywhere; }
 .governance-run-select { width: min(100%, 520px); min-width: 240px; }
 .governance-output { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--app-text); background: var(--surface-subtle); padding: var(--el-component-size-small); border-radius: var(--el-border-radius-base); max-height: 50vh; overflow: auto; }
 </style>
