@@ -10,6 +10,16 @@ public final class DataGovernanceModels
     private DataGovernanceModels() { }
     public record CreateProject(String name, String description) { }
     public record CreateFlow(String projectId, String name, String templateId) { }
+    public record DesignPosition(double x, double y) { }
+    public record CreateDesignNode(String type, String name, String role, DesignPosition position, Map<String, String> properties) { }
+    public record UpdateDesignNode(Long version, String name, DesignPosition position, Map<String, String> properties) { }
+    public record CreateDesignConnection(String sourceId, String targetId, String relationship) { }
+    public record DesignNode(String id, long version, String name, String type, String role, DesignPosition position,
+                             Map<String, String> properties, List<String> relationships, String state, boolean editable, List<String> issues) { }
+    public record DesignConnection(String id, long version, String sourceId, String targetId, List<String> relationships,
+                                   List<DesignPosition> bends) { }
+    public record Design(String flowId, List<DesignNode> nodes, List<DesignConnection> connections, boolean editable, List<String> issues) { }
+    public record DesignNodeType(String id, String name, String type, String role, Map<String, String> properties, List<String> relationships) { }
     public record TestInput(String inputJson, Map<String, Object> parameters) { }
     public record Project(String id, String name, String description, String engineId) { }
     public record Flow(String id, String projectId, String name, String description, String engineId,
