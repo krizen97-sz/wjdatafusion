@@ -1,0 +1,37 @@
+{
+  "scope": "isolated local development only",
+  "checked_at": "2026-09-09",
+  "artifacts": [
+    {
+      "id": "nifi",
+      "version": "2.11.0",
+      "filename": "nifi-2.11.0-bin.zip",
+      "url": "https://dlcdn.apache.org/nifi/2.11.0/nifi-2.11.0-bin.zip",
+      "hash_algorithm": "sha512",
+      "hash": "2560bb76428a01d8b1e48a429dcedb92afd2d8aa7954f1838967ae63925c3b447cd913b213a0d13ecd051b008b744e49252c780c2fccb3868f81da9067a5a4dc",
+      "signature_file": "nifi_asc.asc",
+      "signature_url": "https://downloads.apache.org/nifi/2.11.0/nifi-2.11.0-bin.zip.asc",
+      "key_file": "nifi_keys.txt",
+      "key_url": "https://downloads.apache.org/nifi/KEYS",
+      "signer_fingerprint": "3FE925C2BED744021E6169A2F92A93B30C07C6D5"
+    },
+    {
+      "id": "jdk",
+      "version": "21.0.12.1+1-LTS",
+      "filename": "OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.12.1_1.tar.gz",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.12.1_1.tar.gz",
+      "hash_algorithm": "sha256",
+      "hash": "3623232f33a9c3baadf304480b2535f9a3cba8a58d42ecbb438ba267315d9998",
+      "signature_file": "jdk_sig.asc",
+      "signature_url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.12.1_1.tar.gz.sig",
+      "key_file": "adoptium-key.asc",
+      "key_url": "https://packages.adoptium.net/artifactory/api/gpg/key/public",
+      "signer_fingerprint": "3B04D753C9050D9A5D343F39843C48A565F8F04B"
+    }
+  ],
+  "python_tools": {
+    "PGPy": "0.6.0",
+    "standard-imghdr": "3.13.0",
+    "pyftpdlib": "2.2.0"
+  }
+}
