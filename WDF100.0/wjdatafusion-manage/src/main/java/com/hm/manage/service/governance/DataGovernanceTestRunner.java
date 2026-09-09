@@ -3,10 +3,8 @@ package com.hm.manage.service.governance;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.hm.common.exception.ServiceException;
 import com.hm.manage.service.governance.DataGovernanceModels.*;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,8 +32,10 @@ public class DataGovernanceTestRunner
         try
         {
             check(cancelled, deadline);
-            engine.flow(run.flowId); // Revalidate ownership immediately before taking the saved definition snapshot.
-            DataGovernanceSafeFlow flow = new DataGovernanceSafeFlow(engine.groupContents(run.flowId));
+            engine.flow(run.flowId); // Revalidate ownership, but do not reload a queued run's definition from the canvas.
+            if (stored.definition == null || stored.definition.isNull() || run.definitionHash == null || !run.definitionHash.equals(DataGovernanceSafeFlow.hash(stored.definition)))
+                throw new ServiceException("提交时流程快照缺失或校验失败，请重新提交测试");
+            DataGovernanceSafeFlow flow = new DataGovernanceSafeFlow(stored.definition);
             check(cancelled, deadline);
             createAttempted = true;
             JsonNode group = engine.createGroup(engine.root(), "样本测试 " + run.id.substring(0, 8), TEST + run.id);
@@ -46,25 +46,10 @@ public class DataGovernanceTestRunner
                 check(cancelled, deadline);
                 JsonNode p = flow.processors.get(oldId);
                 Map<String, Object> props = engine.mapper.convertValue(p.path("config").path("properties"), Map.class);
-                if (oldId.equals(flow.source))
-                {
-                    String encoded = Base64.getEncoder().encodeToString(stored.inputJson.getBytes(StandardCharsets.UTF_8));
-                    // A literal Base64 expression prevents sample text such as ${ENV_SECRET} from being evaluated.
-                    props = map("Custom Text", "${literal('" + encoded + "'):base64Decode()}", "Batch Size", "1",
-                        "Data Format", "Text", "Unique FlowFiles", "false");
-                }
-                if (p.path("type").asText().equals(STANDARD + "EvaluateJsonPath") && stored.parameters.containsKey("jsonPath"))
-                    props.put("sample.value", stored.parameters.get("jsonPath"));
-                if (p.path("type").asText().equals(STANDARD + "RouteOnAttribute") && stored.parameters.containsKey("requiredValue"))
-                {
-                    String required = (String) stored.parameters.get("requiredValue");
-                    props.put("accepted", required.isEmpty() ? "${sample.value:isEmpty():not()}"
-                        : "${sample.value:equals('" + required.replace("\\", "\\\\").replace("'", "\\'") + "')}");
-                }
                 List<String> terminated = new ArrayList<>();
                 p.path("config").path("autoTerminatedRelationships").forEach(r -> terminated.add(r.asText()));
                 String newId = engine.createProcessor(run.engineTestGroupId, p.path("name").asText(), p.path("type").asText(),
-                    processorComment(p), props, terminated, ids.size() * 220).path("component").path("id").asText();
+                    processorComment(p), props, terminated, ids.size() * 220, p.path("bundle")).path("component").path("id").asText();
                 ids.put(oldId, newId);
             }
             List<Edge> edges = new ArrayList<>();

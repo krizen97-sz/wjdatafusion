@@ -170,11 +170,16 @@ public class DataGovernanceEngine
 
     JsonNode createProcessor(String group, String name, String type, String comments, Map<String, Object> props,
                              List<String> terminated, double x)
+    { return createProcessor(group, name, type, comments, props, terminated, x, null); }
+
+    JsonNode createProcessor(String group, String name, String type, String comments, Map<String, Object> props,
+                             List<String> terminated, double x, JsonNode requestedBundle)
     {
         JsonNode bundle = null;
         for (JsonNode processor : client.json("GET", "/flow/processor-types", null).path("processorTypes"))
-            if (processor.path("type").asText().equals(type)) { bundle = processor.path("bundle"); break; }
-        if (bundle == null) throw new ServiceException("NiFi 未安装所需组件 " + type.substring(type.lastIndexOf('.') + 1));
+            if (processor.path("type").asText().equals(type) && (requestedBundle == null || requestedBundle.equals(processor.path("bundle"))))
+            { bundle = processor.path("bundle"); break; }
+        if (bundle == null) throw new ServiceException("NiFi 未安装快照所需组件版本 " + type.substring(type.lastIndexOf('.') + 1));
         return client.json("POST", "/process-groups/" + id(group) + "/processors", map("revision", map("version", 0),
             "component", map("name", name, "type", type, "bundle", bundle, "comments", comments,
                 "position", map("x", x, "y", 100), "config", map("comments", comments, "properties", props, "schedulingStrategy", "TIMER_DRIVEN",

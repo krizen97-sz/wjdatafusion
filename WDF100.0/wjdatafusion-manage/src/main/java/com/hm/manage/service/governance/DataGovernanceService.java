@@ -84,6 +84,18 @@ public class DataGovernanceService
         TestRun run = new TestRun(); stored.run = run;
         run.id = UUID.randomUUID().toString(); run.flowId = flow.id(); run.projectId = flow.projectId();
         run.status = "QUEUED"; run.createdAt = run.updatedAt = Instant.now().toString();
+        try
+        {
+            stored.definition = new DataGovernanceSafeFlow(engine.groupContents(flow.id())).freeze(stored.inputJson, stored.parameters);
+            run.definitionHash = DataGovernanceSafeFlow.hash(stored.definition);
+            run.definitionCapturedAt = Instant.now().toString();
+        }
+        catch (DataGovernanceSafeFlow.UnsupportedFlow e)
+        {
+            // No unvalidated graph or properties are retained, even for rejected runs.
+            stored.definition = null; run.status = "UNSUPPORTED"; run.error = e.getMessage(); run.cleanupConfirmed = true;
+            repository.save(stored); return copy(run);
+        }
         repository.save(stored);
         AtomicBoolean cancelled = new AtomicBoolean(); active.put(run.id, cancelled);
         try

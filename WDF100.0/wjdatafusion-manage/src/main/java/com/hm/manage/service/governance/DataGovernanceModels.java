@@ -40,6 +40,8 @@ public final class DataGovernanceModels
         public String error;
         public boolean cleanupConfirmed;
         public String engineTestGroupId;
+        public String definitionHash;
+        public String definitionCapturedAt;
     }
 
     /** Private persistence envelope; controller returns only run. */
@@ -49,5 +51,6 @@ public final class DataGovernanceModels
         public String inputJson;
         public Map<String, Object> parameters = new LinkedHashMap<>();
         public TestRun run;
+        public com.fasterxml.jackson.databind.JsonNode definition;
     }
 }

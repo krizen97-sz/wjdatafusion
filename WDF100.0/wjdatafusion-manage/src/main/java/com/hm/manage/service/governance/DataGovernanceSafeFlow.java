@@ -9,6 +9,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.Base64;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import static com.hm.manage.service.governance.DataGovernanceEngine.*;
 
 /** Fail closed: the current saved graph is inspected before any execution clone is created. */
@@ -76,6 +81,66 @@ final class DataGovernanceSafeFlow
         if (order.size() != processors.size()) unsupported("样本测试暂不支持循环流程");
         for (String p : processors.keySet())
             if (!p.equals(capture) && !targets.containsKey(p)) unsupported("每个业务节点必须连接到可观察的结果路径");
+    }
+
+    /** Persist only the safe configuration that will actually run, never arbitrary canvas metadata. */
+    JsonNode freeze(String inputJson, Map<String, Object> parameters)
+    {
+        List<Map<String, Object>> nodes = new ArrayList<>();
+        for (String id : processors.keySet().stream().sorted().toList())
+        {
+            JsonNode p = processors.get(id);
+            Map<String, Object> properties = new TreeMap<>();
+            p.path("config").path("properties").fields().forEachRemaining(entry ->
+                properties.put(entry.getKey(), entry.getValue().isNull() ? null : entry.getValue().asText()));
+            if (id.equals(source))
+            {
+                String encoded = Base64.getEncoder().encodeToString(inputJson.getBytes(StandardCharsets.UTF_8));
+                properties.clear();
+                properties.putAll(map("Custom Text", "${literal('" + encoded + "'):base64Decode()}", "Batch Size", "1",
+                    "Data Format", "Text", "Unique FlowFiles", "false"));
+            }
+            if (p.path("type").asText().equals(STANDARD + "EvaluateJsonPath") && parameters.containsKey("jsonPath"))
+                properties.put("sample.value", parameters.get("jsonPath"));
+            if (p.path("type").asText().equals(STANDARD + "RouteOnAttribute") && parameters.containsKey("requiredValue"))
+            {
+                String required = (String) parameters.get("requiredValue");
+                properties.put("accepted", required.isEmpty() ? "${sample.value:isEmpty():not()}"
+                    : "${sample.value:equals('" + required.replace("\\", "\\\\").replace("'", "\\'") + "')}");
+            }
+            Map<String, Object> bundle = new TreeMap<>();
+            for (String field : List.of("group", "artifact", "version"))
+            {
+                String value = p.path("bundle").path(field).asText("");
+                if (value.isBlank()) unsupported("引擎未返回组件版本，无法冻结可复现快照");
+                bundle.put(field, value);
+            }
+            List<String> terminated = new ArrayList<>();
+            p.path("config").path("autoTerminatedRelationships").forEach(value -> terminated.add(value.asText()));
+            terminated.sort(String::compareTo);
+            nodes.add(map("component", map("id", id, "name", p.path("name").asText(), "type", p.path("type").asText(), "bundle", bundle,
+                "config", map("comments", id.equals(capture) ? CAPTURE : "", "properties", properties,
+                    "autoTerminatedRelationships", terminated, "schedulingStrategy", "TIMER_DRIVEN", "schedulingPeriod", "0 sec", "concurrentlySchedulableTaskCount", 1))));
+        }
+        List<Map<String, Object>> edges = new ArrayList<>();
+        for (JsonNode c : connections.stream().sorted(java.util.Comparator.comparing(connection -> connection.path("id").asText())).toList())
+            edges.add(map("component", map("source", map("id", c.path("source").path("id").asText(), "type", "PROCESSOR"),
+                "destination", map("id", c.path("destination").path("id").asText(), "type", "PROCESSOR"),
+                "selectedRelationships", List.of(c.path("selectedRelationships").get(0).asText()),
+                "backPressureObjectThreshold", 200, "backPressureDataSizeThreshold", "2 MB")));
+        JsonNode snapshot = new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(map("processors", nodes, "connections", edges));
+        new DataGovernanceSafeFlow(snapshot); // Parameter overrides receive the same validation as the saved canvas.
+        return snapshot;
+    }
+
+    static String hash(JsonNode definition)
+    {
+        try
+        {
+            byte[] bytes = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsBytes(definition);
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+        }
+        catch (Exception e) { throw new ServiceException("测试定义哈希计算失败"); }
     }
 
     private void validateProperties(JsonNode processor)
