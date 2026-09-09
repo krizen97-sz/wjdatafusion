@@ -71,4 +71,35 @@ class DataGovernanceSnapshotTest
         }
         finally { service.close(); repository.close(); }
     }
+    @Test void publishedSnapshotRejectsWrongOwnerTamperingAndReusesDefinitionWithoutReadingCanvas() throws Exception
+    {
+        String flowId = "00000000-0000-0000-0000-000000000004";
+        DataGovernanceProperties properties = new DataGovernanceProperties(); properties.setStorageDir(directory.toString());
+        var repository = new DataGovernanceFileRunRepository(properties);
+        var engine = mock(DataGovernanceEngine.class); var runner = mock(DataGovernanceTestRunner.class);
+        when(engine.flow(flowId)).thenReturn(new Flow(flowId, source, "test", "", flowId, "blank", "/nifi/"));
+        when(engine.groupContents(flowId)).thenReturn(graph(STANDARD + "EvaluateJsonPath", map("Destination", "flowfile-attribute", "sample.value", "$.message")));
+        doAnswer(call -> {
+            StoredRun stored = call.getArgument(0); stored.run.status = "SUCCEEDED"; stored.run.cleanupConfirmed = true;
+            java.util.function.Consumer<StoredRun> save = call.getArgument(2); save.accept(stored); return null;
+        }).when(runner).execute(any(), any(), any());
+        var service = new DataGovernanceService(engine, runner, repository);
+        try
+        {
+            StoredRun snapshot = service.prepareSnapshot(flowId, new TestInput("{\"message\":\"frozen\"}", Map.of()), 7);
+            clearInvocations(engine);
+            assertThrows(com.hm.common.exception.ServiceException.class, () -> service.submitFrozen(snapshot, 8));
+            String hash = snapshot.run.definitionHash; snapshot.run.definitionHash = "tampered";
+            assertThrows(com.hm.common.exception.ServiceException.class, () -> service.submitFrozen(snapshot, 7));
+            snapshot.run.definitionHash = hash;
+            TestRun run = service.submitFrozen(snapshot, 7);
+            verify(engine, never()).groupContents(anyString());
+            assertEquals(hash, run.definitionHash); assertNotNull(run.id);
+            snapshot.inputJson = "{\"message\":\"changed later\"}";
+            assertEquals("{\"message\":\"frozen\"}", repository.find(run.id).inputJson);
+            assertNotSame(snapshot.run, repository.find(run.id).run);
+        }
+        finally { service.close(); repository.close(); }
+    }
+
 }

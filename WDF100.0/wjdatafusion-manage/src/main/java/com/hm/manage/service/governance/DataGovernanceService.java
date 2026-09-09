@@ -96,6 +96,50 @@ public class DataGovernanceService
             stored.definition = null; run.status = "UNSUPPORTED"; run.error = e.getMessage(); run.cleanupConfirmed = true;
             repository.save(stored); return copy(run);
         }
+        return enqueue(stored);
+    }
+
+    /** Internal publication boundary: validate and freeze once; never expose this envelope as an API DTO. */
+    public StoredRun prepareSnapshot(String flowId, TestInput input, long userId)
+    {
+        validateInput(input);
+        Flow flow = engine.flow(flowId);
+        StoredRun snapshot = new StoredRun(); snapshot.ownerId = userId; snapshot.inputJson = input.inputJson();
+        snapshot.parameters = input.parameters() == null ? map() : new java.util.LinkedHashMap<>(input.parameters());
+        snapshot.run = new TestRun(); snapshot.run.flowId = flow.id(); snapshot.run.projectId = flow.projectId();
+        snapshot.definition = new DataGovernanceSafeFlow(engine.groupContents(flow.id())).freeze(snapshot.inputJson, snapshot.parameters);
+        snapshot.run.definitionHash = DataGovernanceSafeFlow.hash(snapshot.definition);
+        snapshot.run.definitionCapturedAt = Instant.now().toString();
+        return snapshot;
+    }
+
+    /** Reuses only the published definition, with a new durable run id allocated before any engine work. */
+    public TestRun submitFrozen(StoredRun snapshot, long userId)
+    { return submitFrozen(snapshot, userId, UUID.randomUUID().toString()); }
+
+    TestRun submitFrozen(StoredRun snapshot, long userId, String runId)
+    {
+        recover(); id(runId);
+        if (snapshot == null || snapshot.run == null || snapshot.ownerId != userId)
+            throw new ServiceException("已发布版本不存在或无权执行");
+        validateInput(new TestInput(snapshot.inputJson, snapshot.parameters));
+        if (snapshot.definition == null || snapshot.run.definitionHash == null
+            || !snapshot.run.definitionHash.equals(DataGovernanceSafeFlow.hash(snapshot.definition)))
+            throw new ServiceException("已发布版本快照校验失败");
+        new DataGovernanceSafeFlow(snapshot.definition);
+        engine.flow(snapshot.run.flowId); // Scope is current; the mutable canvas is intentionally not read.
+        if (repository.find(runId) != null) throw new ServiceException("执行记录标识已存在");
+        StoredRun stored = mapper.convertValue(snapshot, StoredRun.class);
+        TestRun run = new TestRun(); stored.run = run;
+        run.id = runId; run.flowId = snapshot.run.flowId; run.projectId = snapshot.run.projectId;
+        run.definitionHash = snapshot.run.definitionHash; run.definitionCapturedAt = snapshot.run.definitionCapturedAt;
+        run.status = "QUEUED"; run.createdAt = run.updatedAt = Instant.now().toString();
+        return enqueue(stored);
+    }
+
+    private TestRun enqueue(StoredRun stored)
+    {
+        TestRun run = stored.run;
         repository.save(stored);
         AtomicBoolean cancelled = new AtomicBoolean(); active.put(run.id, cancelled);
         try
