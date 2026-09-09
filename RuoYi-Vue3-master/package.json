@@ -13,10 +13,11 @@
     "test:ipam": "node --test src/views/ipam/__tests__/*.test.js",
     "test:knowledge": "node --test src/views/knowledge/__tests__/*.test.js",
     "test:auto-inspection": "node --test src/views/support/autoInspection/__tests__/*.test.js",
-    "verify:frontend": "npm run ui:guard && npm run test:ui-guard && npm run test:icons && npm run test:ipam && npm run test:knowledge && npm run test:auto-inspection && npm run build:prod",
+    "verify:frontend": "npm run ui:guard && npm run test:ui-guard && npm run test:icons && npm run test:ipam && npm run test:knowledge && npm run test:governance && npm run test:auto-inspection && npm run build:prod",
     "build:prod": "vite build",
     "build:stage": "vite build --mode staging",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:governance": "node --test src/views/governance/__tests__/*.test.js"
   },
   "repository": {
     "type": "git",

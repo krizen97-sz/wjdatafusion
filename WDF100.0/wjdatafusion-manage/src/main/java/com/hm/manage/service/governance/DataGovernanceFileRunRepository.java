@@ -34,10 +34,18 @@ public class DataGovernanceFileRunRepository implements DataGovernanceRunReposit
         Path directory = Path.of(properties.getStorageDir()).toAbsolutePath().normalize();
         Files.createDirectories(directory);
         permissions(directory, "rwx------");
-        channel = FileChannel.open(directory.resolve(".single-instance.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-        lock = channel.tryLock();
-        if (lock == null) throw new ServiceException("测试记录目录已被其他实例占用，文件存储仅支持单实例");
-        root = directory;
+        FileChannel candidate = FileChannel.open(directory.resolve(".single-instance.lock"), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+        boolean acquired = false;
+        try
+        {
+            FileLock candidateLock = candidate.tryLock();
+            if (candidateLock == null) throw new ServiceException("测试记录目录已被其他实例占用，文件存储仅支持单实例");
+            channel = candidate;
+            lock = candidateLock;
+            root = directory;
+            acquired = true;
+        }
+        finally { if (!acquired) candidate.close(); }
     }
 
     private Path path(String id)
