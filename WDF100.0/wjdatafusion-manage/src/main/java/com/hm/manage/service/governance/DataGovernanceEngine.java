@@ -25,6 +25,8 @@ public class DataGovernanceEngine
     static final String SAMPLE = "sample-safe-v1";
     static final String DELIMITED = "delimited-safe-v1";
     static final String WRITER = "com.hm.governance.nifi.DelimitedTextWriter";
+    // NiFi processor cards are about 350 px wide; leave room for connection labels.
+    private static final double TEMPLATE_COLUMN = 520;
     final DataGovernanceNifiClient client;
     final DataGovernanceProperties properties;
     final ObjectMapper mapper = new ObjectMapper();
@@ -114,24 +116,26 @@ public class DataGovernanceEngine
             if (DELIMITED.equals(template))
             {
                 String writer = createProcessor(groupId, "协议文本输出", WRITER, "", map("Field Order", "message,picture", "Delimiter Hex", "7C 1F",
-                    "Include Header", "true", "Split Limit", "75", "Count Basis", "KETTLE_HEADER_INCLUSIVE", "Filename Prefix", "sample"), List.of(), 240)
+                    "Include Header", "true", "Split Limit", "75", "Count Basis", "KETTLE_HEADER_INCLUSIVE", "Filename Prefix", "sample"), List.of(), TEMPLATE_COLUMN)
                     .path("component").path("id").asText();
-                String capture = createProcessor(groupId, "查看测试结果", UPDATE, CAPTURE, map(), List.of("success"), 480).path("component").path("id").asText();
+                String capture = createProcessor(groupId, "查看测试结果", UPDATE, CAPTURE, map(), List.of("success"), 2 * TEMPLATE_COLUMN).path("component").path("id").asText();
                 connect(groupId, source, writer, List.of("success"));
-                for (String relation : List.of("success", "empty", "failure")) connect(groupId, writer, capture, List.of(relation));
+                connect(groupId, writer, capture, List.of("success"));
+                connect(groupId, writer, capture, List.of("empty"), templateBends(1, 2, -80));
+                connect(groupId, writer, capture, List.of("failure"), templateBends(1, 2, 400));
                 return flow(groupId);
             }
             String extract = createProcessor(groupId, "提取字段", STANDARD + "EvaluateJsonPath", "", map(
-                "Destination", "flowfile-attribute", "Return Type", "scalar", "sample.value", "$.message"), List.of(), 240).path("component").path("id").asText();
+                "Destination", "flowfile-attribute", "Return Type", "scalar", "sample.value", "$.message"), List.of(), TEMPLATE_COLUMN).path("component").path("id").asText();
             String route = createProcessor(groupId, "条件路由", STANDARD + "RouteOnAttribute", "", map(
-                "Routing Strategy", "Route to Property name", "accepted", "${sample.value:isEmpty():not()}"), List.of(), 480).path("component").path("id").asText();
-            String capture = createProcessor(groupId, "查看测试结果", UPDATE, CAPTURE, map(), List.of("success"), 720).path("component").path("id").asText();
+                "Routing Strategy", "Route to Property name", "accepted", "${sample.value:isEmpty():not()}"), List.of(), 2 * TEMPLATE_COLUMN).path("component").path("id").asText();
+            String capture = createProcessor(groupId, "查看测试结果", UPDATE, CAPTURE, map(), List.of("success"), 3 * TEMPLATE_COLUMN).path("component").path("id").asText();
             connect(groupId, source, extract, List.of("success"));
             connect(groupId, extract, route, List.of("matched"));
-            connect(groupId, extract, capture, List.of("unmatched"));
-            connect(groupId, extract, capture, List.of("failure"));
+            connect(groupId, extract, capture, List.of("unmatched"), templateBends(1, 3, -80));
+            connect(groupId, extract, capture, List.of("failure"), templateBends(1, 3, -220));
             connect(groupId, route, capture, List.of("accepted"));
-            connect(groupId, route, capture, List.of("unmatched"));
+            connect(groupId, route, capture, List.of("unmatched"), templateBends(2, 3, 400));
             return flow(groupId);
         }
         catch (RuntimeException e)
@@ -145,7 +149,8 @@ public class DataGovernanceEngine
     {
         String id = c.path("id").asText();
         return new Flow(id, c.path("parentGroupId").asText(), c.path("name").asText(), "NiFi 持久流程定义", id,
-            c.path("comments").asText().substring(FLOW.length()), properties.getNifi().getDesignerPath() + "?processGroupId=" + id);
+            c.path("comments").asText().substring(FLOW.length()),
+            properties.getNifi().getDesignerPath().replaceAll("/+$", "") + "/#/process-groups/" + id);
     }
 
     private Project project(String id)
@@ -197,11 +202,18 @@ public class DataGovernanceEngine
         return false;
     }
     JsonNode connect(String group, String source, String target, List<String> relations)
+    { return connect(group, source, target, relations, List.of()); }
+
+    private static List<Map<String, Object>> templateBends(int sourceColumn, int targetColumn, double y)
+    { return List.of(map("x", sourceColumn * TEMPLATE_COLUMN + 175, "y", y),
+        map("x", targetColumn * TEMPLATE_COLUMN + 175, "y", y)); }
+
+    private JsonNode connect(String group, String source, String target, List<String> relations, List<Map<String, Object>> bends)
     {
         return client.json("POST", "/process-groups/" + id(group) + "/connections", map("revision", map("version", 0),
             "component", map("source", map("id", source, "groupId", group, "type", "PROCESSOR"),
                 "destination", map("id", target, "groupId", group, "type", "PROCESSOR"),
-                "selectedRelationships", relations, "backPressureObjectThreshold", 200, "backPressureDataSizeThreshold", "2 MB")));
+                "selectedRelationships", relations, "bends", bends, "backPressureObjectThreshold", 200, "backPressureDataSizeThreshold", "2 MB")));
     }
     static String id(String value)
     {
