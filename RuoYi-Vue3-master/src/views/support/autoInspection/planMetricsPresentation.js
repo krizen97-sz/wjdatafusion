@@ -23,9 +23,10 @@ export function formatMetricValue(value) {
   const text = String(value)
   if (!/^-?\d+(\.\d+)?$/.test(text)) return text
   const [integer, decimal] = text.split('.')
-  const integerValue = BigInt(integer)
-  const negativeFraction = integer.startsWith('-') && integerValue === 0n ? '-' : ''
-  return negativeFraction + new Intl.NumberFormat('zh-CN').format(integerValue) + (decimal ? `.${decimal}` : '')
+  const negative = integer.startsWith('-')
+  const unsignedInteger = (negative ? integer.slice(1) : integer).replace(/^0+(?=\d)/, '')
+  const groupedInteger = unsignedInteger.replace(/\B(?=(\d{3})+(?!\d))/g, ',')
+  return `${negative ? '-' : ''}${groupedInteger}${decimal ? `.${decimal}` : ''}`
 }
 
 export function metricPoints(metric) {

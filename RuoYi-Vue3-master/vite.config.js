@@ -25,6 +25,8 @@ export default defineConfig(({ mode, command }) => {
     // 打包配置
     build: {
       // https://vite.dev/config/build-options.html
+      // Vite 6 默认目标为 Chrome 87；降至其原生 ESM 支持下限，兼容旧内网终端。
+      target: 'chrome64',
       sourcemap: command === 'build' ? false : 'inline',
       outDir: 'dist',
       assetsDir: 'assets',

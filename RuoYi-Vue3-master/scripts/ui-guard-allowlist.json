@@ -27,6 +27,9 @@
       "three",
       "vue-cropper",
       "vuedraggable"
+    ],
+    "runtimeCompatibility": [
+      "core-js"
     ]
   },
   "entries": [

@@ -19,6 +19,25 @@ export const releaseNotes = [
     scripts: ['data_governance_upgrade_20260909_v4_5_0.sql']
   },
   {
+    version: 'v4.4.2',
+    submitTime: '2026-09-09 16:51:52',
+    level: 'patch',
+    levelLabel: '修订版本',
+    tagType: 'success',
+    title: '低版本 Chrome 启动兼容修复',
+    summary: '将生产构建从Vite默认Chrome 87基线降至Chrome 64，并补齐旧内核缺失的标准方法，修复打开平台时报Unexpected token ?的问题。',
+    changes: [
+      '确认v4.4.1生产包的20个脚本中残留200处空值合并运算符，主入口和登录页均可能在Chrome 80以前发生语法解析错误。',
+      '生产与预发布构建统一设置为chrome64目标，交由Vite和esbuild降级空值合并、可选链、逻辑赋值、私有字段等新语法；开发服务器行为保持不变。',
+      '应用启动前按需加载globalThis、Array.at/flat/flatMap、Object.fromEntries和String.replaceAll兼容模块，旧浏览器缺少WeakRef时使用仅保留deref契约的后备实现。',
+      '巡检指标大数格式化改用字符串分组，不再要求浏览器提供BigInt，同时保留负数、负零、小数和超出安全整数范围的原始精度。',
+      '新增构建产物兼容扫描，对全部JavaScript进行AST解析；检测到空值合并、可选链、逻辑赋值、BigInt字面量、私有字段或静态块时直接阻止交付。'
+    ],
+    scope: ['平台前端', 'Chrome 64+', '生产构建', '语法降级', '运行时兼容', '启动修复', '自动化校验', '版本记录'],
+    database: '无数据库结构或业务数据修改，不需要执行升级SQL；后端接口、权限和现有业务流程保持不变。',
+    scripts: []
+  },
+  {
     version: 'v4.4.1',
     submitTime: '2026-09-03 12:58:42',
     level: 'patch',

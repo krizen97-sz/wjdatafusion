@@ -30,6 +30,8 @@
 
 - 应用入口：`RuoYi-Vue3-master/src/main.js`。
 - 构建：Vite 6.4.1，配置入口 `RuoYi-Vue3-master/vite.config.js`。
+- 生产浏览器基线：Chrome 64+；构建后必须通过`npm run check:browser-compat`，
+  完整规则见`docs/frontend/BROWSER_COMPATIBILITY.md`。
 - 状态：Pinia 3.0.4；路由：Vue Router 4.6.4。
 - 样式：SCSS，入口 `src/assets/styles/index.scss`。
 - 全局字体：`PingFang SC`、`Microsoft YaHei`、`Helvetica Neue`、Arial、sans-serif。
