@@ -51,3 +51,10 @@ test('definition comparison ignores engine ordering and geometry but detects act
   assert.notEqual(designSignature(reordered), submitted)
   assert.equal(submitted, designSignature(graph))
 })
+test('downward branch labels stay clear of an upper-node caption at a narrow viewport', () => {
+  const branch = { id: 'lower', position: { x: 1040, y: 428 } }
+  const geometry = edgeGeometry({ sourceId: 'route', targetId: 'lower' }, [...nodes, branch])
+  const zoom = 0.57
+  const upperCaptionLeft = canvasPosition(nodes[2]).x + 72 - 116 / (2 * zoom)
+  assert.ok(geometry.label.x + 48 / (2 * zoom) < upperCaptionLeft)
+})

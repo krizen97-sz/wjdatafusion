@@ -36,7 +36,6 @@ export function edgeGeometry(edge, nodes, index = 0) {
   const a = portPosition(source, 'out'), b = portPosition(target, 'in')
   const distance = Math.max(44, Math.abs(b.x - a.x) * 0.5)
   const parallel = index ? (index % 2 ? 1 : -1) * Math.ceil(index / 2) * 32 : 0
-  const midY = (a.y + b.y) / 2 + parallel
   const middleNodes = nodes.filter(n => n.id !== source.id && n.id !== target.id).map(canvasPosition)
     .filter(p => p.x + NODE_WIDTH / 2 > a.x && p.x + NODE_WIDTH / 2 < b.x)
   if (b.x <= a.x || middleNodes.length) {
@@ -47,7 +46,14 @@ export function edgeGeometry(edge, nodes, index = 0) {
   if (Math.abs(a.y - b.y) < 2 && !parallel && b.x > a.x) {
     return { path: `M ${a.x} ${a.y} L ${b.x} ${b.y}`, label: { x: (a.x + b.x) / 2, y: a.y - 12 } }
   }
-  return { path: `M ${a.x} ${a.y} C ${a.x + distance} ${a.y + parallel}, ${b.x - distance} ${b.y + parallel}, ${b.x} ${b.y}`, label: { x: (a.x + b.x) / 2, y: midY - 12 } }
+  // A downward branch's midpoint often sits beneath another node's caption.
+  // Keep its label on the source-side part of the same Bezier curve instead.
+  const t = b.y > a.y + 24 ? 0.28 : 0.5, u = 1 - t
+  const label = {
+    x: u ** 3 * a.x + 3 * u ** 2 * t * (a.x + distance) + 3 * u * t ** 2 * (b.x - distance) + t ** 3 * b.x,
+    y: u ** 3 * a.y + 3 * u ** 2 * t * (a.y + parallel) + 3 * u * t ** 2 * (b.y + parallel) + t ** 3 * b.y - 12
+  }
+  return { path: `M ${a.x} ${a.y} C ${a.x + distance} ${a.y + parallel}, ${b.x - distance} ${b.y + parallel}, ${b.x} ${b.y}`, label }
 }
 
 function roundedPath(points) {
