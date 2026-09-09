@@ -214,9 +214,11 @@ public class DataGovernanceDesigner
         for (var entries = props.fields(); entries.hasNext(); )
         {
             var entry = entries.next(); String key = entry.getKey(); JsonNode raw = entry.getValue();
+            if (key.length() > 100) reject("节点属性名称过长");
+            total += key.length();
             if (raw.isNull()) continue; // NiFi includes null optional descriptors; they hold no configuration.
             if (!raw.isTextual() || !allowedKey(type, key) || p.path("config").path("descriptors").path(key).path("sensitive").asBoolean()) reject("节点包含未经审核的属性");
-            String value = raw.asText(); total += key.length() + value.length();
+            String value = raw.asText(); total += value.length();
             if (value.length() > 65536 || total > 131072 || value.contains("#{")) reject("节点属性过长或引用了环境参数");
             if (type.equals(STANDARD + "GenerateFlowFile"))
             {
