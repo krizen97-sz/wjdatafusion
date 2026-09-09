@@ -109,6 +109,8 @@ class DataGovernanceModernDesignerTest
             assertThrows(ServiceException.class, () -> designer.updateNode(flow, node.id(), new UpdateDesignNode(0L, null, null, Map.of("sample.value", value))));
         assertThrows(ServiceException.class, () -> designer.createNode(flow, new CreateDesignNode(STANDARD + "InvokeHTTP", "external", "PROCESSOR", new DesignPosition(0, 0), Map.of())));
         assertThrows(ServiceException.class, () -> designer.updateNode(flow, node.id(), new UpdateDesignNode(0L, null, null, Map.of("password", "should-not-be-saved"))));
+        Map<String, String> nullProperty = new LinkedHashMap<>(); nullProperty.put("x".repeat(101), null);
+        assertThrows(ServiceException.class, () -> designer.updateNode(flow, node.id(), new UpdateDesignNode(0L, null, null, nullProperty)));
         assertEquals(baseline, mutations);
     }
 
