@@ -35,7 +35,7 @@ class DataGovernanceSchedulerTest
     {
         DataGovernanceProperties properties = new DataGovernanceProperties(); properties.setStorageDir(directory.toString());
         service = mock(DataGovernanceService.class); client = mock(DataGovernanceNifiClient.class); when(client.configured()).thenReturn(true);
-        store = new DataGovernanceScheduleStore(properties); clock = new MutableClock("2026-09-09T00:00:00Z");
+        store = spy(new DataGovernanceScheduleStore(properties)); clock = new MutableClock("2026-09-09T00:00:00Z");
         scheduler = new DataGovernanceScheduler(service, store, client, clock);
         when(service.prepareSnapshot(eq(flowId), any(), eq(7L))).thenAnswer(call -> {
             StoredRun snapshot = new StoredRun(); snapshot.ownerId = 7;
@@ -71,6 +71,25 @@ class DataGovernanceSchedulerTest
         assertThrows(ServiceException.class, () -> scheduler.release(release.id(), 8));
         assertThrows(ServiceException.class, () -> store.createRelease(store.release(release.id())));
         assertEquals("rw-------", java.nio.file.attribute.PosixFilePermissions.toString(Files.getPosixFilePermissions(directory.resolve("schedules/release-" + release.id() + ".json"))));
+    }
+    @Test void largeBatchPublicationAndSummaryListingNeverMaterializeAllFrozenReleases() throws Exception
+    {
+        doThrow(new AssertionError("Full frozen-release collection must not be used")).when(store).releases();
+        String privatePayload = "large-private-sample-" + "x".repeat(128 * 1024);
+        String input = new ObjectMapper().writeValueAsString(Map.of("payload", privatePayload));
+        for (int i = 0; i < 12; i++)
+        {
+            ReleaseSummary published = scheduler.publish(new PublishRequest(flowId, "大批次版本 " + i, input, Map.of()), 7);
+            assertEquals(i + 2, published.version());
+        }
+        var summaries = scheduler.releases(7, flowId);
+        assertEquals(13, summaries.size());
+        String json = new ObjectMapper().writeValueAsString(summaries);
+        assertFalse(json.contains("large-private-sample")); assertFalse(json.contains("private-definition"));
+        assertTrue(json.length() < 10 * 1024, "List holds only metadata even with large stored inputs");
+        assertTrue(scheduler.releases(8, flowId).isEmpty());
+        verify(store, never()).releases();
+        verify(store, atLeast(14)).visitReleases(any());
     }
     @Test void defaultPauseEnableRevisionAndTimezoneAreExplicit()
     {

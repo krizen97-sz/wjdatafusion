@@ -12,6 +12,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Consumer;
 import org.springframework.stereotype.Repository;
 
 /** Private, atomic, single-writer files. Releases are create-only; schedule updates replace atomically. */
@@ -60,6 +61,8 @@ public class DataGovernanceScheduleStore
     public synchronized Release release(String id) { return readOne("release", id, Release.class); }
     public synchronized Schedule schedule(String id) { return readOne("schedule", id, Schedule.class); }
     public synchronized List<Release> releases() { return list("release", Release.class); }
+    /** Consume one frozen release at a time; callers retain summaries/counters, never all sample bodies. */
+    public synchronized void visitReleases(Consumer<Release> consumer) { visit("release", Release.class, consumer); }
     public synchronized List<Schedule> schedules() { return list("schedule", Schedule.class); }
     private void write(String kind, String id, Object object, boolean createOnly)
     {
@@ -92,18 +95,21 @@ public class DataGovernanceScheduleStore
     }
     private <T> List<T> list(String kind, Class<T> type)
     {
+        List<T> result = new ArrayList<>(); visit(kind, type, result::add); return result;
+    }
+    private <T> void visit(String kind, Class<T> type, Consumer<T> consumer)
+    {
         try
         {
-            initialize(); List<T> result = new ArrayList<>();
+            initialize(); int count = 0;
             try (DirectoryStream<Path> files = Files.newDirectoryStream(root, kind + "-*.json"))
             {
                 for (Path file : files)
                 {
-                    if (result.size() >= 10000) throw new ServiceException("任务存储记录过多，请管理员归档");
-                    result.add(read(file, type));
+                    if (count++ >= 10000) throw new ServiceException("任务存储记录过多，请管理员归档");
+                    consumer.accept(read(file, type));
                 }
             }
-            return result;
         }
         catch (ServiceException e) { throw e; }
         catch (Exception e) { throw new ServiceException("任务文件读取失败"); }

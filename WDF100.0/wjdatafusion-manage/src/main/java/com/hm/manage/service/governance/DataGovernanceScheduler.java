@@ -8,6 +8,7 @@ import jakarta.annotation.PreDestroy;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
@@ -94,8 +95,12 @@ public class DataGovernanceScheduler
     public synchronized List<ReleaseSummary> releases(long owner, String flowId)
     {
         initialize(); if (flowId != null) DataGovernanceEngine.id(flowId);
-        return store.releases().stream().filter(r -> r.ownerId == owner && (flowId == null || flowId.equals(r.snapshot.run.flowId)))
-            .sorted(Comparator.comparing((Release r) -> r.createdAt).reversed()).map(this::summary).toList();
+        List<ReleaseSummary> result = new ArrayList<>();
+        store.visitReleases(release -> {
+            if (release.ownerId == owner && (flowId == null || flowId.equals(release.snapshot.run.flowId))) result.add(summary(release));
+        });
+        result.sort(Comparator.comparing(ReleaseSummary::createdAt).reversed());
+        return result;
     }
     public synchronized ReleaseDetail release(String id, long owner)
     {
@@ -107,14 +112,21 @@ public class DataGovernanceScheduler
         initialize(); requireEngine();
         if (request == null) throw new ServiceException("发布参数不能为空");
         String name = name(request.name());
-        List<Release> existing = store.releases().stream().filter(r -> r.ownerId == owner).toList();
-        if (existing.size() >= 500) throw new ServiceException("当前用户已达到 500 个已发布版本上限");
+        int[] countAndVersion = {0, 0};
+        store.visitReleases(release -> {
+            if (release.ownerId == owner)
+            {
+                countAndVersion[0]++;
+                if (release.snapshot.run.flowId.equals(request.flowId())) countAndVersion[1] = Math.max(countAndVersion[1], release.version);
+            }
+        });
+        if (countAndVersion[0] >= 500) throw new ServiceException("当前用户已达到 500 个已发布版本上限");
         StoredRun snapshot;
         try { snapshot = service.prepareSnapshot(request.flowId(), new TestInput(request.inputJson(), request.parameters()), owner); }
         catch (DataGovernanceSafeFlow.UnsupportedFlow e) { throw new ServiceException(e.getMessage()); }
         Release release = new Release(); release.id = UUID.randomUUID().toString(); release.ownerId = owner;
         release.name = name; release.createdAt = clock.instant().toString(); release.snapshot = snapshot;
-        release.version = existing.stream().filter(r -> r.snapshot.run.flowId.equals(snapshot.run.flowId)).mapToInt(r -> r.version).max().orElse(0) + 1;
+        release.version = countAndVersion[1] + 1;
         store.createRelease(release); return summary(release);
     }
     public synchronized List<ScheduleSummary> schedules(long owner, String flowId)

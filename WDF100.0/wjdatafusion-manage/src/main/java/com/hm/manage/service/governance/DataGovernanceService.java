@@ -192,7 +192,7 @@ public class DataGovernanceService
     public List<TestRun> runs(String flowId, long owner)
     {
         recover(); if (flowId != null) id(flowId);
-        return repository.list().stream().filter(r -> r.ownerId == owner && (flowId == null || flowId.equals(r.run.flowId)))
+        return repository.summaries().stream().filter(r -> r.ownerId == owner && (flowId == null || flowId.equals(r.run.flowId)))
             .limit(100).map(r -> copy(r.run)).toList();
     }
     public TestRun run(String id, long owner) { recover(); return copy(owned(id, owner).run); }
@@ -218,9 +218,12 @@ public class DataGovernanceService
     private synchronized void recover()
     {
         if (recovered) return;
-        for (StoredRun stored : repository.list())
-            if (Set.of("QUEUED", "RUNNING").contains(stored.run.status))
+        for (StoredRun summary : repository.summaries())
+            if (Set.of("QUEUED", "RUNNING").contains(summary.run.status))
             {
+                // Load only interrupted records in full; never persist a payload-free summary over a snapshot.
+                StoredRun stored = repository.find(summary.run.id);
+                if (stored == null || !Set.of("QUEUED", "RUNNING").contains(stored.run.status)) continue;
                 boolean queued = stored.run.status.equals("QUEUED");
                 stored.run.status = queued ? "FAILED" : "CLEANUP_REQUIRED";
                 stored.run.error = "服务重启中断了测试，请检查并清理残留测试组后重新运行";
