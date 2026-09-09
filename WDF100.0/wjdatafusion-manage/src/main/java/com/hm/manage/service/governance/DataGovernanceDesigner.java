@@ -21,6 +21,7 @@ public class DataGovernanceDesigner
     private static final Set<String> UPDATE_KEYS = Set.of("Delete Attributes Expression", "Store State", "Stateful Variables Initial Value", "Cache Value Lookup Cache Size");
     private static final Set<String> JOLT_KEYS = Set.of("Jolt Specification", "Jolt Transform", "Pretty Print", "Transform Cache Size", "Max String Length", "JSON Source", "Retain Unicode Escape Sequences");
     private static final Set<String> WRITER_KEYS = Set.of("Field Order", "Delimiter Hex", "Include Header", "Split Limit", "Count Basis", "Maximum File Age Millis", "Arrival Time Field", "Filename Prefix");
+    private static final Set<String> LOOKUP_KEYS = Set.of("Lookup Rows", "Match Fields", "Return Fields", "Missing Match", "Multiple Matches");
     private final DataGovernanceEngine engine;
     private final DataGovernanceNifiClient client;
 
@@ -35,6 +36,7 @@ public class DataGovernanceDesigner
             new DesignNodeType("attributes", "字段加工", UPDATE, "PROCESSOR", strings("sample.result", "${sample.value:trim()}"), List.of("success")),
             new DesignNodeType("jolt", "JSON 转换", JOLT, "PROCESSOR", strings("Jolt Transform", "jolt-transform-chain", "Jolt Specification", "[{\"operation\":\"shift\",\"spec\":{\"*\":\"&\"}}]", "JSON Source", "FLOW_FILE"), List.of("success", "failure")),
             new DesignNodeType("delimited", "协议文本输出", WRITER, "PROCESSOR", strings("Field Order", "message,picture", "Delimiter Hex", "7C 1F", "Include Header", "true", "Split Limit", "75", "Count Basis", "KETTLE_HEADER_INCLUSIVE", "Maximum File Age Millis", "0", "Filename Prefix", "sample"), List.of("success", "empty", "failure")),
+            new DesignNodeType("lookup", "快照查表", LOOKUP, "PROCESSOR", strings("Lookup Rows", "[]", "Match Fields", "[]", "Return Fields", "[]", "Missing Match", "KEEP", "Multiple Matches", "FAIL"), List.of("success", "empty", "failure")),
             new DesignNodeType("capture", "结果观察", UPDATE, "CAPTURE", Map.of(), List.of()));
     }
 
@@ -219,7 +221,7 @@ public class DataGovernanceDesigner
             if (raw.isNull()) continue; // NiFi includes null optional descriptors; they hold no configuration.
             if (!raw.isTextual() || !allowedKey(type, key) || p.path("config").path("descriptors").path(key).path("sensitive").asBoolean()) reject("节点包含未经审核的属性");
             String value = raw.asText(); total += value.length();
-            if (value.length() > 65536 || total > 131072 || value.contains("#{")) reject("节点属性过长或引用了环境参数");
+            if (value.length() > 65536 || total > 131072 || (!type.equals(LOOKUP) && value.contains("#{"))) reject("节点属性过长或引用了环境参数");
             if (type.equals(STANDARD + "GenerateFlowFile"))
             {
                 if (value.contains("${")) reject("样本输入内容必须为纯文本，不允许环境表达式");
@@ -239,6 +241,7 @@ public class DataGovernanceDesigner
         if (type.equals(STANDARD + "RouteOnAttribute")) return key.equals("Routing Strategy") || key.matches("[A-Za-z][A-Za-z0-9_.-]{0,63}");
         if (type.equals(UPDATE)) return UPDATE_KEYS.contains(key) || key.matches("sample\\.[A-Za-z0-9_.-]{1,64}");
         if (type.equals(JOLT)) return JOLT_KEYS.contains(key);
+        if (type.equals(LOOKUP)) return LOOKUP_KEYS.contains(key);
         return type.equals(WRITER) && WRITER_KEYS.contains(key);
     }
 

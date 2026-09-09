@@ -10,6 +10,7 @@ public class DataGovernanceProperties
 {
     private String storageDir = System.getProperty("user.home") + "/.rynew/data-governance";
     private int testTimeoutSeconds = 60;
+    private java.util.List<String> connectionAllowedEndpoints = java.util.List.of("127.0.0.1:15432", "::1:15432");
     private final Nifi nifi = new Nifi();
 
     public String getStorageDir() { return storageDir; }
@@ -17,6 +18,8 @@ public class DataGovernanceProperties
     public int getTestTimeoutSeconds() { return Math.max(5, Math.min(testTimeoutSeconds, 300)); }
     public void setTestTimeoutSeconds(int value) { testTimeoutSeconds = value; }
     public Nifi getNifi() { return nifi; }
+    public java.util.List<String> getConnectionAllowedEndpoints() { return connectionAllowedEndpoints; }
+    public void setConnectionAllowedEndpoints(java.util.List<String> value) { connectionAllowedEndpoints = value == null ? java.util.List.of() : java.util.List.copyOf(value); }
 
     public static class Nifi
     {

@@ -20,7 +20,7 @@ import static com.hm.manage.service.governance.DataGovernanceEngine.*;
 final class DataGovernanceSafeFlow
 {
     static final Set<String> TYPES = Set.of(STANDARD + "GenerateFlowFile", STANDARD + "EvaluateJsonPath",
-        STANDARD + "RouteOnAttribute", JOLT, UPDATE, WRITER);
+        STANDARD + "RouteOnAttribute", JOLT, UPDATE, WRITER, LOOKUP);
     final Map<String, JsonNode> processors = new LinkedHashMap<>();
     final List<JsonNode> connections = new ArrayList<>();
     final List<String> order = new ArrayList<>();
@@ -152,6 +152,27 @@ final class DataGovernanceSafeFlow
         properties.fields().forEachRemaining(entry -> {
             if (entry.getValue().isNull()) return;
             String key = entry.getKey(), value = entry.getValue().asText();
+            if (type.equals(LOOKUP))
+            {
+                if (!Set.of("Lookup Rows", "Match Fields", "Return Fields", "Missing Match", "Multiple Matches").contains(key)
+                    || value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 65536) unsupported("快照查表仅接受已审核的有界属性");
+                if (key.equals("Missing Match") && !Set.of("KEEP", "DROP", "FAIL").contains(value)) unsupported("查表未命中策略无效");
+                if (key.equals("Multiple Matches") && !Set.of("FAIL", "FIRST", "LAST").contains(value)) unsupported("查表重复匹配策略无效");
+                if (Set.of("Lookup Rows", "Match Fields", "Return Fields").contains(key))
+                {
+                    try
+                    {
+                        JsonNode array = new com.fasterxml.jackson.databind.ObjectMapper()
+                            .enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+                            .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(value);
+                        if (!array.isArray() || array.size() > (key.equals("Lookup Rows") ? 1000 : 64)) unsupported("快照和查表规则必须为有界JSON数组");
+                        for (JsonNode row : array) if (!row.isObject()) unsupported("快照和规则中的每一项必须是JSON对象");
+                    }
+                    catch (UnsupportedFlow e) { throw e; }
+                    catch (Exception e) { unsupported("查表快照或规则不是有效JSON"); }
+                }
+                return; // The custom processor parses literal JSON only and never evaluates NiFi expressions.
+            }
             if (value.length() > 65536 || value.contains("#{")) unsupported("测试不允许环境参数引用或超长组件属性");
             if (type.equals(WRITER))
             {

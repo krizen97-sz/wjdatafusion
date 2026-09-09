@@ -46,7 +46,12 @@ public class DataGovernanceScheduler
     {
         // The default installation performs no storage scan, timer work, or NiFi requests.
         if (closed || timer != null || !client.configured()) return;
-        initialize();
+        try { initialize(); }
+        catch (Exception e)
+        {
+            coordinatorError = "调度模块初始化失败：请核对私有任务存储并重启模块所在服务";
+            return; // A governance storage problem must not prevent the rest of the platform from starting.
+        }
         timer = Executors.newSingleThreadScheduledExecutor(task -> {
             Thread thread = new Thread(task, "data-governance-schedules"); thread.setDaemon(true); return thread;
         });

@@ -25,6 +25,8 @@ public class DataGovernanceEngine
     static final String SAMPLE = "sample-safe-v1";
     static final String DELIMITED = "delimited-safe-v1";
     static final String WRITER = "com.hm.governance.nifi.DelimitedTextWriter";
+    static final String LOOKUP = "com.hm.governance.nifi.JsonLookupSnapshot";
+    static final String LOOKUP_TEMPLATE = "lookup-safe-v1";
     // NiFi processor cards are about 350 px wide; leave room for connection labels.
     private static final double TEMPLATE_COLUMN = 520;
     final DataGovernanceNifiClient client;
@@ -103,8 +105,9 @@ public class DataGovernanceEngine
     {
         project(request.projectId());
         String template = request.templateId() == null || request.templateId().isBlank() ? "blank" : request.templateId();
-        if (!SAMPLE.equals(template) && !DELIMITED.equals(template) && !template.equals("blank")) throw new ServiceException("该模板尚未实现，不能创建为可执行流程");
+        if (!SAMPLE.equals(template) && !DELIMITED.equals(template) && !LOOKUP_TEMPLATE.equals(template) && !template.equals("blank")) throw new ServiceException("该模板尚未实现，不能创建为可执行流程");
         if (DELIMITED.equals(template) && !supports(WRITER)) throw new ServiceException("独立 NiFi 尚未安装协议文本组件");
+        if (LOOKUP_TEMPLATE.equals(template) && !supports(LOOKUP)) throw new ServiceException("独立 NiFi 尚未安装快照查表组件");
         String name = text(request.name(), 80, "流程名称");
         JsonNode group = createGroup(request.projectId(), name, FLOW + template);
         String groupId = group.path("component").path("id").asText();
@@ -113,6 +116,20 @@ public class DataGovernanceEngine
         {
             String source = createProcessor(groupId, "样本输入", STANDARD + "GenerateFlowFile", "", map(
                 "Custom Text", "{\"message\":\"sample\"}", "Batch Size", "1", "Data Format", "Text", "Unique FlowFiles", "false"), List.of(), 0).path("component").path("id").asText();
+            if (LOOKUP_TEMPLATE.equals(template))
+            {
+                String lookup = createProcessor(groupId, "批次快照查表", LOOKUP, "", map(
+                    "Lookup Rows", "[{\"camera_code\":\"CAM-001\",\"platform_code\":\"DEMO\",\"external_code\":\"EXT-001\",\"active\":\"Y\"}]",
+                    "Match Fields", "[{\"input\":\"/camera\",\"lookup\":\"camera_code\",\"type\":\"STRING\",\"operator\":\"EQ\"},{\"input\":\"/platform\",\"lookup\":\"platform_code\",\"type\":\"STRING\",\"operator\":\"EQ\"},{\"lookup\":\"active\",\"operator\":\"IS_NOT_NULL\"}]",
+                    "Return Fields", "[{\"lookup\":\"external_code\",\"output\":\"external_camera\",\"default\":\"0\"}]",
+                    "Missing Match", "KEEP", "Multiple Matches", "FAIL"), List.of(), TEMPLATE_COLUMN).path("component").path("id").asText();
+                String capture = createProcessor(groupId, "查看测试结果", UPDATE, CAPTURE, map(), List.of("success"), 2 * TEMPLATE_COLUMN).path("component").path("id").asText();
+                connect(groupId, source, lookup, List.of("success"));
+                connect(groupId, lookup, capture, List.of("success"));
+                connect(groupId, lookup, capture, List.of("empty"), templateBends(1, 2, -80));
+                connect(groupId, lookup, capture, List.of("failure"), templateBends(1, 2, 400));
+                return flow(groupId);
+            }
             if (DELIMITED.equals(template))
             {
                 String writer = createProcessor(groupId, "协议文本输出", WRITER, "", map("Field Order", "message,picture", "Delimiter Hex", "7C 1F",

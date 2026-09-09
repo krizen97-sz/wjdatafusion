@@ -41,10 +41,12 @@ public class DataGovernanceService
         Map<String, Object> schema = map("type", "object", "additionalProperties", false, "properties", map(
             "jsonPath", map("type", "string", "title", "字段路径（可选覆盖画布参数）", "default", "$.message", "maxLength", 256),
             "requiredValue", map("type", "string", "title", "匹配值（可选）", "default", "", "maxLength", 256)));
-        return List.of(new Template("blank", "空白流程", "在 NiFi 画布添加组件；测试前需要建立安全样本输入和观察节点", "AVAILABLE", map()),
+        return List.of(new Template("blank", "空白流程", "在平台画布添加组件；测试前需要建立安全样本输入和结果输出节点", "AVAILABLE", map()),
             new Template(SAMPLE, "安全 JSON 样本流程", "真实 NiFi：样本输入、JSONPath、条件路由、结果队列；不连接业务源目标", "AVAILABLE", schema),
             new Template(DELIMITED, "协议文本样本流程", "真实 NiFi：JSON 数组转字段有序文本，兼容表头计数与分片", engine.supports(WRITER) ? "AVAILABLE" : "ENGINE_REQUIRED",
                 map("type", "object", "additionalProperties", false, "properties", map(), "inputExample", "[{\"message\":\"示例\",\"picture\":\"\"}]")),
+            new Template(LOOKUP_TEMPLATE, "快照查表样本流程", "合成双键字典与非空条件；可在节点中显式加载数据库快照，未命中保留默认字符串0", engine.supports(LOOKUP) ? "AVAILABLE" : "ENGINE_REQUIRED",
+                map("type", "object", "additionalProperties", false, "properties", map(), "inputExample", "[{\"camera\":\"CAM-001\",\"platform\":\"DEMO\"},{\"camera\":\"UNKNOWN\",\"platform\":\"DEMO\"}]")),
             new Template("vehicle-pass", "普通过车业务流程", "需要查表快照、文件协议与 FTP 交付适配后才能执行", "ADAPTER_REQUIRED", map()),
             new Template("vehicle-violation", "违法告警业务流程", "需要业务规则、Kafka 确认边界与文件交付适配后才能执行", "ADAPTER_REQUIRED", map()));
     }
@@ -72,6 +74,8 @@ public class DataGovernanceService
             entry[0].equals("sample-input") ? List.of() : List.of("JSON", "FLOWFILE"), List.of("FLOWFILE")));
         items.add(new CatalogItem("delimited-text-writer", "协议文本样本输出", "输出", engine.supports(WRITER) ? "AVAILABLE" : "ENGINE_REQUIRED",
             "只转换封闭 JSON 数组；无文件系统、网络或业务源目标访问", List.of("JSON_ARRAY"), List.of("TEXT")));
+        items.add(new CatalogItem("snapshot-lookup", "批次快照查表", "查询", engine.supports(LOOKUP) ? "AVAILABLE" : "ENGINE_REQUIRED",
+            "多键等值、非空条件、默认值与重复键策略；显式加载字典快照并随发布版本冻结，不自动实时刷新数据库", List.of("JSON", "JSON_ARRAY"), List.of("JSON", "JSON_ARRAY")));
         return items;
     }
 

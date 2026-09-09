@@ -183,7 +183,8 @@ public class DataGovernanceTestRunner
                         JsonNode detail = client.json("GET", "/flowfile-queues/" + edge.id + "/flowfiles/" + id(file.path("uuid").asText()), null);
                         Map<String, String> sample = new LinkedHashMap<>();
                         detail.path("flowFile").path("attributes").fields().forEachRemaining(entry -> {
-                            if (entry.getKey().startsWith("sample."))
+                            if (entry.getKey().startsWith("sample.") || Set.of("governance.lookup.input.records", "governance.lookup.output.records",
+                                "governance.lookup.matched.records", "governance.lookup.unmatched.records", "governance.lookup.snapshot.sha256").contains(entry.getKey()))
                             {
                                 String value = entry.getValue().asText();
                                 sample.put(entry.getKey(), value.substring(0, Math.min(value.length(), 8192)));
