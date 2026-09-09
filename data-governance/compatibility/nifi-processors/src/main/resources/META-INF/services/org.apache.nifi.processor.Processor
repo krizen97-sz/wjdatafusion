@@ -1,1 +1,2 @@
 com.hm.governance.nifi.DelimitedTextWriter
+com.hm.governance.nifi.JsonLookupSnapshot
