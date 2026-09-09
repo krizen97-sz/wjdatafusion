@@ -17,7 +17,7 @@ import urllib.parse
 import urllib.request
 
 OWNER = 'rynew-data-governance-runtime'
-PORTS = {'nifi': 9443, 'postgres': 15432, 'ftp': 2121, 'mysql': 13306, 'redis': 16379}
+PORTS = {'nifi': 9443, 'postgres': 15432, 'ftp': 2121, 'mysql': 13306, 'redis': 16379, 'gateway': 10443}
 
 
 def read_json(path):
@@ -83,6 +83,19 @@ def command(root, argv, name, env=None):
         raise RuntimeError(name + ' failed; inspect private log locally')
 
 
+def capture_launch_identity(name, pid, root, token):
+    # nifi.sh run execs Java under the same PID; capture its final command, not the shell.
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        identity = process_identity(pid)
+        if not identity or str(root) not in identity or token not in identity:
+            raise RuntimeError(name + ' did not start with expected identity')
+        if name != 'nifi' or ' org.apache.nifi.NiFi' in identity:
+            return identity
+        time.sleep(0.1)
+    raise RuntimeError('NiFi launcher did not enter its expected Java main class')
+
+
 def launch(root, name, argv, token, env=None, cwd=None):
     state_path = root / 'services.json'
     state = read_json(state_path) if state_path.exists() else {}
@@ -92,9 +105,7 @@ def launch(root, name, argv, token, env=None, cwd=None):
     with (root / 'private' / (name + '-daemon.log')).open('ab') as log:
         proc = subprocess.Popen(argv, cwd=cwd, env=env, stdout=log, stderr=log, start_new_session=True)
     time.sleep(0.25)
-    identity = process_identity(proc.pid)
-    if not identity or str(root) not in identity or token not in identity:
-        raise RuntimeError(name + ' did not start with expected identity; no unknown process was stopped')
+    identity = capture_launch_identity(name, proc.pid, root, token)
     state[name] = {'pid': proc.pid, 'identity': identity, 'token': token, 'port': PORTS[name]}
     save_json(state_path, state)
     return {'service': name, 'started': True, 'pid': proc.pid}
@@ -178,6 +189,12 @@ def prepare_ftp(root):
 
 
 def start(root, marker, name):
+    if name == 'gateway':
+        config = read_json(root / 'gateway.json')
+        script = (root / 'bin/local_gateway.mjs').resolve()
+        if Path(config['script']).resolve() != script:
+            raise RuntimeError('gateway script path is not task-owned')
+        return launch(root, name, [config['node'], str(script), '--runtime-root', str(root), '--dist-root', config['distRoot']], str(script))
     if name == 'nifi':
         env = os.environ.copy()
         env['JAVA_HOME'] = marker['javaHome']
@@ -231,6 +248,11 @@ def stop(root, marker, name):
 
 def health(root, name):
     try:
+        if name == 'gateway':
+            context = ssl.create_default_context(cafile=str(root / 'private/gateway-ca.pem'))
+            with urllib.request.urlopen('https://localhost:10443/__gateway_health', context=context, timeout=5) as response:
+                result = json.load(response)
+            return {'service': name, 'healthy': result.get('service') == 'rynew-local-gateway', 'frontend_built': result.get('frontendBuilt', False)}
         if name == 'nifi':
             c = read_private_json(root, 'nifi-credentials.json')
             parsed = urllib.parse.urlsplit(c['baseUrl'])

@@ -22,6 +22,7 @@
 | Redis | 使用本机已安装二进制；`127.0.0.1:16379` | 独立配置、数据目录、密码；现有 6379 不动 |
 | PostgreSQL | 已有 Homebrew 17.8；`127.0.0.1:15432` | 新建 `postgres/data`；SCRAM 认证，仅本地 TCP |
 | FTP fixture | pyftpdlib 2.2.0；`127.0.0.1:2121` | 独立 Python venv 与 `ftp/files`；被动端口 22100–22109，仅本机测试 |
+| 本地 HTTPS 网关 | Node 内置 HTTPS；`127.0.0.1:10443` | 静态 dist、RYNEW API 和 NiFi 同源入口；独立私有 CA，不改变系统信任 |
 
 PostgreSQL 私有目录路径较长，macOS Unix socket 路径最大 103 字节；本环境显式关闭 PostgreSQL Unix socket，仅通过 SCRAM 认证的 loopback TCP 访问。MySQL 的私有 socket 已实际连接成功。
 
@@ -72,7 +73,7 @@ python3 tools/data-governance/runtime_ctl.py --runtime-root "$DG_RUNTIME_ROOT" s
 python3 tools/data-governance/runtime_ctl.py --runtime-root "$DG_RUNTIME_ROOT" stop ftp
 ```
 
-服务可选 `nifi`、`mysql`、`redis`、`postgres`、`ftp` 或 `all`。`start all` 跳过仍匹配的本任务进程；`stop all` 会停止全部上述本地测试服务，执行前要确认没有本任务正在进行的联调。
+服务可选 `nifi`、`mysql`、`redis`、`postgres`、`ftp` 、`gateway` 或 `all`。`start all` 跳过仍匹配的本任务进程；`stop all` 会停止全部上述本地测试服务，执行前要确认没有本任务正在进行的联调。
 
 安全约束：
 
@@ -99,6 +100,58 @@ python3 tools/data-governance/smoke_ftp.py --runtime-root "$DG_RUNTIME_ROOT"
 
 该测试只在本任务 fixture 内创建随机 `runtime-smoke-*` 文件，执行 STOR、改名、RETR 字节对比并删除自己的文件，不使用任何业务附件内容。
 
-当前验证结果：10 项安全测试通过；NiFi 带本地 CA 的认证 API 返回 2.11.0、UI 返回 200；MySQL/PostgreSQL 认证版本查询通过；Redis 认证 PING 通过；FTP 认证 NOOP 和 31 字节二进制写读/改名/清理通过；FTP 的停止、重启与重复启动通过。其余正在联调的服务没有为验证脚本而重启。
+当前验证结果：11 项安全测试通过；NiFi 带本地 CA 的认证 API 返回 2.11.0、UI 返回 200；MySQL/PostgreSQL 认证版本查询通过；Redis 认证 PING 通过；FTP 认证 NOOP 和 31 字节二进制写读/改名/清理通过；FTP 的停止、重启与重复启动通过。其余正在联调的服务没有为验证脚本而重启。
 
 这些结果是运行底座验收，不代表 RYNEW 菜单/登录已完成、不代表 Kafka 已安装、也不代表原 ETL 两条业务或海康扩展已等价运行。
+
+
+## 同源 HTTPS 验收网关
+
+源码：`tools/data-governance/local_gateway.mjs`，仅使用 Node 内置模块。当前指定 dist 是：
+
+```text
+/Users/krizen/Documents/Code/projects/2026projects/rynew-worktrees/data-governance-browser-etl-v1/RuoYi-Vue3-master/dist
+```
+
+网关只监听 `127.0.0.1:10443`，接受 Host `localhost:10443` 或 `127.0.0.1:10443`，不新增 HTTP 监听和全局 DNS/信任配置。
+
+| 路径 | 转发/服务行为 |
+| --- | --- |
+| `/prod-api`、`/dev-api` 及其子路径 | 代理到 `http://127.0.0.1:8083`，仅去掉匹配的前缀，保留方法、查询和请求体 |
+| `/nifi`、`/nifi/`、`/nifi-*` | 代理到 loopback NiFi 9443，验证 `private/nifi-ca.pem` 和 localhost SAN |
+| 其他静态路径 | 只读取指定 dist；禁止 JSON、私有目录、点文件、证书/配置与路径穿越；不跟随逃出 dist 的符号链接 |
+| `/__gateway_health` | 返回合成健康 JSON，只说明网关与 dist 是否准备好；不是读取静态 JSON 文件 |
+
+合法后端/NiFi API 的 JSON 响应正常透传；“禁止 JSON”指网关静态文件读取。静态文件支持 GET/HEAD；SPA 回退仅适用于 GET、Accept 包含 text/html、没有文件扩展名的路径。dist 尚未构建时静态请求返回 503，构建出现后自动可用，不需重启网关。网关不是 Vite 开发服务器，不提供 HMR/任意 WebSocket 转发。
+
+NiFi 请求保留用户自己的 Authorization、Cookie 与 Request-Token，响应保留原始 CSP、X-Frame-Options、Set-Cookie 和 CSRF 行为。网关清除外来代理身份头及转发头，再设置真实 `X-ProxyScheme=https`、`X-ProxyHost`、`X-ProxyPort=10443`；不注入管理员令牌，不发送伪造的 `X-ProxiedEntitiesChain`。外部路径没有增加额外上下文前缀，所以不发送 X-ProxyContextPath。
+
+NiFi 已在一次授权的维护窗口中追加以下 proxy host（保留原 9443 入口）：
+
+```properties
+nifi.web.proxy.host=localhost:9443,127.0.0.1:9443,localhost:10443,127.0.0.1:10443
+```
+
+本轮同一窗口安装 `governance-nifi-nar-1.0.0.nar`，SHA-256 为 `82c602e6dd3dfb021ea4663b76879f94f5c649526ac713954c8363c4a343b88c`。目标原先无同名 NAR；配置备份和安装记录位于 runtime 的私有备份/evidence 中。后续修改 NiFi 白名单或替换 NAR 要协调该测试实例中的进行中工作，不能因为网关代码变更擅自重启 NiFi。
+
+TLS 文件位于 `private/gateway-ca.pem`、`gateway-ca-key.pem`、`gateway-cert.pem`、`gateway-key.pem`，均为 600。CA 与叶子证书采用不同 DN，叶子 SAN 为 localhost 与 127.0.0.1。证书准备命令不会修改系统钥匙串：
+
+```bash
+python3 tools/data-governance/prepare_gateway_tls.py --runtime-root "$DG_RUNTIME_ROOT"
+```
+
+初次运行需要将源码网关复制到 `$DG_RUNTIME_ROOT/bin/local_gateway.mjs`，并在运行根目录 `gateway.json` 中配置 script、distRoot、node。当前环境已经准备好；`runtime_ctl.py start/stop/status/health gateway` 可管理它。升级网关时，先用 owner/PID 校验安全停止 gateway，再更新这个副本并启动；不要以改配置为由重启其他五个服务。
+
+也可前台运行源码以排查问题（启动前确认 10443 空闲）：
+
+```bash
+node tools/data-governance/local_gateway.mjs --runtime-root "$DG_RUNTIME_ROOT" --dist-root /Users/krizen/Documents/Code/projects/2026projects/rynew-worktrees/data-governance-browser-etl-v1/RuoYi-Vue3-master/dist
+```
+
+回归命令：
+
+```bash
+node --test tools/data-governance/local_gateway.test.mjs
+```
+
+12 项回归覆盖 API 前缀/请求体、用户认证与 CSRF 保留、拒绝伪造身份头、TLS 验证失败、dist 缺失、私有文件/JSON/路径穿越/符号链接、SPA 回退边界、静态 HEAD 与 Host 限制。真实网关已验证：`/` 与 `/nifi/` 为 200、NiFi 登录 201、认证 about API 为 200 且版本 2.11.0，NiFi 原 CSP/SAMEORIGIN 保留；私有 JSON 请求为 403；`/prod-api/captchaImage` 与 `/dev-api/captchaImage` 均为 HTTP 200、业务 code 200。这些 HTTP/TLS 验证不代替浏览器登录及嵌入画布完整交互验收。

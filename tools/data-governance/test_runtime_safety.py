@@ -12,6 +12,13 @@ spec.loader.exec_module(runtime)
 
 
 class RuntimeSafetyTest(unittest.TestCase):
+    def test_nifi_records_java_identity_after_shell_exec(self):
+        root = Path('/private/runtime')
+        shell = 'time /private/runtime/nifi/bin/nifi.sh run'
+        java = 'time /private/runtime/jdk/bin/java -cp /private/runtime/nifi/lib org.apache.nifi.NiFi'
+        with patch.object(runtime, 'process_identity', side_effect=[shell, java]), patch.object(runtime.time, 'sleep'):
+            self.assertEqual(java, runtime.capture_launch_identity('nifi', 123, root, '/private/runtime/nifi'))
+
     def test_stop_refuses_changed_pid_before_command_or_signal(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder).resolve()
