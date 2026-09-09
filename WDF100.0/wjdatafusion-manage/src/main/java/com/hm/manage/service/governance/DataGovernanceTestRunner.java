@@ -97,6 +97,7 @@ public class DataGovernanceTestRunner
                 {
                     do
                     {
+                        long beforeInput = count(inputs);
                         long beforeOutput = count(outputs);
                         state(ids.get(oldId), "RUN_ONCE");
                         while (true)
@@ -104,8 +105,10 @@ public class DataGovernanceTestRunner
                             check(cancelled, deadline);
                             JsonNode status = client.json("GET", "/processors/" + ids.get(oldId), null);
                             boolean idle = status.path("status").path("aggregateSnapshot").path("activeThreadCount").asInt(-1) == 0;
-                            boolean consumed = oldId.equals(flow.source) ? count(outputs) > beforeOutput : count(inputs) == 0;
-                            if (idle && consumed && !"RUNNING".equals(status.path("component").path("state").asText())) break;
+                            // One onTrigger may consume only one FlowFile. Return to the outer loop after
+                            // observable progress, rather than waiting for that single invocation to drain everything.
+                            boolean consumed = oldId.equals(flow.source) ? count(outputs) > beforeOutput : count(inputs) < beforeInput;
+                            if (idle && consumed && "STOPPED".equals(status.path("component").path("state").asText())) break;
                             pause();
                         }
                     } while (!oldId.equals(flow.source) && count(inputs) > 0);
