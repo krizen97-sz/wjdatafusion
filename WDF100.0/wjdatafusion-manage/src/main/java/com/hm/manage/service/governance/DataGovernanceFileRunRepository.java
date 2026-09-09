@@ -89,14 +89,21 @@ public class DataGovernanceFileRunRepository implements DataGovernanceRunReposit
         catch (Exception e) { throw new ServiceException("测试记录读取失败"); }
     }
 
-    @Override public synchronized List<StoredRun> list()
+    @Override public synchronized List<StoredRun> list() { return scan(false); }
+    @Override public synchronized List<StoredRun> summaries() { return scan(true); }
+
+    private List<StoredRun> scan(boolean metadataOnly)
     {
         try
         {
             initialize(); List<StoredRun> runs = new ArrayList<>();
             try (var files = Files.newDirectoryStream(root, "*.json"))
             {
-                for (Path file : files) runs.add(read(file));
+                for (Path file : files)
+                {
+                    StoredRun stored = read(file);
+                    runs.add(metadataOnly ? DataGovernanceRunRepository.summary(stored) : stored);
+                }
             }
             runs.sort((a, b) -> b.run.createdAt.compareTo(a.run.createdAt));
             return runs;
