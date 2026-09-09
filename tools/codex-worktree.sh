@@ -11,7 +11,7 @@ Usage:
   tools/codex-worktree.sh create <module> <task-slug>
 
 Modules:
-  platform-ui | auto-inspection | site-fusion | document-management | knowledge-center | ipam
+  platform-ui | auto-inspection | site-fusion | document-management | knowledge-center | ipam | data-governance
 EOF
 }
 
@@ -24,7 +24,7 @@ repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || die "当前目录不�
 
 validate_module() {
   case "${1:-}" in
-    platform-ui|auto-inspection|site-fusion|document-management|knowledge-center|ipam) ;;
+    platform-ui|auto-inspection|site-fusion|document-management|knowledge-center|ipam|data-governance) ;;
     *) die "不支持的模块：${1:-<empty>}" ;;
   esac
 }
@@ -59,6 +59,7 @@ is_module_path() {
     document-management:*document*|document-management:*Document*|document-management:*Doc*|document-management:*doc_*) return 0 ;;
     knowledge-center:*knowledge*|knowledge-center:*Knowledge*|knowledge-center:*KNOWLEDGE*|knowledge-center:*Kb*|knowledge-center:*kb_*|knowledge-center:*知识中心*) return 0 ;;
     ipam:*ipam*|ipam:*Ipam*) return 0 ;;
+    data-governance:*governance*|data-governance:*Governance*|data-governance:*DATA_GOVERNANCE*) return 0 ;;
     *) return 1 ;;
   esac
 }

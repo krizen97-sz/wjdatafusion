@@ -33,6 +33,7 @@ Supported module names are:
 - `document-management`
 - `knowledge-center`
 - `ipam`
+- `data-governance`
 
 ## Branch and checkout safety
 

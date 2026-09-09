@@ -92,6 +92,17 @@
 - SQL：文件名以 `knowledge_center` 开头
 - 文档：文件名包含 `KNOWLEDGE_CENTER` 或“知识中心”
 
+### 数据治理
+
+- 前端：`src/views/governance`、`src/api/governance`
+- 后端：`DataGovernance*`、`service/governance`、`mapper/governance`
+- 引擎与运行工具：`data-governance` 目录、`tools/data-governance*`
+- SQL：文件名包含 `data_governance` 的独立升级脚本
+- 文档与测试：文件名或目录包含 `governance`、`Governance`、`DATA_GOVERNANCE`
+- NiFi、测试依赖、凭据、数据库数据、日志与生成制品置于独立运行目录，不提交源码仓库
+- 不复用自动巡检表或放宽巡检只读查询限制；测试目标与业务目标分离
+- 同一模块的并行子任务也使用各自 worktree，提交后由模块集成 worktree 汇总
+
 ## 共享文件
 
 以下文件是高冲突区，允许模块修改，但提交前必须单独复核，不能通过整文件覆盖解决冲突：
