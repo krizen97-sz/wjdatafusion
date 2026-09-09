@@ -19,7 +19,8 @@ const baseAllowlist = {
   approvedDependencies: {
     frameworks: ['element-plus'],
     icons: ['@element-plus/icons-vue'],
-    runtimeUi: ['echarts']
+    runtimeUi: ['echarts'],
+    runtimeCompatibility: ['core-js']
   },
   entries: []
 }
@@ -291,6 +292,7 @@ test('package analysis blocks second UI and icon systems and warns on other runt
       'element-plus': '2.13.1',
       'ant-design-vue': '4.0.0',
       'lucide-vue-next': '1.0.0',
+      'core-js': '3.50.0',
       lodash: '4.17.21'
     }
   })
@@ -300,7 +302,9 @@ test('package analysis blocks second UI and icon systems and warns on other runt
   assert.ok(rules.includes('unapproved-ui-framework'))
   assert.ok(rules.includes('unapproved-icon-library'))
   assert.ok(rules.includes('new-runtime-dependency'))
+  assert.equal(findings.some((finding) => finding.message.includes('core-js')), false)
   assert.equal(classifyDependency('echarts', baseAllowlist), 'approved-runtime-ui')
+  assert.equal(classifyDependency('core-js', baseAllowlist), 'approved-runtime-compatibility')
   assert.equal(classifyDependency('@headlessui/vue', baseAllowlist), 'ui-framework')
 })
 

@@ -272,6 +272,7 @@ function classifyDependency(name, allowlist) {
   if ((approved.frameworks || []).includes(name)) return 'approved-framework'
   if ((approved.icons || []).includes(name)) return 'approved-icon'
   if ((approved.runtimeUi || []).includes(name)) return 'approved-runtime-ui'
+  if ((approved.runtimeCompatibility || []).includes(name)) return 'approved-runtime-compatibility'
   if (packageNameMatches(name, KNOWN_UI_FRAMEWORKS)) return 'ui-framework'
   if (packageNameMatches(name, KNOWN_ICON_LIBRARIES)) return 'icon-library'
   if (packageNameMatches(name, KNOWN_DESIGN_SYSTEMS)) return 'design-system'
@@ -751,7 +752,9 @@ function analyzePackage({ file, currentContent, baseContent, allowlist }) {
     for (const [name, version] of Object.entries(currentDependencies)) {
       if (!(name in baseDependencies)) {
         const kind = classifyDependency(name, allowlist)
-        if (kind === 'ui-framework') {
+        if (kind === 'approved-runtime-compatibility') {
+          continue
+        } else if (kind === 'ui-framework') {
           findings.push(makeFinding('error', 'unapproved-ui-framework', file, 1,
             `New unapproved UI framework dependency: ${name}@${version}.`,
             'Use Element Plus; dependency additions require explicit approval.'))
@@ -774,7 +777,7 @@ function analyzePackage({ file, currentContent, baseContent, allowlist }) {
         }
       } else if (baseDependencies[name] !== version) {
         const kind = classifyDependency(name, allowlist)
-        const severity = ['approved-framework', 'approved-icon', 'approved-runtime-ui'].includes(kind) ? 'error' : 'warning'
+        const severity = ['approved-framework', 'approved-icon', 'approved-runtime-ui', 'approved-runtime-compatibility'].includes(kind) ? 'error' : 'warning'
         findings.push(makeFinding(severity, 'dependency-version-change', file, 1,
           `Dependency version changed: ${name} ${baseDependencies[name]} -> ${version}.`,
           'Dependency upgrades are outside ordinary UI work; restore the version or obtain explicit approval.'))

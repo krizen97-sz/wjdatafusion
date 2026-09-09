@@ -26,6 +26,7 @@ test('metric numbers distinguish missing values from measured zero and keep disp
   assert.equal(metricNumber('not-a-number'), null)
   assert.equal(formatMetricValue('9007199254740993.12'), '9,007,199,254,740,993.12')
   assert.equal(formatMetricValue('-0.50'), '-0.50')
+  assert.equal(formatMetricValue('000123.4500'), '123.4500')
   assert.equal(formatMetricValue(null), '--')
 })
 
