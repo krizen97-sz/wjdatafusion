@@ -41,9 +41,13 @@ Two nonce-bound handshakes keep the original script paused before probes and aft
 
 The adapter first installs its existing bridge and namespace policies before Java starts. At the first fixture checkpoint, the test inserts only two additional DNS DROP rules into that exact container's existing dedicated namespace chain, with per-run comments. It matches conntrack's original destination `127.0.0.11:53` because Docker may translate DNS port 53 before filter OUTPUT. The controller pins the namespace by verified container identity, checks both rules with `iptables -C`, and records rule text plus counter snapshots before and after. The rules only tighten the fixture namespace and disappear with it. No host global default, flush, prune or unrelated chain is changed.
 
+The counter parser accepts only `tcp`/`6` and `udp`/`17` for the corresponding exact rule; numeric protocol output is expected with some Ubuntu iptables builds. DROP, the unique owned comment, and numeric packet/byte columns remain mandatory. Raw rule/counter text is attached to the caller's evidence before parsing, so a format failure persists both in `network-observation.json` and `network-acceptance.json`.
+
 Success requires original native SUCCEEDED, exact original TextFileOutput JSON matching the four observed results, both listener counts for their complete lifetime, and both dedicated DNS DROP counter increases. The report records container ID, sourceHash, nonce, output SHA and adapter cleanup of the exact owned container/network/chain. Logs, plans, observation and acceptance JSON remain in the synthetic operation; the protected adapter journal remains in `state_root`.
 
 Failure stops only a container whose protected identity and nonce match this attempt. It preserves the exact journal/resources as RECOVERY_REQUIRED for root inspection, closes listeners, prints `verified=false` and returns nonzero. It does not silently retry or clean resources with an unknown identity.
+
+On failure, stdout/stderr evidence files remain open during the nonce-bound stop and bounded event-reader drain. They close only afterward under the event writer's lock. If the pipe cannot drain, the report explicitly records `eventReaderDrained=false`; late writes are disabled before closing, avoiding a secondary closed-file error that hides the original failure.
 
 ```sh
 python3 data-governance/kettle-worker/linux/fixtures/test_network_smoke.py

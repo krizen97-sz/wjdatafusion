@@ -143,24 +143,29 @@ def parse_counters(text, rules):
         lines = [line for line in text.splitlines() if '/* ' + comment + ' */' in line]
         module.require(len(lines) == 1, 'Missing/duplicate exact fixture DNS counter comment')
         columns = lines[0].split()
-        module.require(len(columns) >= 9 and columns[0].isdigit() and columns[1].isdigit() and columns[2] == 'DROP' and columns[3] == protocol, 'Unexpected DNS counter rule format')
+        accepted_protocols = {'tcp': {'tcp', '6'}, 'udp': {'udp', '17'}}
+        module.require(len(columns) >= 9 and columns[0].isdigit() and columns[1].isdigit() and columns[2] == 'DROP'
+                       and columns[3] in accepted_protocols[protocol], 'Unexpected DNS counter rule format')
         found[protocol] = {'packets': int(columns[0]), 'bytes': int(columns[1]), 'comment': comment}
     return found
 
 
-def namespace_snapshot(controller, record, install=False):
+def namespace_snapshot(controller, record, install=False, observation=None):
+    observation = {} if observation is None else observation
     container = controller._inspect(record); controller._network(record)
     rules = dns_rules(record)
     with controller.namespace(container) as fd:
         prefix = [controller.config.nsenter, '--net=/proc/self/fd/' + str(fd), '--', controller.config.iptables, '-w', '5']
         if install:
             for rule in rules.values(): controller.runner.run([*prefix, '-I', record['namespaceChain'], '1', *rule], pass_fds=(fd,))
-        raw_rules = controller.runner.run([*prefix, '-S', record['namespaceChain']], pass_fds=(fd,)).stdout
+        observation['rawRules'] = controller.runner.run([*prefix, '-S', record['namespaceChain']], pass_fds=(fd,)).stdout
         for rule in rules.values():
             # -C compares the actual rule semantically, avoiding differences in iptables -S formatting.
             controller.runner.run([*prefix, '-C', record['namespaceChain'], *rule], pass_fds=(fd,))
-        raw = controller.runner.run([*prefix, '-L', record['namespaceChain'], '-n', '-v', '-x'], pass_fds=(fd,)).stdout
-    return {'counters': parse_counters(raw, rules), 'rawCounters': raw, 'rawRules': raw_rules}
+        observation['rawCounters'] = controller.runner.run([*prefix, '-L', record['namespaceChain'], '-n', '-v', '-x'], pass_fds=(fd,)).stdout
+    # The caller already owns this dictionary, so even a parser failure retains the actual kernel text.
+    observation['counters'] = parse_counters(observation['rawCounters'], rules)
+    return observation
 
 
 def verify(proof, result):
@@ -190,43 +195,51 @@ def execute(config, operation, plan, controller):
     record = plan['adapter']; nonce = record['nonce']; handle = None; reader = None; events = []; reader_errors = []; listeners = []
     proof = {'executed': True, 'verified': False, 'nonce': nonce, 'operationDir': str(operation), 'journal': str(config.state_root / (operation.name + '.json')),
              'docker0': HOST, 'listeners': [], 'cleanup': None}
+    stack = ExitStack(); error_log = None; event_log = None
+    event_lock = threading.Lock(); event_open = threading.Event(); event_open.set()
     try:
-        with ExitStack() as stack:
-            for port in PORTS: listeners.append(stack.enter_context(Listener(port, nonce)))
-            error_log = stack.enter_context((operation / 'engine.log').open('w'))
-            event_log = stack.enter_context((operation / 'events.ndjson').open('w'))
-            handle = controller.launch(operation, 'run', launch_id=nonce, stderr=error_log)
-            record = controller._read(operation.name); proof['container'] = handle.identity()
-            def read_events():
-                try:
-                    for line in handle.stdout:
-                        module.require(len(events) < 1200 and len(line) <= 131072, 'Native event evidence limit exceeded')
+        for port in PORTS: listeners.append(stack.enter_context(Listener(port, nonce)))
+        error_log = (operation / 'engine.log').open('w')
+        event_log = (operation / 'events.ndjson').open('w')
+        handle = controller.launch(operation, 'run', launch_id=nonce, stderr=error_log)
+        record = controller._read(operation.name); proof['container'] = handle.identity()
+        def read_events():
+            try:
+                for line in handle.stdout:
+                    module.require(len(events) < 1200 and len(line) <= 131072, 'Native event evidence limit exceeded')
+                    with event_lock:
+                        if not event_open.is_set(): return
                         event_log.write(line); event_log.flush(); events.append(json.loads(line))
-                except Exception as error: reader_errors.append(str(error))
-            reader = threading.Thread(target=read_events, name='owned-kettle-events', daemon=True); reader.start()
-            await_status(operation, 'ready', nonce, handle)
-            proof['before'] = namespace_snapshot(controller, record, install=True)
-            module.atomic_write(operation / 'network-observation.json', json.dumps(proof, indent=2))
-            publish_ack(config, operation, nonce, 'GO')
-            finished = await_status(operation, 'finished', nonce, handle, timeout=15)
-            proof['after'] = namespace_snapshot(controller, record)
-            proof['listeners'] = [listener.snapshot() for listener in listeners]
-            proof['dnsDropPacketDeltas'] = verify(proof, finished)
-            publish_ack(config, operation, nonce, 'OBSERVED')
-            code = handle.wait(timeout=30); reader.join(timeout=3)
-            module.require(not reader.is_alive() and not reader_errors and code == 0 and any(e.get('type') == 'terminal' and e.get('state') == 'SUCCEEDED' for e in events), 'Original worker did not finish with native SUCCEEDED')
-            result_path = operation / 'output/network-result.json'
-            result = json.loads(result_path.read_text())
-            module.require(result == {'nonce': nonce, 'probes': finished['probes']}, 'Original TextFileOutput bytes do not match observed Java probe results')
-            proof['dnsDropPacketDeltas'] = verify(proof, result)
-            proof['output'] = {'bytes': result_path.stat().st_size, 'sha256': module.digest(result_path)}
-            proof['nativeState'] = 'SUCCEEDED'; proof['cleanup'] = controller.cleanup(operation.name); proof['verified'] = True
+            except Exception as error: reader_errors.append(str(error))
+        reader = threading.Thread(target=read_events, name='owned-kettle-events', daemon=True); reader.start()
+        await_status(operation, 'ready', nonce, handle)
+        proof['before'] = {}
+        namespace_snapshot(controller, record, install=True, observation=proof['before'])
+        module.atomic_write(operation / 'network-observation.json', json.dumps(proof, indent=2))
+        publish_ack(config, operation, nonce, 'GO')
+        finished = await_status(operation, 'finished', nonce, handle, timeout=15)
+        proof['after'] = {}
+        namespace_snapshot(controller, record, observation=proof['after'])
+        proof['listeners'] = [listener.snapshot() for listener in listeners]
+        proof['dnsDropPacketDeltas'] = verify(proof, finished)
+        publish_ack(config, operation, nonce, 'OBSERVED')
+        code = handle.wait(timeout=30); reader.join(timeout=3)
+        module.require(not reader.is_alive() and not reader_errors and code == 0 and any(e.get('type') == 'terminal' and e.get('state') == 'SUCCEEDED' for e in events), 'Original worker did not finish with native SUCCEEDED')
+        result_path = operation / 'output/network-result.json'
+        result = json.loads(result_path.read_text())
+        module.require(result == {'nonce': nonce, 'probes': finished['probes']}, 'Original TextFileOutput bytes do not match observed Java probe results')
+        proof['dnsDropPacketDeltas'] = verify(proof, result)
+        proof['output'] = {'bytes': result_path.stat().st_size, 'sha256': module.digest(result_path)}
+        proof['nativeState'] = 'SUCCEEDED'; proof['cleanup'] = controller.cleanup(operation.name); proof['verified'] = True
+        stack.close()
         # Verify the whole listener lifetime, including the final native output/cleanup interval.
         proof['listeners'] = [listener.snapshot() for listener in listeners]
         proof['dnsDropPacketDeltas'] = verify(proof, result)
     except Exception as error:
         proof['verified'] = False
         proof['error'] = type(error).__name__ + ': ' + str(error); proof['recoveryRequired'] = True
+        try: module.atomic_write(operation / 'network-observation.json', json.dumps(proof, indent=2))
+        except Exception as evidence_error: proof['observationWriteError'] = str(evidence_error)
         # Reconcile only the nonce-bound resource, including a launch that failed after creating its container.
         try:
             identity = controller.identity_for_run(operation.name)
@@ -237,10 +250,24 @@ def execute(config, operation, plan, controller):
                 deadline = time.monotonic() + 3
                 while controller.status(operation.name)['running'] and time.monotonic() < deadline: time.sleep(0.1)
                 if controller.status(operation.name)['running']: controller.request_stop(operation.name, force=True, expected_nonce=nonce)
+            if handle: handle.wait(timeout=10)
             proof['failureState'] = controller.recover(operation.name)
         except Exception as recovery_error: proof['recoveryError'] = type(recovery_error).__name__ + ': ' + str(recovery_error)
     finally:
+        try: stack.close()
+        except Exception as listener_error:
+            proof['verified'] = False; proof['listenerCloseError'] = str(listener_error)
         if reader: reader.join(timeout=3)
+        proof['eventReaderDrained'] = not reader or not reader.is_alive()
+        # Stop/recovery and the final drain happen while both evidence files remain open.
+        # If a pipe cannot drain, disable further writes under the same lock before closing it.
+        with event_lock:
+            event_open.clear()
+            if event_log: event_log.close()
+            if error_log: error_log.close()
+        if not proof['eventReaderDrained']:
+            proof['verified'] = False; reader_errors.append('Native event pipe did not drain before the bounded evidence deadline')
+        proof['listeners'] = [listener.snapshot() for listener in listeners]
         proof['listenersClosed'] = all(not listener.thread or not listener.thread.is_alive() for listener in listeners)
         proof['eventCount'] = len(events); proof['eventReaderErrors'] = reader_errors
         module.atomic_write(operation / 'network-acceptance.json', json.dumps(proof, indent=2))

@@ -61,6 +61,11 @@ class NetworkTests(unittest.TestCase):
         rules = smoke.dns_rules({'nonce': '7' * 64})
         raw = '\n'.join('  2 120 DROP ' + protocol + ' -- * * 0.0.0.0/0 0.0.0.0/0 /* ' + rule[rule.index('--comment') + 1] + ' */' for protocol, rule in rules.items())
         self.assertEqual(2, smoke.parse_counters(raw, rules)['udp']['packets'])
+        numeric = raw.replace('DROP tcp ', 'DROP 6 ').replace('DROP udp ', 'DROP 17 ')
+        self.assertEqual(2, smoke.parse_counters(numeric, rules)['tcp']['packets'])
+        self.assertEqual(2, smoke.parse_counters(numeric, rules)['udp']['packets'])
+        with self.assertRaises(RuntimeError): smoke.parse_counters(numeric.replace('DROP 17 ', 'DROP 6 '), rules)
+        with self.assertRaises(RuntimeError): smoke.parse_counters(numeric.replace('DROP 6 ', 'DROP 0 '), rules)
         with self.assertRaises(RuntimeError): smoke.parse_counters(raw.replace('rynew-network-smoke:', 'someone-else:'), rules)
         with self.assertRaises(RuntimeError): smoke.parse_counters(raw + '\n' + raw, rules)
     def test_dns_instrumentation_uses_only_pinned_owned_namespace(self):
@@ -79,6 +84,10 @@ class NetworkTests(unittest.TestCase):
         observed = smoke.namespace_snapshot(controller, record, install=True)
         self.assertEqual(['-I', '-I', '-S', '-C', '-C', '-L'], calls)
         self.assertEqual(0, observed['counters']['udp']['packets']); controller._inspect.assert_called_once_with(record)
+        incomplete = {}
+        with mock.patch.object(smoke, 'parse_counters', side_effect=RuntimeError('synthetic counter format mismatch')):
+            with self.assertRaises(RuntimeError): smoke.namespace_snapshot(controller, record, observation=incomplete)
+        self.assertEqual(raw, incomplete['rawCounters']); self.assertEqual('-N RYK_owned_synthetic\n', incomplete['rawRules'])
     def test_udp_timeout_without_kernel_drop_is_not_success(self):
         proof, result = successful_evidence(); self.assertEqual({'tcp': 2, 'udp': 2}, smoke.verify(proof, result))
         proof['after']['counters']['udp']['packets'] = 0
@@ -144,7 +153,7 @@ class NetworkTests(unittest.TestCase):
             self.assertEqual(1, listener.connections); self.assertEqual(1, listener.acknowledgements)
         self.assertEqual(('ACK:' + '7' * 64 + '\n').encode(), connection.response)
         self.assertTrue(fixture.closed); self.assertFalse(listener.thread.is_alive())
-    def _mock_execution(self, fail=False):
+    def _mock_execution(self, fail=False, delayed_stop=False):
         config = self.base.config(endpoints=[{'host': smoke.HOST, 'port': 39090}], stage_run_owner=True)
         operation = smoke.prepare(config)
         proof, result = successful_evidence()
@@ -153,6 +162,15 @@ class NetworkTests(unittest.TestCase):
         handle.stdout = io.StringIO('{"type":"terminal","state":"SUCCEEDED"}\n'); handle.wait.return_value = 0
         controller = mock.Mock(); controller.launch.return_value = handle; controller._read.return_value = adapter
         controller.identity_for_run.return_value = identity; controller.status.return_value = {'running': False}
+        if delayed_stop:
+            stop = threading.Event(); state = {'running': True}
+            def delayed_events():
+                yield '{"type":"state","state":"RUNNING"}\n'
+                if not stop.wait(timeout=2): raise RuntimeError('Synthetic stop never arrived')
+                yield '{"type":"terminal","state":"STOPPED"}\n'
+            def request_stop(*args, **kwargs): state['running'] = False; stop.set()
+            handle.stdout = delayed_events(); controller.status.side_effect = lambda *args: dict(state)
+            controller.request_stop.side_effect = request_stop
         controller.cleanup.return_value = {'cleaned': True}; controller.recover.return_value = {'resubmitted': False}
         controller.runner.run.return_value = mock.Mock(stdout=json.dumps([{'ifname': 'docker0', 'addr_info': [{'local': smoke.HOST}]}]))
         (operation / 'output/network-result.json').write_text(json.dumps(result))
@@ -163,9 +181,13 @@ class NetworkTests(unittest.TestCase):
             def __enter__(self): return self
             def __exit__(self, *args): self.closed = True
             def snapshot(self): return copy.deepcopy(proof['listeners'][0 if self.port == 39090 else 1])
+        def snapshot(controller, record, install=False, observation=None):
+            observation.update({'rawRules': '-N RYK_exact_fixture\n', 'rawCounters': 'synthetic malformed exact-owned DNS counters\n'})
+            if fail: raise RuntimeError('synthetic namespace counter format failure')
+            observation.update(proof['before' if install else 'after']); return observation
         with mock.patch.object(smoke.sys, 'platform', 'linux'), mock.patch.object(smoke.os, 'geteuid', return_value=0), \
              mock.patch.object(smoke, 'Listener', FakeListener), mock.patch.object(smoke, 'await_status', side_effect=[{'phase': 'ready'}, dict(result, phase='finished')]), \
-             mock.patch.object(smoke, 'namespace_snapshot', side_effect=RuntimeError('synthetic namespace failure') if fail else [proof['before'], proof['after']]):
+             mock.patch.object(smoke, 'namespace_snapshot', side_effect=snapshot):
             actual = smoke.execute(config, operation, {'adapter': adapter}, controller)
         self.assertTrue(all(listener.closed for listener in listeners)); self.assertTrue(actual['listenersClosed'])
         self.assertTrue((operation / 'network-acceptance.json').is_file())
@@ -180,6 +202,16 @@ class NetworkTests(unittest.TestCase):
         self.assertFalse(proof['verified']); self.assertTrue(proof['recoveryRequired'])
         self.assertIn('/linux-network-smoke-', proof['journal']); controller.cleanup.assert_not_called()
         controller.recover.assert_called_once()
+        saved = json.loads((Path(proof['operationDir']) / 'network-observation.json').read_text())
+        self.assertEqual('synthetic malformed exact-owned DNS counters\n', saved['before']['rawCounters'])
+        self.assertEqual('-N RYK_exact_fixture\n', saved['before']['rawRules'])
+    def test_failure_reader_drains_stop_events_before_logs_are_closed(self):
+        proof, controller = self._mock_execution(fail=True, delayed_stop=True)
+        self.assertFalse(proof['verified']); self.assertTrue(proof['eventReaderDrained'])
+        self.assertEqual([], proof['eventReaderErrors']); self.assertEqual(2, proof['eventCount'])
+        events = [json.loads(line) for line in (Path(proof['operationDir']) / 'events.ndjson').read_text().splitlines()]
+        self.assertEqual(['RUNNING', 'STOPPED'], [event['state'] for event in events])
+        controller.request_stop.assert_called_once()
     def test_offline_csv_input_is_separate_from_work_dir_output(self):
         tree = ET.parse(ASSETS / 'fixtures/smoke.ktr')
         self.assertEqual('${INPUT_DIR}/smoke.csv', tree.findtext('./step[type="CsvInput"]/filename'))
