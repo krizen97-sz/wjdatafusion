@@ -246,7 +246,14 @@ def run(root, kind, resume=False, broker_ready=False):
         marker['state'] = 'EXECUTION_STARTED'
         marker['runs'][kind] = run_id
         write_json(root / 'owner.json', marker)
-        write_json(root / (kind + '-offsets-before.json'), probe(root, 'audit'))
+        before = probe(root, 'audit')
+        write_json(root / (kind + '-offsets-before.json'), before)
+        offsets = before['result']
+        require(offsets[kind]['zookeeperOffset'] == '0' and not offsets[kind]['owners']
+                and offsets['endOffsets'][kind] == (10000 if kind == 'ordinary' else 200),
+                'Dedicated fixture initial offsets changed or another consumer owns the group; no graph submitted')
+        if kind == 'illegal':
+            require(offsets['endOffsets']['egress'] == 0, 'Dedicated egress topic is no longer empty; no graph submitted')
         capabilities = worker_request('GET', '/capabilities')
         types = set(manifest['graphs'][kind]['pluginTypes'])
         classes = [{k: item[k] for k in ['id', 'aliases', 'className', 'loadable', 'executionSupported', 'descriptor', 'source', 'sourceJar', 'classSource'] if k in item}
