@@ -1,5 +1,6 @@
 package com.hm.manage.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hm.common.annotation.Log;
 import com.hm.common.core.controller.BaseController;
 import com.hm.common.core.domain.AjaxResult;
@@ -20,72 +21,76 @@ import org.springframework.web.multipart.MultipartFile;
 @RequestMapping("/governance/kettle")
 public class DataGovernanceKettleController extends BaseController
 {
+    private final ObjectMapper responseMapper = new ObjectMapper();
     private final DataGovernanceKettleService service;
     private final DataGovernanceKettleScheduler scheduler;
     public DataGovernanceKettleController(DataGovernanceKettleService service, DataGovernanceKettleScheduler scheduler)
     { this.service = service; this.scheduler = scheduler; }
+    /** Keep Jackson tree implementation types away from the platform Fastjson converter. */
+    private AjaxResult response(Object value)
+    { return success(responseMapper.convertValue(value, Object.class)); }
     @GetMapping("/status") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
-    public AjaxResult status() { return success(service.status()); }
+    public AjaxResult status() { return response(service.status()); }
     @GetMapping("/catalog") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
-    public AjaxResult catalog() { return success(service.catalog()); }
+    public AjaxResult catalog() { return response(service.catalog()); }
     @GetMapping("/definitions") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
-    public AjaxResult definitions() { return success(service.definitions(getUserId())); }
+    public AjaxResult definitions() { return response(service.definitions(getUserId())); }
     @PostMapping("/definitions") @PreAuthorize("@ss.hasPermi('governance:flow:edit')")
     @Log(title="创建原生 Kettle 流程", businessType=BusinessType.INSERT, isSaveRequestData=false, isSaveResponseData=false)
-    public AjaxResult create(@RequestBody DefinitionInput input) { return success(service.save(null, input, getUserId())); }
+    public AjaxResult create(@RequestBody DefinitionInput input) { return response(service.save(null, input, getUserId())); }
     @GetMapping("/definitions/{id}") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
-    public AjaxResult definition(@PathVariable String id) { return success(service.definition(id, getUserId())); }
+    public AjaxResult definition(@PathVariable String id) { return response(service.definition(id, getUserId())); }
     @PutMapping("/definitions/{id}") @PreAuthorize("@ss.hasPermi('governance:flow:edit')")
     @Log(title="编辑原生 Kettle 流程", businessType=BusinessType.UPDATE, isSaveRequestData=false, isSaveResponseData=false)
-    public AjaxResult update(@PathVariable String id, @RequestBody DefinitionInput input) { return success(service.save(id, input, getUserId())); }
+    public AjaxResult update(@PathVariable String id, @RequestBody DefinitionInput input) { return response(service.save(id, input, getUserId())); }
     @PostMapping("/imports") @PreAuthorize("@ss.hasPermi('governance:flow:edit')")
     @Log(title="导入原生 Kettle 文件", businessType=BusinessType.INSERT, isSaveRequestData=false, isSaveResponseData=false)
     public AjaxResult imports(@RequestParam("file") MultipartFile file) throws IOException
-    { try (var input = file.getInputStream()) { return success(service.imports(file.getOriginalFilename(), input, getUserId())); } }
+    { try (var input = file.getInputStream()) { return response(service.imports(file.getOriginalFilename(), input, getUserId())); } }
     @GetMapping("/definitions/{id}/files") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
-    public AjaxResult files(@PathVariable String id) { return success(service.files(id, getUserId())); }
+    public AjaxResult files(@PathVariable String id) { return response(service.files(id, getUserId())); }
     @PostMapping("/definitions/{id}/files") @PreAuthorize("@ss.hasPermi('governance:flow:edit')")
     @Log(title="上传原生流程输入文件", businessType=BusinessType.INSERT, isSaveRequestData=false, isSaveResponseData=false)
     public AjaxResult upload(@PathVariable String id, @RequestParam("file") MultipartFile file) throws IOException
-    { try (var input = file.getInputStream()) { return success(service.upload(id, file.getOriginalFilename(), input, getUserId())); } }
+    { try (var input = file.getInputStream()) { return response(service.upload(id, file.getOriginalFilename(), input, getUserId())); } }
     @DeleteMapping("/definitions/{id}/files/{fileId}") @PreAuthorize("@ss.hasPermi('governance:flow:edit')")
     @Log(title="删除原生流程输入文件", businessType=BusinessType.DELETE, isSaveRequestData=false, isSaveResponseData=false)
     public AjaxResult deleteFile(@PathVariable String id, @PathVariable String fileId) { service.deleteFile(id, fileId, getUserId()); return success(); }
     @PostMapping("/definitions/{id}/validate") @PreAuthorize("@ss.hasPermi('governance:flow:test')")
     @Log(title="校验原生 Kettle 流程", businessType=BusinessType.OTHER, isSaveRequestData=false, isSaveResponseData=false)
-    public AjaxResult validate(@PathVariable String id) { return success(service.validate(id, getUserId())); }
+    public AjaxResult validate(@PathVariable String id) { return response(service.validate(id, getUserId())); }
     @PostMapping("/definitions/{id}/runs") @PreAuthorize("@ss.hasPermi('governance:flow:test')")
     @Log(title="运行原生 Kettle 流程", businessType=BusinessType.OTHER, isSaveRequestData=false, isSaveResponseData=false)
-    public AjaxResult submit(@PathVariable String id, @RequestBody RunInput input) { return success(service.submit(id, input, getUserId())); }
+    public AjaxResult submit(@PathVariable String id, @RequestBody RunInput input) { return response(service.submit(id, input, getUserId())); }
     @GetMapping("/definitions/{id}/runs") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
-    public AjaxResult runs(@PathVariable String id) { return success(service.runs(id, getUserId())); }
+    public AjaxResult runs(@PathVariable String id) { return response(service.runs(id, getUserId())); }
     @GetMapping("/definitions/{id}/schedules") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
-    public AjaxResult schedules(@PathVariable String id) { return success(scheduler.list(id, getUserId())); }
+    public AjaxResult schedules(@PathVariable String id) { return response(scheduler.list(id, getUserId())); }
     @PostMapping("/definitions/{id}/schedules") @PreAuthorize("@ss.hasPermi('governance:flow:edit')")
     @Log(title="创建原生 Kettle 计划", businessType=BusinessType.INSERT, isSaveRequestData=false, isSaveResponseData=false)
     public AjaxResult createSchedule(@PathVariable String id, @RequestBody DataGovernanceKettleScheduler.Input input)
-    { return success(scheduler.create(id, input, getUserId())); }
+    { return response(scheduler.create(id, input, getUserId())); }
     @PutMapping("/schedules/{id}") @PreAuthorize("@ss.hasPermi('governance:flow:edit')")
     @Log(title="修改原生 Kettle 计划", businessType=BusinessType.UPDATE, isSaveRequestData=false, isSaveResponseData=false)
     public AjaxResult updateSchedule(@PathVariable String id, @RequestBody DataGovernanceKettleScheduler.Input input)
-    { return success(scheduler.update(id, input, getUserId())); }
+    { return response(scheduler.update(id, input, getUserId())); }
     @PostMapping("/schedules/{id}/state") @PreAuthorize("@ss.hasPermi('governance:flow:test')")
     @Log(title="启停原生 Kettle 计划", businessType=BusinessType.UPDATE, isSaveRequestData=false, isSaveResponseData=false)
     public AjaxResult scheduleState(@PathVariable String id, @RequestBody DataGovernanceKettleScheduler.StateInput input)
-    { return success(scheduler.state(id, input, getUserId())); }
+    { return response(scheduler.state(id, input, getUserId())); }
     @PostMapping("/schedules/{id}/run") @PreAuthorize("@ss.hasPermi('governance:flow:test')")
     @Log(title="触发原生 Kettle 计划", businessType=BusinessType.OTHER, isSaveRequestData=false, isSaveResponseData=false)
-    public AjaxResult scheduleRun(@PathVariable String id) { return success(scheduler.runNow(id, getUserId())); }
+    public AjaxResult scheduleRun(@PathVariable String id) { return response(scheduler.runNow(id, getUserId())); }
     @PostMapping("/schedules/{id}/recover") @PreAuthorize("@ss.hasPermi('governance:flow:test')")
     @Log(title="核查原生 Kettle 计划运行", businessType=BusinessType.OTHER, isSaveRequestData=false, isSaveResponseData=false)
-    public AjaxResult scheduleRecover(@PathVariable String id) { return success(scheduler.recover(id, getUserId())); }
+    public AjaxResult scheduleRecover(@PathVariable String id) { return response(scheduler.recover(id, getUserId())); }
     @GetMapping("/runs/{id}") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
-    public AjaxResult run(@PathVariable String id) { return success(service.run(id, getUserId())); }
+    public AjaxResult run(@PathVariable String id) { return response(service.run(id, getUserId())); }
     @GetMapping("/runs/{id}/events") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
-    public AjaxResult events(@PathVariable String id, @RequestParam(defaultValue="0") long after) { return success(service.events(id, after, getUserId())); }
+    public AjaxResult events(@PathVariable String id, @RequestParam(defaultValue="0") long after) { return response(service.events(id, after, getUserId())); }
     @PostMapping("/runs/{id}/stop") @PreAuthorize("@ss.hasPermi('governance:flow:test')")
     @Log(title="停止原生 Kettle 运行", businessType=BusinessType.OTHER, isSaveRequestData=false, isSaveResponseData=false)
-    public AjaxResult stop(@PathVariable String id) { return success(service.stop(id, getUserId())); }
+    public AjaxResult stop(@PathVariable String id) { return response(service.stop(id, getUserId())); }
     @GetMapping("/runs/{id}/files/{filename}") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
     public void download(@PathVariable String id, @PathVariable String filename, HttpServletResponse response) throws IOException
     {
