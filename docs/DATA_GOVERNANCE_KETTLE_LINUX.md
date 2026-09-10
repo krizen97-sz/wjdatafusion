@@ -1,6 +1,6 @@
 # 原 Kettle worker 的 Linux 容器适配
 
-当前交付为独立适配代码、离线命令计划、mock 测试和待审核的真实 Linux smoke 入口。**本轮没有调用 Docker daemon、没有启动容器、没有修改防火墙，也没有操作 250。不能将 mock 或命令计划写成 Linux 实机验收通过。只有根任务后续审核并完成目标主机验收后，才可用于 250。**
+当前交付包含独立适配代码、默认离线命令计划、mock 测试和显式执行的 Linux smoke 入口。根任务已在 250 的独立候选运行目录完成官方镜像 load、断网原引擎烟测及受限网络烟测，证据见文末；这不代表平台服务已切换。适配器作者没有操作服务器。**既有实机证据使用本次修改前的 UTC 桥接；本次新增的 XML 时区和 INPUT_DIR 协议需配套新 worker 再复验，不能沿用旧证据声称通过。**
 
 ## 入口与目录
 
@@ -17,7 +17,7 @@ handle = runtime.launch(operation_dir, "run", launch_id=launch_nonce, stderr=pri
 
 停止既可通过 `handle.stdin.write("STOP\n")`，也可通过 `runtime.request_stop(run_id)` 写入 `STOP:<nonce>`。Java 参数包含 `-Dgovernance.worker.launch.id=<nonce>`，需使用支持 nonce 控制文件的 worker 实现。HALT 可沿原 stdin/nonce 文件协议发送；适配器另保留显式、经身份核对的强制容器终止能力，避免损坏的控制文件阻止管理方终止自己的容器。
 
-**handle.pid 只是宿主上的 docker attach CLI PID，不是 Java 身份。** 后续 broker 接线必须用 containerId、labels、sourceHash 与本适配器的状态/恢复接口，不能复用“宿主 PID 命令包含 Java”的判断。当前主入口仍未自动切换为本适配器。
+**handle.pid 只是宿主上的 docker attach CLI PID，不是 Java 身份。** broker 接线使用 containerId、labels、sourceHash 与本适配器的状态/恢复接口，不能复用“宿主 PID 命令包含 Java”的判断。
 
 只有 3 个 host bind mount：
 
@@ -27,7 +27,7 @@ handle = runtime.launch(operation_dir, "run", launch_id=launch_nonce, stderr=pri
 | 已验证 worker/lib | `/opt/rynew/lib` | 只读 |
 | 该次 operation 目录 | `/work/<runId>` | 读写 |
 
-Java 入口始终为原 `KettleWorker`，root 参数保留 `<runId>` 尾段，避免所有容器都用 `/work` 时派生出相同 Kafka 预览组。`HOME`、`KETTLE_HOME`、tmp 和 `${WORK_DIR}` 都在这个根下，`${WORK_DIR}` 为 `/work/<runId>/output`。原 inputFiles、子 KTR/KJB、产物路径保持一致。
+Java 入口始终为原 `KettleWorker`，root 参数保留 `<runId>` 尾段，避免所有容器都用 `/work` 时派生出相同 Kafka 预览组。`HOME`、`KETTLE_HOME`、tmp 和 `${WORK_DIR}` 都在这个根下，`${WORK_DIR}` 为 `/work/<runId>/output`。配套新 worker 的 `${INPUT_DIR}` 为 `/work/<runId>/input`：上传 inputFiles、子 KTR/KJB 和输入资产放 input，产物放 output，不为旧路径创建 output 输入别名，避免 FTP wildcard 上传输入文件。
 
 必须分开四处：制品 `worker_root`、运行 `operations_root`、适配器 `state_root`，以及 broker 自己保存 `run-records` / token 的 runtime。两个控制器目录都不挂进容器。检查目录重叠、路径分隔注入、符号链接、特殊文件及操作文件硬链接。旧 Mac manifest 的 JAR 顺序按受审文件名、SHA-256 重定位到 Linux 的 worker/lib；不会在 Linux 使用旧 `/Users/...` 绝对路径。
 
@@ -35,7 +35,7 @@ plan/launch 明确检查容器 uid/gid 对制品的目录遍历和文件读取�
 
 ## 镜像与限制
 
-`data-governance/kettle-worker/linux/image-lock.json` 固定官方 `eclipse-temurin` Java 17 JRE 的 **Linux amd64 manifest digest**。本轮通过官方 registry 的匿名只读接口核对 index、platform manifest 和 image config 的 SHA-256，并确认 Java 路径 `/opt/java/openjdk`；未拉取或运行该镜像。
+`data-governance/kettle-worker/linux/image-lock.json` 固定官方 `eclipse-temurin` Java 17 JRE 的 **Linux amd64 manifest digest**。适配器作者通过官方 registry 的匿名只读接口核对 index、platform manifest 和 image config 的 SHA-256，下载并验证离线包，确认 Java 路径 `/opt/java/openjdk`；根任务另在目标机完成 load 和候选运行，两类证据分别记录。
 
 该适配暂只支持锁定的 Linux amd64 镜像。目标 ARM64 或自定义 native library 镜像必须另选固定 digest 并审核，不能退回浮动 tag。
 
@@ -48,6 +48,16 @@ plan/launch 明确检查容器 uid/gid 对制品的目录遍历和文件读取�
 - 不继承 DOCKER_HOST/CONTEXT；CLI 固定连接本机 `/var/run/docker.sock`。JVM 注入环境变量显式清空。
 
 单文件 ulimit 不等于整个 operation 目录的总量配额。正式主机应给 operation 存储配置总量配额和留存策略；本适配不更改宿主磁盘配额或全局策略。
+
+## 根 XML 时区与恢复身份
+
+业务运行缺省时区为 `Asia/Shanghai`。plan 在该 operation 自己的 `transformation.ktr` 或 `transformation.kjb` 中，只读取根元素的 `data-rynew-timezone` 属性；run/validate 共用 KTR 规则，job/job-validate 共用 KJB 规则。无图的 capabilities 固定使用相同缺省值。空属性不是缺省，会被拒绝。
+
+只接受 `UTC` 或包含 `/`、且能由宿主 Python ZoneInfo 校验存在的 IANA 名称，例如 `Asia/Shanghai`、`America/Los_Angeles`、`Etc/GMT-8`、`US/Pacific`。拒绝 `CST`、`EST`、固定 offset、路径遍历、空白和额外 JVM 参数；XML 禁止 DTD/entity，限制大小并要求 UTF-8。worker 在启动后还按 Java 可用 ZoneId 检查，两端都不把未知值静默退回 GMT。
+
+有效值通过唯一的 `-Duser.timezone=<zone>` 进入原 JVM。Job 的整个 JVM 使用根 Job 时区，子 TRANS 在同一 JVM 内继承，不读取子节点的时区属性来重新启动或改写 JVM。launch 签名保持不变，也没有接受 XML 任意 argv 的接口。
+
+新 version-2 journal 记录 `timezone`、原 `artifactHash` 和包含有效时区的 `sourceHash`；commandPlan 与容器 labels 同步记录时区。读取 journal 时复算摘要并核对 JVM 参数，实际容器 inspect 还核对冻结的 Entrypoint/Cmd。恢复使用原 journal 的时区，不重新读取可变化的 XML。旧 version-1 UTC journal 继续保持原 sourceHash 和身份，不重写成新默认值。
 
 ## 默认断网及可信端点
 
@@ -101,7 +111,7 @@ python3 data-governance/kettle-worker/linux/smoke.py --config /private/reviewed-
 
 此命令只新增专属 smoke 目录和合成文件。**后续根任务审核、目标 Linux 前提满足后**，才能在该主机以配置的非 root 用户，或已显式允许 `stage_run_owner` 的特权控制器，加 `--execute`。容器本身始终使用非 root uid/gid。真实 smoke 要求 endpoints 为空，会通过同一原 Java 协议验证 SUCCEEDED 和完整输出字节，并记录 container identity/sourceHash 后清理自己的退出容器。
 
-本轮实际生成了针对现有原 JAR/classes 的离线 plan，`executed=false`；不代表上述 Linux smoke 已执行。
+初版针对原 JAR/classes 的离线 plan 为 `executed=false`，不能作为实机证据。后续根任务独立执行的验收列在文末。
 
 ## 停止、清理与恢复
 
@@ -148,7 +158,7 @@ docker image inspect sha256:72e36d8dd5e6aab7ca6f3bcc47b9a6b1dde9b4c7a03536ed081a
 
 配置仅允许锁文件的官方 RepoDigest 或这一个官方 config ID，不能填写任意镜像 ID、截短 ID、tag 或不同平台。两种模式都要求 `docker image inspect .Id` 等于官方 configDigest；RepoDigest 模式继续要求官方 RepoDigest 存在。离线模式的 docker create 直接使用通过校验的完整 ID，仍为 `--pull=never`，不执行隐式 pull。容器恢复、状态、停止和清理也核验容器实际 `Image`、配置 selector、sourceHash 标签和 nonce。两种 selector 分别进入 sourceHash，旧 journal 不会自动改写成新身份。
 
-本轮真实下载/静态回读证据：5 个层，归档 91,938,455 bytes，SHA256 `9142aff884ec5f9c2da43611d48aeba0821e31476f7fb31f25bea35584afc197`。本轮未调用本机或目标机 Docker；`dockerLoadVerified=false`、`imageExecuted=false`。目标机完成实际 load 后，仍需先执行上文 `endpoints=[]` 的 CSV→Script→File smoke，再单独验收网络白名单。
+真实下载/静态回读证据：5 个层，归档 91,938,455 bytes，SHA256 `9142aff884ec5f9c2da43611d48aeba0821e31476f7fb31f25bea35584afc197`。作者生成的离线包验证记录保留其历史边界 `dockerLoadVerified=false`、`imageExecuted=false`；根任务随后独立完成实际 load、断网和网络 smoke，不改写离线导出时的事实。
 
 ## 本轮验证边界
 
@@ -158,4 +168,17 @@ python3 data-governance/kettle-worker/linux/test_export_image.py -v
 sh -n data-governance/kettle-worker/linux/gate.sh
 ```
 
-已通过 40 项 adapter 测试和 8 项导出器合成测试：默认无网络、原协议透传、64-hex nonce、逐 run 目录映射、真实制品 hash 计划、配置/镜像/端点/argv/路径注入、无未隔离 fallback、策略失败 gate 不放行、未知容器/挂载/权限拒绝、既有规则保留、清理续做、attach 退出不冒充容器结束、恢复不重投、受控 uid/gid staging、制品权限不变、错误 nonce 拒绝及禁新执行后仍可停止；新增官方离线 ID/平台/恢复/来源标签、停止后的外部重启、元数据与层损坏、归档回读、路径和 HTTPS/token 重定向边界。控制文件测试实际创建本机文件，以 umask 0777 验证 FD ownership/mode 在 rename 前完成，覆盖 RELEASE/STOP/HALT 与失败不发布，journals 属主/0600 保持不变；本机非 root 时实际 fchown 使用当前 uid/gid，跨 uid 的 root→容器场景仍需 Linux smoke 复验。Docker、iptables、nsenter 全部为 mock，测试没有调用真实服务。真正 Linux 上的内核 firewall 顺序、容器 UID 文件权限、CSV 执行和允许/拒绝端点的网络实测，仍是部署前必做验收。
+已通过 46 项 adapter 测试、15 项网络脚本测试和 8 项导出器合成测试。除现有隔离、nonce、权限、镜像、清理/恢复边界外，新增时区默认/自定义值、Job/validate 一致性、XML/argv 注入、时区摘要/实际命令变更拒绝、旧 UTC journal 保留。控制文件测试实际创建本机文件，以 umask 0777 验证 FD ownership/mode 在 rename 前完成。网络脚本测试覆盖数字协议 6/17、解析失败保留原始内核文本、停止阶段事件落盘后关闭日志；UDP receive 超时本身不能判定为成功。以上测试中 Docker、iptables、nsenter 和网络 listener 为 mock，未调用真实服务。
+
+## 根任务执行的 250 候选实机证据
+
+以下来自根任务实际执行并提供的结果；适配器作者未登录服务器。目标为 Ubuntu 24.10 / x86_64、Docker 28.4.0 的独立候选目录。官方离线镜像 load 后 `.Id` 与锁定 configDigest 一致，平台为 `linux/amd64`。
+
+| 验收 | 根任务报告的真实结果 | 服务器证据 |
+| --- | --- | --- |
+| 无网络 CSV→原 Script→原 TextFileOutput | run `linux-smoke-01b563f91ac44de8b7c245c2b9d76aa3`；native SUCCEEDED；network none；输出 23 bytes；SHA256 `bdd030fb09e2633970c1d1dc2d01af7a33b934f549fdbddf1637b58e111bcff9`；自有容器 cleanup=true | `/opt/rynew/kettle-native-validation-bbe0642/private/live-smoke-fixed.json` |
+| 原 RowGenerator→Script Socket 探测→TextFileOutput | run `linux-network-smoke-4b4d327480c34467b7deba3747c373cd`；允许监听 1 / nonce ACK 1；禁止监听 0；DNS TCP DROP +2、UDP DROP +1；native SUCCEEDED；55 events；输出 729 bytes；SHA256 `1356536a1d2ab36d26677e4fb9ff428ba30064feddadc45f4123dc81b67ea8bf` | `/opt/rynew/kettle-native-validation-bbe0642/private/live-network-smoke-fixed.json` |
+
+网络成功报告中 cleanup、listenersClosed、eventReaderDrained 均为 true，eventReaderErrors 为空。此前失败 run 的自有资源由根任务按身份清理，运行文件保留，没有重投相同 run。
+
+上述两次使用时区变更前的 UTC 桥接，sourceHash 均为 `bf25218930aec2da13e532b9c24d92921855f3758b177991ed7ddce6249e1305`。不能将它们视为新默认 Asia/Shanghai、INPUT_DIR 隔离、业务连接或平台切换的验收；新协议需配套新 worker，真实 Java 固定 epoch 跨日结果由 worker 任务验证，目标机随后独立复验。
