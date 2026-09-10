@@ -118,13 +118,13 @@ Job 的 TRANS 条目使用明确的定义绑定：
        data-rynew-definition-id="当前用户的转换定义UUID">
   <name>运行子转换</name>
   <type>TRANS</type>
-  <filename>${WORK_DIR}/转换定义UUID.ktr</filename>
+  <filename>${INPUT_DIR}/转换定义UUID.ktr</filename>
 </entry>
 ```
 
-客户端从当前用户的定义列表选择转换，`filename` 使用 `${WORK_DIR}/` 加其 `runtimeFilename`。保存/导入不会猜测旧电脑路径对应哪个定义；detail 的 `references` 给出 `elementId,name,filename,definitionId,bound` 供界面显式绑定。
+客户端从当前用户的定义列表选择转换，`filename` 使用 `${INPUT_DIR}/` 加其 `runtimeFilename`。保存/导入不会猜测旧电脑路径对应哪个定义；detail 的 `references` 给出 `elementId,name,filename,definitionId,bound` 供界面显式绑定。
 
-Job 校验和运行时，平台核对绑定属于当前用户且类型为转换，将该转换的当前原生 XML **及已上传输入资产**与 Job 自身资产合并、冻结为 `inputFiles`。用户无需在 Job 重复上传已属于子转换的输入。名称按 NFC 和大小写折叠检测等价冲突，SHA-256 一致时复用一个文件，内容不同时明确拒绝；Job 自己上传的文件也不能静默覆盖 child 文件。跨用户引用及非 `${WORK_DIR}/basename.ktr` 路径均拒绝。原生 worker 的 Job 接口为 `/jobs/validate`、`PUT /jobs/{id}`，以及 `POST /runs {jobId,...}`。
+Job 校验和运行时，平台核对绑定属于当前用户且类型为转换，将该转换的当前原生 XML **及已上传输入资产**与 Job 自身资产合并、冻结为 `inputFiles`。用户无需在 Job 重复上传已属于子转换的输入。名称按 NFC 和大小写折叠检测等价冲突，SHA-256 一致时复用一个文件，内容不同时明确拒绝；Job 自己上传的文件也不能静默覆盖 child 文件。跨用户引用及非 `${INPUT_DIR}/<关联定义 UUID>.ktr` 路径均拒绝。原生 worker 的 Job 接口为 `/jobs/validate`、`PUT /jobs/{id}`，以及 `POST /runs {jobId,...}`。
 
 每份冻结输入保存来源定义/修订和内容哈希，整个输入集合生成 `inputsHash`；运行的 `snapshotFingerprint` 同时包含请求参数、根 XML SHA-256 和 inputsHash。后续编辑子转换或替换输入不会改变旧运行。同一 requestId 重试仍返回原快照；新的 requestId 才读取新的 child 及资产。Mac 运行目录按文件系统等价名称复用，不根据重复名称猜测覆盖次序。
 
@@ -222,3 +222,9 @@ mvn -f WDF100.0/pom.xml -pl wjdatafusion-manage -am \
 补充联调已覆盖中文输入文件、中文起点 Job→同 owner 子转换（自动带入其上传资产）和真正的短 Cron→原生文件执行。启用三个 live 开关及真实附件检查的全组共 **34 项通过，0 失败、0 跳过**；短 Cron 首次触发后暂停，最终仅 1 个成功运行。Job 的中文起点需要 worker 明确使用 `meta.findStart()` 的起点副本，不能仅让校验接受改名后仍由旧引擎硬编码寻找 `START`。
 
 这证明 Java 服务与本机 broker 主链连通。生产服务、远程地址、旧原流程业务、全部插件行为、Job 的真实外部交付和浏览器交互验收仍由各自专项证据覆盖；本提交不把 mock Job 编排当成真实 FTP 交付证明。
+
+### 输入与输出目录隔离
+
+上传资产和绑定子转换 XML 仅由 worker 写入 `${INPUT_DIR}`，`${WORK_DIR}` 只承载运行输出。绑定 TRANS 的 filename 必须精确匹配 `${INPUT_DIR}/` 加目标定义的 `runtimeFilename`，避免同名歧义。CSV 等输入节点也使用 `${INPUT_DIR}/文件名`；文本输出仍写 `${WORK_DIR}/文件名`。FTP 通配符应只扫描输出目录。平台不把输入复制到输出，也不自动迁移旧路径。
+
+保存草稿允许保留旧路径；显式校验、运行冻结及计划冻结时拒绝绑定子转换的 WORK_DIR 或别名路径。执行已有计划也检查其冻结 XML 的引用协议，不读取当前定义重建快照；升级前的本地旧协议计划需要暂停、重新编辑并冻结后才能执行。

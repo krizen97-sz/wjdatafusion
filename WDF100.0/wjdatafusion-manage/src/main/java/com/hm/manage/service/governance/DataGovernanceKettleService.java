@@ -361,6 +361,10 @@ public class DataGovernanceKettleService
         synchronized (this)
         {
             initialize(); identifier(runId); if (snapshot.owner != owner) unavailable(); ownedDefinition(snapshot.definitionId, owner); requireWorker();
+            // Validate the frozen copy itself; never rebuild it from today's definition or assets.
+            xml = crypto.decrypt(snapshot.encryptedXml);
+            for (Map<String,Object> reference : references(xml))
+                if (!((String)reference.get("definitionId")).isBlank()) inputReferenceFilename(reference);
             if (Files.exists(root.resolve("runs").resolve(runId + ".json"), LinkOption.NOFOLLOW_LINKS))
             { StoredRun prior = ownedRun(runId, owner); if (!snapshot.xmlSha256.equals(prior.xmlSha256) || !snapshot.inputsHash.equals(prior.inputsHash)) conflict(); return runView(prior); }
             run = new StoredRun(); run.id = runId; run.owner = owner; run.definitionId = snapshot.definitionId; run.revision = snapshot.definitionRevision;
@@ -470,10 +474,7 @@ public class DataGovernanceKettleService
             if (!target.summary.kind().equals("transformation")) reject("TRANS 只能关联当前用户的转换定义");
             for (StoredFile asset : storedFiles(target.summary.id()))
             { asset.sourceDefinitionId = target.summary.id(); asset.sourceRevision = target.summary.revision(); mergeInput(merged, asset); }
-            String filename = (String)reference.get("filename");
-            if (!filename.startsWith("${WORK_DIR}/")) reject("关联转换文件名须为 ${WORK_DIR}/安全文件名.ktr");
-            filename = filename.substring("${WORK_DIR}/".length()); uploadFilename(filename);
-            if (!filename.endsWith(".ktr")) reject("关联转换须使用 .ktr 文件名");
+            String filename = inputReferenceFilename(reference);
             String contents = crypto.decrypt(target.encryptedXml); byte[] bytes = contents.getBytes(StandardCharsets.UTF_8);
             StoredFile file = new StoredFile(); file.info = new FileInfo(target.summary.id(), filename, bytes.length, hash(bytes), target.summary.updatedAt());
             file.encryptedContent = crypto.encrypt(Base64.getEncoder().encodeToString(bytes));
@@ -482,6 +483,14 @@ public class DataGovernanceKettleService
         List<StoredFile> result = new ArrayList<>(merged.values());
         if (result.size() > 20 || result.stream().mapToLong(f -> f.info.bytes()).sum() > TOTAL_FILES) reject("运行输入及关联转换总额超过 20 文件或 16 MiB");
         return result;
+    }
+    private static String inputReferenceFilename(Map<String,Object> reference)
+    {
+        String id = (String)reference.get("definitionId"); identifier(id);
+        String filename = id + ".ktr";
+        if (!("${INPUT_DIR}/" + filename).equals(reference.get("filename")))
+            reject("关联转换文件名须为 ${INPUT_DIR}/关联定义UUID.ktr；WORK_DIR 仅用于输出");
+        return filename;
     }
     private static void mergeInput(Map<String,StoredFile> merged, StoredFile file)
     {

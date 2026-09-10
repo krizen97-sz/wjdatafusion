@@ -75,7 +75,7 @@ class DataGovernanceKettleLiveTest
                 for (Node n = settings.getDocumentElement().getFirstChild(); n != null; n = n.getNextSibling()) entry.appendChild(document.importNode(n, true));
                 put(entry, "name", names[i]); put(entry, "type", types[i]); put(entry, "copy_nr", "0");
                 if (i == 0) { put(entry, "start", "Y"); put(entry, "dummy", "N"); put(entry, "repeat", "N"); }
-                else { put(entry, "filename", "${WORK_DIR}/" + childFilename); entry.setAttribute("data-rynew-definition-id", childId); }
+                else { put(entry, "filename", "${INPUT_DIR}/" + childFilename); entry.setAttribute("data-rynew-definition-id", childId); }
             }
             Element hop = document.createElement("hop"); document.getElementsByTagName("hops").item(0).appendChild(hop);
             for (var value : Map.of("from", names[0], "to", names[1], "from_nr", "0", "to_nr", "0", "enabled", "Y", "evaluation", "Y", "unconditional", "Y").entrySet()) put(hop, value.getKey(), value.getValue());
@@ -109,7 +109,7 @@ class DataGovernanceKettleLiveTest
             put(step, "name", names[i]); put(step, "type", types[i]); put(step, "copies", "1"); put(step, "distribute", "Y"); put(step, "partitioning/method", "none");
             Document settings = DataGovernanceKettleXml.parse("<settings>" + defaults.get(types[i]) + "</settings>");
             for (Node n = settings.getDocumentElement().getFirstChild(); n != null; n = n.getNextSibling()) step.appendChild(document.importNode(n, true));
-            if (i == 0) { put(step, "filename", "${WORK_DIR}/" + inputFilename); put(step, "encoding", "UTF-8"); put(step, "lazy_conversion", "N"); put(step, "fields/field/name", "name"); }
+            if (i == 0) { put(step, "filename", "${INPUT_DIR}/" + inputFilename); put(step, "encoding", "UTF-8"); put(step, "lazy_conversion", "N"); put(step, "fields/field/name", "name"); }
             if (i == 1)
             {
                 put(step, "compatible", "N"); put(step, "optimizationLevel", "9");
