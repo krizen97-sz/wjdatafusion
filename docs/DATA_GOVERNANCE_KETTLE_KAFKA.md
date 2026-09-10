@@ -36,7 +36,7 @@ python3 tools/data-governance/kettle_kafka_fixture_proof.py \
   --worker-sources /absolute/path/to/data-governance/kettle-worker/src
 ```
 
-工具校验原 worker 清单中的全部 JAR，将其复制到本环境自己的 worker/lib，保持 custom-first 类顺序，在自己的 classes 编译 worker。不会改动其他 worker 的类库或入口。OS 沙箱仅授权专属 ZooKeeper/Kafka 的两个 IPv4 回环端口和本次操作文件目录。所有主题和组都必须带 `kettle-v2-随机ID` 前缀；预览组以 `-preview` 结束，绝不能使用业务组。
+工具校验原 worker 清单中的全部 JAR，将其复制到本环境自己的 worker/lib，保持 custom-first 类顺序，在自己的 classes 编译 worker。不会改动其他 worker 的类库或入口。OS 沙箱仅授权专属 ZooKeeper/Kafka 的两个 IPv4 回环端口和本次操作文件目录。所有合成主题和配置组带 `kettle-v2-随机ID` 前缀。预览由 worker 在执行副本中自动派生以 `-preview` 结束的独立组，绝不能实际消费原保存组；用户无需手动更改保存的消费配置。
 
 ## 从原类实测确认的配置语义
 
@@ -48,7 +48,7 @@ python3 tools/data-governance/kettle_kafka_fixture_proof.py \
 | 空主题开关 | `STOPONEMPTYTOPIC` 在该原 Meta 中“元素存在即 true”，写 false 字符串仍启用；关闭时必须省略元素 |
 | 自动提交 | `auto.commit.enable=true` 可能在下游发送失败时仍提交已取的消息；不能提供整链成功保障 |
 | 原手动提交 | 该海康包 `Trans$3` 在 `isFinished && errors<=0` 时显式 commitOffsets，即使 auto.commit=false；不检查 preview/stopped |
-| 预览屏障 | 必须使用独立预览组且禁自动提交，并在 worker 安装禁止显式 commitOffsets 的预览代理；只设置 auto.commit=false 不足以保护位点 |
+| 预览屏障 | worker 在原 metadata 的执行副本中自动派生独立组、关闭自动提交，并安装禁止显式 commitOffsets 的预览代理；原保存 XML、原消费组和自动提交设置保持不变；只设置 auto.commit=false 不足以保护位点 |
 | 运行中停止 | 原 hasNext 可阻塞；测试使用有界 consumer.timeout.ms，在运行中明确请求 STOP，核对原进程正常退出，不能把强杀当作正常停止 |
 
 标准运行采用 `auto.commit=false`，由原引擎在完整转换成功后手动提交。该范围只涵盖这条同步 KafkaProducer 的转换；若父 Job 之后还有 FTP、外部接收方确认或部分输出重试，则必须另外设计父作业级确认与幂等协议，不能延伸声称端到端原子性。
@@ -59,13 +59,15 @@ python3 tools/data-governance/kettle_kafka_fixture_proof.py \
 2. 原 KafkaConsumer → 原 ScriptValueMod 增加可辨识后缀 → 原 KafkaProducer，同步发送第一批 5 条；目标读回仅 5 条、ZK offset=5。
 3. 同一专属组运行第二批 3 条；目标共 8 条，不重复、不丢尾部。
 4. 故意配置错误输出编码器，原 producer 报错；在 auto.commit=false 的运行中，原手动提交逻辑不前移该独立失败组位点。
-5. 预览只运行上游和选中处理节点，不执行输出节点；新预览组关闭自动提交，结束后同时核对 broker/ZK 无位点，目标主题数量不变。
-6. 独立预览组取到数据后请求 STOP；正常停止、无强杀、broker/ZK 无位点。
+5. 保存使用现有正常运行组、`auto.commit=true` 的源配置，直接执行预览；从 `preview-override` / `preview-offset-policy` 真实事件取得实际派生组，核对该组 broker/ZK 无位点及 owners 清空，同时核对原组位点、保存 XML 和不可变输入 XML 都未变化，目标主题数量不变。
+6. 同样从保存组自动派生另一个预览组，取到数据后请求 STOP；核对正常停止、无强杀、实际派生组 broker/ZK 无位点及 owners 清空，原保存组与 XML 仍不变。
 7. fixture 停止/重启保持 clusterId、已写消息和消费位点，端口与 PID 归属再次核验。
 
 每次证据保存在运行目录 `evidence/kettle-v2-*/`；`acceptance.json` 仅在所有断言通过后生成。原始失败样本和日志保留，不能用后续成功覆盖第一次发现的风险。基础目录/PID/下载来源/固定端口检查运行：
 
 2026-09-10 已通过 7 项边界测试及上述原 Kafka 全链。最终独立源主题 8 条按 5＋3 写回；错误编码器用例 errors=1 且未提交源位点。预览与停止均实测到 `preview-offset-commit-blocked`，ZK/broker 位点为空、consumer owners 清空、输出主题仍为 8 条，停止没有强杀。停/启 fixture 后 clusterId 与原先 8 条目标数据保持；`evidence/restart-persistence.json` 保存回读结果。证明使用已提交的 broker `23f2966` 与协作 worker 的预览屏障源码快照，不能据此声称随后 broker 恢复机制已经验收。
+
+同日追加自动派生组复验：使用稳定 broker `0d47e04` 与新的 Java 执行副本实现，先通过 worker.save 持久保存已有消费组和 `auto.commit=true`，预览与停止都不编辑这些保存设置。测试从真实覆盖/策略事件读取两个实际派生组，而非误查请求中的原组；两个新组均无 Kafka/ZK 位点、owners 清空，原组 ZK 位点始终为 8。保存文件、原始操作 XML 字节和原自动提交设置均未改变，预览/停止后的目标主题逐条回读仍与原 8 条输出相同。保存 XML 与有效执行 XML 的哈希及覆盖差异由原 worker 事件记录。
 
 ```sh
 python3 tools/data-governance/kettle_kafka_fixture_test.py

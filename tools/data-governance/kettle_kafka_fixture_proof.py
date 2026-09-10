@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import time
@@ -21,7 +22,7 @@ def tag(parent, kind, value=None, **values):
     return element
 
 
-def transformation(prefix, group, count, *, preview=False, continuous=False):
+def transformation(prefix, group, count, *, preview=False, continuous=False, auto_commit=False):
     trans = ET.Element('transformation'); tag(trans, 'info', name='Original Kafka round trip', size_rowset=100)
     order = tag(trans, 'order')
     source = tag(trans, 'step', name='Original Kafka input', type='KafkaConsumer', copies=1, distribute='Y',
@@ -31,7 +32,7 @@ def transformation(prefix, group, count, *, preview=False, continuous=False):
     kafka = tag(source, 'KAFKA')
     for key, value in {'zookeeper.connect':'127.0.0.1:22181', 'group.id':group, 'auto.offset.reset':'smallest',
                        'consumer.id':group+'-client', 'client.id':group+'-client',
-                       'auto.commit.enable':'false', 'auto.commit.interval.ms':'100',
+                       'auto.commit.enable':'true' if auto_commit else 'false', 'auto.commit.interval.ms':'100',
                        'zookeeper.connection.timeout.ms':'6000','zookeeper.session.timeout.ms':'6000',
                        'consumer.timeout.ms':'1000','offsets.storage':'zookeeper','dual.commit.enabled':'false'}.items():
         tag(kafka, key, value)
@@ -53,6 +54,24 @@ def transformation(prefix, group, count, *, preview=False, continuous=False):
 def module(path):
     spec = importlib.util.spec_from_file_location('native_worker_under_test', path)
     loaded = importlib.util.module_from_spec(spec); spec.loader.exec_module(loaded); return loaded
+
+
+def effective_preview_group(events, configured_group):
+    policies=[e for e in events if e.get('type') in {'preview-override','preview-offset-policy'}
+              and e.get('node')=='Original Kafka input']
+    groups={e.get('effectiveGroup',e.get('group')) for e in policies}
+    require(len(groups)==1 and None not in groups,'Missing or inconsistent effective preview group events')
+    effective=next(iter(groups))
+    require(effective!=configured_group and re.fullmatch(r'kettle-v2-[a-f0-9]{32}-preview',effective),
+            'Preview reused the saved consumer group')
+    for event in policies:
+        require(event.get('effectiveAutoCommit',event.get('autoCommit')) in (False,'false'),'Preview auto-commit was not disabled')
+        if event.get('type')=='preview-override':
+            require(event.get('originalGroup')==configured_group and event.get('originalAutoCommit') in (True,'true'),
+                    'Override event lost the original saved settings')
+    require(any(e.get('type')=='preview-offset-commit-blocked' and e.get('group')==effective for e in events),
+            'No explicit-commit barrier observed for the effective preview group')
+    return effective
 
 
 def clone_worker(root, source, sources):
@@ -104,7 +123,7 @@ def main():
     prefix='kettle-v2-'+uuid.uuid4().hex
     proof=root/'evidence'/prefix;proof.mkdir(mode=0o700)
     seed=fixture.probe(root,marker,java,'seed',prefix,'8');save_json(proof/'seed.json',seed)
-    group=prefix+'-run';preview_group=prefix+'-preview';stop_group=prefix+'-stop-preview'
+    group=prefix+'-run'
     before=fixture.probe(root,marker,java,'audit',group,prefix+'-input');save_json(proof/'before-run.json',before)
     run_id=worker.launch('run',transformation(prefix,group,5),run_id=prefix+'-run')
     result=worker.wait(run_id);save_json(proof/'run.json',result)
@@ -127,19 +146,31 @@ def main():
     require(failed['state']=='FAILED' and failed.get('errors',0)>0,'Intentional producer error was not visible')
     failed_offsets=fixture.probe(root,marker,java,'audit',failed_group,prefix+'-input');save_json(proof/'failed-offsets.json',failed_offsets)
     require(not failed_offsets['brokerOffsets'] and not failed_offsets['zookeeperOffsets'],'Failed manual-commit run advanced source offsets')
-    prior_preview=fixture.probe(root,marker,java,'audit',preview_group,prefix+'-input')
-    preview_id=worker.launch('run',transformation(prefix,preview_group,2,preview=True),preview_step='Original script processing',row_limit=2,run_id=prefix+'-preview')
+    # Persist a normal source definition with the existing run group and auto-commit enabled.
+    # Preview must override only its execution copy, without asking users to edit this definition.
+    preview_xml=transformation(prefix,group,2,preview=True,auto_commit=True)
+    saved=worker.save(prefix+'-saved',preview_xml);require(saved.get('validation',{}).get('valid'),'Saved source XML did not validate')
+    saved_path=worker.store/(prefix+'-saved.ktr');saved_hash=file_hash(saved_path)
+    prior_preview=fixture.probe(root,marker,java,'audit',group,prefix+'-input')
+    preview_id=worker.launch('run',saved_path.read_text(),preview_step='Original script processing',row_limit=2,run_id=prefix+'-preview')
     preview=worker.wait(preview_id);save_json(proof/'preview.json',preview)
     require(preview['state'] in {'SUCCEEDED','PREVIEW_COMPLETE'}, 'Preview did not complete')
-    require(any(event.get('type')=='preview-offset-commit-blocked' for event in worker.runs[preview_id]['events']),
-            'Original completion attempted no observable guarded commit')
+    preview_group=effective_preview_group(worker.runs[preview_id]['events'],group)
     after_preview=fixture.probe(root,marker,java,'audit',preview_group,prefix+'-input')
-    save_json(proof/'preview-offsets.json',{'before':prior_preview,'after':after_preview})
+    original_after_preview=fixture.probe(root,marker,java,'audit',group,prefix+'-input')
+    save_json(proof/'preview-offsets.json',{'configuredGroup':group,'effectiveGroup':preview_group,
+              'originalBefore':prior_preview,'originalAfter':original_after_preview,'effectiveAfter':after_preview})
+    require(prior_preview==original_after_preview,'Preview changed the saved consumer group offsets or ownership')
+    require(file_hash(saved_path)==saved_hash and saved_path.read_text()==preview_xml,'Preview rewrote the saved source XML')
+    require((worker_root/'operations'/preview_id/'transformation.ktr').read_text()==preview_xml,'Preview rewrote the immutable incoming XML')
     require(not after_preview['brokerOffsets'] and not after_preview['zookeeperOffsets'], 'Preview committed offsets')
     require(not after_preview['zookeeperConsumerOwners'],'Preview left consumer ownership behind')
     repeated=fixture.probe(root,marker,java,'read',prefix+'-output','8')
     require(repeated['endOffset']==8,'Preview wrote to output topic')
-    stop_id=worker.launch('run',transformation(prefix,stop_group,0,preview=True,continuous=True),preview_step='Original script processing',row_limit=100,run_id=prefix+'-stop')
+    stop_xml=transformation(prefix,group,0,preview=True,continuous=True,auto_commit=True)
+    stop_saved=worker.save(prefix+'-stop-saved',stop_xml);require(stop_saved.get('validation',{}).get('valid'),'Saved stop source XML did not validate')
+    stop_path=worker.store/(prefix+'-stop-saved.ktr');stop_hash=file_hash(stop_path)
+    stop_id=worker.launch('run',stop_path.read_text(),preview_step='Original script processing',row_limit=100,run_id=prefix+'-stop')
     deadline=time.monotonic()+12
     while time.monotonic()<deadline:
         events=worker.runs[stop_id]['events']
@@ -148,15 +179,25 @@ def main():
         time.sleep(0.1)
     worker.stop(stop_id);stopped=worker.wait(stop_id);save_json(proof/'stop.json',stopped)
     require(stopped['state']=='STOPPED' and not worker.runs[stop_id].get('forcedStop'),'Original consumer stop was not graceful')
-    require(any(event.get('type')=='preview-offset-commit-blocked' for event in worker.runs[stop_id]['events']),
-            'Stopped preview did not demonstrate its explicit commit guard')
+    stop_group=effective_preview_group(worker.runs[stop_id]['events'],group)
+    require(stop_group!=preview_group,'Two distinct preview executions reused the same derived group')
     after_stop=fixture.probe(root,marker,java,'audit',stop_group,prefix+'-input');save_json(proof/'stop-offsets.json',after_stop)
     require(not after_stop['brokerOffsets'] and not after_stop['zookeeperOffsets'],'Stopped preview committed offsets')
     require(not after_stop['zookeeperConsumerOwners'],'Stopped preview left consumer ownership behind')
+    original_after_stop=fixture.probe(root,marker,java,'audit',group,prefix+'-input')
+    require(original_after_stop==prior_preview,'Stopped preview changed the saved consumer group')
+    require(file_hash(stop_path)==stop_hash and stop_path.read_text()==stop_xml,'Stopped preview changed saved XML')
+    require((worker_root/'operations'/stop_id/'transformation.ktr').read_text()==stop_xml,'Stopped preview changed immutable incoming XML')
+    final_output=fixture.probe(root,marker,java,'read',prefix+'-output','8')
+    require(final_output==read,'Stopped preview changed the target topic')
+    save_json(proof/'output-after-stop.json',final_output)
     report={'passed':True,'prefix':prefix,'records':8,'batchSizes':[5,3],'originalPipeline':result,'tailRun':tail,'preview':preview,'stop':stopped,
             'before':before,'after':after,'previewOffsets':after_preview,'stoppedOffsets':after_stop,
             'failedProducer':failed,'failedOffsets':failed_offsets,'outputReadback':read,
             'autoCommitEnabled':False,'fixtureVersion':fixture.LOCK['version'],'workerRoot':str(worker_root),
+            'configuredPreviewGroup':group,'effectivePreviewGroup':preview_group,'effectiveStopGroup':stop_group,
+            'originalGroupBeforePreview':prior_preview,'originalGroupAfterStop':original_after_stop,
+            'savedXmlUnchanged':True,'savedAutoCommitStillTrue':True,
             'proofScriptSha256':file_hash(Path(__file__))}
     save_json(proof/'acceptance.json',report)
     print(json.dumps({'passed':True,'records':8,'batchSizes':[5,3],'evidence':str(proof/'acceptance.json'),'previewCommitted':False,'stopForced':False},indent=2))
