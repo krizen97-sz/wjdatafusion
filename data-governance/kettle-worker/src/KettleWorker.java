@@ -271,7 +271,9 @@ public final class KettleWorker {
   }
   public static void main(String[] args) {
     System.setOut(System.err);int exit=0;
-    try{root=Paths.get(args[0]);String operation=args[1];installControlBridge();init();
+    try{root=Paths.get(args[0]);String operation=args[1];installControlBridge();
+      String timeZone=System.getProperty("user.timezone","Asia/Shanghai");if(!(timeZone.equals("UTC")||timeZone.matches("[A-Za-z0-9_+-]+(?:/[A-Za-z0-9_+-]+)+"))||!java.time.ZoneId.getAvailableZoneIds().contains(timeZone))throw new IllegalArgumentException("Unsupported execution timezone");
+      java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone(java.time.ZoneId.of(timeZone)));event("execution-timezone",Map.of("executionTimeZone",java.time.ZoneId.systemDefault().getId()));init();
       if((operation.equals("run")||operation.equals("job"))&&startupStopRequested()){event("terminal",Map.of("state","STOPPED","errors",0,"nodes",List.of(),"started",false));}
       else if(operation.equals("probe")){Map<String,Object> proof=new LinkedHashMap<>();Path outside=Paths.get(args[2]);try{Files.readString(outside.resolve("synthetic-private.txt"));proof.put("readBlocked",false);}catch(java.nio.file.FileSystemException e){proof.put("readBlocked",String.valueOf(e.getReason()).contains("Operation not permitted"));}try{Files.writeString(outside.resolve("blocked"),"synthetic");proof.put("writeBlocked",false);}catch(java.nio.file.FileSystemException e){proof.put("writeBlocked",String.valueOf(e.getReason()).contains("Operation not permitted"));}try{new java.net.Socket("127.0.0.1",9).close();proof.put("networkBlocked",false);}catch(java.net.SocketException e){proof.put("networkBlocked",String.valueOf(e.getMessage()).contains("Operation not permitted"));}proof.put("securityManagerInstalled",System.getSecurityManager()!=null);event("sandbox-proof",proof);}
       else if(operation.equals("job")||operation.equals("job-validate")){Class.forName("NativeJobExecutor").getMethod(operation.equals("job")?"run":"validate",Path.class).invoke(null,root);}
