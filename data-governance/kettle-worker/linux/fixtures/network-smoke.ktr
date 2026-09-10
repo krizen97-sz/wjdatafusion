@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<transformation>
+  <info><name>Bounded isolated Linux network smoke</name><size_rowset>10</size_rowset></info>
+  <order>
+    <hop><from>One synthetic row</from><to>Native Java socket probes</to><enabled>Y</enabled></hop>
+    <hop><from>Native Java socket probes</from><to>Native evidence output</to><enabled>Y</enabled></hop>
+  </order>
+  <step><name>One synthetic row</name><type>RowGenerator</type><copies>1</copies><distribute>Y</distribute>
+    <fields><field><name>fixture</name><type>String</type><length>-1</length><precision>-1</precision><nullif>synthetic-network</nullif></field></fields>
+    <limit>1</limit><never_ending>N</never_ending><interval_in_ms>5000</interval_in_ms><row_time_field>now</row_time_field><last_time_field>FiveSecondsAgo</last_time_field>
+  </step>
+  <step><name>Native Java socket probes</name><type>ScriptValueMod</type><copies>1</copies><distribute>Y</distribute>
+    <compatible>N</compatible><optimizationLevel>0</optimizationLevel>
+    <jsScripts><jsScript><jsScript_type>0</jsScript_type><jsScript_name>Bounded network fixture</jsScript_name><jsScript_script/></jsScript></jsScripts>
+    <fields><field><name>processed</name><type>String</type><length>-1</length><precision>-1</precision><replace>N</replace></field></fields>
+  </step>
+  <step><name>Native evidence output</name><type>TextFileOutput</type><copies>1</copies><distribute>Y</distribute>
+    <separator>|</separator><enclosure/><header>N</header><footer>N</footer><format>UNIX</format><compression>None</compression><encoding>UTF-8</encoding><create_parent_folder>Y</create_parent_folder>
+    <file><name>${WORK_DIR}/network-result</name><extention>json</extention><is_command>N</is_command><servlet_output>N</servlet_output><append>N</append><split>N</split><haspartno>N</haspartno><add_date>N</add_date><add_time>N</add_time><splitevery>0</splitevery><max_wait_time_ms>0</max_wait_time_ms><rename_file_name>N</rename_file_name></file>
+    <fields><field><name>processed</name><type>String</type><length>-1</length><precision>-1</precision><trim_type>none</trim_type></field></fields>
+  </step>
+</transformation>
