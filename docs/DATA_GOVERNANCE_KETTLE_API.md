@@ -65,6 +65,8 @@ JSON 响应沿用 `AjaxResult`，下文描述的内容均位于 `data`。真实�
 
 目录合并原生 `/capabilities` 和独立静态清单。静态清单中同一个 ID、不同 Meta 类仍分别保留；仅当 `kind + id + className` 对上 worker 当前登记时才标记 `loadable=true`，不根据同名 ID 猜测加载版本。
 
+逗号分隔的原生别名组（如 `ScriptValueMod,ScriptValue`）按组内 ID 匹配同一个 Meta，返回主 `id` 和 `aliases`，保留原 `catalogKey` 及中文来源。它不会把脚本的静态中文项与 worker 可加载项拆成两个工具。
+
 目录条目包括 `id,kind,name,category,className,catalogKey?,nameSource?,classVariantCount?,discovered,loadable,executionSupported,executable,executionValidated,status,defaultXmlBase64?`。其中：
 
 - `discovered`：静态或原生登记中找到。
@@ -96,6 +98,8 @@ __RYNEW_SECRET_<秘密 UUID>__
 ## 文件导入与 Job 的子转换
 
 导入接受 `.ktr/.kjb/.zip`。ZIP 最多 20 个 XML 流程、解压内容总额 20 MiB、最多 200 个成员；成员目录穿越和非法 XML 均拒绝。所有候选先完成结构解析，再开始保存，避免混合有效/无效成员时部分导入。每个用户最多 200 个定义。整个导入不调用 worker，不测试原地址，也不执行原流程。
+
+ZIP 成员名先严格按 UTF-8 读取。原附件没有 UTF-8 标志且其 GBK 名称无法按 UTF-8 解码时，重读相同 ZIP bytes，依次尝试 GB18030（包含 GBK）和 IBM437；不改成员内容，也不替换附件。EFS 标记为 UTF-8 的名称仍由 JDK 按 UTF-8 解释。原生 XML 内容本身保持严格 UTF-8，并支持 UTF-8 BOM；不能把任意二进制当作字符文本强行解码。
 
 例如 `917552 (1).zip` 内成员不是有效 XML 时，接口明确返回该成员无法解析，不能悄悄换用旁边的 `917552.zip`。实际 XML 的业务缺值可以保存草稿，原引擎校验仍是独立操作。
 
@@ -140,6 +144,30 @@ worker 也可能在受理后报告 `PREPARING`，因此平台用 `submissionStat
 事件和快照会屏蔽 XML 及关联子转换中已知的秘密值、明显秘密键和赋值日志，不返回 worker 私有目录、classpath 或原 XML。下载仍是完整二进制流，经过 owner 检查，保留原始文件内容、长度和 partial 标识。
 
 ## 验证
+
+真实附件的只读 API 导入已验证：`851987.zip` 为 18 步转换，`851988.zip` 为 2 条目的作业，`917552.zip` 为 24 步转换和 3 条目的作业。4 个定义共 42 步、5 作业条目、12 个步骤插件；10 个敏感字段被遮蔽。规范化稳定 ID/秘密标记后，原 XML 与 API 保存/读取往返结构完全一致，包括所有未知字段、CDATA、复制数（42 步均为 1）和条件分支。worker 调用数为 0。可复现测试：
+
+```bash
+mvn -f WDF100.0/pom.xml -pl wjdatafusion-manage -am \
+  -Dtest=DataGovernanceKettleAttachmentTest \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dkettle.attachments=true \
+  -Dkettle.attachmentsDir=/Volumes/KINGSTON/datai \
+  -Dkettle.attachmentEvidence=/private/runtime/evidence/real-attachment-imports.json test
+```
+
+`917552 (1).zip` 两成员 CRC 正确，外层 DEFLATE 已正常解压，但得到 43,384 / 8,288 字节二进制，前 12 字节均为 `2f4e5b6eae58a3840903a54d`。严格 UTF-8、UTF-16LE/BE、GB18030 以及 zlib/raw-deflate/bzip2/xz 均不能解码为原生 XML。其长度为 8 字节对齐，和相应明文附件的重复 8 字节块存在一致映射，具有 ECB 式分组变换特征；这不足以认定具体算法或密钥。静态检查所选原包 `TransMeta/JobMeta → XMLHandler.loadXMLFile → KettleVFS.getInputStream` 及 XMLHandler 的 7 个文件重载，未发现解密流包装，而是进入普通 XML 解析器。本接口明确拒绝该格式并保留原包，不暴力破解、不拿旁边 ZIP 的明文替代，也不宣称已经支持这个变体。
+
+原 Meta 的布尔字段不能一律套用同一种 XML：
+
+| 原插件字段 | 实际 XML 语义 | 来源 |
+| --- | --- | --- |
+| KafkaConsumer `STOPONEMPTYTOPIC` | 元素存在即 true；关闭必须删除元素 | 原 Meta 的 loadXML/getXML |
+| TextFileOutput `file/rename_file_name` | `Y/N` | 读 `Y.equalsIgnoreCase`，写 `XMLHandler.addTagValue(String,boolean)` |
+| JsonInput `readurl/IsAFile/defaultPathLeafToNull` | `Y/N` | 原 Meta 的布尔 Tag 写入和 `Y.equalsIgnoreCase` 读取 |
+| ScriptValueMod `compatible` | `Y/N` | 原 Meta 布尔 Tag 写入 |
+| SelectValues `fields/meta/date_format_lenient`、`fields/meta/lenient_string_to_number` | `true/false`；写 `Y` 会被读为 false | `SelectMetadataChange.getXML` 使用 `Boolean.toString`，`loadXML` 使用 `Boolean.parseBoolean`，字段名由原 `step-attributes.xml` 映射 |
+
+Kafka 属性表的 `auto.commit.enable` 等仍是 Kafka 字符串配置，不得按普通 XML bool 改成 Y/N。原 KafkaProducer 会将字符串字段转换成字节数组再发送，不能仅因输入字段为 String 就把 `DefaultEncoder` 改成 `StringEncoder`。这些适配差异由配置表单遵守，API 保留原 XML 值。
 
 专项测试：
 
