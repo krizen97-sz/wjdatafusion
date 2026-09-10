@@ -29,7 +29,9 @@ handle = runtime.launch(operation_dir, "run", launch_id=launch_nonce, stderr=pri
 
 Java 入口始终为原 `KettleWorker`，root 参数保留 `<runId>` 尾段，避免所有容器都用 `/work` 时派生出相同 Kafka 预览组。`HOME`、`KETTLE_HOME`、tmp 和 `${WORK_DIR}` 都在这个根下，`${WORK_DIR}` 为 `/work/<runId>/output`。原 inputFiles、子 KTR/KJB、产物路径保持一致。
 
-控制器 journals 位于单独的 `state_root`，不挂进容器。检查目录重叠、路径分隔注入、符号链接、特殊文件及操作文件硬链接。旧 Mac manifest 的 JAR 顺序按受审文件名、SHA-256 重定位到 Linux 的 worker/lib；不会在 Linux 使用旧 `/Users/...` 绝对路径。
+必须分开四处：制品 `worker_root`、运行 `operations_root`、适配器 `state_root`，以及 broker 自己保存 `run-records` / token 的 runtime。两个控制器目录都不挂进容器。检查目录重叠、路径分隔注入、符号链接、特殊文件及操作文件硬链接。旧 Mac manifest 的 JAR 顺序按受审文件名、SHA-256 重定位到 Linux 的 worker/lib；不会在 Linux 使用旧 `/Users/...` 绝对路径。
+
+plan/launch 明确检查容器 uid/gid 对制品的目录遍历和文件读取权限，以及对运行目录/文件的私有读写权限。默认 `stage_run_owner=false` 时不匹配即拒绝。经管理员显式配置为 true 后，特权 controller 可以在独占 journal 建立、容器尚未创建时，仅将**这一个新 run** 的普通目录/文件调整为配置 uid/gid、0700/0600；无特权且原属主不匹配时仍拒绝。不会改变 artifacts、broker、适配器 journals 或其父目录的所有权/权限。制品不可读必须独立修正发布时的只读权限，不能通过 adapter 全局 chown 放宽。
 
 ## 镜像与限制
 
@@ -97,13 +99,15 @@ python3 tools/data-governance/kettle_linux_runtime.py plan \
 python3 data-governance/kettle-worker/linux/smoke.py --config /private/reviewed-linux.json
 ```
 
-此命令只新增专属 smoke 目录和合成文件。**后续根任务审核、目标 Linux 前提满足后**，才能在该主机以配置的非 root 控制器用户显式加 `--execute`。真实 smoke 要求 endpoints 为空，会通过同一原 Java 协议验证 SUCCEEDED 和完整输出字节，并记录 container identity/sourceHash 后清理自己的退出容器。
+此命令只新增专属 smoke 目录和合成文件。**后续根任务审核、目标 Linux 前提满足后**，才能在该主机以配置的非 root 用户，或已显式允许 `stage_run_owner` 的特权控制器，加 `--execute`。容器本身始终使用非 root uid/gid。真实 smoke 要求 endpoints 为空，会通过同一原 Java 协议验证 SUCCEEDED 和完整输出字节，并记录 container identity/sourceHash 后清理自己的退出容器。
 
 本轮实际生成了针对现有原 JAR/classes 的离线 plan，`executed=false`；不代表上述 Linux smoke 已执行。
 
 ## 停止、清理与恢复
 
-`status/stop/recover/cleanup --config ... --run-id ...` 都从私有 journal 读取原 container ID，并核对标签和容器配置。docker attach CLI 退出不等于 Java/容器退出；Popen-shaped handle 的 wait/poll 以容器状态为准。
+`status/stop/recover/cleanup --config ... --run-id ...` 都从私有 journal 读取原 container ID，并核对标签和容器配置。`status/recover/identity_for_run()` 返回 containerId/sourceHash/nonce；已清理对象的身份来自受保护的历史 journal。broker 必须把 nonce 与自身冻结 intent 比较，再调用 `request_stop(..., expected_nonce=...)`，不能仅凭同名 runId 停止容器。停止方法会再次检查 nonce 和实际容器标签。关闭 `execution_enabled` 只阻止新执行，仍可核查/停止/清理已登记的自有容器。
+
+docker attach CLI 退出不等于 Java/容器退出；Popen-shaped handle 的 wait/poll 以容器状态为准。
 
 清理必须先确认容器退出，且网络没有其他容器、宿主专属链没有未知规则。只移除该容器、逐条删除带本次 comment 的专属规则、删除自己的链与网络；不使用全局 flush、改默认策略、prune 或按名称猜测后批量删除。容器内 namespace 链随其 namespace 销毁。
 
@@ -116,4 +120,4 @@ python3 data-governance/kettle-worker/linux/test_kettle_linux_runtime.py -v
 sh -n data-governance/kettle-worker/linux/gate.sh
 ```
 
-已通过 26 项纯 mock 测试：默认无网络、原协议透传、64-hex nonce、逐 run 目录映射、真实制品 hash 计划、配置/镜像/端点/argv/路径注入、无未隔离 fallback、策略失败 gate 不放行、未知容器/挂载/权限拒绝、既有规则保留、清理续做、attach 退出不冒充容器结束、恢复不重投。测试没有执行 Docker、iptables 或 nsenter。真正 Linux 上的内核 firewall 顺序、容器 UID 文件权限、CSV 执行和允许/拒绝端点的网络实测，仍是部署前必做验收。
+已通过 30 项纯 mock 测试：默认无网络、原协议透传、64-hex nonce、逐 run 目录映射、真实制品 hash 计划、配置/镜像/端点/argv/路径注入、无未隔离 fallback、策略失败 gate 不放行、未知容器/挂载/权限拒绝、既有规则保留、清理续做、attach 退出不冒充容器结束、恢复不重投、受控 uid/gid staging、制品权限不变、错误 nonce 拒绝及禁新执行后仍可停止。测试没有执行 Docker、iptables 或 nsenter。真正 Linux 上的内核 firewall 顺序、容器 UID 文件权限、CSV 执行和允许/拒绝端点的网络实测，仍是部署前必做验收。

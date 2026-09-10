@@ -21,7 +21,8 @@ def main():
     args = parser.parse_args(); config = module.Config.load(args.config)
     module.require(not config.endpoints, 'Offline smoke requires endpoints=[]')
     if args.execute:
-        module.require(sys.platform == 'linux' and os.geteuid() == config.uid, 'Run live smoke as the configured non-root Linux controller UID')
+        module.require(sys.platform == 'linux' and (os.geteuid() == config.uid or os.geteuid() == 0 and config.stage_run_owner),
+                       'Live smoke needs the configured uid, or an explicitly approved root controller staging only this run')
     operation = config.operations_root / ('linux-smoke-' + uuid.uuid4().hex); operation.mkdir(mode=0o700)
     for directory in ['output', 'home', 'tmp']: (operation / directory).mkdir(mode=0o700)
     shutil.copyfile(ASSETS / 'fixtures/smoke.ktr', operation / 'transformation.ktr')

@@ -80,6 +80,7 @@ class Config:
     uid: int
     gid: int
     execution_enabled: bool = False
+    stage_run_owner: bool = False
     endpoints: tuple = ()
     subnet_pool: str = '172.30.0.0/16'
     memory_mb: int = 512
@@ -98,6 +99,7 @@ class Config:
         require(type(self.uid) is int and 1 <= self.uid <= 65534 and type(self.gid) is int and 1 <= self.gid <= 65534,
                 'Container must use an explicit non-root uid/gid')
         require(type(self.execution_enabled) is bool, 'execution_enabled must be boolean')
+        require(type(self.stage_run_owner) is bool, 'stage_run_owner must be boolean')
         require(self.image == IMAGE['image'] and self.platform == IMAGE['platform'], 'Only the reviewed digest/platform is supported')
         require(type(self.memory_mb) is int and 256 <= self.memory_mb <= 4096, 'Memory limit outside supported range')
         require(type(self.cpus) in (float, int) and 0.25 <= self.cpus <= 4, 'CPU limit outside supported range')
@@ -162,9 +164,44 @@ class LinuxRuntime:
         # Never inherit DOCKER_HOST/DOCKER_CONTEXT or connect to a remote Docker daemon.
         return [self.config.docker, '--host', 'unix:///var/run/docker.sock', *args]
 
-    def _live(self):
+    def _live(self, *, execute=False):
         require(self.host_platform == 'linux', 'Linux Docker isolation is unavailable; no unisolated fallback')
-        require(self.config.execution_enabled, 'Execution disabled; use plan until the host/runtime is reviewed')
+        if execute: require(self.config.execution_enabled, 'Execution disabled; use plan until the host/runtime is reviewed')
+
+    def _access(self, path, required):
+        info = path.stat(); mode = stat.S_IMODE(info.st_mode)
+        shift = 6 if info.st_uid == self.config.uid else 3 if info.st_gid == self.config.gid else 0
+        return (mode >> shift) & required == required
+
+    def _permissions(self, operation, *, permit_staging=True):
+        for directory in [self.config.worker_root / 'lib', self.config.worker_root / 'classes']:
+            for path in [directory, *directory.rglob('*')]:
+                require(self._access(path, 5 if path.is_dir() else 4),
+                        'Artifact is not readable/traversable by the configured container uid/gid; prepare artifact permissions separately')
+        paths = [operation, *operation.rglob('*')]
+        if self.config.stage_run_owner and permit_staging:
+            require(os.geteuid() == 0 or all(p.stat().st_uid == self.config.uid == os.geteuid() and p.stat().st_gid == self.config.gid for p in paths),
+                    'Staging another uid/gid requires a privileged controller; no global permission fallback')
+            return
+        for path in paths:
+            require(self._access(path, 7 if path.is_dir() else 6) and stat.S_IMODE(path.stat().st_mode) & 0o007 == 0,
+                    'Run files/directories must be private and writable by the configured container uid/gid; stage only this owned run explicitly')
+
+    def _stage_operation(self, record):
+        operation = Path(record['operationDir'])
+        if self.config.stage_run_owner:
+            # Only the exclusively journalled, not-yet-started run is eligible. Artifacts and controller state are excluded.
+            require(not record['containerId'] and not record['javaReleased'], 'Cannot change ownership after container creation')
+            for path in [operation, *operation.rglob('*')]:
+                require(not path.is_symlink() and (path.is_dir() or path.is_file()), 'Unsafe run member during ownership staging')
+                if path.is_file(): require(path.stat().st_nlink == 1, 'Hard-linked run member refused')
+                info = path.stat()
+                if info.st_uid != self.config.uid or info.st_gid != self.config.gid:
+                    require(os.geteuid() == 0, 'Controller cannot stage this run uid/gid')
+                    os.chown(path, self.config.uid, self.config.gid, follow_symlinks=False)
+                path.chmod(0o700 if path.is_dir() else 0o600)
+            record['ownershipStaged'] = True; self._save(record)
+        self._permissions(operation, permit_staging=False)
 
     def _artifacts(self):
         root = self.config.worker_root
@@ -205,6 +242,7 @@ class LinuxRuntime:
             if path.is_file(): require(path.stat().st_nlink == 1, 'Operation assets cannot alias files outside the run through hard links')
         require(not (op / '.rynew-java-ready').exists() and not (op / 'control.stop').exists(), 'Operation control files already exist')
         classpath, source_hash = self._artifacts()
+        self._permissions(op)
         endpoints = cfg.endpoints if operation in {'run', 'job'} else ()
         short = hashlib.sha256((cfg.instance_id + ':' + op.name + ':' + nonce).encode()).hexdigest()[:20]
         network = 'ryk-' + short; chain = 'RYK_' + short; bridge = 'rk-' + short[:12]
@@ -247,6 +285,7 @@ class LinuxRuntime:
                 'endpoints': list(endpoints), 'hostRules': rules if endpoints else [], 'hostJump': jump,
                 'labelArgs': label_args, 'state': 'PLANNED', 'hostChainCreated': False, 'installedHostRules': [],
                 'hostJumpInstalled': False, 'javaReleased': False, 'containerRemoved': False, 'networkRemoved': False,
+                'ownershipStaging': self.config.stage_run_owner,
                 'order': ['verify image/artifacts', 'create owned network if needed', 'create gated container',
                           'install scoped DOCKER-USER chain if needed', 'start gate and pin container namespace',
                           'install namespace IPv4 allowlist and IPv6 deny chain', 'release Java gate', 'stream original NDJSON',
@@ -325,7 +364,7 @@ class LinuxRuntime:
         return repo in {'eclipse-temurin', 'library/eclipse-temurin', 'docker.io/eclipse-temurin', 'docker.io/library/eclipse-temurin'} and checksum == expected.split('@', 1)[1]
 
     def launch(self, operation_dir, operation, preview_step='', row_limit=20, launch_id=None, *, stderr=None):
-        self._live(); record = self.plan(operation_dir, operation, preview_step, row_limit, launch_id)
+        self._live(execute=True); record = self.plan(operation_dir, operation, preview_step, row_limit, launch_id)
         require(not (self.config.state_root / (record['runId'] + '.json')).exists(), 'Existing run requires reconciliation; never recreate it')
         self._save(record, create=True)
         attached = None
@@ -333,6 +372,7 @@ class LinuxRuntime:
             image = json.loads(self.runner.run(self.docker('image', 'inspect', record['image'])).stdout)[0]
             require(any(self._same_image(value, record['image']) for value in image.get('RepoDigests', [])) and image['Os'] == 'linux' and image['Architecture'] == 'amd64', 'Pinned image is not preloaded for Linux amd64')
             for name in ['home', 'tmp', 'output']: (Path(record['operationDir']) / name).mkdir(exist_ok=True, mode=0o700)
+            self._stage_operation(record)
             if record['endpoints']:
                 # The existing DOCKER-USER hook must already exist; never create global policy or change the daemon.
                 self.runner.run(self._iptables('-S', 'DOCKER-USER'))
@@ -380,27 +420,38 @@ class LinuxRuntime:
         self._live(); record = self._read(run_id)
         if record.get('containerRemoved'):
             return {'runId': run_id, 'containerId': record['containerId'], 'sourceHash': record['sourceHash'],
-                    'running': False, 'exitCode': record.get('containerExitCode'), 'state': record['state'], 'containerRemoved': True}
+                    'nonce': record['nonce'], 'running': False, 'exitCode': record.get('containerExitCode'), 'state': record['state'], 'containerRemoved': True}
         container = self._inspect(record)
         return {'runId': run_id, 'containerId': record['containerId'], 'sourceHash': record['sourceHash'],
-                'running': bool(container['State']['Running']), 'exitCode': container['State'].get('ExitCode'),
+                'nonce': record['nonce'], 'running': bool(container['State']['Running']), 'exitCode': container['State'].get('ExitCode'),
                 'state': record['state'], 'recoveryRequired': record['state'] == 'RECOVERY_REQUIRED'}
 
     def recover(self, run_id):
         self._live(); record = self._read(run_id)
         if not record.get('containerId'):
-            return {'runId': run_id, 'state': 'RECOVERY_REQUIRED', 'message': 'Container creation was not acknowledged; inspect exact recorded labels before manual reconciliation'}
+            return {'runId': run_id, 'state': 'RECOVERY_REQUIRED', 'nonce': record['nonce'], 'sourceHash': record['sourceHash'],
+                    'containerId': None, 'message': 'Container creation was not acknowledged; inspect exact recorded labels before manual reconciliation'}
         if record.get('containerRemoved'):
             if record.get('networkName') and not record.get('networkRemoved'): self._network(record)
             return {'runId': run_id, 'state': record['state'], 'containerRemoved': True, 'resubmitted': False,
+                    'nonce': record['nonce'], 'sourceHash': record['sourceHash'], 'containerId': record['containerId'],
                     'message': 'Continue scoped cleanup only; container removal was already acknowledged'}
         container = self._inspect(record)
         record['state'] = 'RECOVERY_REQUIRED'; self._save(record)
         return {'runId': run_id, 'containerId': container['Id'], 'state': 'RECOVERY_REQUIRED',
+                'nonce': record['nonce'], 'sourceHash': record['sourceHash'],
                 'running': container['State']['Running'], 'exitCode': container['State'].get('ExitCode'), 'resubmitted': False}
 
-    def request_stop(self, run_id, *, force=False):
-        self._live(); record = self._read(run_id); container = self._inspect(record)
+    def identity_for_run(self, run_id):
+        self._live(); record = self._read(run_id)
+        if record.get('containerId') and not record.get('containerRemoved'): self._inspect(record)
+        return {'kind': 'docker', 'containerId': record.get('containerId'), 'sourceHash': record['sourceHash'],
+                'nonce': record['nonce'], 'containerRemoved': record.get('containerRemoved', False)}
+
+    def request_stop(self, run_id, *, force=False, expected_nonce=None):
+        self._live(); record = self._read(run_id)
+        if expected_nonce is not None: require(expected_nonce == record['nonce'], 'Stop intent nonce differs from the protected container journal')
+        container = self._inspect(record)
         if not container['State']['Running']: return self.status(run_id)
         if force:
             # A compromised operation directory cannot block the trusted Docker kill path by linking control.stop.
@@ -454,9 +505,7 @@ class ContainerProcess:
     def terminate(self): self.runtime.request_stop(self.run_id)
     def kill(self): self.runtime.request_stop(self.run_id, force=True)
     def identity(self):
-        record = self.runtime._read(self.run_id)
-        self.runtime._inspect(record)
-        return {'kind': 'docker', 'containerId': self.container_id, 'sourceHash': record['sourceHash'], 'nonce': record['nonce']}
+        return self.runtime.identity_for_run(self.run_id)
 
 
 def main():

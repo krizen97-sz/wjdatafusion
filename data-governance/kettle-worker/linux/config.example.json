@@ -6,6 +6,7 @@
   "uid": 10001,
   "gid": 10001,
   "execution_enabled": false,
+  "stage_run_owner": false,
   "endpoints": [],
   "subnet_pool": "172.30.0.0/16",
   "memory_mb": 512,

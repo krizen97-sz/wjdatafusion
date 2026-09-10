@@ -105,16 +105,18 @@ class LinuxTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup); self.base = Path(self.temp.name).resolve()
         self.worker = self.base / 'worker'; self.ops = self.base / 'operations'; self.state = self.base / 'journals'
+        self.uid = os.geteuid() or 10001; self.gid = os.getegid() or 10001
         for path in [self.worker / 'lib', self.worker / 'classes', self.ops]: path.mkdir(parents=True)
         (self.worker / 'lib/original.jar').write_bytes(b'synthetic jar for command construction only')
         (self.worker / 'classes/KettleWorker.class').write_bytes(bytes.fromhex('cafebabe0000003d') + b'synthetic')
         self.manifest = {'libraries': [{'file': 'original.jar', 'sha256': runtime.digest(self.worker / 'lib/original.jar')}],
                          'classpath': str(self.worker / 'classes') + os.pathsep + str(self.worker / 'lib/original.jar')}
         (self.worker / 'manifest.json').write_text(json.dumps(self.manifest))
-        self.op = self.ops / 'run-one'; self.op.mkdir(); (self.op / 'transformation.ktr').write_text('<transformation/>')
+        self.op = self.ops / 'run-one'; self.op.mkdir(mode=0o700); (self.op / 'transformation.ktr').write_text('<transformation/>')
+        (self.op / 'transformation.ktr').chmod(0o600)
     def config(self, **changes):
         values = dict(instance_id='1' * 32, worker_root=self.worker, operations_root=self.ops, state_root=self.state,
-                      uid=10001, gid=10001, execution_enabled=True)
+                      uid=self.uid, gid=self.gid, execution_enabled=True, stage_run_owner=os.geteuid() == 0)
         values.update(changes); return runtime.Config(**values)
     def controller(self, **changes):
         runner = FakeRunner(); return runtime.LinuxRuntime(self.config(**changes), runner=runner, namespace=fake_namespace, host_platform='linux'), runner
@@ -124,7 +126,7 @@ class LinuxTests(unittest.TestCase):
         self.assertEqual('none', plan['containerCreate'][plan['containerCreate'].index('--network') + 1])
         self.assertIn('--pull=never', plan['containerCreate']); self.assertIn('--cap-drop=ALL', plan['containerCreate'])
         self.assertIn('--read-only', plan['containerCreate']); self.assertIn('--security-opt=no-new-privileges:true', plan['containerCreate'])
-        self.assertIn('10001:10001', plan['containerCreate']); self.assertNotIn('--privileged', plan['containerCreate'])
+        self.assertIn(str(self.uid) + ':' + str(self.gid), plan['containerCreate']); self.assertNotIn('--privileged', plan['containerCreate'])
         self.assertEqual(['/work/run-one', 'run', '', '20'], plan['javaArgv'][-4:]); self.assertNotIn('/var/run/docker.sock', str(plan['mounts']))
     def test_mounts_and_classpath_are_exact(self):
         controller, _ = self.controller(); plan = controller.plan(self.op, 'run')
@@ -256,6 +258,36 @@ class LinuxTests(unittest.TestCase):
         with self.assertRaises(FileExistsError): controller._save(plan, create=True)
         with self.assertRaises(RuntimeError): controller.launch(self.op, 'run')
         self.assertEqual([], runner.calls)
+    def test_unreadable_artifacts_and_unprepared_run_owner_fail_before_docker(self):
+        controller, runner = self.controller(stage_run_owner=False)
+        artifact = self.worker / 'lib/original.jar'; artifact.chmod(0)
+        with self.assertRaises((RuntimeError, PermissionError)): controller.plan(self.op, 'run')
+        artifact.chmod(0o644)
+        controller, runner = self.controller(uid=65533 if self.uid != 65533 else 65532, stage_run_owner=False)
+        with self.assertRaises(RuntimeError): controller.launch(self.op, 'run')
+        self.assertEqual([], runner.calls)
+    def test_explicit_staging_only_changes_this_run_permissions(self):
+        self.op.chmod(0o775); (self.op / 'transformation.ktr').chmod(0o664)
+        artifact_mode = (self.worker / 'lib/original.jar').stat().st_mode
+        controller, runner = self.controller(stage_run_owner=True)
+        controller.launch(self.op, 'run')
+        self.assertEqual(0o700, self.op.stat().st_mode & 0o777)
+        self.assertEqual(0o600, (self.op / 'transformation.ktr').stat().st_mode & 0o777)
+        self.assertEqual(artifact_mode, (self.worker / 'lib/original.jar').stat().st_mode)
+        self.assertTrue(controller._read('run-one')['ownershipStaged'])
+    def test_stop_nonce_and_cleaned_identity_remain_bound_to_journal(self):
+        controller, runner = self.controller(); controller.launch(self.op, 'run', launch_id='4' * 64)
+        count = len(runner.calls)
+        with self.assertRaises(RuntimeError): controller.request_stop('run-one', expected_nonce='5' * 64)
+        self.assertEqual(count, len(runner.calls)); self.assertFalse((self.op / 'control.stop').exists())
+        self.assertEqual('4' * 64, controller.identity_for_run('run-one')['nonce'])
+        runner.container['State']['Running'] = False; controller.cleanup('run-one')
+        self.assertEqual('4' * 64, controller.identity_for_run('run-one')['nonce'])
+        self.assertTrue(controller.status('run-one')['containerRemoved'])
+    def test_disabling_new_execution_does_not_disable_owned_stop(self):
+        controller, runner = self.controller(); controller.launch(self.op, 'run')
+        stopped_controller = runtime.LinuxRuntime(self.config(execution_enabled=False), runner=runner, namespace=fake_namespace, host_platform='linux')
+        self.assertTrue(stopped_controller.request_stop('run-one')['stopRequested'])
     def test_external_container_restart_is_not_adopted(self):
         controller, runner = self.controller(); controller.launch(self.op, 'run'); runner.container['State']['StartedAt'] = 'unapproved-new-start'
         with self.assertRaises(RuntimeError): controller.recover('run-one')
