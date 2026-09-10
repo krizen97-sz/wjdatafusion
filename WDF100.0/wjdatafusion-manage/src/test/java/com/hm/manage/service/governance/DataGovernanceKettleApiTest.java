@@ -181,10 +181,10 @@ class DataGovernanceKettleApiTest
     }
     @Test void boundJobUsesSameOwnerChildXmlSnapshotAndRejectsOtherOwner()
     {
-        String child = save(xml()); String jobXml = "<job><name>job</name><entries><entry data-rynew-definition-id='" + child + "'><name>transform</name><type>TRANS</type><filename>${WORK_DIR}/child.ktr</filename></entry></entries></job>";
+        String child = save(xml()); String jobXml = jobXml(child);
         String job = save(jobXml); var run = service.submit(job, new RunInput(1L, "run", null, null, "job"), 7);
         assertEquals("job", run.get("kind")); assertTrue(worker.calls.stream().anyMatch(c -> c.startsWith("PUT /jobs/")));
-        assertEquals("child.ktr", worker.lastSubmit.path("inputFiles").get(0).path("name").asText());
+        assertEquals(child + ".ktr", worker.lastSubmit.path("inputFiles").get(0).path("name").asText());
         String foreign = (String)service.save(null, input(null, xml()), 8).get("id");
         String invalid = save(jobXml.replace(child, foreign)); int calls = worker.calls.size();
         assertThrows(ServiceException.class, () -> service.submit(invalid, new RunInput(1L, "run", null, null, "foreign"), 7));
@@ -225,7 +225,53 @@ class DataGovernanceKettleApiTest
         assertEquals(first.get("inputsHash"), service.runs(job, 7).get(1).get("inputsHash"));
     }
     private String jobXml(String child)
-    { return "<job><name>job</name><entries><entry data-rynew-definition-id='" + child + "'><name>transform</name><type>TRANS</type><filename>${WORK_DIR}/" + child + ".ktr</filename></entry></entries></job>"; }
+    { return "<job><name>job</name><entries><entry data-rynew-definition-id='" + child + "'><name>transform</name><type>TRANS</type><filename>${INPUT_DIR}/" + child + ".ktr</filename></entry></entries></job>"; }
+    @Test void frozenJobKeepsChildInputAndOutputDirectoriesSeparate() throws Exception
+    {
+        String child = save("<transformation><info><name>directories</name></info>"
+            + "<connection><name>fixture</name><password>synthetic-child-password</password></connection>"
+            + "<step><name>read</name><type>CsvInput</type><filename>${INPUT_DIR}/中文输入.csv</filename></step>"
+            + "<step><name>write</name><type>TextFileOutput</type><file><name>${WORK_DIR}/result</name></file></step></transformation>");
+        String job = save(jobXml(child));
+        service.upload(child, "中文输入.csv", new ByteArrayInputStream("version-one".getBytes(StandardCharsets.UTF_8)), 7);
+        FrozenDefinition snapshot = service.captureFrozen(job, 1L, 7);
+        String snapshotId = UUID.randomUUID().toString(); service.writeFrozen(snapshotId, snapshot);
+        assertFalse(Files.readString(temporary.resolve("schedule-snapshots").resolve(snapshotId + ".json")).contains("synthetic-child-password"));
+        service.save(child, input(1L, returned(child).replace("/result", "/edited-output")), 7);
+        FrozenDefinition reloaded = service.readFrozen(snapshotId, 7);
+        assertTrue(crypto().decrypt(reloaded.encryptedXml).contains("${INPUT_DIR}/" + child + ".ktr"));
+        assertEquals(2, reloaded.inputs.size());
+        StoredFile childFile = reloaded.inputs.stream().filter(f -> f.info.name().equals(child + ".ktr")).findFirst().orElseThrow();
+        String childXml = DataGovernanceKettleXml.decode(crypto().decrypt(childFile.encryptedContent));
+        assertTrue(childXml.contains("${INPUT_DIR}/中文输入.csv"));
+        assertTrue(childXml.contains("${WORK_DIR}/result")); assertFalse(childXml.contains("edited-output"));
+        service.submitFrozen(reloaded, UUID.randomUUID().toString(), 7);
+        assertEquals(2, worker.lastSubmit.path("inputFiles").size());
+        for (JsonNode file : worker.lastSubmit.path("inputFiles"))
+            assertFalse(file.path("name").asText().contains("/")); // transport remains basename-only
+    }
+    @Test void oldWorkDirOrAliasedChildReferencesCannotValidateFreezeOrSubmit()
+    {
+        String child = save(xml());
+        for (String invalidXml : List.of(jobXml(child).replace("${INPUT_DIR}", "${WORK_DIR}"),
+                jobXml(child).replace(child + ".ktr", "alias.ktr"), jobXml(child).replace("/" + child + ".ktr", "/../" + child + ".ktr")))
+        {
+            String job = save(invalidXml); // retaining a draft must not perform any operation
+            assertThrows(ServiceException.class, () -> service.validate(job, 7));
+            assertThrows(ServiceException.class, () -> service.captureFrozen(job, 1L, 7));
+            assertThrows(ServiceException.class, () -> service.submit(job, new RunInput(1L, "run", null, 20, UUID.randomUUID().toString()), 7));
+        }
+        assertTrue(worker.calls.isEmpty());
+    }
+    @Test void priorFrozenWorkDirReferenceIsRejectedWithoutRecapturingOrResubmitting() throws Exception
+    {
+        String child = save(xml()), job = save(jobXml(child)); FrozenDefinition snapshot = service.captureFrozen(job, 1L, 7);
+        // Represent an encrypted pre-protocol local plan. The dispatch gate checks its own frozen XML.
+        snapshot.encryptedXml = crypto().encrypt(crypto().decrypt(snapshot.encryptedXml).replace("${INPUT_DIR}", "${WORK_DIR}"));
+        String runId = UUID.randomUUID().toString();
+        assertThrows(ServiceException.class, () -> service.submitFrozen(snapshot, runId, 7));
+        assertTrue(worker.calls.isEmpty()); assertFalse(Files.exists(temporary.resolve("runs").resolve(runId + ".json")));
+    }
     @Test void catalogKeepsDiscoveryLoadingAndExecutionEvidenceSeparate() throws Exception
     {
         Path catalog = temporary.resolve("catalog.json"); Files.writeString(catalog, "{\"plugins\":[{\"kind\":\"step\",\"id\":\"Unavailable\",\"registeredClass\":\"example.Meta\",\"name\":{\"zhCN\":{\"text\":\"未加载工具\",\"evidence\":\"editorial_translation\"}},\"category\":{\"zhCN\":{\"text\":\"输入\"}}}]}");
