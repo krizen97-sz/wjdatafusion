@@ -21,9 +21,9 @@
           <el-icon :size="28"><component :is="nodeKind(node).icon" /></el-icon>
           <span v-if="stateFor(node) || node.issues?.length" class="flow-node__state" :class="`is-${nodeStatus(node).type}`" :title="nodeStatus(node).label"><el-icon :size="12"><component :is="statusIcon(node)" /></el-icon></span>
           <el-button v-if="!isSource(node)" class="flow-node__port flow-node__port--in" circle size="small" :disabled="!editable" :aria-label="`连接到 ${node.name}`" title="输入连接点"
-            @pointerdown.stop @click.stop="finishLink(node.id)"><el-icon :size="8 / Math.min(zoom, 1)"><ArrowRight /></el-icon></el-button>
+            @keydown.stop @pointerdown.stop @click.stop="finishLink(node.id)"><el-icon :size="8 / Math.min(zoom, 1)"><ArrowRight /></el-icon></el-button>
           <el-button v-if="node.role !== 'CAPTURE'" class="flow-node__port flow-node__port--out" circle size="small" :disabled="!editable" :aria-label="`从 ${node.name} 连接`" title="拖动或点击后选择下游节点"
-            @pointerdown.stop="startLink($event, node)" @click.stop="toggleLink(node.id)"><el-icon :size="8 / Math.min(zoom, 1)"><Plus /></el-icon></el-button>
+            @keydown.stop @pointerdown.stop="startLink($event, node)" @click.stop="toggleLink(node.id)"><el-icon :size="8 / Math.min(zoom, 1)"><Plus /></el-icon></el-button>
         </div>
         <strong class="flow-node__name" :title="node.name">{{ node.name }}</strong>
         <span v-if="zoom >= 0.65" class="flow-node__summary" :title="nodeSummary(node)">{{ nodeSummary(node) }}</span>
@@ -49,15 +49,17 @@
 
 <script setup>
 import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { nodeKind, nodeSummary } from '../nodeCatalog'
+import { nodeKind as defaultNodeKind, nodeSummary as defaultNodeSummary } from '../nodeCatalog'
 import { canvasPosition, clamp, edgeGeometry, enginePosition, graphBounds, NODE_HEIGHT, NODE_WIDTH, portPosition, relationshipLabel, visibleConnections } from '../graphRules'
 import { runState } from '../workspaceRules'
 
-const props = defineProps({ nodes: { type: Array, default: () => [] }, connections: { type: Array, default: () => [] }, showAuxiliary: Boolean, selectedNodeId: String, selectedEdgeId: String, editable: Boolean, run: Object, resultStale: Boolean })
+const props = defineProps({ nodes: { type: Array, default: () => [] }, connections: { type: Array, default: () => [] }, showAuxiliary: Boolean, selectedNodeId: String, selectedEdgeId: String, editable: Boolean, run: Object, resultStale: Boolean, presentation: Function, summary: Function, sourcePredicate: Function })
 const emit = defineEmits(['select-node', 'select-edge', 'move-node', 'add-node', 'connect'])
 const viewport = ref(), zoom = ref(0.9), pan = ref({ x: 40, y: 100 }), gesture = ref(null), previewPosition = ref(null)
 const linkSourceId = ref(''), linkPoint = ref(null)
 const markerId = `governance-flow-arrow-${getCurrentInstance().uid}`
+const nodeKind = node => props.presentation ? props.presentation(node) : defaultNodeKind(node)
+const nodeSummary = node => props.summary ? props.summary(node) : defaultNodeSummary(node)
 let suppressClick = false, resizeObserver, resizeFrame, initializedFlow = false
 const displayNodes = computed(() => props.nodes.map(n => previewPosition.value?.id === n.id ? { ...n, position: enginePosition(previewPosition.value) } : n))
 const worldStyle = computed(() => ({ transform: `translate(${pan.value.x}px, ${pan.value.y}px) scale(${zoom.value})`, '--flow-text-scale': Math.min(zoom.value, 1), '--flow-label-width': `${clamp(232 * zoom.value - 16, 64, 124) / Math.min(zoom.value, 1)}px` }))
@@ -77,7 +79,7 @@ const ghostPath = computed(() => {
   return `M ${a.x} ${a.y} C ${a.x + 70} ${a.y}, ${b.x - 70} ${b.y}, ${b.x} ${b.y}`
 })
 function nodeStyle(node) { const p = canvasPosition(node); return { left: `${p.x}px`, top: `${p.y}px`, width: `${NODE_WIDTH}px`, minHeight: `${NODE_HEIGHT}px` } }
-const isSource = node => node.type?.endsWith('.GenerateFlowFile')
+const isSource = node => props.sourcePredicate ? props.sourcePredicate(node) : node.type?.endsWith('.GenerateFlowFile')
 function stateFor(node) { return !props.resultStale && props.run?.steps?.find(step => step.id === node.id) }
 function nodeStatus(node) { const step = stateFor(node); return step ? runState(step.status) : { label: node.issues?.length ? '待完善' : node.editable ? '待测试' : '只读', type: node.issues?.length ? 'warning' : 'info' } }
 function statusIcon(node) { return ({ success: 'Check', danger: 'Close', warning: 'Clock', info: 'Minus' })[nodeStatus(node).type] || 'Minus' }

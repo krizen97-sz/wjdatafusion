@@ -8,7 +8,7 @@
 
 - `public static void validate(Path root)`：读取 `root/transformation.kjb`，使用原 `JobMeta` 解析，输出 `validation` 事件，包含 `valid/name/kind/nodes/hops`。节点包含原 pluginId、类名与实际 JAR 来源；连线保留 enabled、evaluation、unconditional。
 - `public static void run(Path root)`：执行同一 Job，使用 `KettleWorker.event` 输出 JSONL。启动前由 broker 配置 OS 沙箱；本类不是网络或文件访问沙箱。
-- 子转换必须是当前操作目录里的文件，可引用 `${WORK_DIR}/synthetic.ktr`。`WORK_DIR=root/output`，`JOB_DIR=root`。验证也需要先提供子转换文件。
+- 子转换必须是当前操作目录里的文件，可引用 `${INPUT_DIR}/synthetic.ktr`。`INPUT_DIR=root/input`，`WORK_DIR=root/output`，`JOB_DIR=root`。输入文件与子转换只在 input 中，FTP 只能发送 output 及其子目录的普通文件。验证也需要先提供子转换文件。
 - 本版只接受本地 `filename` 转换引用，不接受 repository、remote、cluster 或嵌套 Job。XML 在交给原加载器前先经禁止 DOCTYPE/外部实体的解析器检查。
 - 原 FTP 密码编码器显式注册并初始化，避免只注册 Step 后原 FTP 的 `loadXML` 因 `Encr.encoder` 未初始化而失败。
 
@@ -49,9 +49,10 @@ python3 tools/data-governance/test_native_job_ftp.py \
 | 用例 | 必须同时成立 |
 | --- | --- |
 | OS 沙箱 | 自建无关回环端口被拒绝，目录外合成文件读写被拒绝，专属 FTP 可连接 |
-| 成功 Job | 原 DataGrid → TextFileOutput；START → TRANS → 成功条件连线 → FTP_PUT，实际 STOR 后通过 FTP RETR 读回比对完整字节 |
+| 成功 Job | 原 DataGrid → TextFileOutput；START → TRANS → 成功条件连线 → FTP_PUT，使用全匹配 `.*` 实际 STOR 后通过 FTP RETR 读回比对完整字节，远端只含输出文件，不含输入 CSV 或子 KTR |
 | 转换失败 | 原 DataGrid → Abort；预放 canary 文件使误上传可被发现；Job FAILED，FTP BEFORE 事件为 0，远端目录为空 |
 | 用户停止 | 原 DataGrid → Delay → TextFileOutput，运行中发送 STOP；Job 和子转换均确认完成，FTP BEFORE 事件为 0，远端目录为空 |
+| 非输出目录 | INPUT_DIR、JOB_DIR 和空目录在原执行前拒绝，不进入 FTP |
 | 原 Job 验证 | 通过同一 XML/子转换文件返回原 pluginId、类来源及条件连线，不执行 FTP |
 
 2026-09-10 本机实测通过：448 个原 JAR 校验；三个作业节点实际来自 `kettle-6.1.0.7.36.jar`。成功文本含表头及 3 条合成中文记录，共 **98 字节**，本地完整文件与 FTP RETR 内容一致，SHA-256 为 `6a93c74071eee5705b94d49ce3b1b02b28a6088af39ac6e2ad732278ca623c82`。失败与停止都只执行 START/TRANS 两节点，均未进入 FTP；停止场景还实际观察到原 Trans 返回 boolean=true，经停止屏障改为 false。所有 fixture 已退出。

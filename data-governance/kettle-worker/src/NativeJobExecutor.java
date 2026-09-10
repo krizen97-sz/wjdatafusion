@@ -26,6 +26,7 @@ import org.pentaho.di.job.JobEntryListener;
 import org.pentaho.di.job.JobExecutionConfiguration;
 import org.pentaho.di.job.JobMeta;
 import org.pentaho.di.job.entries.trans.JobEntryTrans;
+import org.pentaho.di.job.entries.ftpput.JobEntryFTPPUT;
 import org.pentaho.di.job.entry.JobEntryCopy;
 import org.pentaho.di.job.entry.JobEntryInterface;
 import org.pentaho.di.trans.Trans;
@@ -53,7 +54,7 @@ public final class NativeJobExecutor {
                 "enabled", hop.isEnabled(), "unconditional", hop.isUnconditional(), "evaluation", hop.getEvaluation()));
         }
         KettleWorker.event("validation", Map.of("valid", true, "name", loaded.meta().getName(),
-            "kind", "job", "nodes", loaded.entries(), "hops", hops));
+            "kind", "job", "nodes", loaded.entries(), "hops", hops, "metadataLoaded", true, "fieldsRequested", false, "validationScope", "job-structure"));
     }
 
     private static Loaded load(Path operationRoot) throws Exception {
@@ -70,8 +71,14 @@ public final class NativeJobExecutor {
         validateXml(jobXml);
         JobMeta meta = new JobMeta(jobXml, null, null);
         meta.setFilename(root.resolve("transformation.kjb").toString());
+        for (String parameter : meta.listParameters()) {
+            if (Set.of("WORK_DIR", "INPUT_DIR", "JOB_DIR").contains(parameter))
+                throw new IllegalArgumentException("Parameter name is reserved by the worker: " + parameter);
+        }
+        meta.activateParameters();
         meta.setVariable("JOB_DIR", root.toString());
         meta.setVariable("WORK_DIR", root.resolve("output").toString());
+        meta.setVariable("INPUT_DIR", root.resolve("input").toString());
         List<Map<String, Object>> entries = new ArrayList<>();
         for (JobEntryCopy copy : meta.getJobCopies()) {
             JobEntryInterface entry = copy.getEntry();
@@ -81,6 +88,9 @@ public final class NativeJobExecutor {
             entries.add(Map.of("node", copy.getName(), "copy", copy.getNr(),
                 "pluginId", entry.getPluginId(), "className", entry.getClass().getName(),
                 "classSource", KettleWorker.source(entry.getClass())));
+            if (entry instanceof JobEntryFTPPUT ftp) {
+                ftp.setLocalDirectory(outputDirectory(root, meta.environmentSubstitute(ftp.getLocalDirectory())).toString());
+            }
             if (entry instanceof JobEntryTrans transEntry) {
                 String filename = meta.environmentSubstitute(transEntry.getFilename());
                 Path child = Path.of(filename);
@@ -101,13 +111,31 @@ public final class NativeJobExecutor {
         return new Loaded(root, meta, entries, secrets);
     }
 
+    private static Path outputDirectory(Path root, String configured) throws Exception {
+        if (configured == null || configured.isBlank()) throw new IllegalArgumentException("FTP local directory must be WORK_DIR or an output subdirectory");
+        Path output = root.resolve("output").toRealPath();
+        Path directory = Path.of(configured); if (!directory.isAbsolute()) directory = root.resolve(directory);
+        directory = directory.toAbsolutePath().normalize();
+        if (!directory.startsWith(output)) throw new IllegalArgumentException("FTP can upload only the output directory; input and task definitions are not delivery artifacts");
+        Path cursor = output;
+        for (Path part : output.relativize(directory)) {
+            cursor = cursor.resolve(part);
+            if (Files.isSymbolicLink(cursor) || Files.exists(cursor) && !Files.isDirectory(cursor)) throw new IllegalArgumentException("FTP output directory cannot traverse links or files");
+        }
+        return directory;
+    }
+
     public static void run(Path operationRoot) throws Exception {
         Loaded loaded = load(operationRoot);
         Path root = loaded.root(); JobMeta meta = loaded.meta();
         List<Map<String, Object>> entries = loaded.entries(); List<String> secrets = loaded.secrets();
         Job job = new Job(null, meta);
+        // The original Job fallback looks for the literal name START. Bind the native start copy
+        // explicitly so browser-renamed start entries keep their configured meaning.
+        job.setStartJobEntryCopy(meta.findStart());
         job.setVariable("JOB_DIR", root.toString());
         job.setVariable("WORK_DIR", root.resolve("output").toString());
+        job.setVariable("INPUT_DIR", root.resolve("input").toString());
         job.setLogLevel(LogLevel.BASIC);
         AtomicBoolean requestedStop = new AtomicBoolean();
         AtomicBoolean timedOut = new AtomicBoolean();
@@ -116,6 +144,7 @@ public final class NativeJobExecutor {
         AtomicInteger logCount = new AtomicInteger();
         AtomicInteger entrySequence = new AtomicInteger();
         Map<JobEntryInterface, Integer> executions = Collections.synchronizedMap(new java.util.IdentityHashMap<>());
+        Map<JobEntryFTPPUT, NativeFtpBatchDelivery.Context> ftpBatches = Collections.synchronizedMap(new java.util.IdentityHashMap<>());
         List<Trans> children = new CopyOnWriteArrayList<>();
 
         KettleLoggingEventListener logging = event -> {
@@ -148,7 +177,7 @@ public final class NativeJobExecutor {
                         observedErrors.accumulateAndGet(finished.getErrors(), Math::max);
                         KettleWorker.event("job-transformation", Map.of("state",
                             finished.getErrors() > 0 ? "FAILED" : finished.isStopped() ? "STOPPED" : "SUCCEEDED",
-                            "name", finished.getName(), "errors", finished.getErrors()));
+                            "name", finished.getName(), "errors", finished.getErrors(), "nodes", KettleWorker.metrics(finished)));
                     }
                 });
                 if (requestedStop.get()) child.stopAll();
@@ -156,11 +185,33 @@ public final class NativeJobExecutor {
         });
         job.addJobEntryListener(new JobEntryListener() {
             @Override public void beforeExecution(Job running, JobEntryCopy copy, JobEntryInterface entry) {
+                if (entry instanceof JobEntryFTPPUT ftp) {
+                    try {
+                        Path directory = outputDirectory(root, ftp.getLocalDirectory());
+                        try (var paths = Files.walk(directory)) {
+                            if (paths.anyMatch(path -> Files.isSymbolicLink(path) || !Files.isDirectory(path) && !Files.isRegularFile(path)))
+                                throw new IllegalArgumentException("FTP delivery accepts only regular output files and directories");
+                        }
+                        synchronized (ftpBatches) {
+                            if (ftpBatches.containsKey(ftp)) throw new IllegalStateException("The same FTP entry instance cannot deliver concurrently");
+                            ftpBatches.put(ftp, NativeFtpBatchDelivery.prepare(root, directory, ftp, running, requestedStop::get));
+                        }
+                    } catch (Exception error) { throw new IllegalArgumentException("FTP output directory validation failed", error); }
+                }
                 int execution = entrySequence.incrementAndGet(); executions.put(entry, execution);
                 KettleWorker.event("job-entry", Map.of("phase", "BEFORE", "node", copy.getName(),
                     "copy", copy.getNr(), "pluginId", entry.getPluginId(), "execution", execution));
             }
             @Override public void afterExecution(Job running, JobEntryCopy copy, JobEntryInterface entry, Result result) {
+                boolean firstNativeBoolean = result != null && result.getResult();
+                Map<String, Object> delivery = null;
+                if (entry instanceof JobEntryFTPPUT ftp) {
+                    NativeFtpBatchDelivery.Context batch = ftpBatches.remove(ftp);
+                    if (batch != null) {
+                        result = NativeFtpBatchDelivery.complete(batch, result, copy.getNr());
+                        delivery = batch.summary();
+                    } else if (result != null) { result.setResult(false); result.setNrErrors(Math.max(1, result.getNrErrors())); }
+                }
                 boolean originalBoolean = result != null && result.getResult();
                 long errors = result == null ? 1 : result.getNrErrors();
                 if (entry instanceof JobEntryTrans transEntry && transEntry.getTrans() != null) {
@@ -176,6 +227,7 @@ public final class NativeJobExecutor {
                 fields.put("phase", "AFTER"); fields.put("node", copy.getName()); fields.put("copy", copy.getNr());
                 fields.put("pluginId", entry.getPluginId()); fields.put("execution", executions.remove(entry));
                 fields.put("errors", errors); fields.put("originalResultBoolean", originalBoolean);
+                if (delivery != null) { fields.put("firstNativeResultBoolean", firstNativeBoolean); fields.put("delivery", delivery); }
                 fields.put("resultBoolean", result != null && result.getResult());
                 fields.put("resultCorrected", originalBoolean && result != null && !result.getResult());
                 fields.put("files", result == null ? 0 : result.getNrFilesRetrieved());
@@ -229,6 +281,10 @@ public final class NativeJobExecutor {
                 "childrenFinished", childrenFinished, "timedOut", timedOut.get(),
                 "entriesExecuted", entrySequence.get(), "logTruncated", logCount.get() > MAX_LOG_EVENTS));
         } finally {
+            for (NativeFtpBatchDelivery.Context context : new ArrayList<>(ftpBatches.values())) {
+                try { context.close(); } catch (Exception ignored) { }
+            }
+            ftpBatches.clear();
             KettleLogStore.getAppender().removeLoggingEventListener(logging);
         }
     }

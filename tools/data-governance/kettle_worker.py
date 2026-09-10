@@ -459,7 +459,7 @@ class Worker:
         if active >= 4:
             raise ValueError('Worker is at its four-process concurrency limit')
         if xml is not None:
-            self.validate_xml(xml, 'job' if operation in {'job', 'job-validate'} else 'transformation')
+            self.validate_xml(xml, 'job' if operation in {'job', 'job-validate', 'job-load'} else 'transformation')
         time_zone = execution_time_zone(xml)
         # Atomic reservations prevent two brokers from ever starting the same run ID.
         directory = self.operations / run_id
@@ -480,11 +480,11 @@ class Worker:
         for name, data in decoded_files:
             (directory / 'input' / name).write_bytes(data)
         if xml is not None:
-            (directory / ('transformation.kjb' if operation in {'job', 'job-validate'} else 'transformation.ktr')).write_text(xml)
+            (directory / ('transformation.kjb' if operation in {'job', 'job-validate', 'job-load'} else 'transformation.ktr')).write_text(xml)
         cmd = None
         if not self.linux_runtime:
             profile = directory / 'sandbox.sb'
-            ftp_ports = [endpoint['port'] for endpoint in self.endpoints] if operation in {'run', 'job', 'validate'} else []
+            ftp_ports = [endpoint['port'] for endpoint in self.endpoints] if operation in {'run', 'job', 'validate', 'job-validate'} else []
             if operation == 'job' and self.ftp_test_policy:
                 policy = self.ftp_policy_snapshot
                 if policy.get('purpose') != 'synthetic-local-ftp' or not time.time() < policy.get('expiresAt', 0) <= time.time() + 3600:
@@ -504,7 +504,7 @@ class Worker:
                 plan = self.linux_runtime.plan(directory, operation, preview_step, row_limit, launch_id=nonce)
                 if plan.get('timezone') != time_zone:
                     raise ValueError('Linux adapter plan does not implement the frozen execution timezone')
-                if {tuple(endpoint) for endpoint in plan.get('endpoints', [])} != (set(self.linux_runtime.config.endpoints) if operation in {'run', 'job', 'validate'} else set()):
+                if {tuple(endpoint) for endpoint in plan.get('endpoints', [])} != (set(self.linux_runtime.config.endpoints) if operation in {'run', 'job', 'validate', 'job-validate'} else set()):
                     raise ValueError('Linux adapter operation does not match the trusted endpoint policy')
                 run['runtimePlan'] = {'sourceHash': plan['sourceHash'], 'timezone': plan['timezone']}
                 self._persist(run)
@@ -713,8 +713,8 @@ class Worker:
         event = next((e for e in self.runs[result['id']]['events'] if e['type'] == 'validation'), None)
         return event or {'valid': False, 'state': result['state'], 'errors': [e for e in self.runs[result['id']]['events'] if e['type'] == 'terminal']}
 
-    def validate_job(self, xml, input_files=None):
-        result = self.wait(self.launch('job-validate', xml, input_files=input_files))
+    def validate_job(self, xml, input_files=None, discover_fields=True):
+        result = self.wait(self.launch('job-validate' if discover_fields else 'job-load', xml, input_files=input_files))
         event = next((e for e in self.runs[result['id']]['events'] if e['type'] == 'validation'), None)
         return event or {'valid': False, 'state': result['state'], 'errors': [e for e in self.runs[result['id']]['events'] if e['type'] == 'terminal']}
 
@@ -743,7 +743,7 @@ class Worker:
     def save_job(self, identifier, xml, input_files=None):
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', identifier):
             raise ValueError('Invalid job id')
-        validation = self.validate_job(xml, input_files)
+        validation = self.validate_job(xml, input_files, discover_fields=False)
         if not validation.get('valid'):
             return validation
         document = {'xml': xml, 'inputFiles': input_files or []}

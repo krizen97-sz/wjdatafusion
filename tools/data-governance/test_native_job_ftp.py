@@ -86,7 +86,7 @@ def job_xml(mode, config):
     element(entries, 'entry', name='START', type='SPECIAL', start='Y', dummy='N', repeat='N', schedulerType=0,
             intervalSeconds=0, intervalMinutes=0, hour=12, minutes=0, weekDay=1, DayOfMonth=1, parallel='N', draw='Y', nr=0)
     child = element(entries, 'entry', name='Run original transformation', type='TRANS', specification_method='filename',
-                    filename='${WORK_DIR}/synthetic.ktr', transname='', trans_object_id='', arg_from_previous='N',
+                    filename='${INPUT_DIR}/synthetic.ktr', transname='', trans_object_id='', arg_from_previous='N',
                     params_from_previous='N', exec_per_row='N', clear_rows='N', clear_files='N', set_logfile='N',
                     logfile='', logext='log', add_date='N', add_time='N', loglevel='Basic', cluster='N',
                     slave_server_name='', set_append_logfile='N', wait_until_finished='Y', follow_abort_remote='N',
@@ -94,7 +94,7 @@ def job_xml(mode, config):
     element(child, 'parameters', pass_all_parameters='Y')
     element(entries, 'entry', name='Upload synthetic file', type='FTP_PUT', servername='127.0.0.1',
             serverport=config['controlPort'], username=config['username'], password=config['password'],
-            remoteDirectory=mode, localDirectory='${WORK_DIR}', wildcard=r'.*\.txt', binary='Y', timeout=5000,
+            remoteDirectory=mode, localDirectory='${WORK_DIR}', wildcard=r'.*', binary='Y', timeout=5000,
             remove='N', rename='N', renameSuffix='.tmp', only_new='N', active='N', control_encoding='UTF-8',
             proxy_host='', proxy_port='', proxy_username='', proxy_password='', socksproxy_host='', socksproxy_port='',
             socksproxy_username='', socksproxy_password='', parallel='N', draw='Y', nr=0)
@@ -149,7 +149,7 @@ def sandbox(runtime, operation, classes, java_home, ports):
 def private_operation(base, name):
     operation = base / name
     operation.mkdir(mode=0o700)
-    for folder in ['home', 'tmp', 'output']:
+    for folder in ['home', 'tmp', 'input', 'output']:
         (operation / folder).mkdir(mode=0o700)
     return operation
 
@@ -173,12 +173,15 @@ def process_env(operation):
             'KETTLE_HOME': str(operation / 'home')}
 
 
-def run_case(runtime, classes, manifest, base, mode, config, operation_name=None, worker_operation='job'):
+def run_case(runtime, classes, manifest, base, mode, config, operation_name=None, worker_operation='job', ftp_directory=None, expected_exit=0):
     operation = private_operation(base, operation_name or mode)
-    (operation / 'output/synthetic.ktr').write_text(transformation(mode))
+    (operation / 'input/synthetic.ktr').write_text(transformation(mode))
+    (operation / 'input/private-input.csv').write_text('SYNTHETIC_INPUT_ONLY_DO_NOT_UPLOAD\n')
     if mode == 'failure':
         (operation / 'output/failure-canary.txt').write_text('Must never reach FTP after failed transformation.\n')
-    (operation / 'transformation.kjb').write_text(job_xml(mode, config))
+    job = ET.fromstring(job_xml(mode, config))
+    if ftp_directory is not None: job.find('./entries/entry[type="FTP_PUT"]/localDirectory').text = ftp_directory
+    (operation / 'transformation.kjb').write_text(ET.tostring(job, encoding='unicode'))
     ports = [config['controlPort']] + config['passivePorts']
     command = java_command(runtime, classes, manifest, operation, ports, 'KettleWorker', [str(operation), worker_operation])
     messages = queue.Queue()
@@ -225,7 +228,7 @@ def run_case(runtime, classes, manifest, base, mode, config, operation_name=None
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill(); process.wait(timeout=5)
-        assert process.returncode == 0, 'Worker failed; inspect private stderr/events: ' + str(operation)
+        assert process.returncode == expected_exit, 'Worker exit differs; inspect private stderr/events: ' + str(operation)
     assert config['password'] not in (operation / 'stderr.log').read_text()
     return operation, events, stop_sent
 
@@ -262,7 +265,7 @@ def proof(args):
     executor = repo / 'data-governance/kettle-worker/src/NativeJobExecutor.java'
     worker_source = args.worker_source or repo / 'data-governance/kettle-worker/src/KettleWorker.java'
     command = [str(Path(manifest['javaHome']) / 'bin/javac'), '-proc:none', '-encoding', 'UTF-8',
-               '-classpath', manifest['classpath'], '-d', str(classes), str(worker_source), str(executor), str(probe)]
+               '-classpath', manifest['classpath'], '-d', str(classes), str(worker_source), str(executor), str(repo / 'data-governance/kettle-worker/src/NativeFtpBatchDelivery.java'), str(probe)]
     result = subprocess.run(command, capture_output=True, text=True)
     (base / 'compile.log').write_text(result.stdout + result.stderr)
     assert result.returncode == 0, 'Compile failed; inspect ' + str(base / 'compile.log')
@@ -324,7 +327,9 @@ def proof(args):
                         ftp.connect('127.0.0.1', config['controlPort'], timeout=5); ftp.login(config['username'], config['password'])
                         received = io.BytesIO(); ftp.retrbinary('RETR success/success.txt', received.write)
                     assert received.getvalue() == expected, 'FTP RETR differs from original output'
-                    reports[mode] = {'terminal': terminal, 'bytes': len(expected), 'sha256': hashlib.sha256(expected).hexdigest(), 'ftpReadbackEqual': True}
+                    assert sorted(p.name for p in (files / mode).iterdir()) == ['success.txt'], 'FTP wildcard uploaded an input or child definition'
+                    assert sorted(p.name for p in (operation / 'output').iterdir()) == ['success.txt'], 'Inputs were mixed into output'
+                    reports[mode] = {'terminal': terminal, 'bytes': len(expected), 'sha256': hashlib.sha256(expected).hexdigest(), 'ftpReadbackEqual': True, 'wildcardAllOnlyOutput': True}
                 else:
                     assert not list((files / mode).iterdir()), 'Failed/stopped Job sent a file'
                     reports[mode] = {'terminal': terminal, 'ftpEntriesExecuted': len(ftp_started), 'remoteDirectoryEmpty': True,
@@ -332,7 +337,14 @@ def proof(args):
             _, validation, _ = run_case(runtime, classes, manifest, operations, 'success', config,
                                          operation_name='validate', worker_operation='job-validate')
             assert any(e.get('type') == 'validation' and e.get('valid') for e in validation)
-            report = {'passed': True, 'root': str(base), 'sourceSha256': digest(executor), 'workerSourceSha256': digest(worker_source),
+            rejected_directories = []
+            for index, directory in enumerate(['${INPUT_DIR}', '${JOB_DIR}', '']):
+                _, invalid, _ = run_case(runtime, classes, manifest, operations, 'success', config,
+                    operation_name='reject-directory-' + str(index), worker_operation='job-validate', ftp_directory=directory, expected_exit=1)
+                assert any(e.get('type') == 'terminal' and e.get('state') == 'FAILED' for e in invalid)
+                assert not any(e.get('type') == 'job-entry' for e in invalid)
+                rejected_directories.append(directory or '(empty)')
+            report = {'rejectedFtpDirectories': rejected_directories, 'passed': True, 'root': str(base), 'sourceSha256': digest(executor), 'workerSourceSha256': digest(worker_source),
                       'originalLibraryCount': len(manifest['libraries']), 'sandbox': sandbox_result,
                       'fixture': ready, 'cases': reports, 'validation': True}
             private_json(base / 'acceptance.json', report)

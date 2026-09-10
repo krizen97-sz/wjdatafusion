@@ -31,11 +31,11 @@
 import { computed, ref, watch } from 'vue'
 import KettleValueInput from './KettleValueInput.vue'
 import { describe, fieldValue, writeField, addRow, removeRow, addGroup, rowField, nodeKey } from './genericConfig'
-const props = defineProps({ element: Object, templateXml: { type: [String, Object], default: '' }, readonly: Boolean })
+const props = defineProps({ element: Object, templateXml: { type: [String, Object], default: '' }, readonly: Boolean, externalRevision: Number })
 const emit = defineEmits(['change'])
 const revision = ref(0), expanded = ref([]), error = ref('')
 const inputContext = computed(() => ({ readonly: props.readonly }))
-const model = computed(() => { revision.value; try { return describe(props.element, props.templateXml) } catch (cause) { return { fields: [], groups: [], error: cause.message } } })
+const model = computed(() => { revision.value; props.externalRevision; try { return describe(props.element, props.templateXml) } catch (cause) { return { fields: [], groups: [], error: cause.message } } })
 watch(() => [props.element, props.templateXml], () => { error.value = ''; revision.value++; expanded.value = model.value.groups.slice(0, 2).map(group => group.key) }, { immediate: true })
 watch(() => model.value.error, value => { if (value) error.value = value }, { immediate: true })
 function changed() { revision.value++; emit('change') }
