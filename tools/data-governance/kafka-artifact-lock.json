@@ -1,0 +1,18 @@
+{
+  "scope": "isolated localhost Kafka development runtime only",
+  "checked_at": "2026-09-10",
+  "version": "4.1.2",
+  "filename": "kafka_2.13-4.1.2.tgz",
+  "directory": "kafka_2.13-4.1.2",
+  "url": "https://downloads.apache.org/kafka/4.1.2/kafka_2.13-4.1.2.tgz",
+  "sha512_url": "https://downloads.apache.org/kafka/4.1.2/kafka_2.13-4.1.2.tgz.sha512",
+  "sha512": "78ac6e488b1071122f9608dfdb363f6fe50e1dbbc492347002c0398dfbf77e0d8caa5bf794c5937379721004dfe92025937d238b0faf4eb715529417fd43b491",
+  "signature_url": "https://downloads.apache.org/kafka/4.1.2/kafka_2.13-4.1.2.tgz.asc",
+  "keys_url": "https://downloads.apache.org/kafka/KEYS",
+  "signer_fingerprint": "29DFD0B67638FE76706B399DDCFDB318BA5D9AA8",
+  "official_sources": [
+    "https://kafka.apache.org/community/downloads/",
+    "https://kafka.apache.org/41/getting-started/quickstart/",
+    "https://kafka.apache.org/41/operations/kraft/"
+  ]
+}
