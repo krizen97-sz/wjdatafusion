@@ -43,6 +43,17 @@
               <div v-if="row.skippedCount" class="governance-schedules__hint">已跳过 {{ row.skippedCount }} 次：{{ row.lastSkippedReason || '查看任务状态' }}</div>
             </template>
           </el-table-column>
+          <el-table-column label="FTP 交付" min-width="180" show-overflow-tooltip>
+            <template #default="{ row }">
+              <template v-if="row.deliveryConnectionId">
+                <div>{{ row.deliveryConnectionName || '已绑定目标' }}</div>
+                <el-tag :type="deliveryState(row.deliveryStatus).type" size="small">{{ deliveryState(row.deliveryStatus).label }}</el-tag>
+                <div v-if="row.deliveryError" class="governance-schedules__hint">{{ row.deliveryError }}</div>
+                <el-button v-if="row.deliveryId || row.deliveryIntentAt || row.recoveryRequired && row.lastRunId" link type="primary" @click="showDelivery(row)">核查交付</el-button>
+              </template>
+              <el-text v-else type="info">未配置</el-text>
+            </template>
+          </el-table-column>
           <el-table-column label="操作" width="260" fixed="right">
             <template #default="{ row }">
               <el-button v-hasPermi="['governance:flow:edit']" link type="primary" :disabled="!!rowBusy[row.id] || !!row.activeRunId || row.recoveryRequired" @click="openSchedule(row)">编辑</el-button>
@@ -96,6 +107,15 @@
         <el-form ref="scheduleFormRef" :model="scheduleForm" :rules="scheduleFormRules" label-position="top" :disabled="savingSchedule">
           <el-form-item label="任务名称" prop="name"><el-input v-model="scheduleForm.name" maxlength="80" show-word-limit placeholder="例如：每日固定批次检查" /></el-form-item>
           <el-form-item label="已发布版本" prop="releaseId"><el-select v-model="scheduleForm.releaseId" class="governance-schedules__full" filterable placeholder="选择该流程的发布版本"><el-option v-for="release in formReleases" :key="release.id" :value="String(release.id)" :label="`V${release.version} · ${release.name}`" /></el-select></el-form-item>
+          <el-form-item label="运行成功后交付至 FTP（可选）">
+            <el-select v-model="scheduleForm.deliveryConnectionId" class="governance-schedules__full" clearable filterable :loading="deliveryTargetsLoading" placeholder="未选择时仅运行固定批次" aria-label="定时任务成功后的 FTP 交付目标">
+              <el-option v-if="scheduleForm.deliveryConnectionId && !deliveryTargets.some((target) => target.id === scheduleForm.deliveryConnectionId)" :value="scheduleForm.deliveryConnectionId" :label="scheduleForm.deliveryConnectionName || '当前绑定目标（待核查）'" />
+              <el-option v-for="target in deliveryTargets" :key="target.id" :value="target.id" :label="`${target.name} · ${target.host}:${target.port}${target.directory}${target.passwordConfigured ? '' : '（未配置凭据）'}`" :disabled="!target.passwordConfigured" />
+            </el-select>
+            <el-text type="info" size="small">成功并确认完整产物后自动交付，空批次跳过；任务等待交付完成后才允许下一次运行。保存时会重新绑定所选目标。</el-text>
+            <el-alert v-if="deliveryTargetsError" :title="deliveryTargetsError" type="warning" :closable="false" />
+            <el-button v-if="deliveryTargetsError" link type="primary" :loading="deliveryTargetsLoading" @click="loadDeliveryTargets">重试读取 FTP 目标</el-button>
+          </el-form-item>
           <el-form-item label="Cron 表达式" prop="cron"><el-input v-model="scheduleForm.cron" placeholder="0 0 8 * * ?"><template #append><el-button @click="cronEditorOpen = true">生成表达式</el-button></template></el-input></el-form-item>
           <el-form-item label="执行时区" prop="timeZone"><el-select v-model="scheduleForm.timeZone" filterable allow-create default-first-option class="governance-schedules__full" placeholder="Asia/Shanghai"><el-option v-for="zone in timeZones" :key="zone" :value="zone" :label="zone" /></el-select><el-text type="info" size="small">服务端校验时区并计算下次执行时间，避免浏览器所在时区影响计划。</el-text></el-form-item>
         </el-form>
@@ -146,13 +166,13 @@
 import { computed, getCurrentInstance, onActivated, onBeforeUnmount, onDeactivated, reactive, ref, watch } from 'vue'
 import Crontab from '@/components/Crontab/index.vue'
 import { getGovernanceTestRun } from '@/api/governance'
-import { changeGovernanceScheduleState, createGovernanceRelease, createGovernanceSchedule, getGovernanceRelease, listGovernanceReleases, listGovernanceSchedules, recoverGovernanceSchedule, runGovernanceSchedule, updateGovernanceSchedule } from '@/api/governance/schedules'
+import { changeGovernanceScheduleState, createGovernanceRelease, createGovernanceSchedule, getGovernanceRelease, listGovernanceReleases, listGovernanceSchedules, listGovernanceScheduleDeliveryTargets, recoverGovernanceSchedule, runGovernanceSchedule, updateGovernanceSchedule } from '@/api/governance/schedules'
 import { displayJson, errorMessage, isRunActive, optionalCount, runState } from '../workspaceRules'
-import { canRunSchedule, formatScheduleTime, releaseRequest, scheduleRequest, scheduleState, shouldPollSchedules } from '../scheduleRules'
+import { canRunSchedule, formatScheduleTime, releaseRequest, scheduleRequest, scheduleState as baseScheduleState, shouldPollSchedules } from '../scheduleRules'
 import StepDetailDrawer from './StepDetailDrawer.vue'
 
 const props = defineProps({ flows: { type: Array, default: () => [] }, selectedFlowId: { type: String, default: '' }, engineReady: Boolean })
-const emit = defineEmits(['select-flow'])
+const emit = defineEmits(['select-flow', 'show-delivery'])
 const { proxy } = getCurrentInstance()
 const releases = ref([])
 const schedules = ref([])
@@ -181,7 +201,10 @@ const scheduleOpen = ref(false)
 const savingSchedule = ref(false)
 const scheduleError = ref('')
 const scheduleFormRef = ref()
-const scheduleForm = reactive({ id: '', revision: undefined, flowId: '', name: '', releaseId: '', cron: '0 0 8 * * ?', timeZone: 'Asia/Shanghai' })
+const scheduleForm = reactive({ id: '', revision: undefined, flowId: '', name: '', releaseId: '', cron: '0 0 8 * * ?', timeZone: 'Asia/Shanghai', deliveryConnectionId: null, deliveryConnectionName: '' })
+const deliveryTargets = ref([])
+const deliveryTargetsLoading = ref(false)
+const deliveryTargetsError = ref('')
 const formReleases = computed(() => releases.value.filter((item) => String(item.flowId) === scheduleForm.flowId))
 const scheduleFormRules = Object.fromEntries(['name', 'releaseId', 'cron', 'timeZone'].map((field) => [field, [{ required: true, message: '请填写此项', trigger: 'blur' }]]))
 const timeZones = ['Asia/Shanghai', 'UTC', 'Asia/Tokyo', 'Europe/London', 'America/New_York']
@@ -204,6 +227,34 @@ let pollAttempts = 0
 let listSequence = 0
 let runSequence = 0
 let releaseSequence = 0
+let deliveryTargetSequence = 0
+const DELIVERY_STATES = {
+  SUBMITTING: { label: '正在提交交付', type: 'warning' },
+  QUEUED: { label: '等待交付', type: 'warning' },
+  RUNNING: { label: '正在交付', type: 'warning' },
+  DELIVERED: { label: '交付完成', type: 'success' },
+  SKIPPED_EMPTY: { label: '空批次，无需交付', type: 'info' },
+  NOT_REQUESTED: { label: '运行未成功，未交付', type: 'info' },
+  MANIFEST_REQUIRED: { label: '完整产物待核查', type: 'danger' },
+  TARGET_CHANGED: { label: '目标已变化', type: 'danger' },
+  TARGET_MISMATCH: { label: '交付目标不一致', type: 'danger' },
+  FAILED: { label: '交付失败', type: 'danger' },
+  UNKNOWN: { label: '交付待核查', type: 'danger' }
+}
+function deliveryState(status) { return DELIVERY_STATES[status] || (status ? { label: `待核查：${status}`, type: 'warning' } : { label: '等待运行结果', type: 'info' }) }
+function scheduleState(item) { return item?.status === 'DELIVERING' && !item.recoveryRequired ? { label: '等待 FTP 交付', type: 'warning' } : baseScheduleState(item) }
+function showDelivery(item) { emit('show-delivery', { runId: item.activeRunId || item.lastRunId, deliveryId: item.deliveryId || null }) }
+async function loadDeliveryTargets() {
+  const sequence = ++deliveryTargetSequence
+  deliveryTargetsLoading.value = true
+  deliveryTargetsError.value = ''
+  try {
+    const response = await listGovernanceScheduleDeliveryTargets()
+    if (!suspended && sequence === deliveryTargetSequence && scheduleOpen.value) deliveryTargets.value = Array.isArray(response.data) ? response.data : []
+  } catch (error) {
+    if (!suspended && sequence === deliveryTargetSequence && scheduleOpen.value) deliveryTargetsError.value = `FTP 目标暂不可用：${errorMessage(error)}。仍可保存不交付任务。`
+  } finally { if (sequence === deliveryTargetSequence) deliveryTargetsLoading.value = false }
+}
 
 function flowName(id) { return props.flows.find((item) => String(item.id) === String(id))?.name || id }
 function releaseLabel(id) { const item = releases.value.find((release) => release.id === id); return item ? `V${item.version} · ${item.name}` : '版本信息未返回' }
@@ -264,16 +315,21 @@ async function publishRelease() {
 }
 function openSchedule(item = null, release = null) {
   if (savingSchedule.value) return
-  Object.assign(scheduleForm, { id: item?.id || '', revision: item?.revision, flowId: String(item?.flowId || release?.flowId || props.selectedFlowId), name: item?.name || '', releaseId: String(item?.releaseId || release?.id || flowReleases.value[0]?.id || ''), cron: item?.cron || '0 0 8 * * ?', timeZone: item?.timeZone || 'Asia/Shanghai' })
+  Object.assign(scheduleForm, { id: item?.id || '', revision: item?.revision, flowId: String(item?.flowId || release?.flowId || props.selectedFlowId), name: item?.name || '', releaseId: String(item?.releaseId || release?.id || flowReleases.value[0]?.id || ''), cron: item?.cron || '0 0 8 * * ?', timeZone: item?.timeZone || 'Asia/Shanghai', deliveryConnectionId: item?.deliveryConnectionId || null, deliveryConnectionName: item?.deliveryConnectionName || '' })
   scheduleError.value = ''
   cronEditorOpen.value = false
   scheduleOpen.value = true
+  deliveryTargets.value = []
+  loadDeliveryTargets()
 }
 function fillCron(value) { scheduleForm.cron = value; cronEditorOpen.value = false }
 async function saveSchedule() {
   if (savingSchedule.value || !await scheduleFormRef.value?.validate().catch(() => false)) return
   let data
-  try { data = scheduleRequest(scheduleForm) }
+  try {
+    if (scheduleForm.deliveryConnectionId && (deliveryTargetsLoading.value || deliveryTargetsError.value)) throw new Error('请先确认 FTP 目标列表，或清空自动交付目标。')
+    data = { ...scheduleRequest(scheduleForm), deliveryConnectionId: scheduleForm.deliveryConnectionId || null }
+  }
   catch (error) { scheduleError.value = errorMessage(error); return }
   savingSchedule.value = true
   scheduleError.value = ''
@@ -296,7 +352,7 @@ async function toggleSchedule(item) {
   rowBusy[item.id] = 'state'
   try {
     if (!item.enabled) {
-      await proxy.$modal.confirm(`启用“${item.name}”后，将按 ${item.timeZone} 的计划重复执行已发布的同一固定批次，是否启用？`)
+      await proxy.$modal.confirm(`启用“${item.name}”后，将按 ${item.timeZone} 的计划重复执行已发布的同一固定批次${item.deliveryConnectionId ? `，成功后交付至“${item.deliveryConnectionName || '绑定的 FTP 目标'}”` : ''}，是否启用？`)
     }
     await changeGovernanceScheduleState(item.id, { enabled: !item.enabled, revision: item.revision })
     await refreshAll()
@@ -321,7 +377,7 @@ async function recoverSchedule(item) {
   actionError.value = ''
   rowBusy[item.id] = 'recover'
   try {
-    await proxy.$modal.confirm(`“${item.name}”需要恢复：${item.lastError || '上次执行或资源清理尚未确认'}。继续将由服务端核查真实运行和清理情况；恢复后仍需显式启用。是否核查恢复？`)
+    await proxy.$modal.confirm(`“${item.name}”需要恢复：${item.lastError || '上次执行或资源清理尚未确认'}。继续将由服务端核查真实运行和清理情况；${item.deliveryConnectionId ? 'FTP 仅核查已有交付记录，不会重新运行或自动补传；交付失败请先在交付页处理。' : ''}恢复后仍需显式启用。是否核查恢复？`)
     await recoverGovernanceSchedule(item.id)
     await refreshAll()
   } catch (error) {
@@ -368,7 +424,7 @@ async function refreshRun(manual = true) {
 }
 function closeRun() { if (runOpen.value) return; runSequence += 1; runId.value = ''; run.value = null; runError.value = ''; stepOpen.value = false; schedulePoll() }
 function openStep(step) { selectedStepId.value = step.id; stepOpen.value = true }
-function suspend() { suspended = true; listSequence += 1; runSequence += 1; releaseDetailOpen.value = false; closeReleaseDetail(); stopPolling() }
+function suspend() { suspended = true; deliveryTargetSequence += 1; listSequence += 1; runSequence += 1; releaseDetailOpen.value = false; closeReleaseDetail(); stopPolling() }
 watch(() => props.selectedFlowId, () => { releasePage.value = 1; schedulePage.value = 1; runOpen.value = false; closeRun(); refreshAll() }, { immediate: true })
 onActivated(() => { if (suspended) { suspended = false; refreshAll(); if (runOpen.value) refreshRun() } })
 onDeactivated(suspend)

@@ -8,7 +8,11 @@ public final class DataGovernanceScheduleModels
 {
     private DataGovernanceScheduleModels() { }
     public record PublishRequest(String flowId, String name, String inputJson, Map<String, Object> parameters) { }
-    public record ScheduleRequest(String name, String releaseId, String cron, String timeZone, Long revision) { }
+    public record ScheduleRequest(String name, String releaseId, String cron, String timeZone, Long revision, String deliveryConnectionId)
+    {
+        public ScheduleRequest(String name, String releaseId, String cron, String timeZone, Long revision)
+        { this(name, releaseId, cron, timeZone, revision, null); }
+    }
     public record StateRequest(Boolean enabled, Long revision) { }
     public record ReleaseSummary(String id, int version, String flowId, String projectId, String name,
         String definitionHash, String createdAt, String inputMode) { }
@@ -17,7 +21,9 @@ public final class DataGovernanceScheduleModels
         String cron, String timeZone, boolean enabled, String nextRunAt, String status, String activeRunId,
         String lastRunId, String lastRunStatus, String lastRunAt, String lastFinishedAt, String lastError,
         long skippedCount, String lastSkippedAt, String lastSkippedReason, boolean recoveryRequired,
-        String createdAt, String updatedAt, String inputMode) { }
+        String createdAt, String updatedAt, String inputMode, String deliveryConnectionId, String deliveryConnectionName,
+        String deliveryTargetFingerprint, String deliveryIntentAt, String deliveryId, String deliveryStatus,
+        String deliveryError, String deliveryFinishedAt) { }
     /** Never returned to a controller. */
     public static class Release
     {
@@ -54,5 +60,13 @@ public final class DataGovernanceScheduleModels
         public boolean recoveryRequired;
         public String createdAt;
         public String updatedAt;
+        public String deliveryConnectionId;
+        public String deliveryConnectionName;
+        public String deliveryTargetFingerprint;
+        public String deliveryIntentAt;
+        public String deliveryId;
+        public String deliveryStatus;
+        public String deliveryError;
+        public String deliveryFinishedAt;
     }
 }
