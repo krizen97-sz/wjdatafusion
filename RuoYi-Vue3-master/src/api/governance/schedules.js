@@ -13,3 +13,6 @@ export const updateGovernanceSchedule = (id, data) => write(`${root}/schedules/$
 export const changeGovernanceScheduleState = (id, data) => write(`${root}/schedules/${resourceId(id)}/state`, data)
 export const runGovernanceSchedule = (id) => write(`${root}/schedules/${resourceId(id)}/run`)
 export const recoverGovernanceSchedule = (id) => write(`${root}/schedules/${resourceId(id)}/recover`)
+
+// Loaded only by the schedule editor; the server applies flow:edit and owner scope.
+export const listGovernanceScheduleDeliveryTargets = () => request({ url: `${root}/ftp-connections`, method: 'get' })
