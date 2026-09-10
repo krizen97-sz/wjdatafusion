@@ -1,0 +1,11 @@
+{
+  "version": "3.9.2",
+  "directory": "kafka_2.13-3.9.2",
+  "filename": "kafka_2.13-3.9.2.tgz",
+  "byteSize": 122473776,
+  "url": "https://archive.apache.org/dist/kafka/3.9.2/kafka_2.13-3.9.2.tgz",
+  "sha512": "01186a5086b5ae753811ee71808a797baec1303d4e0d4b1c0acf42c489654a7b8988136f8469d0b66f0be439f8e3e9b816171ea0b0d7a36462b07aa2d3ef0023",
+  "signerFingerprint": "D9472951E133753353DCE20D72E522CC9FCBBAC9",
+  "keysUrl": "https://downloads.apache.org/kafka/KEYS",
+  "scope": "isolated loopback legacy Kettle compatibility proof only"
+}
