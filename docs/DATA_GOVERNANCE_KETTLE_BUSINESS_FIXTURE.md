@@ -144,6 +144,14 @@ runner 的四个定向测试验证未确认 broker/输入被修改时禁止提�
 
 这暴露了需要平台单独处理的边界：原 FTP 的成功返回不等于整批所有文件均已交付；对该固定版本和 `remove=Y/only_new=N` 配置，应识别输出残留并提供可核查的后续交付机制，不能将重放整个源图作为恢复。该后续机制不在本次原语义验收中实现。
 
+同一原 `executeEx` 还有必须保留记录的已知行为：远端存在性检查之后，字节码先调用 FTP delete（rename 模式处理临时名，非 rename 模式处理目标名），把局部 exists 标志置为 false，之后才判断 `onlyPuttingNewFiles`。因此 `only_new=Y` 不能被解释为可靠的“远端已存在则不覆盖”保障。原字节码证据已保存在第一套私有证据中，修复 helper 的独立测试也已观察到覆盖；本整图夹具原值为 N，未为了测试改变它。批次 manifest 中的本地文件 SHA 和 nativeProcessedFiles 只表示本地冻结与原调用处理记录，不能等同于远端内容已验证。远端 SHA 结论必须来自独立 FTP RETR，再与冻结内容摘要核对。
+
 违法原图则通过独立 FTP RETR 和 Kafka capture 的完整校验，原 Date/Boolean 筛选、qiuji/whitelist/状态开关/本地映射和两种输出分支均按原配置运行。原消费 TIMEOUT 保持 60000，约一分钟后自然结束，未人为停止或额外发送第 201 条消息。
 
 证据包括 `*-events.ndjson`、`*-latest-run.json`、`*-offsets-before/after.json`、`*-ftp-evidence.json`、`*-sourceclasses.json`、`*-native-step-metrics.json`、`original-ftp-put-limit.json` 与原 FTP class/JAR/字节码 SHA-256。当前 Job 扁平 `nodes` 为空，子转换 metrics 由原 BASIC 完成日志提取并标明来源；普通记录 17 个有实际处理日志的步骤（原图一个未走到的 Dummy 无完成计数），违法记录 24 个。不得把静态 42 节点数量改称 42 个均有非零执行。
+
+## 修复版第二套命名空间
+
+`business-live/acceptance-02` 已独立准备，slug 为 `business_9677ebe75102`，数据库名为 `rynew_kettle_fixture_business_9677ebe75102`。新建三个唯一单分区 topic 与两个专属 group，输入末尾 offset 为 10000/200，egress 为 0，两个 group 初始 offset 均为 0；FTP 仅创建新 slug 的 ordinary/illegal 子目录。42 步的 processingSha256 与第一套逐项相同，原 LIMIT/TIMEOUT/STOPONEMPTY/offset reset/auto commit、SQL/Script/条件/Writer 配置未改。
+
+该第二套目前为 PREPARED_NOT_SUBMITTED，等待主任务确认 `NativeFtpBatchDelivery` 与新 broker 编译、接入完成。未来修复版完整执行必须独立证明：普通一次 TRANS、单次消费 10000、FTP 两个原生 pass 处理 80+56 并全部实际 RETR；违法一次 TRANS、单次消费 200、FTP 一个 pass 及唯一 Kafka 回写。第一套 PARTIAL_DELIVERY 报告、已消费 group、80 份 FTP 读回及原 run 的 56 份残留全部保留，不重用、不补写为通过。
