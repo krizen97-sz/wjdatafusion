@@ -52,6 +52,12 @@ JSON 响应沿用 `AjaxResult`，下文描述的内容均位于 `data`。真实�
 | `POST /definitions/{id}/validate` | 无 | 原生校验结果；不会自动修改已保存的 XML |
 | `POST /definitions/{id}/runs` | `{revision,mode,previewStep?,rowLimit?,requestId?}` | 持久化的运行记录，成功提交或失败/未知状态均有 `id` |
 | `GET /definitions/{id}/runs` | 无 | 当前用户此定义的运行历史摘要，按创建时间倒序；不逐条轮询 worker |
+| `GET /definitions/{id}/schedules` | 无 | 当前用户此定义的原生 Cron 计划元数据列表 |
+| `POST /definitions/{id}/schedules` | `{name,definitionRevision,cron,timeZone}` | 新冻结计划，默认暂停 |
+| `PUT /schedules/{id}` | `{name,revision,definitionRevision,cron,timeZone}` | 重新冻结当前定义/资产的新计划修订，默认暂停 |
+| `POST /schedules/{id}/state` | `{enabled,revision}` | 启停后的计划元数据 |
+| `POST /schedules/{id}/run` | 无 | 单次触发后的计划元数据，通过 `activeRunId/lastRunId` 读取原运行 |
+| `POST /schedules/{id}/recover` | 无 | 仅核查既有运行后的计划元数据；不会重发运行 |
 | `GET /runs/{id}` | 无 | 合并原生快照的扁平运行记录 |
 | `GET /runs/{id}/events?after=0` | 非负游标 | `{events,nextCursor,state,workerAvailable}` |
 | `POST /runs/{id}/stop` | 无 | 原生停止结果合并后的运行记录 |
@@ -147,6 +153,28 @@ worker 也可能在受理后报告 `PREPARING`，因此平台用 `submissionStat
 
 ## 验证
 
+### 原生 Cron 计划
+
+`DataGovernanceKettleScheduler` 使用项目已有 Quartz `CronExpression` 和 IANA 时区，默认暂停。创建/编辑先检查 `definitionRevision`，冻结原 XML、同 owner 子转换 XML 和合并后的上传资产；整个快照再用既有 AES-GCM 服务加密到独立 `schedule-snapshots/<UUID>.json`。计划小元数据放在 `schedules/<UUID>.json`，列表与每秒 tick 不读取大快照。执行入口 `submitFrozen` 使用该快照，并复用同一个 owner 运行 journal/原生 worker；不会用当前画布覆盖计划版本，也不会把原输入节点替换为 NiFi 固定 JSON 输入。数据库/Kafka 等原输入节点每次仍按被冻结的 XML 连接、读取新数据；已上传输入资产则按计划冻结内容提供。
+
+计划响应字段为 `id,name,revision,definitionId,definitionRevision,cron,timeZone,enabled,status,activeRunId,lastRunId,lastRunState,nextRunAt,lastError,xmlSha256,inputsHash,recoveryRequired,createdAt,updatedAt`。配置启停/编辑做修订检查，后台进度变化不冒充配置新修订。查询权限为 `governance:flow:list`，创建/编辑为 `governance:flow:edit`，启停/触发/恢复为 `governance:flow:test`；所有路径核对 owner。
+
+一秒协调器只处理元数据，由独立四线程执行池提交/核查，单计划始终保留一个 `activeRunId`。触发时先原子保存 `activeRunId` 和下一周期时间，再读取冻结快照、写 owner journal，最后调用原生 worker。仍运行、队列未确认或需恢复时禁止编辑计划、换版本或再次触发。原生终态事件若早于进程退出，计划保持 `FINISHING` 和重叠屏障，待 `exitCode/finishedAt` 确认后才释放。
+
+错过一个完整 tick 窗口的周期直接跳过，重算未来时间，不补跑、不积压成突发执行；运行期间错过的周期也不排队。重启时，空闲启用计划仅计算启动时间之后的新周期；有 active 运行的计划立即暂停并标记 `RECOVERY_REQUIRED`。未知提交、核查失败和缺失 journal 保留原运行 ID 及恢复屏障，不推定可以重投。`recover` 只 GET 该运行：仍运行则恢复跟踪但保持暂停，确认终态后释放 active 并保留上次状态，无法确认则继续暂停。
+
+`FAILED/STOPPED/TIMED_OUT/VALIDATION_FAILED/PREPARATION_FAILED/SUBMISSION_REJECTED` 会暂停计划并保留失败状态；从不自动重试。暂停计划仅停止未来周期，不隐式停止已启动的原生运行；停止运行仍使用已有 `/runs/{id}/stop`。
+
+专项可控时钟测试覆盖冻结原生 SQL 配置与资产、原子提交意图、无重叠、错过周期、重启恢复、未知提交不重发、缺 journal 屏障、终态进程退出、owner/修订/IANA 时区和元数据不读取快照。显式短 Cron 真引擎测试运行一份新的合成中文 CSV，经原 Script→File 生成完整文件，并在首次运行意图出现后暂停计划：
+
+```bash
+mvn -f WDF100.0/pom.xml -pl wjdatafusion-manage -am \
+  -Dtest=DataGovernanceKettleSchedulerTest,DataGovernanceKettleSchedulerLiveTest \
+  -Dsurefire.failIfNoSpecifiedTests=false -Dkettle.cronLive=true \
+  -Dkettle.tokenFile=/private/runtime/kettle-worker/.broker-token \
+  -Dkettle.cronEvidence=/private/runtime/evidence/native-cron-live.json test
+```
+
 真实附件的只读 API 导入已验证：`851987.zip` 为 18 步转换，`851988.zip` 为 2 条目的作业，`917552.zip` 为 24 步转换和 3 条目的作业。4 个定义共 42 步、5 作业条目、12 个步骤插件；10 个敏感字段被遮蔽。规范化稳定 ID/秘密标记后，原 XML 与 API 保存/读取往返结构完全一致，包括所有未知字段、CDATA、复制数（42 步均为 1）和条件分支。worker 调用数为 0。可复现测试：
 
 ```bash
@@ -190,5 +218,7 @@ mvn -f WDF100.0/pom.xml -pl wjdatafusion-manage -am \
 ```
 
 本轮已运行验证包括：未知 XML/CDATA/注释往返、XXE 拒绝、凭据遮蔽与重命名/清空/跨元素拒绝、修订与跨 owner、未知提交/重复提交不重执行、冻结 XML 与输入、ZIP 失败不替换、Job 同 owner 关联、目录发现/加载区别、loopback 及重定向拒绝，以及真实原引擎 `CSV → Script → File` 经 Java 网关校验、运行、事件和完整产物下载，输出包含合成行 `ALICE!`、`BOB!`。
+
+补充联调已覆盖中文输入文件、中文起点 Job→同 owner 子转换（自动带入其上传资产）和真正的短 Cron→原生文件执行。启用三个 live 开关及真实附件检查的全组共 **34 项通过，0 失败、0 跳过**；短 Cron 首次触发后暂停，最终仅 1 个成功运行。Job 的中文起点需要 worker 明确使用 `meta.findStart()` 的起点副本，不能仅让校验接受改名后仍由旧引擎硬编码寻找 `START`。
 
 这证明 Java 服务与本机 broker 主链连通。生产服务、远程地址、旧原流程业务、全部插件行为、Job 的真实外部交付和浏览器交互验收仍由各自专项证据覆盖；本提交不把 mock Job 编排当成真实 FTP 交付证明。

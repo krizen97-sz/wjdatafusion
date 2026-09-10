@@ -40,6 +40,13 @@ public class DataGovernanceKettleService
         public List<StoredFile> inputs = new ArrayList<>();
         public JsonNode workerSnapshot;
     }
+    static class FrozenDefinition
+    {
+        public long owner, definitionRevision;
+        public String definitionId, kind, encryptedXml, xmlSha256, inputsHash;
+        public List<StoredFile> inputs = new ArrayList<>();
+    }
+    static class EncryptedSnapshot { public String payload; }
     private static final long FILE_LIMIT = 8L * 1024 * 1024, TOTAL_FILES = 16L * 1024 * 1024;
     private final DataGovernanceKettleProperties properties;
     private final CredentialCryptoService crypto;
@@ -290,6 +297,10 @@ public class DataGovernanceKettleService
             run.state = "PREPARING"; run.submissionState = "PREPARING";
             run.createdAt = Instant.now().toString(); persistRun(run);
         }
+        return dispatch(run, xml);
+    }
+    private Map<String,Object> dispatch(StoredRun run, String xml)
+    {
         boolean submitting = false;
         try
         {
@@ -314,6 +325,48 @@ public class DataGovernanceKettleService
                 persistRun(run); return runView(run);
             }
         }
+    }
+    synchronized Summary definitionSummary(String id, long owner) { return ownedDefinition(id, owner).summary; }
+    synchronized Path scheduleDirectory() { initialize(); return directory(root.resolve("schedules")); }
+    synchronized FrozenDefinition captureFrozen(String id, long revision, long owner)
+    {
+        Definition definition = ownedDefinition(id, owner); if (revision != definition.summary.revision()) conflict();
+        FrozenDefinition snapshot = new FrozenDefinition(); snapshot.owner = owner; snapshot.definitionId = id;
+        snapshot.definitionRevision = revision; snapshot.kind = definition.summary.kind(); snapshot.encryptedXml = definition.encryptedXml;
+        String xml = crypto.decrypt(definition.encryptedXml); snapshot.xmlSha256 = hash(xml.getBytes(StandardCharsets.UTF_8));
+        snapshot.inputs = snapshotInputs(definition, xml, owner); snapshot.inputsHash = inputsHash(snapshot.inputs); return snapshot;
+    }
+    synchronized void writeFrozen(String id, FrozenDefinition snapshot)
+    {
+        initialize(); identifier(id); Path path = directory(root.resolve("schedule-snapshots")).resolve(id + ".json");
+        if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) reject("计划快照不可覆盖");
+        try { EncryptedSnapshot envelope = new EncryptedSnapshot(); envelope.payload = crypto.encrypt(mapper.writeValueAsString(snapshot)); write(path, envelope); }
+        catch (ServiceException e) { throw e; } catch (Exception e) { throw new ServiceException("原生计划快照保存失败"); }
+    }
+    synchronized FrozenDefinition readFrozen(String id, long owner)
+    {
+        initialize(); identifier(id); EncryptedSnapshot envelope = read(root.resolve("schedule-snapshots").resolve(id + ".json"), EncryptedSnapshot.class);
+        try { FrozenDefinition snapshot = mapper.readValue(crypto.decrypt(envelope.payload), FrozenDefinition.class);
+            if (snapshot.owner != owner) unavailable(); return snapshot; }
+        catch (ServiceException e) { throw e; } catch (Exception e) { throw new ServiceException("原生计划快照读取失败"); }
+    }
+    Map<String,Object> submitFrozen(FrozenDefinition snapshot, String runId, long owner)
+    {
+        StoredRun run; String xml;
+        synchronized (this)
+        {
+            initialize(); identifier(runId); if (snapshot.owner != owner) unavailable(); ownedDefinition(snapshot.definitionId, owner); requireWorker();
+            if (Files.exists(root.resolve("runs").resolve(runId + ".json"), LinkOption.NOFOLLOW_LINKS))
+            { StoredRun prior = ownedRun(runId, owner); if (!snapshot.xmlSha256.equals(prior.xmlSha256) || !snapshot.inputsHash.equals(prior.inputsHash)) conflict(); return runView(prior); }
+            run = new StoredRun(); run.id = runId; run.owner = owner; run.definitionId = snapshot.definitionId; run.revision = snapshot.definitionRevision;
+            run.kind = snapshot.kind; run.mode = "run"; run.previewStep = ""; run.rowLimit = 20; run.requestId = "schedule-" + runId;
+            run.requestFingerprint = hash((run.definitionId + ":" + run.revision + ":run::20").getBytes(StandardCharsets.UTF_8));
+            run.encryptedXml = snapshot.encryptedXml; run.xmlSha256 = snapshot.xmlSha256; run.inputs = snapshot.inputs; run.inputsHash = snapshot.inputsHash;
+            run.fingerprint = hash((run.requestFingerprint + ":" + run.xmlSha256 + ":" + run.inputsHash).getBytes(StandardCharsets.UTF_8));
+            run.state = "PREPARING"; run.submissionState = "PREPARING"; run.createdAt = Instant.now().toString();
+            persistRun(run); xml = crypto.decrypt(run.encryptedXml);
+        }
+        return dispatch(run, xml);
     }
     public Map<String, Object> run(String id, long owner)
     {
@@ -548,6 +601,7 @@ public class DataGovernanceKettleService
     }
     private void write(Path target, Object value)
     {
+        if (closed) reject("原生流程存储已关闭");
         Path temporary = target.resolveSibling(target.getFileName() + "." + UUID.randomUUID() + ".tmp");
         try
         {

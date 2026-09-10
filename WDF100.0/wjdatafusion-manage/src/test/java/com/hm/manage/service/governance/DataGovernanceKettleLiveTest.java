@@ -97,7 +97,7 @@ class DataGovernanceKettleLiveTest
         }
         finally { service.close(); }
     }
-    private static String fixture(JsonNode capabilities, String inputFilename)
+    static String fixture(JsonNode capabilities, String inputFilename)
     {
         Map<String,String> defaults = new HashMap<>(); for (JsonNode step : capabilities.path("steps")) defaults.put(step.path("id").asText(), step.path("defaultXml").asText());
         Document document = DataGovernanceKettleXml.parse("<transformation><info><name>synthetic-api-native</name><trans_type>Normal</trans_type><size_rowset>100</size_rowset><capture_step_performance>N</capture_step_performance><feedback_shown>N</feedback_shown></info><order/></transformation>");
