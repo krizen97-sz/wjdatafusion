@@ -28,6 +28,7 @@ public final class JsonRecordTransform {
     private static final Object MISSING = new Object();
     public interface Codec {
         Object parse(String text); String stringify(Object value);
+        default Object parse(String text, boolean ecmascriptDouble) { return parse(text); }
         default String stringify(Object value, boolean ecmascriptDouble) {
             if (ecmascriptDouble) throw invalid("Codec does not support ECMAScript number serialization");
             return stringify(value);
@@ -86,9 +87,10 @@ public final class JsonRecordTransform {
                 yield state -> {
                     String text = text(required(resolve(state.row, input)));
                     if (text.length() > MAX_DOCUMENT_BYTES || text.getBytes(StandardCharsets.UTF_8).length > MAX_DOCUMENT_BYTES) throw invalid("Document byte limit");
-                    Object parsed = copy(codec.parse(text));
+                    boolean legacyNumbers = numberMode.equals("ECMASCRIPT_DOUBLE");
+                    Object parsed = copy(codec.parse(text, legacyNumbers), legacyNumbers);
                     if (!(parsed instanceof Map<?, ?>) && !(parsed instanceof List<?>)) throw invalid("Document must be object or array");
-                    if (numberMode.equals("ECMASCRIPT_DOUBLE")) {
+                    if (legacyNumbers) {
                         state.ecmaDocuments.add(document); parsed = doubleNumbers(parsed);
                     } else state.ecmaDocuments.remove(document);
                     state.documents.put(document, parsed);
@@ -344,8 +346,10 @@ public final class JsonRecordTransform {
         return value;
     }
     private static Set<Object> identitySet() { return Collections.newSetFromMap(new IdentityHashMap<>()); }
-    private static Object copy(Object value) {
-        measure(value, 0, new Budget(), identitySet());
+    private static Object copy(Object value) { return copy(value, false); }
+    private static Object copy(Object value, boolean allowNonFinite) {
+        Budget budget = new Budget(); budget.allowNonFinite = allowNonFinite;
+        measure(value, 0, budget, identitySet());
         return cloneValue(value);
     }
     private static Object cloneValue(Object value) {
