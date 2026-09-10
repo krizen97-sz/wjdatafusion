@@ -3,6 +3,7 @@
 import argparse
 import base64
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -75,6 +76,17 @@ def file_digest(path):
     return digest.hexdigest()
 
 
+def load_linux_adapter():
+    path = Path(__file__).with_name('kettle_linux_runtime.py')
+    if not path.is_file():
+        raise RuntimeError('The reviewed Linux Kettle adapter is not installed; refusing an unisolated fallback')
+    specification = importlib.util.spec_from_file_location('rynew_kettle_linux_runtime', path)
+    module = importlib.util.module_from_spec(specification)
+    sys.modules[specification.name] = module
+    specification.loader.exec_module(module)
+    return module
+
+
 def prepare(archive, runtime, java_home=JAVA_HOME):
     runtime = private_dir(Path(runtime))
     lib = private_dir(runtime / 'lib')
@@ -142,14 +154,33 @@ def sandbox_profile(runtime, operation, java_home, ftp_test_ports=()):
 
 
 class Worker:
-    def __init__(self, runtime, timeout=120, ftp_test_policy=None, network_policy=None, allow_endpoints=()):
+    def __init__(self, runtime, timeout=120, ftp_test_policy=None, network_policy=None, allow_endpoints=(), linux_config=None):
         self.runtime = Path(runtime).resolve()
-        self.manifest = json.loads((self.runtime / 'manifest.json').read_text())
+        self.linux_runtime = None
+        self.artifacts_root = self.runtime
+        self.runtime_kind = 'macos-seatbelt'
+        if sys.platform == 'linux':
+            if not linux_config:
+                raise RuntimeError('Linux requires an explicit trusted --linux-config; refusing sandbox-exec or unisolated Java')
+            if ftp_test_policy or network_policy or allow_endpoints:
+                raise ValueError('Linux endpoints must come only from --linux-config; macOS network flags cannot be mixed')
+            read_private_json(linux_config)
+            adapter = load_linux_adapter()
+            configuration = adapter.Config.load(linux_config)
+            roots = [self.runtime, Path(configuration.worker_root), Path(configuration.operations_root), Path(configuration.state_root)]
+            if any(len(path.parts) < 3 for path in roots) or any(first == second or first in second.parents or second in first.parents for i, first in enumerate(roots) for second in roots[i + 1:]):
+                raise ValueError('Linux artifacts, operations, container journal and broker roots must be separate bounded directories')
+            self.linux_runtime = adapter.LinuxRuntime(configuration)
+            self.artifacts_root = Path(configuration.worker_root)
+            self.runtime_kind = 'linux-docker'
+        elif sys.platform != 'darwin' or not Path('/usr/bin/sandbox-exec').is_file():
+            raise RuntimeError('No supported OS sandbox. Refusing to run the original engine without isolation')
+        elif linux_config:
+            raise ValueError('--linux-config is Linux-only; macOS continues to use Seatbelt')
+        self.manifest = json.loads((self.artifacts_root / 'manifest.json').read_text())
         self.java_home = Path(self.manifest['javaHome'])
-        if sys.platform != 'darwin' or not Path('/usr/bin/sandbox-exec').is_file():
-            raise RuntimeError('No supported OS sandbox. Refusing to run original engine. Linux requires a separate container worker.')
         self.store = private_dir(self.runtime / 'transformations')
-        self.operations = private_dir(self.runtime / 'operations')
+        self.operations = private_dir(self.linux_runtime.config.operations_root if self.linux_runtime else self.runtime / 'operations')
         self.records = private_dir(self.runtime / 'run-records')
         self.runs = {}
         self.lock = threading.RLock()
@@ -164,6 +195,8 @@ class Worker:
                 raise ValueError('Network policy has expired')
             endpoints.extend(policy.get('endpoints', []))
         self.endpoints = []
+        if self.linux_runtime:
+            self.endpoints = [{'host': host, 'port': port} for host, port in self.linux_runtime.config.endpoints]
         for endpoint in endpoints:
             if isinstance(endpoint, str):
                 host, port_text = endpoint.rsplit(':', 1)
@@ -230,6 +263,33 @@ class Worker:
                 pass
             return event
 
+    def _linux_identity(self, run, supplied=None):
+        if self.linux_runtime is None:
+            raise ValueError('Docker run requires its configured Linux adapter for identity verification')
+        identity = supplied or self.linux_runtime.identity_for_run(run['id'])
+        if not isinstance(identity, dict) or not re.fullmatch(r'[a-f0-9]{64}', identity.get('containerId', '')) or not re.fullmatch(r'[a-f0-9]{64}', identity.get('sourceHash', '')) or identity.get('nonce') != run.get('launchNonce'):
+            raise ValueError('Container identity does not match the durable broker intent')
+        previous = run.get('runtimeIdentity')
+        if previous and any(previous.get(key) != identity.get(key) for key in ['containerId', 'sourceHash', 'nonce']):
+            raise ValueError('Container identity changed from the recorded run')
+        return {'kind': 'docker', 'containerId': identity['containerId'], 'sourceHash': identity['sourceHash'], 'nonce': identity['nonce']}
+
+    def _reconcile_linux(self, run, completed):
+        if run.get('runtimeKind') != 'linux-docker':
+            return completed
+        try:
+            run['runtimeIdentity'] = self._linux_identity(run)
+            result = self.linux_runtime.status(run['id']) if completed else self.linux_runtime.recover(run['id'])
+            run['adapterRecovery'] = {key: result[key] for key in ['state', 'running', 'exitCode', 'containerRemoved', 'resubmitted', 'recoveryRequired', 'message'] if key in result}
+            if completed and (result.get('running') or result.get('recoveryRequired') or result.get('state') == RECOVERY_REQUIRED):
+                raise ValueError('Container state does not corroborate the completed broker record')
+            if completed and result.get('exitCode') is not None and run.get('exitCode') is not None and result['exitCode'] != run['exitCode']:
+                raise ValueError('Container exit code differs from the durable record')
+            return completed
+        except Exception as error:
+            run['adapterRecovery'] = {'state': RECOVERY_REQUIRED, 'errorClass': type(error).__name__, 'message': 'Container journal/identity could not be reconciled; no process was started or signalled'}
+            return False
+
     def _recover(self):
         """No process is started or signalled here. Unknown effects remain explicitly unknown."""
         candidates = {path.name for parent in [self.records, self.operations] for path in parent.iterdir() if path.is_dir() and not path.is_symlink() and re.fullmatch(r'[A-Za-z0-9_-]{1,80}', path.name)}
@@ -268,6 +328,11 @@ class Worker:
             state = metadata.get('state') if trusted and completed else terminal['state'] if completed else RECOVERY_REQUIRED
             run = dict(metadata)
             run.update({'id': identifier, 'directory': str(operation), 'process': None, 'events': events, 'state': state, 'restored': True, 'replayAllowed': False, 'fingerprint': intent.get('fingerprint') if trusted and not damaged else None, 'launchNonce': intent.get('launchNonce') if trusted and not damaged else None, 'createdAt': intent.get('createdAt', operation.stat().st_mtime if operation.exists() else time.time()), 'mode': intent.get('mode', 'job' if (operation / 'transformation.kjb').exists() else 'run'), 'inputNames': intent.get('inputNames', []), 'nodes': metadata.get('nodes', []), 'finalized': bool(completed)})
+            run['runtimeKind'] = intent.get('runtimeKind', metadata.get('runtimeKind', 'legacy-native'))
+            completed = self._reconcile_linux(run, bool(completed))
+            if not completed:
+                run['state'] = RECOVERY_REQUIRED
+                run['finalized'] = False
             latest_counters = next((event['nodes'] for event in reversed(events) if event.get('type') in {'metrics', 'terminal', 'state'} and 'nodes' in event), None)
             if latest_counters is not None:
                 run['nodes'] = latest_counters
@@ -364,7 +429,10 @@ class Worker:
                 return run_id
         if (self.operations / run_id).exists() or (self.records / run_id).exists():
             raise ValueError('runId already exists on disk; use a new id')
-        if sum(r.get('process') is not None and r['process'].poll() is None for r in self.runs.values()) >= 4:
+        if self.linux_runtime and not self.linux_runtime.config.execution_enabled:
+            raise RuntimeError('Linux execution is disabled; review the adapter plan and enable trusted configuration before submitting new work')
+        active = sum((r.get('process') is not None and r['process'].poll() is None) or (r.get('process') is None and r.get('adapterRecovery', {}).get('running') is True) for r in self.runs.values())
+        if active >= 4:
             raise ValueError('Worker is at its four-process concurrency limit')
         if xml is not None:
             self.validate_xml(xml, 'job' if operation in {'job', 'job-validate'} else 'transformation')
@@ -375,7 +443,7 @@ class Worker:
         record_dir.mkdir(mode=0o700)
         created_at = time.time()
         nonce = secrets.token_hex(32)
-        intent = {'schemaVersion': 1, 'id': run_id, 'fingerprint': fingerprint, 'operation': operation, 'mode': 'preview' if preview_step else operation, 'createdAt': created_at, 'inputNames': [name for name, _ in decoded_files], 'launchNonce': nonce}
+        intent = {'schemaVersion': 1, 'id': run_id, 'fingerprint': fingerprint, 'operation': operation, 'mode': 'preview' if preview_step else operation, 'createdAt': created_at, 'inputNames': [name for name, _ in decoded_files], 'launchNonce': nonce, 'runtimeKind': self.runtime_kind}
         # This record is outside the engine's OS file grants and is durable before Popen.
         atomic_private_json(record_dir / 'intent.json', intent)
         run = dict(intent, state='INTENT_PERSISTED', events=[], directory=str(directory), process=None, nodes=[], finalized=False, restored=False)
@@ -388,31 +456,45 @@ class Worker:
             (directory / 'output' / name).write_bytes(data)
         if xml is not None:
             (directory / ('transformation.kjb' if operation in {'job', 'job-validate'} else 'transformation.ktr')).write_text(xml)
-        profile = directory / 'sandbox.sb'
-        ftp_ports = [endpoint['port'] for endpoint in self.endpoints] if operation in {'run', 'job'} else []
-        if operation == 'job' and self.ftp_test_policy:
-            policy = self.ftp_policy_snapshot
-            if policy.get('purpose') != 'synthetic-local-ftp' or not time.time() < policy.get('expiresAt', 0) <= time.time() + 3600:
-                raise ValueError('FTP fixture policy is missing, expired or not explicitly synthetic')
-            fixture_ports = policy.get('ports', [])
-            if not isinstance(fixture_ports, list) or not 1 <= len(fixture_ports) <= 10 or any(type(port) is not int or not 1024 <= port <= 65535 for port in fixture_ports):
-                raise ValueError('FTP fixture policy requires 1-10 explicit localhost ports')
-            ftp_ports.extend(fixture_ports)
-        profile.write_text(sandbox_profile(self.runtime, directory, self.java_home, ftp_ports))
-        cmd = ['/usr/bin/sandbox-exec', '-f', str(profile), str(self.java_home / 'bin/java'), '-Xmx384m', '-XX:+PerfDisableSharedMem', '-Dgovernance.worker.launch.id=' + nonce, '-Djava.awt.headless=true', '-Djava.net.preferIPv4Stack=true', '-Duser.timezone=UTC', '-DKETTLE_SYSTEM_HOSTNAME=isolated-kettle-worker', '-Duser.home=' + str(directory / 'home'), '-DKETTLE_HOME=' + str(directory / 'home'), '-DKETTLE_JNDI_ROOT=' + str(directory / 'home'), '-DKETTLE_PLUGIN_BASE_FOLDERS=' + str(directory / 'home/empty-plugins'), '-Djava.io.tmpdir=' + str(directory / 'tmp'), '-cp', self.manifest['classpath'], 'KettleWorker', str(directory), operation, preview_step, str(row_limit)]
-        run['commandSha256'] = hashlib.sha256(json.dumps(cmd).encode()).hexdigest()
+        cmd = None
+        if not self.linux_runtime:
+            profile = directory / 'sandbox.sb'
+            ftp_ports = [endpoint['port'] for endpoint in self.endpoints] if operation in {'run', 'job'} else []
+            if operation == 'job' and self.ftp_test_policy:
+                policy = self.ftp_policy_snapshot
+                if policy.get('purpose') != 'synthetic-local-ftp' or not time.time() < policy.get('expiresAt', 0) <= time.time() + 3600:
+                    raise ValueError('FTP fixture policy is missing, expired or not explicitly synthetic')
+                fixture_ports = policy.get('ports', [])
+                if not isinstance(fixture_ports, list) or not 1 <= len(fixture_ports) <= 10 or any(type(port) is not int or not 1024 <= port <= 65535 for port in fixture_ports):
+                    raise ValueError('FTP fixture policy requires 1-10 explicit localhost ports')
+                ftp_ports.extend(fixture_ports)
+            profile.write_text(sandbox_profile(self.runtime, directory, self.java_home, ftp_ports))
+            cmd = ['/usr/bin/sandbox-exec', '-f', str(profile), str(self.java_home / 'bin/java'), '-Xmx384m', '-XX:+PerfDisableSharedMem', '-Dgovernance.worker.launch.id=' + nonce, '-Djava.awt.headless=true', '-Djava.net.preferIPv4Stack=true', '-Duser.timezone=UTC', '-DKETTLE_SYSTEM_HOSTNAME=isolated-kettle-worker', '-Duser.home=' + str(directory / 'home'), '-DKETTLE_HOME=' + str(directory / 'home'), '-DKETTLE_JNDI_ROOT=' + str(directory / 'home'), '-DKETTLE_PLUGIN_BASE_FOLDERS=' + str(directory / 'home/empty-plugins'), '-Djava.io.tmpdir=' + str(directory / 'tmp'), '-cp', self.manifest['classpath'], 'KettleWorker', str(directory), operation, preview_step, str(row_limit)]
+            run['commandSha256'] = hashlib.sha256(json.dumps(cmd).encode()).hexdigest()
         run['state'] = 'STARTING'
         self._persist(run)
         log = (directory / 'engine.log').open('w')
         try:
-            process = subprocess.Popen(cmd, cwd=directory, env={'PATH': '/usr/bin:/bin', 'HOME': str(directory / 'home'), 'LANG': 'en_US.UTF-8', 'KETTLE_HOME': str(directory / 'home')}, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, text=True, bufsize=1, start_new_session=True)
+            if self.linux_runtime:
+                process = self.linux_runtime.launch(directory, operation, preview_step, row_limit, launch_id=nonce, stderr=log)
+                run['runtimeIdentity'] = self._linux_identity(run, process.identity())
+            else:
+                process = subprocess.Popen(cmd, cwd=directory, env={'PATH': '/usr/bin:/bin', 'HOME': str(directory / 'home'), 'LANG': 'en_US.UTF-8', 'KETTLE_HOME': str(directory / 'home')}, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, text=True, bufsize=1, start_new_session=True)
         except Exception as error:
             log.close()
+            if self.linux_runtime:
+                run.update(state=RECOVERY_REQUIRED, launchFailed=True, recoveryReason='Container launch was not durably acknowledged; inspect the adapter journal and never replay automatically')
+                self._reconcile_linux(run, False)
+                self._append_event(run, {'type': 'recovery', 'state': RECOVERY_REQUIRED, 'errorClass': type(error).__name__, 'message': run['recoveryReason']})
+                self._persist(run, finalized=False)
+                return run_id
             run.update(state='FAILED', errors=1, finishedAt=time.time(), launchFailed=True)
             self._append_event(run, {'type': 'terminal', 'state': 'FAILED', 'errors': 1, 'errorClass': type(error).__name__, 'message': 'Owned worker process could not be started'})
             self._persist(run, finalized=True)
             return run_id
-        run.update(process=process, spawnedPid=process.pid, spawnedAt=time.time())
+        run.update(process=process, spawnedAt=time.time())
+        if not self.linux_runtime:
+            run['spawnedPid'] = process.pid
         self._persist(run)
         def collect():
             try:
@@ -448,13 +530,19 @@ class Worker:
                         run['state'] = 'STOPPED'
                     elif code == 0 and run.get('engineTerminal', {}).get('state') in TERMINAL:
                         run['state'] = run['engineTerminal']['state']
+                    elif self.linux_runtime and operation in {'run', 'job'}:
+                        run['state'] = RECOVERY_REQUIRED
+                        run['recoveryReason'] = 'Owned container exited without an observed native terminal result; external effects are unknown'
                     else:
                         run['state'] = 'SUCCEEDED' if code == 0 and any(e['type'] in {'validation', 'capabilities', 'sandbox-proof'} for e in run['events']) else 'FAILED'
-                    if not any(e['type'] == 'terminal' and e.get('state') == run['state'] for e in run['events']) and operation in {'run', 'job'}:
+                    if run['state'] == RECOVERY_REQUIRED:
+                        self._append_event(run, {'type': 'recovery', 'state': RECOVERY_REQUIRED, 'exitCode': code, 'message': run['recoveryReason']})
+                    elif not any(e['type'] == 'terminal' and e.get('state') == run['state'] for e in run['events']) and operation in {'run', 'job'}:
                         self._append_event(run, {'type': 'terminal', 'state': run['state'], 'errors': run.get('errors', 1 if run['state'] == 'FAILED' else 0), 'exitCode': code, 'forced': run.get('forcedStop', False)})
-                    run['finishedAt'] = time.time()
+                    if run['state'] in TERMINAL:
+                        run['finishedAt'] = time.time()
                     run['finalizing'] = False
-                    self._persist(run, finalized=True)
+                    self._persist(run, finalized=run['state'] in TERMINAL)
             except Exception as error:
                 with self.lock:
                     run.update(state=RECOVERY_REQUIRED, recoveryReason='Worker supervision could not durably finalize the operation', supervisionError=type(error).__name__)
@@ -486,6 +574,8 @@ class Worker:
         with self.lock:
             run = self.runs[run_id]
             result = {k: v for k, v in run.items() if k not in {'process', 'events', 'directory', 'inputNames', 'launchNonce', 'engineTerminal', 'spawnedPid', 'commandSha256'}}
+            if result.get('runtimeIdentity'):
+                result['runtimeIdentity'] = {key: value for key, value in result['runtimeIdentity'].items() if key != 'nonce'}
             result['eventCount'] = len(run['events'])
             result['files'] = []
             output = Path(run['directory']) / 'output'
@@ -553,6 +643,10 @@ class Worker:
     def _request_control(self, run, command):
         if command not in {'STOP', 'HALT'} or not re.fullmatch(r'[a-f0-9]{64}', run.get('launchNonce', '')):
             raise ValueError('Unverified worker control request')
+        if run.get('runtimeKind') == 'linux-docker':
+            self._linux_identity(run)
+            self.linux_runtime.request_stop(run['id'], force=command == 'HALT', expected_nonce=run['launchNonce'])
+            return
         # The original Popen pipe is tied to this child across sandbox-exec -> JVM exec.
         # A recovered run never sends a signal to a saved PID; its nonce-bound stop file
         # can only be acted on by the JVM launched for this operation directory.
@@ -643,7 +737,7 @@ def serve(worker, port):
                     raise ValueError('Request too large')
                 body = json.loads(self.rfile.read(length) or '{}') if length else {}
                 if self.command == 'GET' and parts == ['health']:
-                    result = {'status': 'UP', 'engine': 'original-kettle', 'sandbox': 'macos-seatbelt', 'protocolVersion': 1, 'runtimePolicy': {'mode': 'registered-endpoints' if worker.endpoints else 'deny-all', 'endpoints': worker.endpoints, 'validationNetwork': 'deny-all', 'ftpFixturePolicy': worker.ftp_test_policy is not None}}
+                    result = {'status': 'UP', 'engine': 'original-kettle', 'sandbox': worker.runtime_kind, 'protocolVersion': 1, 'runtimePolicy': {'mode': 'registered-endpoints' if worker.endpoints else 'deny-all', 'endpoints': worker.endpoints, 'validationNetwork': 'deny-all', 'ftpFixturePolicy': worker.ftp_test_policy is not None, 'executionEnabled': bool(worker.linux_runtime.config.execution_enabled) if worker.linux_runtime else True}}
                 elif self.command == 'GET' and parts == ['capabilities']:
                     result = worker.capabilities()
                 elif self.command == 'POST' and parts == ['transformations', 'validate']:
@@ -723,7 +817,7 @@ def serve(worker, port):
             self.wfile.write(data)
         do_GET = do_POST = do_PUT = handle_request
     server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
-    print(json.dumps({'url': 'http://127.0.0.1:' + str(server.server_port), 'engine': 'original-kettle', 'sandbox': 'macos-seatbelt'}), flush=True)
+    print(json.dumps({'url': 'http://127.0.0.1:' + str(server.server_port), 'engine': 'original-kettle', 'sandbox': worker.runtime_kind}), flush=True)
     server.serve_forever()
 
 
@@ -734,16 +828,18 @@ def main():
     parser.add_argument('--runtime', required=True)
     parser.add_argument('--archive')
     parser.add_argument('--jdbc-jar')
+    parser.add_argument('--java-home', type=Path, default=JAVA_HOME, help='Explicit JDK used only for artifact preparation')
     parser.add_argument('--port', type=int, default=19162)
     parser.add_argument('--timeout', type=int, default=120, help='Per operation seconds; enforced by broker watchdog')
     parser.add_argument('--ftp-test-policy', help='Explicit, expiring synthetic localhost FTP fixture policy file')
     parser.add_argument('--network-policy', help='Trusted broker-owned 0600 JSON file containing registered exact endpoints')
     parser.add_argument('--allow-endpoint', action='append', default=[], help='Explicit startup grant, e.g. 127.0.0.1:15432 (repeatable)')
+    parser.add_argument('--linux-config', help='Trusted private Linux adapter configuration; required on Linux')
     args = parser.parse_args()
     if args.command == 'prepare':
         if not args.archive:
             parser.error('--archive is required')
-        print(json.dumps(prepare(args.archive, args.runtime)))
+        print(json.dumps(prepare(args.archive, args.runtime, java_home=args.java_home)))
     elif args.command == 'install-postgres-jdbc':
         if not args.jdbc_jar:
             parser.error('--jdbc-jar is required')
@@ -751,9 +847,9 @@ def main():
     elif args.command == 'serve':
         if not 1 <= args.timeout <= 3600:
             parser.error('--timeout must be between 1 and 3600')
-        serve(Worker(args.runtime, timeout=args.timeout, ftp_test_policy=args.ftp_test_policy, network_policy=args.network_policy, allow_endpoints=args.allow_endpoint), args.port)
+        serve(Worker(args.runtime, timeout=args.timeout, ftp_test_policy=args.ftp_test_policy, network_policy=args.network_policy, allow_endpoints=args.allow_endpoint, linux_config=args.linux_config), args.port)
     else:
-        print(json.dumps(Worker(args.runtime).capabilities(), ensure_ascii=False))
+        print(json.dumps(Worker(args.runtime, linux_config=args.linux_config).capabilities(), ensure_ascii=False))
 
 
 if __name__ == '__main__':
