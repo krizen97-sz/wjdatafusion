@@ -42,11 +42,12 @@ class DataGovernanceKettleHttpShapeTest
         try
         {
             String definition = (String)service.save(null, new DefinitionInput("shape", null, DataGovernanceKettleXml.encode(DataGovernanceKettleApiTest.xml())), 7).get("id");
-            String runId = (String)service.submit(definition, new RunInput(1L, "run", null, 20, "shape"), 7).get("id");
+            String runId = (String)service.submit(definition, new RunInput(1L, "preview", "source", 37, "shape"), 7).get("id");
             JSONObject run = JSON.parseObject(JSON.toJSONString(controller.run(runId))).getJSONObject("data");
             assertEquals(1, run.getJSONArray("nodes").size()); assertEquals("合成数据", run.getJSONArray("nodes").getJSONObject(0).getJSONArray("rows").getJSONObject(0).getString("value"));
             assertEquals(1, run.getJSONArray("files").size()); assertTrue(run.getBooleanValue("finalized")); assertEquals(0, run.getIntValue("exitCode"));
             assertEquals(123.5, run.getDoubleValue("finishedAt")); assertEquals(2, run.getIntValue("schemaVersion")); assertEquals(0, run.getIntValue("errors"));
+            assertEquals("source", run.getString("previewStep")); assertEquals(37, run.getIntValue("rowLimit"));
             JSONObject events = JSON.parseObject(JSON.toJSONString(controller.events(runId, 0))).getJSONObject("data");
             assertEquals(1, events.getJSONArray("events").size()); assertEquals(1, events.getIntValue("nextCursor")); assertTrue(events.getJSONArray("events").getJSONObject(0).getJSONObject("row").getBooleanValue("ok"));
             JSONObject validation = JSON.parseObject(JSON.toJSONString(controller.validate(definition))).getJSONObject("data");

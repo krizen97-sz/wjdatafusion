@@ -258,6 +258,24 @@ class DataGovernanceKettleApiTest
         assertEquals("Dummy", step.path("id").asText()); assertEquals("原生空步骤", step.path("name").asText());
         assertEquals(2, step.path("aliases").size()); assertTrue(step.path("loadable").asBoolean());
     }
+    @Test void allocatedTemplateIsSeparateFromDefaultsAndKeepsNativeBooleanEncodings()
+    {
+        DataGovernanceKettleClient allocated = new DataGovernanceKettleClient(properties) {
+            @Override public JsonNode request(String method, String path, Object body)
+            { Map<String,Object> entry = new LinkedHashMap<>(Map.of("id", "SortRows", "name", "Sort", "className", "example.SortMeta", "loadable", true,
+                "defaultXml", "<fields/>", "configurationTemplateXml", "<fields><field><ascending>N</ascending><date_format_lenient>false</date_format_lenient><password>synthetic-template-secret</password></field></fields>"));
+              entry.put("allocationApplied", true); entry.put("allocationMethod", "allocate(int)"); entry.put("allocationArguments", List.of(1)); entry.put("configurationTemplateReadback", true);
+              return mapper.valueToTree(Map.of("steps", List.of(entry))); }
+        };
+        var configured = new DataGovernanceKettleService(properties, serviceCrypto(), allocated);
+        JsonNode entry = mapper.valueToTree(configured.catalog()).path("steps").get(0);
+        assertEquals("<fields/>", DataGovernanceKettleXml.decode(entry.path("defaultXmlBase64").asText()));
+        String template = DataGovernanceKettleXml.decode(entry.path("configurationTemplateXmlBase64").asText());
+        assertTrue(template.contains("<ascending>N</ascending>")); assertTrue(template.contains("<date_format_lenient>false</date_format_lenient>"));
+        assertFalse(template.contains("synthetic-template-secret")); assertTrue(entry.path("allocationApplied").asBoolean());
+        assertEquals(1, entry.path("allocationArguments").get(0).asInt()); assertTrue(entry.path("configurationTemplateReadback").asBoolean()); configured.close();
+    }
+    private CredentialCryptoService serviceCrypto() { try { return crypto(); } catch (Exception e) { throw new RuntimeException(e); } }
     @Test void ownerScopedHistoryReturnsNewestFirstAndRetainsFailureAndUnknownStatesWithoutPolling() throws Exception
     {
         String id = save(xml());
