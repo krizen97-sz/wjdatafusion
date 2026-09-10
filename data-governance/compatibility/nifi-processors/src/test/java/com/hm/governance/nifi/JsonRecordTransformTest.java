@@ -162,4 +162,45 @@ class JsonRecordTransformTest {
         return JSON.parseObject(new String(runner.getFlowFilesForRelationship(JsonRecordTransform.SUCCESS).get(0).toByteArray(), StandardCharsets.UTF_8)).getString("payload");
     }
 
+    @Test void kettleJsonNumbersFollowObservedTokenLengthAndRetainNegativeZero() {
+        String[][] cases = {{"1.0", "1.0"}, {"1e20", "1.0E20"}, {"9007199254740993", "9007199254740993"},
+            {"1e400", "Infinity"}, {"-1e400", "-Infinity"}, {"1e-4000", "0.0"}, {"-0.0", "-0.0"},
+            {"0.123456789012345678901", "0.123456789012345678901"}, {"12345.00", "12345.0"},
+            {"1e-19", "1.0E-19"}, {"0.0000000000000000001", "1E-19"}, {"true", "true"}, {"false", "false"}};
+        for (String[] sample : cases) assertEquals(sample[1], kettleValue("{\"value\":" + sample[0] + "}"));
+        assertEquals("  source text  ", kettleValue("{\"value\":\"  source text  \"}"));
+    }
+    @Test void kettleStringContainersUseInsertionOrderAndJsonSmartEscapingOnlyForContainers() {
+        String text = "slash/ quote\" back\\ newline\n tab\t 中文\u2028\u2029 🚀";
+        assertEquals(text, kettleValue(JSON.toJSONString(Map.of("value", text))));
+        assertEquals("{\"9\":9,\"2\":2,\"01\":1,\"plain\":[\"slash\\/\",{\"z\":null,\"a\":true}],\"unicode\":\"\\u2028\\u2029\\u20AF\"}",
+            kettleValue("{\"value\":{\"9\":9,\"2\":2,\"01\":1,\"plain\":[\"slash/\",{\"z\":null,\"a\":true}],\"unicode\":\"\u2028\u2029\u20AF\"}}"));
+        assertEquals("[{\"z\":1,\"a\":2},\"slash\\/\",null]", kettleValue("{\"value\":[{\"z\":1,\"a\":2},\"slash/\",null]}"));
+    }
+    @Test void explicitKettleEmptyPolicyHandlesMissingNullAndPrimitiveDocumentsAndFiltersNullSource() {
+        for (String document : List.of("", " ", "\r\n\t", "\uFEFF", "\uFEFF{}", "null", "true", "123", "\"text\"", "[]", "{}", "{\"value\":null}"))
+            assertNull(kettleValue(document));
+        var runner = kettleRunner(); runner.enqueue("{\"payload\":null}"); runner.run();
+        runner.assertTransferCount(JsonRecordTransform.EMPTY, 1); runner.assertTransferCount(JsonRecordTransform.FAILURE, 0);
+        runner.getFlowFilesForRelationship(JsonRecordTransform.EMPTY).get(0).assertContentEquals("{\"payload\":null}");
+    }
+    @Test void kettleCompatibilityKeepsBadJsonAndNumericResourceBoundsClosed() {
+        for (String document : List.of("{", "{\"value\":1} trailing", "{/*comment*/\"value\":1}", "{\"value\":NaN}", "{\"value\":Infinity}",
+            "{\"value\":01}", "{\"value\":1e1000000}", "{\"value\":" + "1".repeat(1025) + "}", "{\"value\":1,\"value\":2}")) {
+            String original = JSON.toJSONString(Map.of("payload", document)); var runner = kettleRunner(); runner.enqueue(original); runner.run();
+            runner.assertTransferCount(JsonRecordTransform.FAILURE, 1); runner.assertTransferCount(JsonRecordTransform.SUCCESS, 0);
+            runner.getFlowFilesForRelationship(JsonRecordTransform.FAILURE).get(0).assertContentEquals(original);
+        }
+    }
+    private TestRunner kettleRunner() {
+        var runner = runner(); runner.setProperty(JsonRecordTransform.OPERATIONS,
+            "[{\"op\":\"filter\",\"input\":\"/payload\",\"operator\":\"IS_NOT_NULL\"},{\"op\":\"parse\",\"input\":\"/payload\",\"document\":\"doc\",\"numberMode\":\"KETTLE_JSON\",\"onEmpty\":\"NULL\"},{\"op\":\"get\",\"document\":\"doc\",\"path\":\"/value\",\"output\":\"out\",\"type\":\"KETTLE_STRING\",\"missing\":\"NULL\",\"trim\":\"NONE\"}]");
+        return runner;
+    }
+    private String kettleValue(String document) {
+        var runner = kettleRunner(); runner.enqueue(JSON.toJSONString(Map.of("payload", document))); runner.run();
+        runner.assertTransferCount(JsonRecordTransform.SUCCESS, 1); runner.assertTransferCount(JsonRecordTransform.FAILURE, 0);
+        return JSON.parseObject(new String(runner.getFlowFilesForRelationship(JsonRecordTransform.SUCCESS).get(0).toByteArray(), StandardCharsets.UTF_8)).getString("out");
+    }
+
 }

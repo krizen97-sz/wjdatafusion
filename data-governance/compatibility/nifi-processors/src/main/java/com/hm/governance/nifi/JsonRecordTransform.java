@@ -28,11 +28,11 @@ import org.apache.nifi.processor.exception.ProcessException;
 import org.apache.nifi.processor.util.StandardValidators;
 
 @Tags({"governance", "json", "fields", "transform", "records"})
-@CapabilityDescription("Transforms a JSON object or object array using 1 to 64 explicit data operations, including row filtering. No scripting, expressions, external I/O or regex. All retained records succeed together or the original batch is rejected. parse defaults to EXACT numbers; opt-in ECMASCRIPT_DOUBLE reproduces the observed Rhino 1.7R3 document contract: IEEE-754 numeric precision, insertion-order object keys, and nonfinite numbers serialized as null. This is not modern JavaScript integer-key enumeration. dateGate uses strict Java dates and an explicit zone, with FAIL or FALSE for invalid text; it does not reproduce every permissive JavaScript Date.parse form.")
+@CapabilityDescription("Transforms a JSON object or object array using 1 to 64 explicit data operations, including row filtering. No scripting, expressions, external I/O or regex. All retained records succeed together or the original batch is rejected. parse defaults to EXACT numbers; KETTLE_JSON explicitly reproduces JsonSmart token-based integer/decimal conversion, and get KETTLE_STRING preserves strings or encodes containers using its escaped JSON contract; opt-in ECMASCRIPT_DOUBLE reproduces the observed Rhino 1.7R3 document contract: IEEE-754 numeric precision, insertion-order object keys, and nonfinite numbers serialized as null. This is not modern JavaScript integer-key enumeration. dateGate uses strict Java dates and an explicit zone, with FAIL or FALSE for invalid text; it does not reproduce every permissive JavaScript Date.parse form.")
 @InputRequirement(InputRequirement.Requirement.INPUT_REQUIRED)
 public class JsonRecordTransform extends AbstractProcessor {
     public static final PropertyDescriptor OPERATIONS = new PropertyDescriptor.Builder().name("Operations")
-        .description("JSON array, 1 to 64 operations and maximum 32 KiB. Ops: parse, get, constant, copy, remove, trim, replace, substring, set, broadcast, serialize, dateGate, filter. remove deletes only its explicit root output field. Input and path are strict JSON Pointers. STRING is a strict type check, not numeric coercion. Trimming removes characters <= U+0020. replace is literal with FIRST or ALL; null string values remain null. get missing defaults to FAIL, optionally NULL. set/broadcast may create an object leaf but never missing intermediate containers or array slots. broadcast outerIndex=true substitutes a complete $index path token. parse numberMode defaults EXACT; ECMASCRIPT_DOUBLE explicitly loses precision and preserves Rhino 1.7R3 insertion-order object keys. Its numeric tokens are limited to 1024 characters and exponent fields to 6 digits. dateGate onInvalid defaults FAIL, optionally FALSE; comparison is strict greater-than. filter supports scalar EQ/NE/IS_NULL/IS_NOT_NULL and keep=true(default)/false(invert). Missing is distinct from null and matches no predicate; numeric comparison is exact decimal, with no string/boolean coercion. Dropped records skip later operations.")
+        .description("JSON array, 1 to 64 operations and maximum 32 KiB. Ops: parse, get, constant, copy, remove, trim, replace, substring, set, broadcast, serialize, dateGate, filter. remove deletes only its explicit root output field. Input and path are strict JSON Pointers. STRING is a strict type check, not numeric coercion. KETTLE_STRING preserves null, stringifies number/boolean, and encodes containers with insertion order and JsonSmart escaping. Use trim NONE to retain original text. Trimming removes characters <= U+0020. replace is literal with FIRST or ALL; null string values remain null. get missing defaults to FAIL, optionally NULL. set/broadcast may create an object leaf but never missing intermediate containers or array slots. broadcast outerIndex=true substitutes a complete $index path token. parse numberMode defaults EXACT; ECMASCRIPT_DOUBLE explicitly loses precision and preserves Rhino 1.7R3 insertion-order object keys. KETTLE_JSON preserves integer precision and uses Double for decimal tokens up to 18 characters, BigDecimal for longer tokens. Both compatibility modes limit numeric tokens to 1024 characters and exponent fields to 6 digits. parse onEmpty defaults FAIL; NULL accepts empty text, and with KETTLE_JSON also JSON whitespace/BOM prefixes and valid scalar/null documents. Malformed JSON still fails; null source fields must be filtered before parsing. dateGate onInvalid defaults FAIL, optionally FALSE; comparison is strict greater-than. filter supports scalar EQ/NE/IS_NULL/IS_NOT_NULL and keep=true(default)/false(invert). Missing is distinct from null and matches no predicate; numeric comparison is exact decimal, with no string/boolean coercion. Dropped records skip later operations.")
         .required(true).defaultValue("[]").addValidator(StandardValidators.NON_EMPTY_VALIDATOR).build();
     public static final Relationship SUCCESS = new Relationship.Builder().name("success").description("Complete transformed object or array; all original unrelated fields retained.").build();
     public static final Relationship EMPTY = new Relationship.Builder().name("empty").description("Empty object array; original content retained.").build();
@@ -63,6 +63,13 @@ public class JsonRecordTransform extends AbstractProcessor {
             var transform = new com.hm.governance.compatibility.JsonRecordTransform(list, new Codec() {
                 @Override public Object parse(String text) { return JsonRecordTransform.parse(text, MAX_INPUT_BYTES); }
                 @Override public Object parse(String text, boolean ecmascriptDouble) { return JsonRecordTransform.parse(text, MAX_INPUT_BYTES, ecmascriptDouble); }
+                @Override public Object parse(String text, String numberMode) {
+                    return numberMode.equals("KETTLE_JSON") ? parseKettleJson(text) : parse(text, numberMode.equals("ECMASCRIPT_DOUBLE"));
+                }
+                @Override public String kettleString(Object value) {
+                    if (value instanceof String || value instanceof Number || value instanceof Boolean) return value.toString();
+                    StringBuilder output = new StringBuilder(); kettleJson(value, output); return output.toString();
+                }
                 @Override public String stringify(Object value) { return JSON.toJSONString(value, JSONWriter.Feature.WriteMapNullValue); }
                 @Override public String stringify(Object value, boolean ecmascriptDouble) {
                     if (!ecmascriptDouble) return stringify(value);
@@ -143,7 +150,8 @@ public class JsonRecordTransform extends AbstractProcessor {
         }
         return (negative ? "-" : "") + digits;
     }
-    private static String normalizeLegacyNumbers(String text) {
+    private static String normalizeLegacyNumbers(String text) { return normalizeNumbers(text, null); }
+    private static String normalizeNumbers(String text, List<Number> kettleNumbers) {
         StringBuilder result = new StringBuilder(); boolean quoted = false;
         for (int i = 0; i < text.length();) {
             char c = text.charAt(i);
@@ -163,15 +171,90 @@ public class JsonRecordTransform extends AbstractProcessor {
                 }
                 String token = text.substring(i, end);
                 if (!LEGACY_NUMBER.matcher(token).matches()) throw new IllegalArgumentException("Invalid or oversized legacy number");
-                double number = Double.parseDouble(token);
-                // Infinity stays a number in the temporary document; only JSON serialization maps it to null.
-                String normalized = Double.isInfinite(number) ? number > 0 ? "1e400" : "-1e400" : Double.toString(number);
-                if (normalized.endsWith(".0")) normalized = normalized.substring(0, normalized.length() - 2);
-                append(result, normalized); i = end;
-            } else { result.append(c); i++; }
+                if (kettleNumbers != null) {
+                    if (kettleNumbers.size() >= com.hm.governance.compatibility.JsonRecordTransform.MAX_VALUES) throw new IllegalArgumentException("Numeric value count limit");
+                    kettleNumbers.add(kettleNumber(token)); append(result, "0");
+                } else {
+                    double number = Double.parseDouble(token);
+                    // Infinity stays in temporary documents; JSON serialization alone maps it to null.
+                    String normalized = Double.isInfinite(number) ? number > 0 ? "1e400" : "-1e400" : Double.toString(number);
+                    if (normalized.endsWith(".0")) normalized = normalized.substring(0, normalized.length() - 2);
+                    append(result, normalized);
+                }
+                i = end;
+            } else {
+                if (kettleNumbers != null && "{}[],: \t\r\n".indexOf(c) < 0) {
+                    String literal = c == 't' ? "true" : c == 'f' ? "false" : c == 'n' ? "null" : "";
+                    if (literal.isEmpty() || !text.startsWith(literal, i)) throw new IllegalArgumentException("Strict JSON token required");
+                    append(result, literal); i += literal.length();
+                } else { result.append(c); i++; }
+            }
             if (result.length() > MAX_OUTPUT_BYTES) throw new IllegalArgumentException("Normalized document limit");
         }
         return result.toString();
+    }
+    // JsonSmart 2.2's observed provider keeps integers exact and switches decimal tokens at 18 characters.
+    private static Number kettleNumber(String token) {
+        if (token.indexOf('.') >= 0 || token.indexOf('e') >= 0 || token.indexOf('E') >= 0)
+            return token.length() > 18 ? new java.math.BigDecimal(token) : Double.valueOf(token);
+        try { return Long.valueOf(token); }
+        catch (NumberFormatException outsideLong) { return new java.math.BigInteger(token); }
+    }
+    private static Object parseKettleJson(String text) {
+        if (text.length() > MAX_INPUT_BYTES || text.getBytes(StandardCharsets.UTF_8).length > MAX_INPUT_BYTES) throw new IllegalArgumentException("JSON byte limit");
+        List<Number> numbers = new java.util.ArrayList<>();
+        // Zero placeholders preserve JSON structure and insertion order. Restore from the bounded lexical
+        // queue after parsing, so neither exponent limits nor precision-losing reparsing affect Kettle numbers.
+        Object parsed = readJson(normalizeNumbers(text, numbers), false);
+        var iterator = numbers.iterator(); parsed = restoreKettleNumbers(parsed, iterator);
+        if (iterator.hasNext()) throw new IllegalArgumentException("Numeric token count mismatch");
+        return parsed;
+    }
+    @SuppressWarnings("unchecked") private static Object restoreKettleNumbers(Object value, java.util.Iterator<Number> numbers) {
+        if (value instanceof Number) {
+            if (!numbers.hasNext()) throw new IllegalArgumentException("Numeric token count mismatch");
+            return numbers.next();
+        }
+        if (value instanceof Map<?, ?> map) ((Map<String, Object>) map).replaceAll((key, child) -> restoreKettleNumbers(child, numbers));
+        else if (value instanceof List<?> list) {
+            List<Object> items = (List<Object>) list;
+            for (int i = 0; i < items.size(); i++) items.set(i, restoreKettleNumbers(items.get(i), numbers));
+        }
+        return value;
+    }
+    private static void kettleJson(Object value, StringBuilder out) {
+        if (value == null) append(out, "null");
+        else if (value instanceof String text) kettleQuote(text, out);
+        else if (value instanceof Number number) {
+            boolean nonfinite = number instanceof Double d && !Double.isFinite(d) || number instanceof Float f && !Float.isFinite(f);
+            append(out, nonfinite ? "null" : number.toString());
+        } else if (value instanceof Boolean flag) append(out, flag.toString());
+        else if (value instanceof Map<?, ?> map) {
+            append(out, "{"); boolean first = true;
+            for (var entry : map.entrySet()) {
+                if (!first) append(out, ","); first = false;
+                kettleQuote((String) entry.getKey(), out); append(out, ":"); kettleJson(entry.getValue(), out);
+            }
+            append(out, "}");
+        } else if (value instanceof List<?> list) {
+            append(out, "["); boolean first = true;
+            for (Object child : list) { if (!first) append(out, ","); first = false; kettleJson(child, out); }
+            append(out, "]");
+        } else throw new IllegalArgumentException("Unsupported Kettle string value");
+    }
+    private static void kettleQuote(String text, StringBuilder out) {
+        append(out, "\"");
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            String escaped = switch (c) {
+                case '"' -> "\\\""; case '\\' -> "\\\\"; case '/' -> "\\/";
+                case '\b' -> "\\b"; case '\f' -> "\\f"; case '\n' -> "\\n"; case '\r' -> "\\r"; case '\t' -> "\\t";
+                default -> c <= 0x1f || c >= 0x7f && c <= 0x9f || c >= 0x2000 && c <= 0x20ff
+                    ? "\\u" + String.format(java.util.Locale.ROOT, "%04X", (int) c) : String.valueOf(c);
+            };
+            append(out, escaped);
+        }
+        append(out, "\"");
     }
     private static Object parse(String text, int byteLimit) { return parse(text, byteLimit, false); }
     private static Object parse(String text, int byteLimit, boolean ecmascriptDouble) {
@@ -179,6 +262,9 @@ public class JsonRecordTransform extends AbstractProcessor {
         // Fastjson caps exponent magnitude even with UseDoubleForDecimals. Normalize bounded numeric
         // tokens through Double first, so 1e-4000 becomes zero without allocating a huge BigDecimal.
         if (ecmascriptDouble) text = normalizeLegacyNumbers(text);
+        return readJson(text, ecmascriptDouble);
+    }
+    private static Object readJson(String text, boolean ecmascriptDouble) {
         var context = ecmascriptDouble
             ? new JSONReader.Context(JSONReader.Feature.UseDoubleForDecimals, JSONReader.Feature.DisableReferenceDetect, JSONReader.Feature.DisableSingleQuote)
             : new JSONReader.Context(JSONReader.Feature.UseBigDecimalForDoubles, JSONReader.Feature.UseBigDecimalForFloats,
