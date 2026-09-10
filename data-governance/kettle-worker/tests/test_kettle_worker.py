@@ -11,6 +11,7 @@ import time
 import threading
 import urllib.request
 import urllib.error
+from urllib.parse import quote
 import unittest
 import xml.etree.ElementTree as ET
 
@@ -79,6 +80,12 @@ def fixture(catalog, delay=False, broken=False):
 
 
 class StructuralTests(unittest.TestCase):
+    def test_safe_unicode_filenames(self):
+        self.assertEqual(module.validate_filename('车辆数据 2026.csv'), '车辆数据 2026.csv')
+        for name in ['../secret', 'dir/file', 'dir\\file', '..', ' ', 'a\x00b', 'a\x85b']:
+            with self.assertRaises(ValueError):
+                module.validate_filename(name)
+
     def test_reject_dtd_and_unknown_hops(self):
         with self.assertRaises(ValueError):
             module.Worker.validate_xml('<!DOCTYPE a [<!ENTITY p SYSTEM "file:///etc/passwd">]><transformation/>')
@@ -102,10 +109,17 @@ class NativeTests(unittest.TestCase):
         for name in ['CsvInput', 'ScriptValueMod', 'TextFileOutput', 'KafkaConsumer', 'KafkaProducer', 'JsonInput', 'DBLookup', 'FilterRows']:
             self.assertTrue(steps[name]['loadable'], name)
             self.assertEqual(steps[name]['classSource'], 'kettle-6.1.0.7.36.jar')
+        jobs = {entry['id']: entry for entry in self.catalog['jobs']}
+        for name in ['SPECIAL', 'TRANS', 'FTP_PUT']:
+            self.assertTrue(jobs[name]['loadable'])
+            self.assertTrue(jobs[name]['executionSupported'])
+            self.assertIn('defaultXml', jobs[name])
+            self.assertEqual(jobs[name]['classSource'], 'kettle-6.1.0.7.36.jar')
         validation = self.worker.validate(fixture(self.catalog))
         self.assertTrue(validation['valid'], validation)
         script = next(n for n in validation['nodes'] if n['name'] == 'native-script')
-        self.assertIn({'name': 'greeting', 'type': 'String'}, script['fields'])
+        self.assertEqual(next(field for field in script['fields'] if field['name'] == 'greeting')['type'], 'String')
+        self.assertTrue(all({'length', 'precision', 'origin'} <= field.keys() for field in script['fields']))
 
     def test_native_file_input_script_file_output(self):
         identifier = self.start()
@@ -163,6 +177,42 @@ class NativeTests(unittest.TestCase):
         self.worker.wait(identifier)
         self.assertEqual((Path(self.worker.runs[identifier]['directory']) / 'transformation.ktr').read_text(), xml)
 
+    def test_trusted_endpoint_policy_permissions_and_scope(self):
+        policy = self.worker.runtime / ('test-policy-' + str(time.time_ns()) + '.json')
+        policy.write_text(json.dumps({'endpoints': [{'host': '127.0.0.1', 'port': 15432}]}))
+        policy.chmod(0o600)
+        configured = module.Worker(self.worker.runtime, network_policy=policy)
+        self.assertEqual(configured.endpoints, [{'host': '127.0.0.1', 'port': 15432}])
+        policy.chmod(0o644)
+        with self.assertRaises(ValueError):
+            module.Worker(self.worker.runtime, network_policy=policy)
+        with self.assertRaises(ValueError):
+            module.Worker(self.worker.runtime, allow_endpoints=['192.0.2.1:15432'])
+
+    def test_native_job_broker_bridge(self):
+        if not (self.worker.runtime / 'classes/NativeJobExecutor.class').exists():
+            self.skipTest('NativeJobExecutor is a separate required integration commit')
+        job = ET.Element('job')
+        put(job, 'name', 'Synthetic broker child job')
+        entries = ET.SubElement(job, 'entries')
+        for values in [
+            {'name': 'START', 'type': 'SPECIAL', 'start': 'Y', 'dummy': 'N', 'repeat': 'N', 'parallel': 'N', 'draw': 'Y', 'nr': '0'},
+            {'name': 'Original child transformation', 'type': 'TRANS', 'specification_method': 'filename', 'filename': '${WORK_DIR}/child.ktr', 'wait_until_finished': 'Y', 'cluster': 'N', 'slave_server_name': '', 'parallel': 'N', 'draw': 'Y', 'nr': '0', 'parameters/pass_all_parameters': 'Y'},
+        ]:
+            entry = ET.SubElement(entries, 'entry')
+            for key, value in values.items():
+                put(entry, key, value)
+        for key, value in {'from': 'START', 'to': 'Original child transformation', 'from_nr': '0', 'to_nr': '0', 'enabled': 'Y', 'evaluation': 'Y', 'unconditional': 'Y'}.items():
+            put(job, 'hops/hop/' + key, value)
+        xml = ET.tostring(job, encoding='unicode')
+        inputs = [{'name': 'child.ktr', 'content': fixture(self.catalog)}, {'name': 'input.csv', 'content': 'name\nalice\n'}]
+        validation = self.worker.validate_job(xml, inputs)
+        self.assertTrue(validation['valid'], validation)
+        identifier = self.worker.launch('job', xml, input_files=inputs)
+        result = self.worker.wait(identifier)
+        self.assertEqual(result['state'], 'SUCCEEDED', self.worker.runs[identifier]['events'])
+        self.assertEqual((Path(self.worker.runs[identifier]['directory']) / 'output/result.csv').read_text(), 'name,greeting\nalice,ALICE!\n')
+
     def test_authenticated_http_binary_upload_and_download(self):
         broker = subprocess.Popen([os.sys.executable, str(REPO / 'tools/data-governance/kettle_worker.py'), 'serve', '--runtime', str(self.worker.runtime), '--port', '0', '--timeout', '20'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
@@ -182,17 +232,17 @@ class NativeTests(unittest.TestCase):
             self.assertEqual(origin.exception.code, 400)
             self.assertEqual(request('/health')['status'], 'UP')
             identifier = 'http-' + str(time.time_ns())
-            saved = request('/transformations/' + identifier, 'PUT', {'xml': fixture(self.catalog)})
+            saved = request('/transformations/' + identifier, 'PUT', {'xml': fixture(self.catalog).replace('/input.csv', '/输入数据.csv').replace('/result', '/输出结果')})
             self.assertTrue(saved['validation']['valid'])
-            run = request('/runs', 'POST', {'transformationId': identifier, 'runId': identifier, 'inputFiles': [{'name': 'input.csv', 'contentBase64': base64.b64encode('name\nalice\n'.encode()).decode()}]})
+            run = request('/runs', 'POST', {'transformationId': identifier, 'runId': identifier, 'inputFiles': [{'name': '输入数据.csv', 'contentBase64': base64.b64encode('name\nalice\n'.encode()).decode()}]})
             deadline = time.monotonic() + 15
             while run['state'] not in module.TERMINAL and time.monotonic() < deadline:
                 time.sleep(.05)
                 run = request('/runs/' + identifier)
             self.assertEqual(run['state'], 'SUCCEEDED')
-            data = request('/runs/' + identifier + '/files/result.csv', raw=True)
+            data = request('/runs/' + identifier + '/files/' + quote('输出结果.csv'), raw=True)
             self.assertEqual(data, b'name,greeting\nalice,ALICE!\n')
-            output = next(f for f in run['files'] if f['name'] == 'result.csv')
+            output = next(f for f in run['files'] if f['name'] == '输出结果.csv')
             self.assertEqual(output['sha256'], hashlib.sha256(data).hexdigest())
             self.assertFalse(output['partial'])
             events = request('/runs/' + identifier + '/events?after=0')['events']
