@@ -6,7 +6,7 @@
     <hop><from>Native script</from><to>Text output</to><enabled>Y</enabled></hop>
   </order>
   <step><name>CSV input</name><type>CsvInput</type><copies>1</copies><distribute>Y</distribute>
-    <filename>${WORK_DIR}/smoke.csv</filename><separator>,</separator><enclosure>"</enclosure><header>Y</header>
+    <filename>${INPUT_DIR}/smoke.csv</filename><separator>,</separator><enclosure>"</enclosure><header>Y</header>
     <encoding>UTF-8</encoding><buffer_size>50000</buffer_size><lazy_conversion>N</lazy_conversion><newline_possible>N</newline_possible>
     <fields><field><name>message</name><type>String</type><length>-1</length><precision>-1</precision><trim_type>none</trim_type></field></fields>
   </step>

@@ -24,9 +24,9 @@ def main():
         module.require(sys.platform == 'linux' and (os.geteuid() == config.uid or os.geteuid() == 0 and config.stage_run_owner),
                        'Live smoke needs the configured uid, or an explicitly approved root controller staging only this run')
     operation = config.operations_root / ('linux-smoke-' + uuid.uuid4().hex); operation.mkdir(mode=0o700)
-    for directory in ['output', 'home', 'tmp']: (operation / directory).mkdir(mode=0o700)
+    for directory in ['input', 'output', 'home', 'tmp']: (operation / directory).mkdir(mode=0o700)
     shutil.copyfile(ASSETS / 'fixtures/smoke.ktr', operation / 'transformation.ktr')
-    shutil.copyfile(ASSETS / 'fixtures/smoke.csv', operation / 'output/smoke.csv')
+    shutil.copyfile(ASSETS / 'fixtures/smoke.csv', operation / 'input/smoke.csv')
     controller = module.LinuxRuntime(config)
     plan = controller.plan(operation, 'run'); module.atomic_write(operation / 'dry-run-plan.json', json.dumps(plan, indent=2))
     if not args.execute:
