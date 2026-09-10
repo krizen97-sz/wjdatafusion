@@ -113,11 +113,47 @@ docker attach CLI 退出不等于 Java/容器退出；Popen-shaped handle 的 wa
 
 每个已确认的 cleanup 步骤单独持久化；容器已删除但后续规则清理失败时，可继续专属 cleanup，不重复删除或重新运行。创建结果未确认、标签不符、出现未知规则、外部重启等情形保持 RECOVERY_REQUIRED，要求按精确 journal/labels 人工核查，不能自动重新创建执行。operation 文件与上层业务台账保留。
 
+已记录的 `StartedAt` 对运行和停止状态都核对；容器被外部 start 后再次 stop，也不能作为原来完成的容器收编。
+
+## 官方镜像离线交付
+
+当目标主机不能稳定访问 Docker registry，可在能访问官方源的交付机运行以下命令。脚本不依赖或调用 Docker/skopeo/crane，不安装包、不运行镜像，也不解包 rootfs 到宿主文件系统。
+
+```sh
+python3 data-governance/kettle-worker/linux/export_image.py --output /private/linux-delivery
+```
+
+来源固定为官方 `library/eclipse-temurin`，不接受用户提供 registry URL 或浮动 tag。先验证锁定 index、linux/amd64 manifest 和 config SHA256，再按原 manifest 顺序下载所有层并核对压缩 SHA256/长度；只把 gzip 解压为普通层 tar 文件，对流中字节校验 config 中每个 `rootfs.diff_ids`。层 tar 内部文件始终没有提取到交付机。Docker-load 归档保留官方 config 原字节及全部层，外层路径由 SHA256 生成，`RepoTags=[]`；最后逐成员回读并复验配置及所有 diff ID。
+
+匿名 registry pull token 只在内存使用，不输出、不写文件；HTTPS 跨主机重定向移除 Authorization。断网重试有上限，缓存重新使用前再次核验，现有归档不会被覆盖。交付目录中的 `verified-objects/` 是可审计源对象缓存，传输运行只需归档、`SHA256SUMS`、`verification.json`，另带仓库的 image-lock 和源码/制品清单。
+
+Docker 的 load 路径从原 config 创建镜像 ID，并独立检查每个 rootfs diff ID；该无 tag 归档不依赖 RepoDigest 恢复。[Docker 28.4 load 源码](https://github.com/moby/moby/blob/v28.4.0/image/tarexport/load.go)、[Docker image load 文档](https://docs.docker.com/reference/cli/docker/image/load/)
+
+目标机由发布负责人核对传输 SHA 后独立执行以下步骤；这些命令不是 adapter 自动执行的一部分：
+
+```sh
+sha256sum --check SHA256SUMS
+docker image load --input eclipse-temurin-17-jre-jammy-linux-amd64.docker.tar.gz
+docker image inspect sha256:72e36d8dd5e6aab7ca6f3bcc47b9a6b1dde9b4c7a03536ed081a1bfb98616e15 \
+  --format '{{.Id}} {{.Os}}/{{.Architecture}}'
+```
+
+输出必须是上述完整 ID 和 `linux/amd64`。离线模式的受控配置添加：
+
+```json
+"image": "sha256:72e36d8dd5e6aab7ca6f3bcc47b9a6b1dde9b4c7a03536ed081a1bfb98616e15"
+```
+
+配置仅允许锁文件的官方 RepoDigest 或这一个官方 config ID，不能填写任意镜像 ID、截短 ID、tag 或不同平台。两种模式都要求 `docker image inspect .Id` 等于官方 configDigest；RepoDigest 模式继续要求官方 RepoDigest 存在。离线模式的 docker create 直接使用通过校验的完整 ID，仍为 `--pull=never`，不执行隐式 pull。容器恢复、状态、停止和清理也核验容器实际 `Image`、配置 selector、sourceHash 标签和 nonce。两种 selector 分别进入 sourceHash，旧 journal 不会自动改写成新身份。
+
+本轮真实下载/静态回读证据：5 个层，归档 91,938,455 bytes，SHA256 `9142aff884ec5f9c2da43611d48aeba0821e31476f7fb31f25bea35584afc197`。本轮未调用本机或目标机 Docker；`dockerLoadVerified=false`、`imageExecuted=false`。目标机完成实际 load 后，仍需先执行上文 `endpoints=[]` 的 CSV→Script→File smoke，再单独验收网络白名单。
+
 ## 本轮验证边界
 
 ```sh
 python3 data-governance/kettle-worker/linux/test_kettle_linux_runtime.py -v
+python3 data-governance/kettle-worker/linux/test_export_image.py -v
 sh -n data-governance/kettle-worker/linux/gate.sh
 ```
 
-已通过 30 项纯 mock 测试：默认无网络、原协议透传、64-hex nonce、逐 run 目录映射、真实制品 hash 计划、配置/镜像/端点/argv/路径注入、无未隔离 fallback、策略失败 gate 不放行、未知容器/挂载/权限拒绝、既有规则保留、清理续做、attach 退出不冒充容器结束、恢复不重投、受控 uid/gid staging、制品权限不变、错误 nonce 拒绝及禁新执行后仍可停止。测试没有执行 Docker、iptables 或 nsenter。真正 Linux 上的内核 firewall 顺序、容器 UID 文件权限、CSV 执行和允许/拒绝端点的网络实测，仍是部署前必做验收。
+已通过 37 项 adapter mock 和 8 项导出器合成测试：默认无网络、原协议透传、64-hex nonce、逐 run 目录映射、真实制品 hash 计划、配置/镜像/端点/argv/路径注入、无未隔离 fallback、策略失败 gate 不放行、未知容器/挂载/权限拒绝、既有规则保留、清理续做、attach 退出不冒充容器结束、恢复不重投、受控 uid/gid staging、制品权限不变、错误 nonce 拒绝及禁新执行后仍可停止；新增官方离线 ID/平台/恢复/来源标签、停止后的外部重启、元数据与层损坏、归档回读、路径和 HTTPS/token 重定向边界。测试没有执行 Docker、iptables 或 nsenter。真正 Linux 上的内核 firewall 顺序、容器 UID 文件权限、CSV 执行和允许/拒绝端点的网络实测，仍是部署前必做验收。

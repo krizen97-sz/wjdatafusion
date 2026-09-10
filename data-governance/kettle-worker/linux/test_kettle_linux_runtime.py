@@ -30,6 +30,7 @@ class FakeRunner:
         self.calls = []; self.container = None; self.network = None; self.attached = None
         self.host = {'DOCKER-USER': [['-m', 'comment', '--comment', 'existing-admin-rule', '-j', 'RETURN']]}
         self.ns = {}; self.fail = None; self.before_namespace = None
+        self.image = {'Id': runtime.IMAGE['configDigest'], 'RepoDigests': [runtime.IMAGE['image'].replace('docker.io/library/', '')], 'Os': 'linux', 'Architecture': 'amd64'}
     def run(self, argv, check=True, pass_fds=()):
         self.calls.append(list(argv))
         if self.fail and self.fail(argv): raise RuntimeError('Injected command failure')
@@ -55,7 +56,7 @@ class FakeRunner:
         return subprocess.CompletedProcess(argv, 0, value, '')
     def docker(self, args):
         if args[:2] == ['image', 'inspect']:
-            return json.dumps([{'RepoDigests': [runtime.IMAGE['image'].replace('docker.io/library/', '')], 'Os': 'linux', 'Architecture': 'amd64'}])
+            return json.dumps([self.image])
         if args[:2] == ['network', 'create']:
             labels = dict(arg.split('=', 1) for i, arg in enumerate(args) if i and args[i - 1] == '--label')
             options = dict(arg.split('=', 1) for i, arg in enumerate(args) if i and args[i - 1] == '--opt')
@@ -73,7 +74,8 @@ class FakeRunner:
                     parts = dict(item.split('=', 1) for item in arg.split(',') if '=' in item)
                     mounts.append({'Type': 'bind', 'Source': parts['src'], 'Destination': parts['dst'], 'RW': 'readonly' not in arg.split(',')})
             network = args[args.index('--network') + 1]
-            self.container = {'Id': 'a' * 64, 'Config': {'Labels': labels, 'Image': runtime.IMAGE['image'], 'User': args[args.index('--user') + 1]},
+            image = next(value for value in args if value in {runtime.IMAGE['image'], runtime.IMAGE['configDigest']})
+            self.container = {'Id': 'a' * 64, 'Image': runtime.IMAGE['configDigest'], 'Config': {'Labels': labels, 'Image': image, 'User': args[args.index('--user') + 1]},
                               'HostConfig': {'ReadonlyRootfs': True, 'Privileged': False, 'CapDrop': ['ALL'], 'SecurityOpt': ['no-new-privileges:true'],
                                              'PortBindings': {}, 'NetworkMode': network}, 'Mounts': mounts,
                               'State': {'Running': False, 'ExitCode': 0, 'Pid': 2345, 'StartedAt': 'one-start'},
@@ -137,7 +139,7 @@ class LinuxTests(unittest.TestCase):
             with self.subTest(host=host, port=port), self.assertRaises((RuntimeError, ValueError)):
                 self.config(endpoints=[{'host': host, 'port': port}])
     def test_image_and_binary_injection_rejected(self):
-        for value in ['eclipse-temurin:latest', runtime.IMAGE['image'] + ' --privileged', 'attacker@sha256:' + '0' * 64]:
+        for value in ['eclipse-temurin:latest', runtime.IMAGE['image'] + ' --privileged', 'attacker@sha256:' + '0' * 64, 'sha256:' + '0' * 64, runtime.IMAGE['configDigest'][7:]]:
             with self.assertRaises(RuntimeError): self.config(image=value)
         with self.assertRaises(RuntimeError): self.config(docker='/usr/bin/docker;touch /tmp/escape')
         with self.assertRaises(RuntimeError): self.config(uid=0)
@@ -291,6 +293,51 @@ class LinuxTests(unittest.TestCase):
     def test_external_container_restart_is_not_adopted(self):
         controller, runner = self.controller(); controller.launch(self.op, 'run'); runner.container['State']['StartedAt'] = 'unapproved-new-start'
         with self.assertRaises(RuntimeError): controller.recover('run-one')
+    def test_stopped_but_externally_restarted_container_is_not_adopted(self):
+        controller, runner = self.controller(); controller.launch(self.op, 'run')
+        runner.container['State'].update(Running=False, StartedAt='external-restart-then-stop')
+        for action in [controller.status, controller.recover, controller.cleanup]:
+            with self.assertRaises(RuntimeError): action('run-one')
+        self.assertFalse(any('rm' in call for call in runner.calls))
+    def test_offline_exact_official_id_launch_stop_restore_and_cleanup(self):
+        controller, runner = self.controller(image=runtime.IMAGE['configDigest']); runner.image['RepoDigests'] = []
+        handle = controller.launch(self.op, 'run', launch_id='6' * 64)
+        record = controller._read('run-one')
+        self.assertEqual(runtime.IMAGE['configDigest'], runner.container['Config']['Image'])
+        self.assertIn(runtime.IMAGE['configDigest'], record['containerCreate'])
+        restored = runtime.LinuxRuntime(self.config(image=runtime.IMAGE['configDigest']), runner=runner, host_platform='linux')
+        identity = restored.identity_for_run('run-one')
+        self.assertEqual(record['sourceHash'], identity['sourceHash']); self.assertEqual('6' * 64, identity['nonce'])
+        self.assertFalse(restored.recover('run-one')['resubmitted'])
+        restored.request_stop('run-one', expected_nonce='6' * 64)
+        runner.container['State']['Running'] = False; self.assertEqual(0, handle.poll())
+        restored.cleanup('run-one'); self.assertTrue(restored.status('run-one')['containerRemoved'])
+    def test_repo_digest_mode_requires_repo_digest_after_offline_load(self):
+        controller, runner = self.controller(); runner.image['RepoDigests'] = []
+        with self.assertRaises(RuntimeError): controller.launch(self.op, 'run')
+        self.assertIsNone(runner.container)
+    def test_offline_wrong_image_id_or_platform_stops_before_create(self):
+        for key, value in [('Id', 'sha256:' + '0' * 64), ('Os', 'windows'), ('Architecture', 'arm64')]:
+            with self.subTest(key=key):
+                controller, runner = self.controller(image=runtime.IMAGE['configDigest'])
+                runner.image['RepoDigests'] = []; runner.image[key] = value
+                with self.assertRaises(RuntimeError): controller.launch(self.op, 'run')
+                self.assertIsNone(runner.container)
+                (self.state / 'run-one.json').unlink()
+    def test_repo_digest_with_wrong_config_id_stops_before_create(self):
+        controller, runner = self.controller(); runner.image['Id'] = 'sha256:' + '0' * 64
+        with self.assertRaises(RuntimeError): controller.launch(self.op, 'run')
+        self.assertIsNone(runner.container)
+    def test_offline_container_actual_image_and_source_label_are_rechecked(self):
+        controller, runner = self.controller(image=runtime.IMAGE['configDigest']); controller.launch(self.op, 'run')
+        runner.container['Image'] = 'sha256:' + '0' * 64
+        with self.assertRaises(RuntimeError): controller.recover('run-one')
+        runner.container['Image'] = runtime.IMAGE['configDigest']
+        runner.container['Config']['Labels'][runtime.LABEL + 'source'] = 'wrong-source'
+        with self.assertRaises(RuntimeError): controller.request_stop('run-one')
+    def test_offline_and_repo_selector_are_bound_to_distinct_source_hashes(self):
+        online, _ = self.controller(); offline, _ = self.controller(image=runtime.IMAGE['configDigest'])
+        self.assertNotEqual(online.plan(self.op, 'run')['sourceHash'], offline.plan(self.op, 'run')['sourceHash'])
     def test_cleanup_can_resume_after_acknowledged_container_removal(self):
         controller, runner = self.controller(endpoints=[{'host': '10.20.30.40', 'port': 5432}]); controller.launch(self.op, 'run')
         runner.container['State']['Running'] = False
