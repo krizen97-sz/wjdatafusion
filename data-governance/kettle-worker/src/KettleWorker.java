@@ -144,7 +144,10 @@ public final class KettleWorker {
   static TransMeta load()throws Exception {
     Document doc;try(InputStream input=Files.newInputStream(root.resolve("transformation.ktr"))){doc=xml(input);}if(!doc.getDocumentElement().getTagName().equals("transformation"))throw new IllegalArgumentException("Expected transformation XML");
     NodeList elements=doc.getElementsByTagName("*");for(int i=0;i<elements.getLength();i++){Element element=(Element)elements.item(i);if(element.getTagName().toLowerCase(Locale.ROOT).matches(".*(password|passwd|secret|token|username|accesskey).*")){String value=element.getTextContent();if(!value.isEmpty()){secrets.add(value);secrets.add(Encr.decryptPasswordOptionallyEncrypted(value));}}}
-    TransMeta meta=new TransMeta(doc.getDocumentElement(),null);meta.setVariable("WORK_DIR",root.resolve("output").toString());meta.setCapturingStepPerformanceSnapShots(false);meta.setSizeRowset(100);
+    TransMeta meta=new TransMeta(doc.getDocumentElement(),null);
+    for(String parameter:meta.listParameters())if(Set.of("WORK_DIR","INPUT_DIR","JOB_DIR").contains(parameter))throw new IllegalArgumentException("Reserved execution-directory parameter: "+parameter);
+    // The original Trans constructor/prepare activates parameters too; activate here for metadata-only field discovery.
+    meta.activateParameters();meta.setVariable("WORK_DIR",root.resolve("output").toString());meta.setVariable("INPUT_DIR",root.resolve("input").toString());meta.setVariable("JOB_DIR",root.toString());meta.setCapturingStepPerformanceSnapShots(false);meta.setSizeRowset(100);
     if(meta.nrSteps()==0)throw new IllegalArgumentException("Transformation has no steps");
     Set<String> names=new HashSet<>();for(StepMeta step:meta.getSteps()){if(!names.add(step.getName()))throw new IllegalArgumentException("Duplicate step name");if(step.getStepMetaInterface()==null)throw new IllegalArgumentException("Missing step plugin: "+step.getStepID());if(meta.hasLoop(step))throw new IllegalArgumentException("Cyclic transformation");}
     return meta;
