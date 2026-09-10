@@ -58,7 +58,8 @@ class ExecutionBoundaryTest(unittest.TestCase):
                 raise TimeoutError('synthetic unknown acceptance')
             return {'state': 'FAILED', 'finishedAt': 1, 'exitCode': 1} if '/events?' not in path else {'events': [], 'nextCursor': 0}
         with patch.object(runner, 'WORKER', worker_root), patch.object(runner, 'worker_request', side_effect=request), \
-                patch.object(runner, 'probe', return_value={}), patch.object(runner, 'capture_ftp', return_value=self.root):
+                patch.object(runner, 'probe', return_value={'result': {'ordinary': {'zookeeperOffset': '0', 'owners': []}, 'endOffsets': {'ordinary': 10000}}}), \
+                patch.object(runner, 'capture_ftp', return_value=self.root):
             with self.assertRaises(RuntimeError):
                 runner.run(self.root, 'ordinary', broker_ready=True)
             journal = json.loads((self.root / 'ordinary-run-journal.json').read_text())
@@ -71,6 +72,18 @@ class ExecutionBoundaryTest(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 runner.run(self.root, 'ordinary', resume=True)
             self.assertEqual(1, sum(method == 'POST' for method, path in calls))
+
+    def test_consumed_or_owned_initial_group_is_rejected_before_worker_requests(self):
+        for offset, owners in [('7', []), ('0', ['0'])]:
+            with self.subTest(offset=offset, owners=owners):
+                journal = self.root / 'ordinary-run-journal.json'
+                if journal.exists():
+                    journal.unlink()
+                audit = {'result': {'ordinary': {'zookeeperOffset': offset, 'owners': owners}, 'endOffsets': {'ordinary': 10000}}}
+                with patch.object(runner, 'probe', return_value=audit), patch.object(runner, 'worker_request') as request:
+                    with self.assertRaises(RuntimeError):
+                        runner.run(self.root, 'ordinary', broker_ready=True)
+                    request.assert_not_called()
 
     def test_credential_endpoint_and_existing_database_name_guards(self):
         runtime = self.root / 'local-runtime'

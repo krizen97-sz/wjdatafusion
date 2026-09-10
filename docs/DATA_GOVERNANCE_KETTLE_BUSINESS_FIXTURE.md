@@ -120,4 +120,4 @@ python3 tools/data-governance/run_kettle_business_fixture.py resume \
 
 提交前核对所有夹具文件 SHA-256，先持久化 runId、jobId、冻结 job/child XML 摘要与输入指纹，再保存不可变 worker Job 定义，最后单次提交 `/runs`。未知提交状态保留 journal，后续 `run` 拒绝重投，`resume` 只 GET 已有 run。运行前后记录 Kafka offsets；终态和进程结束后通过实际 FTP RETR 读取目标所有文件，保存字节数/摘要/捕获文件，再调用产物验证器。运行证据还包括原 Meta classSource、worker 库清单摘要、实际桥接 class 文件摘要、原生日志事件、节点 metrics 与原生校验响应。源码仅提交 runner/探针/测试，不提交私有 XML、账号、消息或输出文件。
 
-runner 的三个定向测试验证未确认 broker/输入被修改时禁止提交、执行意图先于网络调用、未知提交不重放，以及非本地凭据和其他数据库名称被拒绝。这些测试不计作业务图执行通过。
+runner 的四个定向测试验证未确认 broker/输入被修改时禁止提交、执行意图先于网络调用、未知提交不重放，group 已被消费/占用时阻止提交，以及非本地凭据和其他数据库名称被拒绝。这些测试不计作业务图执行通过。
