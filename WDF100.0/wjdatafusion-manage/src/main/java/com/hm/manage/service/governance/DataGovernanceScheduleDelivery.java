@@ -6,7 +6,10 @@ public interface DataGovernanceScheduleDelivery
     /** Fingerprint covers destination identity and wire settings, excluding password, name and revision. */
     record Binding(String id, String name, String fingerprint) { }
     /** QUEUED/RUNNING retain occupancy; DELIVERED alone confirms completion; other states need review. */
-    record Delivery(String id, String status, String error) { }
+    record Delivery(String id, String status, String error, String targetFingerprint)
+    {
+        public Delivery(String id, String status, String error) { this(id, status, error, null); }
+    }
 
     Binding target(String connectionId, long owner);
 
