@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hm.common.exception.ServiceException;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -24,6 +26,7 @@ import org.springframework.stereotype.Component;
 public class DataGovernanceNifiClient
 {
     public static final int MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+    public static final long MAX_CONTENT_BYTES = 8L * 1024 * 1024;
     private final DataGovernanceProperties properties;
     private final ObjectMapper mapper = new ObjectMapper();
     private volatile String token;
@@ -50,6 +53,67 @@ public class DataGovernanceNifiClient
     public String content(String path)
     {
         return new String(exchange("GET", path, null, "application/json", true), StandardCharsets.UTF_8);
+    }
+
+    /** Stream complete bytes; this is deliberately separate from the bounded UI preview. */
+    public long transferContent(String path, OutputStream output, long maximumBytes)
+    { return transferContent(path, output, maximumBytes, () -> { }); }
+
+    public long transferContent(String path, OutputStream output, long maximumBytes, Runnable checkpoint)
+    {
+        if (maximumBytes < 0 || maximumBytes > MAX_CONTENT_BYTES) throw new ServiceException("完整产物大小限制无效");
+        HttpURLConnection connection = null;
+        try
+        {
+            checkpoint.run(); connection = open("GET", path, null, "application/json", true);
+            long declared = connection.getContentLengthLong();
+            if (declared > maximumBytes) throw new ServiceException("完整产物超过大小上限");
+            long total = 0;
+            try (InputStream in = connection.getInputStream())
+            {
+                byte[] buffer = new byte[8192]; int count;
+                while ((count = in.read(buffer)) != -1)
+                {
+                    checkpoint.run();
+                    if (count > maximumBytes - total) throw new ServiceException("完整产物超过大小上限");
+                    output.write(buffer, 0, count); total += count;
+                }
+            }
+            if (declared >= 0 && total != declared) throw new ServiceException("NiFi 产物传输不完整");
+            return total;
+        }
+        catch (RuntimeException e) { throw e; }
+        catch (Exception e) { checkpoint.run(); throw new ServiceException("NiFi 完整产物读取失败或中断"); }
+        finally { if (connection != null) connection.disconnect(); }
+    }
+
+    public String contentPreview(String path, int maximumCharacters, Runnable checkpoint)
+    {
+        if (maximumCharacters < 1 || maximumCharacters > 8192) throw new ServiceException("预览长度限制无效");
+        HttpURLConnection connection = null;
+        try
+        {
+            checkpoint.run(); connection = open("GET", path, null, "application/json", true);
+            StringBuilder result = new StringBuilder(maximumCharacters + 1);
+            try (var reader = new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))
+            {
+                char[] buffer = new char[2048];
+                while (result.length() <= maximumCharacters)
+                {
+                    checkpoint.run();
+                    int count = reader.read(buffer, 0, Math.min(buffer.length, maximumCharacters + 1 - result.length()));
+                    if (count == -1) break;
+                    result.append(buffer, 0, count);
+                }
+            }
+            if (result.length() <= maximumCharacters) return result.toString();
+            int end = maximumCharacters;
+            if (Character.isHighSurrogate(result.charAt(end - 1))) end--;
+            return result.substring(0, end) + "\n[样本预览已截断]";
+        }
+        catch (RuntimeException e) { throw e; }
+        catch (Exception e) { checkpoint.run(); throw new ServiceException("NiFi 产物预览读取失败"); }
+        finally { if (connection != null) connection.disconnect(); }
     }
 
     private URI endpoint()
@@ -126,6 +190,28 @@ public class DataGovernanceNifiClient
 
     private byte[] exchange(String method, String path, byte[] body, String contentType, boolean authenticate)
     {
+        HttpURLConnection connection = null;
+        try
+        {
+            connection = open(method, path, body, contentType, authenticate);
+            try (InputStream in = connection.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream())
+            {
+                byte[] buffer = new byte[8192]; int count;
+                while ((count = in.read(buffer)) != -1)
+                {
+                    if (out.size() + count > MAX_RESPONSE_BYTES) throw new ServiceException("NiFi 响应超过安全上限");
+                    out.write(buffer, 0, count);
+                }
+                return out.toByteArray();
+            }
+        }
+        catch (ServiceException e) { throw e; }
+        catch (Exception e) { throw new ServiceException("NiFi 连接失败或超时，请检查独立引擎和证书配置"); }
+        finally { if (connection != null) connection.disconnect(); }
+    }
+
+    private HttpURLConnection open(String method, String path, byte[] body, String contentType, boolean authenticate) throws Exception
+    {
         if (!path.startsWith("/") || path.startsWith("//") || path.contains("..") || path.contains("\r") || path.contains("\n"))
             throw new ServiceException("NiFi 请求路径无效");
         HttpURLConnection connection = null;
@@ -162,20 +248,8 @@ public class DataGovernanceNifiClient
                 if (status == 409) throw new ServiceException("流程版本或引擎状态已变化，请刷新画布后重试", 409);
                 throw new ServiceException("NiFi 请求失败 (HTTP " + status + ")");
             }
-            try (InputStream in = connection.getInputStream(); ByteArrayOutputStream out = new ByteArrayOutputStream())
-            {
-                byte[] buffer = new byte[8192];
-                int count;
-                while ((count = in.read(buffer)) != -1)
-                {
-                    if (out.size() + count > MAX_RESPONSE_BYTES) throw new ServiceException("NiFi 响应超过安全上限");
-                    out.write(buffer, 0, count);
-                }
-                return out.toByteArray();
-            }
+            return connection;
         }
-        catch (ServiceException e) { throw e; }
-        catch (Exception e) { throw new ServiceException("NiFi 连接失败或超时，请检查独立引擎和证书配置"); }
-        finally { if (connection != null) connection.disconnect(); }
+        catch (Exception e) { if (connection != null) connection.disconnect(); throw e; }
     }
 }

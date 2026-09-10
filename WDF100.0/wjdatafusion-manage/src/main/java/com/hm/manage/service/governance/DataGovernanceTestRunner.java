@@ -13,6 +13,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 import static com.hm.manage.service.governance.DataGovernanceEngine.*;
 
 /** Real NiFi execution. Only a stopped, validated snapshot is rebuilt inside an owned disposable group. */
@@ -21,13 +22,19 @@ public class DataGovernanceTestRunner
 {
     private final DataGovernanceEngine engine;
     private final DataGovernanceNifiClient client;
-    public DataGovernanceTestRunner(DataGovernanceEngine engine) { this.engine = engine; this.client = engine.client; }
+    private final DataGovernanceArtifactStore artifacts;
+    public DataGovernanceTestRunner(DataGovernanceEngine engine) { this(engine, new DataGovernanceArtifactStore(engine.properties)); }
+    @Autowired
+    public DataGovernanceTestRunner(DataGovernanceEngine engine, DataGovernanceArtifactStore artifacts)
+    { this.engine = engine; this.client = engine.client; this.artifacts = artifacts; }
 
     public void execute(StoredRun stored, AtomicBoolean cancelled, Consumer<StoredRun> save)
     {
         TestRun run = stored.run;
         boolean createAttempted = false;
         boolean emptyObserved = false;
+        DataGovernanceArtifactStore.Stage artifactStage = null;
+        run.artifactsManifestAvailable = false; run.artifactCount = 0;
         long deadline = System.nanoTime() + engine.properties.getTestTimeoutSeconds() * 1_000_000_000L;
         try
         {
@@ -72,6 +79,7 @@ public class DataGovernanceTestRunner
                 JsonNode definition = flow.processors.get(oldId);
                 if (oldId.equals(flow.capture))
                 {
+                    artifactStage = captureArtifacts(stored, inputs.stream().filter(edge -> !Set.of("empty", "failure").contains(edge.relation)).toList(), cancelled, deadline);
                     run.output.addAll(samples(inputs.stream().filter(edge -> !Set.of("empty", "failure").contains(edge.relation)).toList(), cancelled, deadline));
                     run.steps.add(new StepResult(oldId, definition.path("name").asText(), definition.path("type").asText(),
                         "SUCCEEDED", inputCount, inputCount, List.of("已读取真实 NiFi 捕获队列；观察节点未执行"),
@@ -133,6 +141,13 @@ public class DataGovernanceTestRunner
                 run.status = "CLEANUP_REQUIRED";
                 run.error = "尚未确认测试引擎资源已停止并清理；请由管理员检查该测试组";
             }
+            if (run.status.equals("SUCCEEDED") && cancelled.get()) { run.status = "CANCELLED"; run.error = "测试已取消，未发布交付产物"; }
+            if (run.status.equals("SUCCEEDED") && run.cleanupConfirmed && artifactStage != null)
+            {
+                try { artifacts.publish(artifactStage, stored); }
+                catch (ServiceException e) { run.status = "FAILED"; run.error = e.getMessage(); }
+            }
+            if (!run.artifactsManifestAvailable) artifacts.abandon(artifactStage);
             run.updatedAt = Instant.now().toString(); save.accept(stored);
         }
     }
@@ -178,8 +193,8 @@ public class DataGovernanceTestRunner
                 for (JsonNode file : listing.path("flowFileSummaries"))
                 {
                     if (result.size() == 10) break;
-                    String content = client.content("/flowfile-queues/" + edge.id + "/flowfiles/" + id(file.path("uuid").asText()) + "/content");
-                    result.add(content.length() > 8192 ? content.substring(0, 8192) + "\n[样本预览已截断]" : content);
+                    result.add(client.contentPreview("/flowfile-queues/" + edge.id + "/flowfiles/" + id(file.path("uuid").asText()) + "/content",
+                        8192, () -> check(cancelled, deadline)));
                     if (attributes != null)
                     {
                         JsonNode detail = client.json("GET", "/flowfile-queues/" + edge.id + "/flowfiles/" + id(file.path("uuid").asText()), null);
@@ -199,6 +214,57 @@ public class DataGovernanceTestRunner
             finally { client.json("DELETE", "/flowfile-queues/" + edge.id + "/listing-requests/" + request, null); }
         }
         return result;
+    }
+
+    private DataGovernanceArtifactStore.Stage captureArtifacts(StoredRun stored, List<Edge> edges, AtomicBoolean cancelled, long deadline)
+    {
+        long expectedTotal = count(edges);
+        if (expectedTotal == 0) return null;
+        if (expectedTotal > DataGovernanceArtifactStore.MAX_ARTIFACTS) throw new ServiceException("完整输出超过 100 个产物，未发布交付清单");
+        DataGovernanceArtifactStore.Stage stage = artifacts.begin(stored);
+        int captured = 0;
+        try
+        {
+            for (Edge edge : edges)
+            {
+                check(cancelled, deadline); long expected = queued(edge.id);
+                if (expected == 0) continue;
+                String request = client.json("POST", "/flowfile-queues/" + edge.id + "/listing-requests", null).path("listingRequest").path("id").asText();
+                id(request);
+                try
+                {
+                    JsonNode listing;
+                    do
+                    {
+                        check(cancelled, deadline);
+                        listing = client.json("GET", "/flowfile-queues/" + edge.id + "/listing-requests/" + request, null).path("listingRequest");
+                        if (!listing.path("finished").asBoolean()) pause();
+                    } while (!listing.path("finished").asBoolean());
+                    List<JsonNode> files = new ArrayList<>(); listing.path("flowFileSummaries").forEach(files::add);
+                    if (files.size() != expected) throw new ServiceException("引擎未列出全部完整输出，禁止发布交付清单");
+                    files.sort(java.util.Comparator.comparingLong(file -> file.path("position").asLong()));
+                    for (JsonNode file : files)
+                    {
+                        check(cancelled, deadline);
+                        String fileId = id(file.path("uuid").asText());
+                        if (!file.path("size").isIntegralNumber()) throw new ServiceException("引擎未提供产物完整字节长度");
+                        long size = file.path("size").asLong();
+                        JsonNode detail = client.json("GET", "/flowfile-queues/" + edge.id + "/flowfiles/" + fileId, null).path("flowFile");
+                        String filename = file.path("filename").asText(detail.path("attributes").path("filename").asText(fileId));
+                        String contentType = detail.path("attributes").path("mime.type").asText("application/octet-stream");
+                        artifacts.capture(stage, filename, contentType, size,
+                            output -> client.transferContent("/flowfile-queues/" + edge.id + "/flowfiles/" + fileId + "/content", output,
+                                DataGovernanceArtifactStore.MAX_ARTIFACT_BYTES, () -> check(cancelled, deadline)));
+                        captured++;
+                    }
+                    if (queued(edge.id) != expected) throw new ServiceException("捕获期间输出队列发生变化，禁止发布");
+                }
+                finally { client.json("DELETE", "/flowfile-queues/" + edge.id + "/listing-requests/" + request, null); }
+            }
+            if (captured != expectedTotal || count(edges) != expectedTotal) throw new ServiceException("完整产物数量校验失败");
+            return stage;
+        }
+        catch (RuntimeException e) { artifacts.abandon(stage); throw e; }
     }
 
     /** Only delete groups carrying this run's marker and directly below the configured root. */
