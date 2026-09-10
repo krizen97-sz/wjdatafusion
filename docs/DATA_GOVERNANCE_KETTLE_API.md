@@ -112,7 +112,9 @@ Job 的 TRANS 条目使用明确的定义绑定：
 
 客户端从当前用户的定义列表选择转换，`filename` 使用 `${WORK_DIR}/` 加其 `runtimeFilename`。保存/导入不会猜测旧电脑路径对应哪个定义；detail 的 `references` 给出 `elementId,name,filename,definitionId,bound` 供界面显式绑定。
 
-Job 校验和运行时，平台核对绑定属于当前用户且类型为转换，将该转换的当前原生 XML 冻结为 `inputFiles`。引用文件名冲突、跨用户引用及非 `${WORK_DIR}/basename.ktr` 路径均拒绝。后续修改子转换不会改变已经保存的运行快照。原生 worker 的 Job 接口为 `/jobs/validate`、`PUT /jobs/{id}`，以及 `POST /runs {jobId,...}`。
+Job 校验和运行时，平台核对绑定属于当前用户且类型为转换，将该转换的当前原生 XML **及已上传输入资产**与 Job 自身资产合并、冻结为 `inputFiles`。用户无需在 Job 重复上传已属于子转换的输入。名称按 NFC 和大小写折叠检测等价冲突，SHA-256 一致时复用一个文件，内容不同时明确拒绝；Job 自己上传的文件也不能静默覆盖 child 文件。跨用户引用及非 `${WORK_DIR}/basename.ktr` 路径均拒绝。原生 worker 的 Job 接口为 `/jobs/validate`、`PUT /jobs/{id}`，以及 `POST /runs {jobId,...}`。
+
+每份冻结输入保存来源定义/修订和内容哈希，整个输入集合生成 `inputsHash`；运行的 `snapshotFingerprint` 同时包含请求参数、根 XML SHA-256 和 inputsHash。后续编辑子转换或替换输入不会改变旧运行。同一 requestId 重试仍返回原快照；新的 requestId 才读取新的 child 及资产。Mac 运行目录按文件系统等价名称复用，不根据重复名称猜测覆盖次序。
 
 上传输入文件仅保留安全 UTF-8 basename，中文名可保留，不能包含目录、控制字符、`.` 或 `..`，最长 240 个 UTF-8 字节。单文件 8 MiB、每个定义及每次运行最多 20 个文件、总额 16 MiB；Job 关联转换也计入此运行总额。文件只从当前定义的自有加密目录读取，传给 worker 的结构为 `{name,contentBase64}`，不接受任意主机源路径。
 
@@ -133,7 +135,7 @@ Job 校验和运行时，平台核对绑定属于当前用户且类型为转换�
 
 worker 也可能在受理后报告 `PREPARING`，因此平台用 `submissionState` 区分本地准备与原生执行准备。读取运行时可按原 runId 更新状态；上游不可用时返回最后保存的记录及 `workerStateAvailable=false/reconciliationMessage`，绝不将旧快照伪装成当前实时状态。
 
-`GET /definitions/{id}/runs` 从平台持久化记录恢复历史，worker 不可用时仍能查询。摘要包含 `id,definitionId,kind,revision,xmlSha256,state,submissionState,createdAt,updatedAt,mode,previewStep,rowLimit,requestId,message?`，保留 `VALIDATION_FAILED/PREPARATION_FAILED/SUBMISSION_UNKNOWN` 等真实状态；中断时残留的 `SUBMITTING` 显示为 `SUBMISSION_UNKNOWN`。它不包含 XML、加密输入、采样行或原生大快照，也不自动对历史记录发远程请求。用户选择某次历史后再读取单次运行和事件。
+`GET /definitions/{id}/runs` 从平台持久化记录恢复历史，worker 不可用时仍能查询。摘要包含 `id,definitionId,kind,revision,xmlSha256,inputsHash?,snapshotFingerprint?,state,submissionState,createdAt,updatedAt,mode,previewStep,rowLimit,requestId,message?`，保留 `VALIDATION_FAILED/PREPARATION_FAILED/SUBMISSION_UNKNOWN` 等真实状态；中断时残留的 `SUBMITTING` 显示为 `SUBMISSION_UNKNOWN`。它不包含 XML、加密输入、采样行或原生大快照，也不自动对历史记录发远程请求。用户选择某次历史后再读取单次运行和事件。
 
 事件和快照会屏蔽 XML 及关联子转换中已知的秘密值、明显秘密键和赋值日志，不返回 worker 私有目录、classpath 或原 XML。下载仍是完整二进制流，经过 owner 检查，保留原始文件内容、长度和 partial 标识。
 
