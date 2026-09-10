@@ -430,7 +430,11 @@ class Worker:
                             run['engineTerminal'] = event
                             run['finalizing'] = True
                         if event['type'] in {'metrics', 'state', 'terminal', 'validation'}:
-                            for key in ['nodes', 'errors', 'previewTruncated']:
+                            for key in ['nodes', 'errors', 'previewTruncated', 'logTruncated', 'logEventCount']:
+                                if key in event:
+                                    run[key] = event[key]
+                        if event['type'] == 'execution-snapshot':
+                            for key in ['originalXmlSha', 'effectiveXmlSha', 'previewOverrides']:
                                 if key in event:
                                     run[key] = event[key]
                         if event['type'] in {'state', 'terminal'}:

@@ -42,6 +42,27 @@ public final class KettleWorker {
     }
   }
   static Properties previewKafkaProperties(StepMetaInterface meta)throws Exception {java.lang.reflect.Method properties=meta.getClass().getDeclaredMethod("getKafkaProperties");properties.setAccessible(true);Properties config=(Properties)properties.invoke(meta);String group=config.getProperty("group.id","");if(!group.matches("kettle-v2-[a-f0-9]{32}(?:-stop)?-preview")||!"false".equalsIgnoreCase(config.getProperty("auto.commit.enable","true")))throw new IllegalArgumentException("Kafka preview requires an independent kettle-v2-<uuid>-preview group and auto.commit.enable=false");return config;}
+  static List<Map<String,Object>> applyPreviewOverrides(TransMeta meta)throws Exception {
+    List<Map<String,Object>> changes=new ArrayList<>();
+    for(StepMeta step:meta.getSteps())if("KafkaConsumer".equals(step.getStepID())){
+      java.lang.reflect.Method getter=step.getStepMetaInterface().getClass().getDeclaredMethod("getKafkaProperties");getter.setAccessible(true);
+      Properties original=(Properties)getter.invoke(step.getStepMetaInterface());Properties effective=new Properties();effective.putAll(original);
+      String identity=root.getFileName()+":"+step.getName();String group="kettle-v2-"+UUID.nameUUIDFromBytes(identity.getBytes(StandardCharsets.UTF_8)).toString().replace("-","")+"-preview";
+      effective.setProperty("group.id",group);effective.setProperty("auto.commit.enable","false");
+      java.lang.reflect.Field field=step.getStepMetaInterface().getClass().getDeclaredField("kafkaProperties");field.setAccessible(true);field.set(step.getStepMetaInterface(),effective);
+      changes.add(new LinkedHashMap<>(Map.of("node",step.getName(),"originalGroup",original.getProperty("group.id",""),"effectiveGroup",group,"originalAutoCommit",original.getProperty("auto.commit.enable","true"),"effectiveAutoCommit",false)));
+      previewKafkaProperties(step.getStepMetaInterface());
+    }
+    return changes;
+  }
+  static String sha256(byte[] value)throws Exception{return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(value));}
+  static void executionSnapshot(TransMeta meta,boolean preview,List<Map<String,Object>> overrides)throws Exception {
+    byte[] original=Files.readAllBytes(root.resolve("transformation.ktr"));byte[] effective=preview?meta.getXML().getBytes(StandardCharsets.UTF_8):original;
+    Files.write(root.resolve("transformation.effective.ktr"),effective);String originalSha=sha256(original),effectiveSha=sha256(effective);
+    event("execution-snapshot",Map.of("originalXmlSha",originalSha,"effectiveXmlSha",effectiveSha,"preview",preview,"previewOverrides",overrides));
+    for(Map<String,Object> change:overrides){Map<String,Object> entry=new LinkedHashMap<>(change);entry.put("originalXmlSha",originalSha);entry.put("effectiveXmlSha",effectiveSha);event("preview-override",entry);}
+  }
+  static boolean belongsToLogChannel(String channel,Set<String> roots){if(channel==null||channel.isEmpty())return false;Set<String> seen=new HashSet<>();LoggingObjectInterface current=LoggingRegistry.getInstance().getLoggingObject(channel);if(roots.contains(channel))return true;while(current!=null&&seen.add(current.getLogChannelId())){if(roots.contains(current.getLogChannelId()))return true;current=current.getParent();}return false;}
   static String safe(String message){for(String secret:secrets)if(!secret.isEmpty())message=message.replace(secret,"[redacted]");return message;}
   static synchronized void event(String type, Map<String,Object> fields) {
     Map<String,Object> result=new LinkedHashMap<>();result.put("seq",++sequence);result.put("type",type);result.put("time",System.currentTimeMillis());result.putAll(fields);
@@ -95,12 +116,50 @@ public final class KettleWorker {
     Set<String> names=new HashSet<>();for(StepMeta step:meta.getSteps()){if(!names.add(step.getName()))throw new IllegalArgumentException("Duplicate step name");if(step.getStepMetaInterface()==null)throw new IllegalArgumentException("Missing step plugin: "+step.getStepID());if(meta.hasLoop(step))throw new IllegalArgumentException("Cyclic transformation");}
     return meta;
   }
-  static List<Map<String,Object>> nodes(TransMeta meta){List<Map<String,Object>> out=new ArrayList<>();for(StepMeta step:meta.getSteps()){Map<String,Object> n=new LinkedHashMap<>();n.put("name",step.getName());n.put("pluginId",step.getStepID());n.put("className",step.getStepMetaInterface().getClass().getName());n.put("classSource",source(step.getStepMetaInterface().getClass()));try{RowMetaInterface row=meta.getStepFields(step);List<Map<String,Object>> fields=new ArrayList<>();for(ValueMetaInterface field:row.getValueMetaList())fields.add(fieldInfo(field));n.put("fields",fields);}catch(Exception e){n.put("fieldError",e.getClass().getSimpleName());}out.add(n);}return out;}
+  static List<Map<String,Object>> fieldList(RowMetaInterface row) {
+    List<Map<String,Object>> fields=new ArrayList<>();
+    if(row!=null)for(ValueMetaInterface field:row.getValueMetaList())fields.add(fieldInfo(field));
+    return fields;
+  }
+  static List<Map<String,Object>> nodes(TransMeta meta) {
+    List<Map<String,Object>> result=new ArrayList<>();
+    for(StepMeta step:meta.getSteps()) {
+      Map<String,Object> node=new LinkedHashMap<>();
+      node.put("name",step.getName());node.put("pluginId",step.getStepID());
+      node.put("className",step.getStepMetaInterface().getClass().getName());
+      node.put("classSource",source(step.getStepMetaInterface().getClass()));
+      node.put("inputFields",List.of());
+      try{node.put("inputFields",fieldList(meta.getPrevStepFields(step)));}
+      catch(Exception error){node.put("inputFieldError",error.getClass().getSimpleName());}
+      try{node.put("fields",fieldList(meta.getStepFields(step)));}
+      catch(Exception error){node.put("fieldError",error.getClass().getSimpleName());}
+      result.add(node);
+    }
+    return result;
+  }
   static void previewGraph(TransMeta meta,String target){StepMeta selected=meta.findStep(target);if(selected==null)throw new IllegalArgumentException("Preview step does not exist");Set<StepMeta> keep=new HashSet<>();Deque<StepMeta> todo=new ArrayDeque<>();todo.add(selected);while(!todo.isEmpty()){StepMeta step=todo.removeFirst();if(keep.add(step))todo.addAll(meta.findPreviousSteps(step));}for(int i=meta.nrTransHops()-1;i>=0;i--){TransHopMeta hop=meta.getTransHop(i);if(!keep.contains(hop.getFromStep())||!keep.contains(hop.getToStep()))meta.removeTransHop(i);}for(int i=meta.nrSteps()-1;i>=0;i--)if(!keep.contains(meta.getStep(i)))meta.removeStep(i);}
   static List<Map<String,Object>> metrics(Trans trans){List<Map<String,Object>> result=new ArrayList<>();for(StepMetaDataCombi c:trans.getSteps()){StepInterface s=c.step;Map<String,Object> m=new LinkedHashMap<>();m.put("node",c.stepname);m.put("copy",c.copy);m.put("status",s.getStatus().toString());m.put("read",s.getLinesRead());m.put("written",s.getLinesWritten());m.put("input",s.getLinesInput());m.put("output",s.getLinesOutput());m.put("rejected",s.getLinesRejected());m.put("errors",s.getErrors());result.add(m);}return result;}
   static void execute(TransMeta meta,String target,int limit)throws Exception {
     if(startupStopRequested()){requestedStop.set(true);event("terminal",Map.of("state","STOPPED","errors",0,"nodes",List.of(),"started",false));return;}
-    if(!target.isEmpty()){previewGraph(meta,target);for(StepMeta step:meta.getSteps())if("KafkaConsumer".equals(step.getStepID()))previewKafkaProperties(step.getStepMetaInterface());}Trans trans=new Trans(meta);trans.setLogLevel(LogLevel.ERROR);AtomicInteger logCount=new AtomicInteger();KettleLogStore.getAppender().addLoggingEventListener(logEvent->{if(logCount.incrementAndGet()<=500)event("log",Map.of("level",String.valueOf(logEvent.getLevel()),"message",safe(String.valueOf(logEvent.getMessage()))));});event("state",Map.of("state","PREPARING","nodes",nodes(meta)));
+    List<Map<String,Object>> overrides=List.of();
+    if(!target.isEmpty()){previewGraph(meta,target);overrides=applyPreviewOverrides(meta);}
+    executionSnapshot(meta,!target.isEmpty(),overrides);
+    Trans trans=new Trans(meta);trans.setLogLevel(LogLevel.BASIC);
+    AtomicInteger logCount=new AtomicInteger();
+    Set<String> logRoots=new HashSet<>(Arrays.asList(trans.getLogChannelId(),meta.getLogChannelId()));
+    KettleLoggingEventListener logger=logEvent->{
+      if(!(logEvent.getMessage() instanceof LogMessage message))return;
+      LogLevel level=message.getLevel();
+      // In this original build isNothing() means "at least NOTHING", not enum equality.
+      if(level==null||level==LogLevel.NOTHING||level.getLevel()>LogLevel.BASIC.getLevel()||!belongsToLogChannel(message.getLogChannelId(),logRoots))return;
+      int count=logCount.incrementAndGet();if(count>500)return;
+      String content=safe(message.toString());if(content.length()>8192)content=content.substring(0,8192)+" [truncated]";
+      Map<String,Object> entry=new LinkedHashMap<>();entry.put("level",level.name());entry.put("node",safe(message.getSubject()==null?"":message.getSubject()));
+      entry.put("channel",message.getLogChannelId());entry.put("message",content);entry.put("line",count);event("log",entry);
+    };
+    KettleLogStore.getAppender().addLoggingEventListener(logger);
+    try {
+    event("state",Map.of("state","PREPARING","nodes",nodes(meta)));
     Thread controller=new Thread(()->{try{BufferedReader in=new BufferedReader(new InputStreamReader(System.in,StandardCharsets.UTF_8));for(String line;(line=in.readLine())!=null;)if(line.equals("STOP")){requestedStop.set(true);trans.stopAll();event("state",Map.of("state","STOPPING"));}}catch(Exception ignored){}});controller.setDaemon(true);controller.start();
     if(startupStopRequested()||requestedStop.get()){requestedStop.set(true);event("terminal",Map.of("state","STOPPED","errors",0,"nodes",List.of(),"started",false));return;}
     trans.prepareExecution(null);
@@ -112,7 +171,8 @@ public final class KettleWorker {
     });}
     event("state",Map.of("state","RUNNING"));trans.startThreads();while(!trans.isFinished()){event("metrics",Map.of("nodes",metrics(trans),"errors",trans.getErrors()));Thread.sleep(100);}trans.waitUntilFinished();
     String state=trans.getErrors()>0?"FAILED":requestedStop.get()?"STOPPED":previewLimit.get()?"PREVIEW_COMPLETE":"SUCCEEDED";
-    event("terminal",Map.of("state",state,"errors",trans.getErrors(),"resultBoolean",trans.getResult().getResult(),"nodes",metrics(trans),"previewTruncated",previewLimit.get()));
+    event("terminal",Map.of("state",state,"errors",trans.getErrors(),"resultBoolean",trans.getResult().getResult(),"nodes",metrics(trans),"previewTruncated",previewLimit.get(),"logTruncated",logCount.get()>500,"logEventCount",Math.min(logCount.get(),500)));
+    } finally {KettleLogStore.getAppender().removeLoggingEventListener(logger);}
   }
   public static void main(String[] args) {
     System.setOut(System.err);int exit=0;
