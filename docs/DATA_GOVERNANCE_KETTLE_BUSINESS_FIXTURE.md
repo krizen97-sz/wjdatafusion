@@ -97,3 +97,27 @@ python3 tools/data-governance/kettle_business_fixture.py \
 当前 10 项离线测试通过，包含真实三个 ZIP 的 42 步处理摘要、所有原 JsonPath 存在性、复制数/连线、五张表列匹配、原 consumer/producer 属性、INPUT_DIR/WORK_DIR 分离，以及验证器拒绝缺行、回写字节变化和混入子 KTR。人工构造的验证器测试产物会删除，不能计入整图通过证据。
 
 尚待原引擎确认：普通 type=None 字段回读、违法 Boolean/`Y` 筛选组合、原完整图所有输出与上述计数、实际分片/定时轮换、失败时 FTP 不触发。多 result 消息中违法脚本使用 `target[i]`，当前仅一项夹具未覆盖；私有 URL 替换匹配也未覆盖。脚本会直接拒绝新增非 public lookup schema、集群步骤或远程 TRANS，而不会猜测它们的隔离映射。
+
+## 有限本地执行 runner
+
+`run_kettle_business_fixture.py` 把准备、单次提交和只读恢复分开。`prepare` 仅连接固定 localhost 夹具端口，读取现有私有 PostgreSQL/FTP 凭据，创建唯一随机 slug 的数据库、三个单分区 topic、两个专属 offset 0 group，以及 FTP slug 子目录；遇到已有名称直接失败，不覆盖或重置。它复用既有 FTP 服务，不启动、停止或替换任何进程。原 Kafka 图使用 0.8 原插件；`KettleBusinessFixtureProbe.java` 独立使用隔离 Kafka 的官方客户端 JAR 做建 topic、发布、offset 审计和读取，不混入原 Kettle classpath。
+
+已实际完成的准备目录为 `rynew-runtime/data-governance-kettle-v2/business-live/acceptance-01`，slug 为 `business_18864de700ce`。专属数据库五表行数为 redlist 2、qiuji 2、whitelist 3、xc_cross_csd_status 3、xc_local_sync_cross 3。Kafka 两个输入末尾 offset 为 10000/200，回写 topic 为 0，两 group ZooKeeper offset 均为 0。FTP 仅创建该 slug 的 ordinary/illegal 两个目录。**此状态只证明准备成功，尚未提交原图。**
+
+```bash
+python3 tools/data-governance/run_kettle_business_fixture.py prepare --root /private/new-acceptance-directory
+
+# 仅在主任务确认 INPUT_DIR 与执行时区 broker 已升级后使用：
+python3 tools/data-governance/run_kettle_business_fixture.py run \
+  --root /private/prepared-acceptance-directory --kind ordinary --broker-ready
+python3 tools/data-governance/run_kettle_business_fixture.py run \
+  --root /private/prepared-acceptance-directory --kind illegal --broker-ready
+
+# 网络响应不明只能核查已经记录的 runId，不再次调用 POST /runs：
+python3 tools/data-governance/run_kettle_business_fixture.py resume \
+  --root /private/prepared-acceptance-directory --kind ordinary
+```
+
+提交前核对所有夹具文件 SHA-256，先持久化 runId、jobId、冻结 job/child XML 摘要与输入指纹，再保存不可变 worker Job 定义，最后单次提交 `/runs`。未知提交状态保留 journal，后续 `run` 拒绝重投，`resume` 只 GET 已有 run。运行前后记录 Kafka offsets；终态和进程结束后通过实际 FTP RETR 读取目标所有文件，保存字节数/摘要/捕获文件，再调用产物验证器。运行证据还包括原 Meta classSource、worker 库清单摘要、实际桥接 class 文件摘要、原生日志事件、节点 metrics 与原生校验响应。源码仅提交 runner/探针/测试，不提交私有 XML、账号、消息或输出文件。
+
+runner 的三个定向测试验证未确认 broker/输入被修改时禁止提交、执行意图先于网络调用、未知提交不重放，以及非本地凭据和其他数据库名称被拒绝。这些测试不计作业务图执行通过。
