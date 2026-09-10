@@ -29,6 +29,14 @@ public final class JsonRecordTransform {
     public interface Codec {
         Object parse(String text); String stringify(Object value);
         default Object parse(String text, boolean ecmascriptDouble) { return parse(text); }
+        default Object parse(String text, String numberMode) {
+            if (numberMode.equals("KETTLE_JSON")) throw invalid("Codec does not support Kettle JSON numbers");
+            return parse(text, numberMode.equals("ECMASCRIPT_DOUBLE"));
+        }
+        default String kettleString(Object value) {
+            if (value instanceof String || value instanceof Number || value instanceof Boolean) return value.toString();
+            return stringify(value);
+        }
         default String stringify(Object value, boolean ecmascriptDouble) {
             if (ecmascriptDouble) throw invalid("Codec does not support ECMAScript number serialization");
             return stringify(value);
@@ -42,6 +50,7 @@ public final class JsonRecordTransform {
         final Map<String, Object> row;
         final Map<String, Object> documents = new LinkedHashMap<>();
         final Set<String> ecmaDocuments = new java.util.HashSet<>();
+        final Set<String> nonFiniteDocuments = new java.util.HashSet<>();
         boolean keep = true;
         State(Map<String, Object> row) { this.row = row; }
     }
@@ -81,15 +90,24 @@ public final class JsonRecordTransform {
         String op = string(rule, "op");
         return switch (op) {
             case "parse" -> {
-                keys(rule, "op", "input", "document", "numberMode");
+                keys(rule, "op", "input", "document", "numberMode", "onEmpty");
                 List<String> input = pointer(string(rule, "input")); String document = name(string(rule, "document"));
-                String numberMode = choice(rule, "numberMode", "EXACT", "EXACT", "ECMASCRIPT_DOUBLE");
+                String numberMode = choice(rule, "numberMode", "EXACT", "EXACT", "ECMASCRIPT_DOUBLE", "KETTLE_JSON");
+                String onEmpty = choice(rule, "onEmpty", "FAIL", "FAIL", "NULL");
                 yield state -> {
                     String text = text(required(resolve(state.row, input)));
                     if (text.length() > MAX_DOCUMENT_BYTES || text.getBytes(StandardCharsets.UTF_8).length > MAX_DOCUMENT_BYTES) throw invalid("Document byte limit");
-                    boolean legacyNumbers = numberMode.equals("ECMASCRIPT_DOUBLE");
-                    Object parsed = copy(codec.parse(text, legacyNumbers), legacyNumbers);
-                    if (!(parsed instanceof Map<?, ?>) && !(parsed instanceof List<?>)) throw invalid("Document must be object or array");
+                    boolean legacyNumbers = numberMode.equals("ECMASCRIPT_DOUBLE"), kettleNumbers = numberMode.equals("KETTLE_JSON");
+                    boolean nullableDocument = kettleNumbers && onEmpty.equals("NULL");
+                    if (nullableDocument) {
+                        int first = 0;
+                        while (first < text.length() && " \t\r\n\uFEFF".indexOf(text.charAt(first)) >= 0) first++;
+                        text = text.substring(first);
+                    }
+                    if (text.isEmpty() && !onEmpty.equals("NULL")) throw invalid("Empty document");
+                    Object parsed = text.isEmpty() ? null : copy(codec.parse(text, numberMode), legacyNumbers || kettleNumbers);
+                    if (!(parsed instanceof Map<?, ?>) && !(parsed instanceof List<?>) && !(nullableDocument || text.isEmpty() && onEmpty.equals("NULL"))) throw invalid("Document must be object or array");
+                    if (legacyNumbers || kettleNumbers) state.nonFiniteDocuments.add(document); else state.nonFiniteDocuments.remove(document);
                     if (legacyNumbers) {
                         state.ecmaDocuments.add(document); parsed = doubleNumbers(parsed);
                     } else state.ecmaDocuments.remove(document);
@@ -99,14 +117,19 @@ public final class JsonRecordTransform {
             case "get" -> {
                 keys(rule, "op", "document", "path", "output", "type", "trim", "missing");
                 String document = optionalName(rule, "document"); List<String> path = pointer(string(rule, "path"));
-                String output = name(string(rule, "output")); String type = choice(rule, "type", "VALUE", "VALUE", "STRING");
+                String output = name(string(rule, "output")); String type = choice(rule, "type", "VALUE", "VALUE", "STRING", "KETTLE_STRING");
                 String trim = choice(rule, "trim", "NONE", "NONE", "BOTH", "START", "END");
                 String missing = choice(rule, "missing", "FAIL", "FAIL", "NULL");
-                if (!type.equals("STRING") && !trim.equals("NONE")) throw invalid("Trimming requires STRING type");
+                if (!Set.of("STRING", "KETTLE_STRING").contains(type) && !trim.equals("NONE")) throw invalid("Trimming requires string type");
                 yield state -> {
-                    Object value = resolve(document == null ? state.row : document(state, document), path);
+                    Object value = resolve(document == null ? state.row : document(state, document), path, type.equals("KETTLE_STRING") && missing.equals("NULL"));
                     if (value == MISSING) { if (missing.equals("FAIL")) throw invalid("Required path missing"); value = null; }
                     if (value != null && type.equals("STRING")) value = trim(text(value), trim);
+                    if (value != null && type.equals("KETTLE_STRING")) {
+                        String converted = codec.kettleString(value);
+                        if (converted == null || converted.length() > MAX_CONTENT_UNITS || converted.getBytes(StandardCharsets.UTF_8).length > MAX_CONTENT_UNITS) throw invalid("Stringified value limit");
+                        value = trim(converted, trim);
+                    }
                     state.row.put(output, copy(value));
                 };
             }
@@ -300,10 +323,16 @@ public final class JsonRecordTransform {
         if (tokens.size() > MAX_DEPTH) throw invalid("Pointer depth limit");
         return tokens;
     }
-    private static Object resolve(Object current, List<String> tokens) {
+    private static Object resolve(Object current, List<String> tokens) { return resolve(current, tokens, false); }
+    private static Object resolve(Object current, List<String> tokens, boolean missingArrayMember) {
         for (String token : tokens) {
             if (current instanceof Map<?, ?> map) current = map.containsKey(token) ? map.get(token) : MISSING;
-            else if (current instanceof List<?> list) { int index = index(token); current = index < list.size() ? list.get(index) : MISSING; }
+            else if (current instanceof List<?> list) {
+                int index;
+                try { index = index(token); }
+                catch (IllegalArgumentException invalidIndex) { if (missingArrayMember) return MISSING; throw invalidIndex; }
+                current = index < list.size() ? list.get(index) : MISSING;
+            }
             else return MISSING;
         }
         return current;
@@ -328,7 +357,7 @@ public final class JsonRecordTransform {
     private static void validate(State state) {
         Budget budget = new Budget(); measure(state.row, 0, budget, identitySet());
         for (var document : state.documents.entrySet()) {
-            budget.allowNonFinite = state.ecmaDocuments.contains(document.getKey());
+            budget.allowNonFinite = state.nonFiniteDocuments.contains(document.getKey());
             budget.units += document.getKey().length(); measure(document.getValue(), 1, budget, identitySet());
         }
     }

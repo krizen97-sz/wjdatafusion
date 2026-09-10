@@ -177,4 +177,27 @@ class JsonRecordTransformTest {
         assertThrows(IllegalArgumentException.class, () -> exact.apply(map("payload", "fixture-document")));
     }
 
+    @Test void kettleStringIsExplicitAndDefaultMissingAndStrictStringRemainUnchanged() {
+        var kettle = transform(map("op", "get", "path", "/value", "output", "out", "type", "KETTLE_STRING"));
+        assertEquals("123", object(kettle.apply(map("value", 123)).value()).get("out"));
+        assertEquals("true", object(kettle.apply(map("value", true)).value()).get("out"));
+        assertEquals(" x ", object(kettle.apply(map("value", " x ")).value()).get("out"));
+        assertNull(object(kettle.apply(map("value", null)).value()).get("out"));
+        assertThrows(IllegalArgumentException.class, () -> kettle.apply(map()));
+        assertThrows(IllegalArgumentException.class, () -> transform(map("op", "get", "path", "/value", "output", "out", "type", "STRING")).apply(map("value", 1)));
+    }
+    @Test void emptyDocumentHandlingIsOptInAndDoesNotChangeDefaultContainerRules() {
+        var codec = new FixtureCodec(map()) {
+            @Override public Object parse(String text) { if (text.equals("null")) return null; if (text.equals("7")) return 7; return super.parse(text); }
+            @Override public Object parse(String text, String mode) { return parse(text); }
+        };
+        var read = map("op", "get", "document", "doc", "path", "/missing", "output", "out", "type", "KETTLE_STRING", "missing", "NULL");
+        var compatible = new JsonRecordTransform(List.of(map("op", "parse", "input", "/payload", "document", "doc", "numberMode", "KETTLE_JSON", "onEmpty", "NULL"), read), codec);
+        for (String source : List.of("", " \t\r\n", "\uFEFF", "null", "7"))
+            assertNull(object(compatible.apply(map("payload", source)).value()).get("out"));
+        var strict = new JsonRecordTransform(List.of(map("op", "parse", "input", "/payload", "document", "doc"), read), codec);
+        for (String source : List.of("", "null", "7")) assertThrows(IllegalArgumentException.class, () -> strict.apply(map("payload", source)));
+        assertThrows(IllegalArgumentException.class, () -> compatible.apply(map("payload", null)));
+    }
+
 }
