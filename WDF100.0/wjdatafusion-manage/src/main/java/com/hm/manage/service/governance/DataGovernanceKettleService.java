@@ -30,12 +30,12 @@ public class DataGovernanceKettleService
     public static class Definition
     { public long owner; public Summary summary; public String encryptedXml; }
     public static class StoredFile
-    { public FileInfo info; public String encryptedContent; }
+    { public FileInfo info; public String encryptedContent, sourceDefinitionId; public long sourceRevision; }
     public static class StoredRun
     {
         public long owner, revision;
         public String id, definitionId, kind, xmlSha256, encryptedXml, state, submissionState, createdAt, updatedAt;
-        public String mode, previewStep, requestId, fingerprint, message;
+        public String mode, previewStep, requestId, requestFingerprint, fingerprint, inputsHash, message;
         public int rowLimit;
         public List<StoredFile> inputs = new ArrayList<>();
         public JsonNode workerSnapshot;
@@ -206,7 +206,7 @@ public class DataGovernanceKettleService
     {
         ownedDefinition(id, owner); uploadFilename(filename); List<StoredFile> existing = storedFiles(id);
         if (existing.size() >= 20) reject("每个流程最多 20 个输入文件");
-        if (existing.stream().anyMatch(f -> f.info.name().equals(filename))) reject("输入文件名重复，请先删除旧文件");
+        if (existing.stream().anyMatch(f -> fileKey(f.info.name()).equals(fileKey(filename)))) reject("输入文件名重复（含 Unicode/大小写等价名称），请先删除旧文件");
         try
         {
             byte[] bytes = stream.readNBytes((int) FILE_LIMIT + 1);
@@ -251,14 +251,16 @@ public class DataGovernanceKettleService
             {
                 StoredRun previous = read(path, StoredRun.class);
                 if (previous.owner == owner && id.equals(previous.definitionId) && requestId.equals(previous.requestId))
-                { if (!fingerprint.equals(previous.fingerprint)) conflict(); return runView(previous); }
+                { if (!fingerprint.equals(previous.requestFingerprint == null ? previous.fingerprint : previous.requestFingerprint)) conflict(); return runView(previous); }
             }
             if (input.revision() != definition.summary.revision()) conflict();
             run = new StoredRun(); run.owner = owner; run.id = UUID.randomUUID().toString(); run.definitionId = id;
             run.kind = definition.summary.kind(); run.revision = definition.summary.revision(); run.mode = mode;
-            run.previewStep = target; run.rowLimit = limit; run.requestId = requestId; run.fingerprint = fingerprint;
+            run.previewStep = target; run.rowLimit = limit; run.requestId = requestId; run.requestFingerprint = fingerprint;
             xml = crypto.decrypt(definition.encryptedXml); run.encryptedXml = crypto.encrypt(xml); run.xmlSha256 = hash(xml.getBytes(StandardCharsets.UTF_8));
-            run.inputs = snapshotInputs(definition, xml, owner); run.state = "PREPARING"; run.submissionState = "PREPARING";
+            run.inputs = snapshotInputs(definition, xml, owner); run.inputsHash = inputsHash(run.inputs);
+            run.fingerprint = hash((fingerprint + ":" + run.xmlSha256 + ":" + run.inputsHash).getBytes(StandardCharsets.UTF_8));
+            run.state = "PREPARING"; run.submissionState = "PREPARING";
             run.createdAt = Instant.now().toString(); persistRun(run);
         }
         boolean submitting = false;
@@ -316,6 +318,8 @@ public class DataGovernanceKettleService
             Map<String,Object> summary = readRunSummary(path);
             if (((Number)summary.getOrDefault("owner", -1L)).longValue() != owner || !definitionId.equals(summary.get("definitionId"))) continue;
             summary.remove("owner");
+            if (summary.get("inputsHash") != null) summary.put("snapshotFingerprint", summary.get("fingerprint"));
+            summary.remove("fingerprint");
             if ("SUBMITTING".equals(summary.get("state"))) summary.put("state", "SUBMISSION_UNKNOWN");
             result.add(summary);
         }
@@ -325,7 +329,7 @@ public class DataGovernanceKettleService
     private Map<String,Object> readRunSummary(Path path)
     {
         Set<String> allowed = Set.of("owner", "id", "definitionId", "kind", "revision", "xmlSha256", "state", "submissionState",
-            "createdAt", "updatedAt", "mode", "previewStep", "rowLimit", "requestId", "message");
+            "createdAt", "updatedAt", "mode", "previewStep", "rowLimit", "requestId", "message", "inputsHash", "fingerprint");
         Map<String,Object> result = new LinkedHashMap<>();
         try (var parser = mapper.getFactory().createParser(path.toFile()))
         {
@@ -371,12 +375,16 @@ public class DataGovernanceKettleService
     }
     private synchronized List<StoredFile> snapshotInputs(Definition definition, String xml, long owner)
     {
-        List<StoredFile> result = new ArrayList<>(storedFiles(definition.summary.id()));
+        Map<String,StoredFile> merged = new LinkedHashMap<>();
+        for (StoredFile file : storedFiles(definition.summary.id()))
+        { file.sourceDefinitionId = definition.summary.id(); file.sourceRevision = definition.summary.revision(); mergeInput(merged, file); }
         for (Map<String, Object> reference : references(xml))
         {
             String bound = (String)reference.get("definitionId"); if (bound.isBlank()) continue;
             Definition target = ownedDefinition(bound, owner);
             if (!target.summary.kind().equals("transformation")) reject("TRANS 只能关联当前用户的转换定义");
+            for (StoredFile asset : storedFiles(target.summary.id()))
+            { asset.sourceDefinitionId = target.summary.id(); asset.sourceRevision = target.summary.revision(); mergeInput(merged, asset); }
             String filename = (String)reference.get("filename");
             if (!filename.startsWith("${WORK_DIR}/")) reject("关联转换文件名须为 ${WORK_DIR}/安全文件名.ktr");
             filename = filename.substring("${WORK_DIR}/".length()); uploadFilename(filename);
@@ -384,13 +392,32 @@ public class DataGovernanceKettleService
             String contents = crypto.decrypt(target.encryptedXml); byte[] bytes = contents.getBytes(StandardCharsets.UTF_8);
             StoredFile file = new StoredFile(); file.info = new FileInfo(target.summary.id(), filename, bytes.length, hash(bytes), target.summary.updatedAt());
             file.encryptedContent = crypto.encrypt(Base64.getEncoder().encodeToString(bytes));
-            String finalFilename = filename;
-            Optional<StoredFile> previous = result.stream().filter(f -> f.info.name().equals(finalFilename)).findFirst();
-            if (previous.isPresent() && !previous.get().info.sha256().equals(file.info.sha256())) reject("关联转换与上传文件名冲突");
-            if (previous.isEmpty()) result.add(file);
+            file.sourceDefinitionId = target.summary.id(); file.sourceRevision = target.summary.revision(); mergeInput(merged, file);
         }
+        List<StoredFile> result = new ArrayList<>(merged.values());
         if (result.size() > 20 || result.stream().mapToLong(f -> f.info.bytes()).sum() > TOTAL_FILES) reject("运行输入及关联转换总额超过 20 文件或 16 MiB");
         return result;
+    }
+    private static void mergeInput(Map<String,StoredFile> merged, StoredFile file)
+    {
+        StoredFile previous = merged.putIfAbsent(fileKey(file.info.name()), file);
+        if (previous != null && !previous.info.sha256().equals(file.info.sha256()))
+            reject("输入文件名冲突且内容不同，禁止自动覆盖：" + file.info.name());
+    }
+    private String inputsHash(List<StoredFile> inputs)
+    {
+        var metadata = inputs.stream().sorted(Comparator.comparing(f -> fileKey(f.info.name())))
+            .map(f -> Map.of("name", f.info.name(), "bytes", f.info.bytes(), "sha256", f.info.sha256())).toList();
+        try { return hash(mapper.writer().with(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).writeValueAsBytes(metadata)); }
+        catch (Exception e) { throw new ServiceException("输入快照指纹生成失败"); }
+    }
+    private static String fileKey(String name)
+    {
+        // Upper/lower expansion includes sharp-s and final-sigma equivalence; preserve dotless i.
+        String normalized = java.text.Normalizer.normalize(name, java.text.Normalizer.Form.NFC);
+        StringBuilder folded = new StringBuilder();
+        normalized.codePoints().forEach(c -> folded.append(c == 0x0131 ? "\u0131" : new String(Character.toChars(c)).toUpperCase(Locale.ROOT).toLowerCase(Locale.ROOT)));
+        return java.text.Normalizer.normalize(folded, java.text.Normalizer.Form.NFC);
     }
     private List<Map<String, Object>> references(String xml)
     {
@@ -438,6 +465,7 @@ public class DataGovernanceKettleService
         if (run.workerSnapshot != null && run.workerSnapshot.isObject()) run.workerSnapshot.fields().forEachRemaining(e -> result.put(e.getKey(), e.getValue()));
         result.put("id", run.id); result.put("definitionId", run.definitionId); result.put("kind", run.kind); result.put("revision", run.revision);
         result.put("xmlSha256", run.xmlSha256); result.put("state", run.state.equals("SUBMITTING") ? "SUBMISSION_UNKNOWN" : run.state);
+        if (run.inputsHash != null) { result.put("inputsHash", run.inputsHash); result.put("snapshotFingerprint", run.fingerprint); }
         result.put("submissionState", run.submissionState); result.put("mode", run.mode); result.put("createdAt", run.createdAt); result.put("updatedAt", run.updatedAt);
         result.put("requestId", run.requestId); result.put("inputFiles", run.inputs.stream().map(f -> f.info).toList());
         result.putIfAbsent("nodes", List.of()); result.putIfAbsent("files", List.of()); if (run.message != null) result.put("message", run.message);

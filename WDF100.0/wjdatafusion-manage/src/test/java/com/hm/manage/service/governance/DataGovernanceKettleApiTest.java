@@ -173,6 +173,42 @@ class DataGovernanceKettleApiTest
         assertThrows(ServiceException.class, () -> service.submit(invalid, new RunInput(1L, "run", null, null, "foreign"), 7));
         assertEquals(calls, worker.calls.size());
     }
+    @Test void jobMergesChildAssetsByNormalizedNameAndHashAndNeverSilentlyOverrides()
+    {
+        String child = save(xml()); String job = save(jobXml(child)); byte[] content = "same-content".getBytes(StandardCharsets.UTF_8);
+        service.upload(child, "CAFE\u0301.csv", new ByteArrayInputStream(content), 7);
+        service.upload(job, "café.CSV", new ByteArrayInputStream(content), 7);
+        service.submit(job, new RunInput(1L, "run", null, 20, "merge-same"), 7);
+        assertEquals(2, worker.lastSubmit.path("inputFiles").size()); // one asset plus child XML
+        for (var file : service.files(job, 7)) service.deleteFile(job, file.id(), 7);
+        service.upload(job, "café.CSV", new ByteArrayInputStream("different-content".getBytes(StandardCharsets.UTF_8)), 7);
+        int calls = worker.calls.size();
+        ServiceException conflict = assertThrows(ServiceException.class, () -> service.submit(job, new RunInput(1L, "run", null, 20, "merge-conflict"), 7));
+        assertTrue(conflict.getMessage().contains("禁止自动覆盖")); assertEquals(calls, worker.calls.size());
+    }
+    @Test void changingChildXmlOrAssetsDoesNotChangeExistingRunAndNewRunHasNewFrozenFingerprint() throws Exception
+    {
+        String child = save(xml()); String job = save(jobXml(child));
+        FileInfo asset = service.upload(child, "中文输入.csv", new ByteArrayInputStream("version-one".getBytes(StandardCharsets.UTF_8)), 7);
+        RunInput firstRequest = new RunInput(1L, "run", null, 20, "frozen-assets-one");
+        var first = service.submit(job, firstRequest, 7);
+        assertEquals(2, worker.lastSubmit.path("inputFiles").size());
+        service.save(child, input(1L, returned(child).replace("future value", "changed child")), 7);
+        service.deleteFile(child, asset.id(), 7);
+        service.upload(child, "中文输入.csv", new ByteArrayInputStream("version-two".getBytes(StandardCharsets.UTF_8)), 7);
+        var repeated = service.submit(job, firstRequest, 7);
+        assertEquals(first.get("id"), repeated.get("id")); assertEquals(first.get("inputsHash"), repeated.get("inputsHash"));
+        var second = service.submit(job, new RunInput(1L, "run", null, 20, "frozen-assets-two"), 7);
+        assertEquals(first.get("xmlSha256"), second.get("xmlSha256"));
+        assertNotEquals(first.get("inputsHash"), second.get("inputsHash")); assertNotEquals(first.get("snapshotFingerprint"), second.get("snapshotFingerprint"));
+        StoredRun saved = mapper.readValue(Files.readString(temporary.resolve("runs").resolve(first.get("id") + ".json")), StoredRun.class);
+        StoredFile oldAsset = saved.inputs.stream().filter(f -> f.info.name().equals("中文输入.csv")).findFirst().orElseThrow();
+        assertEquals("version-one", new String(Base64.getDecoder().decode(crypto().decrypt(oldAsset.encryptedContent)), StandardCharsets.UTF_8));
+        assertEquals(child, oldAsset.sourceDefinitionId); assertEquals(1, oldAsset.sourceRevision);
+        assertEquals(first.get("inputsHash"), service.runs(job, 7).get(1).get("inputsHash"));
+    }
+    private String jobXml(String child)
+    { return "<job><name>job</name><entries><entry data-rynew-definition-id='" + child + "'><name>transform</name><type>TRANS</type><filename>${WORK_DIR}/" + child + ".ktr</filename></entry></entries></job>"; }
     @Test void catalogKeepsDiscoveryLoadingAndExecutionEvidenceSeparate() throws Exception
     {
         Path catalog = temporary.resolve("catalog.json"); Files.writeString(catalog, "{\"plugins\":[{\"kind\":\"step\",\"id\":\"Unavailable\",\"registeredClass\":\"example.Meta\",\"name\":{\"zhCN\":{\"text\":\"未加载工具\",\"evidence\":\"editorial_translation\"}},\"category\":{\"zhCN\":{\"text\":\"输入\"}}}]}");
