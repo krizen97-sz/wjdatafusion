@@ -100,7 +100,8 @@ class Config:
                 'Container must use an explicit non-root uid/gid')
         require(type(self.execution_enabled) is bool, 'execution_enabled must be boolean')
         require(type(self.stage_run_owner) is bool, 'stage_run_owner must be boolean')
-        require(self.image == IMAGE['image'] and self.platform == IMAGE['platform'], 'Only the reviewed digest/platform is supported')
+        require(self.image in {IMAGE['image'], IMAGE['configDigest']} and self.platform == IMAGE['platform'],
+                'Only the reviewed official manifest digest or exact config ID/platform is supported')
         require(type(self.memory_mb) is int and 256 <= self.memory_mb <= 4096, 'Memory limit outside supported range')
         require(type(self.cpus) in (float, int) and 0.25 <= self.cpus <= 4, 'CPU limit outside supported range')
         require(type(self.pids_limit) is int and 64 <= self.pids_limit <= 1024, 'PID limit outside supported range')
@@ -330,7 +331,8 @@ class LinuxRuntime:
         require(bool(re.fullmatch(r'[a-f0-9]{64}', record.get('containerId') or '')), 'No confirmed container id')
         container = json.loads(self.runner.run(self.docker('inspect', record['containerId'])).stdout)[0]
         require(container['Id'] == record['containerId'] and all(container['Config'].get('Labels', {}).get(k) == v for k, v in record['labels'].items()), 'Container identity/labels differ')
-        require(self._same_image(container['Config']['Image'], record['image']) and container['Config']['User'] == str(self.config.uid) + ':' + str(self.config.gid), 'Container image/user differs')
+        require(self._same_image(container['Config']['Image'], record['image']) and container.get('Image') == IMAGE['configDigest']
+                and container['Config']['User'] == str(self.config.uid) + ':' + str(self.config.gid), 'Container image/user differs')
         host = container['HostConfig']; require(host['ReadonlyRootfs'] and not host.get('Privileged') and 'ALL' in host.get('CapDrop', []) and not host.get('CapAdd'), 'Container isolation was changed')
         security = host.get('SecurityOpt', [])
         require(len(security) == 1 and security[0] in {'no-new-privileges', 'no-new-privileges:true'} and not host.get('PortBindings'), 'Container privilege or published ports changed')
@@ -342,7 +344,7 @@ class LinuxRuntime:
         require(actual == sorted(tuple(m) for m in record['mounts']), 'Container bind mounts differ')
         expected_network = record['networkName'] or 'none'
         require(host['NetworkMode'] == expected_network, 'Container network changed')
-        if record.get('startedAt') and container['State'].get('Running'):
+        if record.get('startedAt'):
             require(container['State']['StartedAt'] == record['startedAt'], 'Container restarted outside the controller')
         return container
 
@@ -359,7 +361,8 @@ class LinuxRuntime:
 
     @staticmethod
     def _same_image(value, expected):
-        if '@sha256:' not in value: return False
+        if expected == IMAGE['configDigest']: return value == expected
+        if expected != IMAGE['image'] or '@sha256:' not in value: return False
         repo, checksum = value.split('@', 1)
         return repo in {'eclipse-temurin', 'library/eclipse-temurin', 'docker.io/eclipse-temurin', 'docker.io/library/eclipse-temurin'} and checksum == expected.split('@', 1)[1]
 
@@ -370,7 +373,10 @@ class LinuxRuntime:
         attached = None
         try:
             image = json.loads(self.runner.run(self.docker('image', 'inspect', record['image'])).stdout)[0]
-            require(any(self._same_image(value, record['image']) for value in image.get('RepoDigests', [])) and image['Os'] == 'linux' and image['Architecture'] == 'amd64', 'Pinned image is not preloaded for Linux amd64')
+            require(image.get('Id') == IMAGE['configDigest'] and image['Os'] == 'linux' and image['Architecture'] == 'amd64',
+                    'Preloaded image must match the official config SHA256 and Linux amd64')
+            require(record['image'] == IMAGE['configDigest'] or any(self._same_image(value, record['image']) for value in image.get('RepoDigests', [])),
+                    'Pinned RepoDigest is absent; use the exact reviewed config ID only for verified offline delivery')
             for name in ['home', 'tmp', 'output']: (Path(record['operationDir']) / name).mkdir(exist_ok=True, mode=0o700)
             self._stage_operation(record)
             if record['endpoints']:
