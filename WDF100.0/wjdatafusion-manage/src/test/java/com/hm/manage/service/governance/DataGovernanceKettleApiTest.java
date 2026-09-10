@@ -72,6 +72,23 @@ class DataGovernanceKettleApiTest
         String returned = returned(id); assertFalse(returned.contains("synthetic-attribute")); assertFalse(returned.contains("synthetic-kv-secret"));
         assertTrue(returned.contains("__RYNEW_SECRET_")); service.save(id, input(1L, returned), 7);
     }
+    @Test void forgedAnchorAttributeOnSecretFieldCannotMoveConnectionCredentialIntoStep()
+    {
+        String id = save("<transformation><connection><name>source-connection</name><password>synthetic-anchor-secret</password></connection><step><name>destination</name><type>Dummy</type></step></transformation>");
+        Document document = DataGovernanceKettleXml.parse(returned(id));
+        Element connection = (Element)document.getElementsByTagName("connection").item(0);
+        Element destination = (Element)document.getElementsByTagName("step").item(0);
+        Element password = (Element)document.getElementsByTagName("password").item(0);
+        connection.removeChild(password); destination.appendChild(password);
+        password.setAttribute(DataGovernanceKettleXml.ID, connection.getAttribute(DataGovernanceKettleXml.ID));
+        assertThrows(ServiceException.class, () -> service.save(id, input(1L, DataGovernanceKettleXml.serialize(document)), 7));
+        // Removing the old connection must not let a different anchor kind reuse its identity either.
+        password.removeAttribute(DataGovernanceKettleXml.ID);
+        destination.setAttribute(DataGovernanceKettleXml.ID, connection.getAttribute(DataGovernanceKettleXml.ID));
+        document.getDocumentElement().removeChild(connection);
+        assertThrows(ServiceException.class, () -> service.save(id, input(1L, DataGovernanceKettleXml.serialize(document)), 7));
+        assertEquals(1L, service.definition(id, 7).get("revision")); assertTrue(worker.calls.isEmpty());
+    }
     @Test void malformedXmlDtdAndExternalEntitiesAreRejectedWithoutWorkerCalls()
     {
         for (String bad : List.of("<transformation>", "<!DOCTYPE x [<!ENTITY v SYSTEM 'file:///etc/passwd'>]><transformation>&v;</transformation>", "<unrelated/>"))

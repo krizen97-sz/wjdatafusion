@@ -21,6 +21,7 @@ public final class DataGovernanceKettleXml
     public static final String ID = "data-rynew-id";
     private static final String SECRET_ID = "data-rynew-secret-id";
     private static final String MARKER = "__RYNEW_SECRET_";
+    private static final Set<String> ANCHOR_TAGS = Set.of("step", "entry", "connection");
     private static final Pattern SECRET = Pattern.compile("(?i).*(password|passwd|secret|token|access.?key|private.?key|credential|jaas).*|(?i)^pwd$");
     private DataGovernanceKettleXml() { }
     public record Prepared(String xml, String kind, int nodeCount) { }
@@ -132,7 +133,7 @@ public final class DataGovernanceKettleXml
         for (int i = 0; i < nodes.getLength(); i++)
         {
             Element e = (Element) nodes.item(i);
-            if (e == document.getDocumentElement() || Set.of("step", "entry", "connection").contains(e.getTagName()))
+            if (anchor(e))
             {
                 if (!e.hasAttribute(ID)) e.setAttribute(ID, UUID.randomUUID().toString());
                 validId(e.getAttribute(ID)); if (!ids.add(e.getAttribute(ID))) reject("元素稳定 ID 重复");
@@ -179,7 +180,8 @@ public final class DataGovernanceKettleXml
     }
     static boolean sensitiveName(String name) { return name != null && SECRET.matcher(name).matches(); }
     private static String owner(Element e)
-    { for (Node n = e; n instanceof Element p; n = n.getParentNode()) if (p.hasAttribute(ID)) return p.getAttribute(ID); return "root"; }
+    { for (Node n = e; n instanceof Element p; n = n.getParentNode()) if (anchor(p) && p.hasAttribute(ID)) return p.getTagName() + ":" + p.getAttribute(ID); return "root"; }
+    private static boolean anchor(Element e) { return e.getParentNode() instanceof Document || ANCHOR_TAGS.contains(e.getTagName()); }
     public static String child(Element parent, String name)
     { for (Node n = parent.getFirstChild(); n != null; n = n.getNextSibling()) if (n instanceof Element e && e.getTagName().equals(name)) return e.getTextContent(); return ""; }
     private static void set(Slot slot, String value) { if (slot.attribute().isEmpty()) slot.element().setTextContent(value); else slot.element().setAttribute(slot.attribute(), value); }
