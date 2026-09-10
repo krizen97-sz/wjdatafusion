@@ -1,0 +1,12 @@
+{
+  "image": "docker.io/library/eclipse-temurin@sha256:24cd8eed18b5976441d27b45823490eb5e8efff4b3ecdc632e442717ea66f160",
+  "platform": "linux/amd64",
+  "sourceTag": "17-jre-jammy",
+  "indexDigest": "sha256:ec72ba5962b45ae4e7f96bfb5ebf6eeb34a488b967f937c8e14f0aaec688954f",
+  "configDigest": "sha256:72e36d8dd5e6aab7ca6f3bcc47b9a6b1dde9b4c7a03536ed081a1bfb98616e15",
+  "manifestAndConfigHashesVerified": true,
+  "registry": "https://registry-1.docker.io/v2/library/eclipse-temurin/",
+  "verifiedAt": "2026-09-10",
+  "java": "/opt/java/openjdk/bin/java",
+  "scope": "Read-only official registry manifest verification; image has not been pulled or run by this implementation task"
+}

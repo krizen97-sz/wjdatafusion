@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<transformation>
+  <info><name>Offline Linux native CSV smoke</name><size_rowset>100</size_rowset></info>
+  <order>
+    <hop><from>CSV input</from><to>Native script</to><enabled>Y</enabled></hop>
+    <hop><from>Native script</from><to>Text output</to><enabled>Y</enabled></hop>
+  </order>
+  <step><name>CSV input</name><type>CsvInput</type><copies>1</copies><distribute>Y</distribute>
+    <filename>${WORK_DIR}/smoke.csv</filename><separator>,</separator><enclosure>"</enclosure><header>Y</header>
+    <encoding>UTF-8</encoding><buffer_size>50000</buffer_size><lazy_conversion>N</lazy_conversion><newline_possible>N</newline_possible>
+    <fields><field><name>message</name><type>String</type><length>-1</length><precision>-1</precision><trim_type>none</trim_type></field></fields>
+  </step>
+  <step><name>Native script</name><type>ScriptValueMod</type><copies>1</copies><distribute>Y</distribute>
+    <compatible>N</compatible><optimizationLevel>0</optimizationLevel>
+    <jsScripts><jsScript><jsScript_type>0</jsScript_type><jsScript_name>Append suffix</jsScript_name><jsScript_script>var processed = String(message) + "-linux";</jsScript_script></jsScript></jsScripts>
+    <fields><field><name>processed</name><type>String</type><length>-1</length><precision>-1</precision><replace>N</replace></field></fields>
+  </step>
+  <step><name>Text output</name><type>TextFileOutput</type><copies>1</copies><distribute>Y</distribute>
+    <separator>|</separator><enclosure/><header>N</header><footer>N</footer><format>UNIX</format><compression>None</compression><encoding>UTF-8</encoding><create_parent_folder>Y</create_parent_folder>
+    <file><name>${WORK_DIR}/result</name><extention>txt</extention><is_command>N</is_command><servlet_output>N</servlet_output><append>N</append><split>N</split><haspartno>N</haspartno><add_date>N</add_date><add_time>N</add_time><splitevery>0</splitevery><max_wait_time_ms>0</max_wait_time_ms><rename_file_name>N</rename_file_name></file>
+    <fields><field><name>processed</name><type>String</type><length>-1</length><precision>-1</precision><trim_type>none</trim_type></field></fields>
+  </step>
+</transformation>
