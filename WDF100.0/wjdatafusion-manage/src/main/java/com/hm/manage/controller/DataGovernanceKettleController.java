@@ -5,6 +5,7 @@ import com.hm.common.core.controller.BaseController;
 import com.hm.common.core.domain.AjaxResult;
 import com.hm.common.enums.BusinessType;
 import com.hm.manage.service.governance.DataGovernanceKettleService;
+import com.hm.manage.service.governance.DataGovernanceKettleScheduler;
 import com.hm.manage.service.governance.DataGovernanceKettleService.*;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
@@ -20,7 +21,9 @@ import org.springframework.web.multipart.MultipartFile;
 public class DataGovernanceKettleController extends BaseController
 {
     private final DataGovernanceKettleService service;
-    public DataGovernanceKettleController(DataGovernanceKettleService service) { this.service = service; }
+    private final DataGovernanceKettleScheduler scheduler;
+    public DataGovernanceKettleController(DataGovernanceKettleService service, DataGovernanceKettleScheduler scheduler)
+    { this.service = service; this.scheduler = scheduler; }
     @GetMapping("/status") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
     public AjaxResult status() { return success(service.status()); }
     @GetMapping("/catalog") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
@@ -56,6 +59,26 @@ public class DataGovernanceKettleController extends BaseController
     public AjaxResult submit(@PathVariable String id, @RequestBody RunInput input) { return success(service.submit(id, input, getUserId())); }
     @GetMapping("/definitions/{id}/runs") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
     public AjaxResult runs(@PathVariable String id) { return success(service.runs(id, getUserId())); }
+    @GetMapping("/definitions/{id}/schedules") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
+    public AjaxResult schedules(@PathVariable String id) { return success(scheduler.list(id, getUserId())); }
+    @PostMapping("/definitions/{id}/schedules") @PreAuthorize("@ss.hasPermi('governance:flow:edit')")
+    @Log(title="创建原生 Kettle 计划", businessType=BusinessType.INSERT, isSaveRequestData=false, isSaveResponseData=false)
+    public AjaxResult createSchedule(@PathVariable String id, @RequestBody DataGovernanceKettleScheduler.Input input)
+    { return success(scheduler.create(id, input, getUserId())); }
+    @PutMapping("/schedules/{id}") @PreAuthorize("@ss.hasPermi('governance:flow:edit')")
+    @Log(title="修改原生 Kettle 计划", businessType=BusinessType.UPDATE, isSaveRequestData=false, isSaveResponseData=false)
+    public AjaxResult updateSchedule(@PathVariable String id, @RequestBody DataGovernanceKettleScheduler.Input input)
+    { return success(scheduler.update(id, input, getUserId())); }
+    @PostMapping("/schedules/{id}/state") @PreAuthorize("@ss.hasPermi('governance:flow:test')")
+    @Log(title="启停原生 Kettle 计划", businessType=BusinessType.UPDATE, isSaveRequestData=false, isSaveResponseData=false)
+    public AjaxResult scheduleState(@PathVariable String id, @RequestBody DataGovernanceKettleScheduler.StateInput input)
+    { return success(scheduler.state(id, input, getUserId())); }
+    @PostMapping("/schedules/{id}/run") @PreAuthorize("@ss.hasPermi('governance:flow:test')")
+    @Log(title="触发原生 Kettle 计划", businessType=BusinessType.OTHER, isSaveRequestData=false, isSaveResponseData=false)
+    public AjaxResult scheduleRun(@PathVariable String id) { return success(scheduler.runNow(id, getUserId())); }
+    @PostMapping("/schedules/{id}/recover") @PreAuthorize("@ss.hasPermi('governance:flow:test')")
+    @Log(title="核查原生 Kettle 计划运行", businessType=BusinessType.OTHER, isSaveRequestData=false, isSaveResponseData=false)
+    public AjaxResult scheduleRecover(@PathVariable String id) { return success(scheduler.recover(id, getUserId())); }
     @GetMapping("/runs/{id}") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
     public AjaxResult run(@PathVariable String id) { return success(service.run(id, getUserId())); }
     @GetMapping("/runs/{id}/events") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
