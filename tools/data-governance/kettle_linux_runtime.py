@@ -56,13 +56,21 @@ def private_read(path):
         return json.load(stream)
 
 
-def atomic_write(path, content, mode=0o600):
+def atomic_write(path, content, mode=0o600, *, owner=None):
     path = Path(path); require(not path.is_symlink(), 'Refusing linked output')
     temporary = path.with_name('.' + path.name + '.' + uuid.uuid4().hex)
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
     try:
         with os.fdopen(fd, 'w') as stream:
-            stream.write(content); stream.flush(); os.fsync(stream.fileno())
+            stream.write(content); stream.flush()
+            if owner is not None:
+                # Finish ownership/mode on the open inode before the gate can observe the published name.
+                os.fchown(stream.fileno(), *owner)
+                os.fchmod(stream.fileno(), mode)
+                info = os.fstat(stream.fileno())
+                require((info.st_uid, info.st_gid) == owner and stat.S_IMODE(info.st_mode) == mode,
+                        'Control file ownership/mode could not be prepared before publication')
+            os.fsync(stream.fileno())
         os.replace(temporary, path)
         parent = os.open(path.parent, os.O_RDONLY)
         try: os.fsync(parent)
@@ -203,6 +211,17 @@ class LinuxRuntime:
                 path.chmod(0o700 if path.is_dir() else 0o600)
             record['ownershipStaged'] = True; self._save(record)
         self._permissions(operation, permit_staging=False)
+
+    def _publish_control(self, record, command):
+        require(command in {'RELEASE', 'STOP', 'HALT'}, 'Unsupported owned run control command')
+        require(re.fullmatch(r'[a-f0-9]{64}', record['nonce']) and
+                record['labels'].get(LABEL + 'instance') == self.config.instance_id and
+                record['labels'].get(LABEL + 'nonce') == record['nonce'], 'Control run identity differs')
+        operation = path_checked(record['operationDir'])
+        require(operation.parent == self.config.operations_root and operation.name == record['runId'], 'Control file must belong to the registered direct run')
+        name = '.rynew-java-ready' if command == 'RELEASE' else 'control.stop'
+        content = record['nonce'] if command == 'RELEASE' else command + ':' + record['nonce']
+        atomic_write(operation / name, content + '\n', 0o600, owner=(self.config.uid, self.config.gid))
 
     def _artifacts(self):
         root = self.config.worker_root
@@ -414,7 +433,7 @@ class LinuxRuntime:
                         self.runner.run([*prefix, binary, '-w', '5', '-I', 'OUTPUT', '1', '-j', record['namespaceChain']], pass_fds=(fd,))
             # No Java or XML-controlled action has run before both network boundaries are installed.
             self._inspect(record); record['state'] = 'POLICY_READY'; self._save(record)
-            atomic_write(Path(record['operationDir']) / '.rynew-java-ready', record['nonce'] + '\n', 0o444)
+            self._publish_control(record, 'RELEASE')
             record['javaReleased'] = True; record['state'] = 'JAVA_RELEASED'; self._save(record)
             return ContainerProcess(self, record['runId'], attached)
         except Exception:
@@ -462,7 +481,7 @@ class LinuxRuntime:
         if force:
             # A compromised operation directory cannot block the trusted Docker kill path by linking control.stop.
             self._inspect(record); self.runner.run(self.docker('kill', '--signal=KILL', record['containerId']))
-        else: atomic_write(Path(record['operationDir']) / 'control.stop', 'STOP:' + record['nonce'] + '\n', 0o444)
+        else: self._publish_control(record, 'STOP')
         record['state'] = 'STOP_REQUESTED'; self._save(record); return {'runId': run_id, 'stopRequested': True, 'forced': force}
 
     def cleanup(self, run_id):

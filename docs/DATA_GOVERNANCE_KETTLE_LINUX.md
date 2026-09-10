@@ -109,6 +109,8 @@ python3 data-governance/kettle-worker/linux/smoke.py --config /private/reviewed-
 
 docker attach CLI 退出不等于 Java/容器退出；Popen-shaped handle 的 wait/poll 以容器状态为准。
 
+run 初次 staging 不能覆盖随后新增文件的 ownership。release、STOP/HALT 控制文件统一限制在已登记 run 的两个固定文件名下：内容写入新临时 inode，先通过 `fchown` 设置容器 uid/gid，再 `fchmod(0600)`、核验 inode 状态和 fsync，最后 rename 发布。即使控制器为 root 或 umask 限制更严，gate 首次看到放行文件时也已经可读。权限设置失败不发布 gate 文件并保留 RECOVERY_REQUIRED；控制器配置和 journals 继续保持控制器属主 0600。
+
 清理必须先确认容器退出，且网络没有其他容器、宿主专属链没有未知规则。只移除该容器、逐条删除带本次 comment 的专属规则、删除自己的链与网络；不使用全局 flush、改默认策略、prune 或按名称猜测后批量删除。容器内 namespace 链随其 namespace 销毁。
 
 每个已确认的 cleanup 步骤单独持久化；容器已删除但后续规则清理失败时，可继续专属 cleanup，不重复删除或重新运行。创建结果未确认、标签不符、出现未知规则、外部重启等情形保持 RECOVERY_REQUIRED，要求按精确 journal/labels 人工核查，不能自动重新创建执行。operation 文件与上层业务台账保留。
@@ -156,4 +158,4 @@ python3 data-governance/kettle-worker/linux/test_export_image.py -v
 sh -n data-governance/kettle-worker/linux/gate.sh
 ```
 
-已通过 37 项 adapter mock 和 8 项导出器合成测试：默认无网络、原协议透传、64-hex nonce、逐 run 目录映射、真实制品 hash 计划、配置/镜像/端点/argv/路径注入、无未隔离 fallback、策略失败 gate 不放行、未知容器/挂载/权限拒绝、既有规则保留、清理续做、attach 退出不冒充容器结束、恢复不重投、受控 uid/gid staging、制品权限不变、错误 nonce 拒绝及禁新执行后仍可停止；新增官方离线 ID/平台/恢复/来源标签、停止后的外部重启、元数据与层损坏、归档回读、路径和 HTTPS/token 重定向边界。测试没有执行 Docker、iptables 或 nsenter。真正 Linux 上的内核 firewall 顺序、容器 UID 文件权限、CSV 执行和允许/拒绝端点的网络实测，仍是部署前必做验收。
+已通过 40 项 adapter 测试和 8 项导出器合成测试：默认无网络、原协议透传、64-hex nonce、逐 run 目录映射、真实制品 hash 计划、配置/镜像/端点/argv/路径注入、无未隔离 fallback、策略失败 gate 不放行、未知容器/挂载/权限拒绝、既有规则保留、清理续做、attach 退出不冒充容器结束、恢复不重投、受控 uid/gid staging、制品权限不变、错误 nonce 拒绝及禁新执行后仍可停止；新增官方离线 ID/平台/恢复/来源标签、停止后的外部重启、元数据与层损坏、归档回读、路径和 HTTPS/token 重定向边界。控制文件测试实际创建本机文件，以 umask 0777 验证 FD ownership/mode 在 rename 前完成，覆盖 RELEASE/STOP/HALT 与失败不发布，journals 属主/0600 保持不变；本机非 root 时实际 fchown 使用当前 uid/gid，跨 uid 的 root→容器场景仍需 Linux smoke 复验。Docker、iptables、nsenter 全部为 mock，测试没有调用真实服务。真正 Linux 上的内核 firewall 顺序、容器 UID 文件权限、CSV 执行和允许/拒绝端点的网络实测，仍是部署前必做验收。

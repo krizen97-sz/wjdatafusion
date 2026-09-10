@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 REPO = Path(__file__).resolve().parents[3]
 SPEC = importlib.util.spec_from_file_location('kettle_linux_runtime', REPO / 'tools/data-governance/kettle_linux_runtime.py')
@@ -277,6 +278,47 @@ class LinuxTests(unittest.TestCase):
         self.assertEqual(0o600, (self.op / 'transformation.ktr').stat().st_mode & 0o777)
         self.assertEqual(artifact_mode, (self.worker / 'lib/original.jar').stat().st_mode)
         self.assertTrue(controller._read('run-one')['ownershipStaged'])
+    def test_control_owner_and_mode_are_ready_before_atomic_publication(self):
+        controller, runner = self.controller(); plan = controller.plan(self.op, 'run', launch_id='7' * 64)
+        controller._save(plan, create=True); controller._stage_operation(plan)
+        original_replace, original_chown, original_chmod = os.replace, os.fchown, os.fchmod
+        events = []; published = []
+        def chown(fd, uid, gid):
+            events.append(('fchown', uid, gid)); original_chown(fd, uid, gid)
+        def chmod(fd, mode):
+            events.append(('fchmod', mode)); original_chmod(fd, mode)
+        def publish(source, destination):
+            info = Path(source).stat()
+            self.assertEqual((self.uid, self.gid, 0o600), (info.st_uid, info.st_gid, info.st_mode & 0o777))
+            self.assertEqual([('fchown', self.uid, self.gid), ('fchmod', 0o600)], events[-2:])
+            self.assertEqual(self.op, Path(destination).parent)
+            published.append(Path(destination).name); original_replace(source, destination)
+        previous_umask = os.umask(0o777)
+        try:
+            with mock.patch.object(runtime.os, 'fchown', side_effect=chown), mock.patch.object(runtime.os, 'fchmod', side_effect=chmod), mock.patch.object(runtime.os, 'replace', side_effect=publish):
+                for command in ['RELEASE', 'STOP', 'HALT']:
+                    controller._publish_control(plan, command)
+                    controller._permissions(self.op, permit_staging=False)
+        finally: os.umask(previous_umask)
+        self.assertEqual(['.rynew-java-ready', 'control.stop', 'control.stop'], published)
+        self.assertEqual('HALT:' + '7' * 64, (self.op / 'control.stop').read_text().strip())
+        for path in [self.state / 'owner.json', self.state / 'run-one.json']:
+            info = path.stat(); self.assertEqual((os.geteuid(), 0o600), (info.st_uid, info.st_mode & 0o777))
+    def test_control_ownership_failure_never_publishes_release(self):
+        controller, runner = self.controller()
+        with mock.patch.object(runtime.os, 'fchown', side_effect=PermissionError('synthetic chown denial')):
+            with self.assertRaises(PermissionError): controller.launch(self.op, 'run')
+        self.assertFalse((self.op / '.rynew-java-ready').exists())
+        self.assertEqual([], list(self.op.glob('..rynew-java-ready.*')))
+        record = controller._read('run-one')
+        self.assertFalse(record['javaReleased']); self.assertEqual('RECOVERY_REQUIRED', record['state'])
+    def test_controls_cannot_publish_outside_the_registered_run(self):
+        controller, runner = self.controller(); plan = controller.plan(self.op, 'run')
+        plan['operationDir'] = str(self.worker)
+        with self.assertRaises(RuntimeError): controller._publish_control(plan, 'STOP')
+        self.assertFalse((self.worker / 'control.stop').exists())
+        plan['operationDir'] = str(self.op)
+        with self.assertRaises(RuntimeError): controller._publish_control(plan, '../unreviewed')
     def test_stop_nonce_and_cleaned_identity_remain_bound_to_journal(self):
         controller, runner = self.controller(); controller.launch(self.op, 'run', launch_id='4' * 64)
         count = len(runner.calls)
