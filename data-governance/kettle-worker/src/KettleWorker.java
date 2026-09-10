@@ -56,10 +56,10 @@ public final class KettleWorker {
     return changes;
   }
   static String sha256(byte[] value)throws Exception{return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(value));}
-  static void executionSnapshot(TransMeta meta,boolean preview,List<Map<String,Object>> overrides)throws Exception {
+  static void executionSnapshot(TransMeta meta,boolean preview,List<Map<String,Object>> overrides,Map<String,Object> projection)throws Exception {
     byte[] original=Files.readAllBytes(root.resolve("transformation.ktr"));byte[] effective=preview?meta.getXML().getBytes(StandardCharsets.UTF_8):original;
     Files.write(root.resolve("transformation.effective.ktr"),effective);String originalSha=sha256(original),effectiveSha=sha256(effective);
-    event("execution-snapshot",Map.of("originalXmlSha",originalSha,"effectiveXmlSha",effectiveSha,"preview",preview,"previewOverrides",overrides));
+    event("execution-snapshot",Map.of("originalXmlSha",originalSha,"effectiveXmlSha",effectiveSha,"preview",preview,"previewOverrides",overrides,"previewProjection",projection));
     for(Map<String,Object> change:overrides){Map<String,Object> entry=new LinkedHashMap<>(change);entry.put("originalXmlSha",originalSha);entry.put("effectiveXmlSha",effectiveSha);event("preview-override",entry);}
   }
   static boolean belongsToLogChannel(String channel,Set<String> roots){if(channel==null||channel.isEmpty())return false;Set<String> seen=new HashSet<>();LoggingObjectInterface current=LoggingRegistry.getInstance().getLoggingObject(channel);if(roots.contains(channel))return true;while(current!=null&&seen.add(current.getLogChannelId())){if(roots.contains(current.getLogChannelId()))return true;current=current.getParent();}return false;}
@@ -161,6 +161,7 @@ public final class KettleWorker {
       node.put("name",step.getName());node.put("pluginId",step.getStepID());
       node.put("className",step.getStepMetaInterface().getClass().getName());
       node.put("classSource",source(step.getStepMetaInterface().getClass()));
+      node.put("previewCollector","Y".equals(step.getAttribute("kettle_worker","preview_collector")));
       node.put("inputFields",List.of());
       try{node.put("inputFields",fieldList(meta.getPrevStepFields(step)));}
       catch(Exception error){node.put("inputFieldError",error.getClass().getSimpleName());}
@@ -170,13 +171,71 @@ public final class KettleWorker {
     }
     return result;
   }
-  static void previewGraph(TransMeta meta,String target){StepMeta selected=meta.findStep(target);if(selected==null)throw new IllegalArgumentException("Preview step does not exist");Set<StepMeta> keep=new HashSet<>();Deque<StepMeta> todo=new ArrayDeque<>();todo.add(selected);while(!todo.isEmpty()){StepMeta step=todo.removeFirst();if(keep.add(step))todo.addAll(meta.findPreviousSteps(step));}for(int i=meta.nrTransHops()-1;i>=0;i--){TransHopMeta hop=meta.getTransHop(i);if(!keep.contains(hop.getFromStep())||!keep.contains(hop.getToStep()))meta.removeTransHop(i);}for(int i=meta.nrSteps()-1;i>=0;i--)if(!keep.contains(meta.getStep(i)))meta.removeStep(i);}
-  static List<Map<String,Object>> metrics(Trans trans){List<Map<String,Object>> result=new ArrayList<>();for(StepMetaDataCombi c:trans.getSteps()){StepInterface s=c.step;Map<String,Object> m=new LinkedHashMap<>();m.put("node",c.stepname);m.put("copy",c.copy);m.put("status",s.getStatus().toString());m.put("read",s.getLinesRead());m.put("written",s.getLinesWritten());m.put("input",s.getLinesInput());m.put("output",s.getLinesOutput());m.put("rejected",s.getLinesRejected());m.put("errors",s.getErrors());result.add(m);}return result;}
+  static boolean requiresExplicitRun(StepMeta step) {
+    if(Set.of("ExecSQL","ExecProcess","Shell","SSH","HTTPPOST","Rest","JobExecutor","TransExecutor","Mapping","SimpleMapping","SingleThreader","ETLMetaInject").contains(step.getStepID()))return true;
+    for(Map<String,Object> capability:catalog)if(step.getStepID().equals(capability.get("id"))||((List<?>)capability.getOrDefault("aliases",List.of())).contains(step.getStepID()))return "Output".equalsIgnoreCase(String.valueOf(capability.get("category")));
+    return false;
+  }
+  static StepMeta previewCollector(TransMeta meta,StepMeta source,StepMeta removed,Map<String,StepMeta> collectors,List<Map<String,Object>> descriptions) {
+    String key=source.getName()+"\u0000"+removed.getName();StepMeta existing=collectors.get(key);if(existing!=null)return existing;
+    int sequence=collectors.size()+1;String name="__preview_discard_"+sequence;while(meta.findStep(name)!=null)name="__preview_discard_"+(++sequence);
+    org.pentaho.di.trans.steps.dummytrans.DummyTransMeta dummy=new org.pentaho.di.trans.steps.dummytrans.DummyTransMeta();dummy.setDefault();
+    StepMeta collector=new StepMeta("Dummy",name,dummy);collector.setDraw(true);collector.setCopiesString(removed.getCopiesString());collector.setAttribute("kettle_worker","preview_collector","Y");
+    collector.setAttribute("kettle_worker","source",source.getName());collector.setAttribute("kettle_worker","original_target",removed.getName());meta.addStep(collector);collectors.put(key,collector);
+    descriptions.add(Map.of("name",name,"pluginId","Dummy","source",source.getName(),"originalTarget",removed.getName(),"classSource",source(dummy.getClass()),"purpose","discard-unselected-preview-route"));return collector;
+  }
+  static StepMeta collectorForRoute(StepMeta source,String originalName,Map<String,StepMeta> collectors) {
+    StepMeta collector=collectors.get(source.getName()+"\u0000"+originalName);
+    if(collector==null)throw new IllegalArgumentException("Preview routing target has no enabled original hop: "+source.getName()+" -> "+originalName);
+    return collector;
+  }
+  static Map<String,Object> previewGraph(TransMeta meta,String target) {
+    StepMeta selected=meta.findStep(target);if(selected==null)throw new IllegalArgumentException("Preview step does not exist");
+    List<StepMeta> originals=new ArrayList<>(meta.getSteps());Map<String,StepMeta> originalByName=new HashMap<>();for(StepMeta step:originals)originalByName.put(step.getName(),step);
+    Set<StepMeta> keep=new LinkedHashSet<>();Deque<StepMeta> todo=new ArrayDeque<>();todo.add(selected);
+    while(!todo.isEmpty()){StepMeta step=todo.removeFirst();if(keep.add(step)){todo.addAll(meta.findPreviousSteps(step));for(var info:step.getStepMetaInterface().getStepIOMeta().getInfoStreams())if(info.getStepMeta()!=null)todo.add(info.getStepMeta());}}
+    for(StepMeta step:keep)if(requiresExplicitRun(step))throw new IllegalArgumentException("Output/external execution nodes require an explicit run; preview refused: "+step.getName()+" ("+step.getStepID()+")");
+    Map<String,StepMeta> collectors=new LinkedHashMap<>();List<Map<String,Object>> collectorDescriptions=new ArrayList<>();
+    for(int i=0;i<meta.nrTransHops();) {
+      TransHopMeta hop=meta.getTransHop(i);StepMeta from=hop.getFromStep(),to=hop.getToStep();
+      if(keep.contains(from)&&keep.contains(to)){i++;continue;}
+      boolean routed=keep.contains(from)&&(!from.getStepMetaInterface().getStepIOMeta().getTargetStreams().isEmpty()||from.getStepErrorMeta()!=null&&from.getStepErrorMeta().getTargetStep()!=null);
+      if(keep.contains(from)&&hop.isEnabled()&&(from!=selected||routed)) {hop.setToStep(previewCollector(meta,from,to,collectors,collectorDescriptions));i++;}
+      else meta.removeTransHop(i);
+    }
+    for(int i=meta.nrSteps()-1;i>=0;i--){StepMeta step=meta.getStep(i);if(!keep.contains(step)&&!collectors.containsValue(step))meta.removeStep(i);}
+    for(StepMeta step:keep) {
+      StepMetaInterface configuration=step.getStepMetaInterface();
+      if(configuration instanceof org.pentaho.di.trans.steps.switchcase.SwitchCaseMeta cases) {
+        for(var choice:cases.getCaseTargets()) {
+          StepMeta destination=choice.caseTargetStep!=null?choice.caseTargetStep:originalByName.get(choice.caseTargetStepname);
+          if(destination!=null&&!keep.contains(destination)){StepMeta collector=collectorForRoute(step,destination.getName(),collectors);choice.caseTargetStep=collector;choice.caseTargetStepname=collector.getName();}
+        }
+        StepMeta fallback=cases.getDefaultTargetStep()!=null?cases.getDefaultTargetStep():originalByName.get(cases.getDefaultTargetStepname());
+        if(fallback!=null&&!keep.contains(fallback)){StepMeta collector=collectorForRoute(step,fallback.getName(),collectors);cases.setDefaultTargetStep(collector);cases.setDefaultTargetStepname(collector.getName());}
+        cases.resetStepIoMeta();
+      } else {
+        for(var stream:new ArrayList<>(configuration.getStepIOMeta().getTargetStreams())) {
+          StepMeta destination=stream.getStepMeta();if(destination==null&&stream.getSubject() instanceof String name)destination=originalByName.get(name);
+          if(destination!=null&&!keep.contains(destination)) {
+            if(stream.getSubject()!=null&&!(stream.getSubject() instanceof String))throw new IllegalArgumentException("Preview cannot safely remap this native routing metadata: "+step.getName());
+            StepMeta collector=collectorForRoute(step,destination.getName(),collectors);stream.setStepMeta(collector);stream.setSubject(collector.getName());
+          }
+        }
+      }
+      if(step.getStepErrorMeta()!=null){StepMeta errorTarget=step.getStepErrorMeta().getTargetStep();if(errorTarget!=null&&!keep.contains(errorTarget))step.getStepErrorMeta().setTargetStep(collectorForRoute(step,errorTarget.getName(),collectors));}
+    }
+    for(StepMeta step:keep)if(!(step.getStepMetaInterface() instanceof org.pentaho.di.trans.steps.switchcase.SwitchCaseMeta))step.getStepMetaInterface().searchInfoAndTargetSteps(meta.getSteps());
+    meta.clearCaches();List<Map<String,Object>> excluded=new ArrayList<>();List<String> retained=new ArrayList<>();
+    for(StepMeta step:originals)if(keep.contains(step))retained.add(step.getName());else excluded.add(Map.of("name",step.getName(),"pluginId",step.getStepID(),"reason","outside-selected-ancestor-graph"));
+    return Map.of("target",target,"retainedOriginalNodes",retained,"excludedOriginalNodes",excluded,"collectors",collectorDescriptions);
+  }
+  static List<Map<String,Object>> metrics(Trans trans){List<Map<String,Object>> result=new ArrayList<>();for(StepMetaDataCombi c:trans.getSteps()){StepInterface s=c.step;Map<String,Object> m=new LinkedHashMap<>();m.put("node",c.stepname);m.put("pluginId",c.stepMeta.getStepID());m.put("previewCollector","Y".equals(c.stepMeta.getAttribute("kettle_worker","preview_collector")));m.put("copy",c.copy);m.put("status",s.getStatus().toString());m.put("read",s.getLinesRead());m.put("written",s.getLinesWritten());m.put("input",s.getLinesInput());m.put("output",s.getLinesOutput());m.put("rejected",s.getLinesRejected());m.put("errors",s.getErrors());result.add(m);}return result;}
   static void execute(TransMeta meta,String target,int limit)throws Exception {
     if(startupStopRequested()){requestedStop.set(true);event("terminal",Map.of("state","STOPPED","errors",0,"nodes",List.of(),"started",false));return;}
-    List<Map<String,Object>> overrides=List.of();
-    if(!target.isEmpty()){previewGraph(meta,target);overrides=applyPreviewOverrides(meta);}
-    executionSnapshot(meta,!target.isEmpty(),overrides);
+    List<Map<String,Object>> overrides=List.of();Map<String,Object> projection=Map.of();
+    if(!target.isEmpty()){projection=previewGraph(meta,target);overrides=applyPreviewOverrides(meta);}
+    executionSnapshot(meta,!target.isEmpty(),overrides,projection);
     Trans trans=new Trans(meta);trans.setLogLevel(LogLevel.BASIC);
     AtomicInteger logCount=new AtomicInteger();
     Set<String> logRoots=new HashSet<>(Arrays.asList(trans.getLogChannelId(),meta.getLogChannelId()));
