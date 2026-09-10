@@ -136,6 +136,8 @@ public class DataGovernanceKafkaService
         }
         return summary(receipt);
     }
+    /** Owner-checked detached persistence envelope for internal execution coordinators only. */
+    synchronized Receipt snapshot(String id, long owner) { initialize(); return ownedReceipt(id, owner); }
     public synchronized ReceiptDetail read(String id, long owner) { initialize(); Receipt receipt = ownedReceipt(id, owner); return new ReceiptDetail(summary(receipt), receipt.inputJson); }
     public synchronized List<ReceiptSummary> receipts(long owner)
     {
@@ -234,15 +236,19 @@ public class DataGovernanceKafkaService
     private Profile ownedProfile(String id, long owner) { Profile profile = store.profile(id); if (profile == null || profile.ownerId != owner) throw new ServiceException("Kafka 配置不存在或无权访问"); return profile; }
     private Receipt ownedReceipt(String id, long owner) { Receipt receipt = store.receipt(id); if (receipt == null || receipt.ownerId != owner) throw new ServiceException("Kafka 批次不存在或无权访问"); return receipt; }
     private void save(Receipt receipt) { receipt.updatedAt = Instant.now().toString(); store.saveReceipt(receipt); }
-    private ProfileView view(Profile p) { return new ProfileView(p.id, p.revision, p.name, p.bootstrapServers, p.topic, p.groupId, p.fingerprint, false, "READ_UNCOMMITTED", "EARLIEST", List.of("PLAINTEXT only", "Compression NONE only", "Transactional/control batches rejected", "Dedicated owner group", "No ZooKeeper group migration")); }
+    private ProfileView view(Profile p) { return new ProfileView(p.id, p.revision, p.name, p.bootstrapServers, p.topic, p.groupId, p.fingerprint, false, "READ_UNCOMMITTED", "EARLIEST", List.of("PLAINTEXT IPv4 only", "Compression NONE only", "Transactional/control batches rejected", "Dedicated owner group", "No ZooKeeper group migration")); }
     private ReceiptSummary summary(Receipt r) { return new ReceiptSummary(r.id, r.binding.profileId(), r.profileName, r.binding.topic(), r.binding.groupId(), r.status, r.recordCount, r.inputSha256, r.initialOffsets, r.nextOffsets, r.runId, r.deliveryBinding == null ? null : r.deliveryBinding.id(), r.error, r.createdAt, r.updatedAt, r.leaseHeld, "READ_UNCOMMITTED", r.deliveryStatus); }
     private String json(Object value) { try { return mapper.writeValueAsString(value); } catch (Exception e) { throw new ServiceException("Kafka 批次编码失败"); } }
     static String hash(String text) { try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8))); } catch (Exception e) { throw new ServiceException("Kafka 批次摘要计算失败"); } }
     static String endpoint(String raw)
     {
         if (raw == null) throw new ServiceException("Kafka 地址无效"); String value = raw.trim().toLowerCase(Locale.ROOT);
-        if (!value.matches("[a-z0-9.-]+:[0-9]{1,5}")) throw new ServiceException("Kafka 地址必须为明确的主机:端口");
-        int port = Integer.parseInt(value.substring(value.lastIndexOf(':') + 1)); if (port < 1 || port > 65535) throw new ServiceException("Kafka 端口无效"); return value.substring(0, value.lastIndexOf(':') + 1) + port;
+        if (!value.matches("(?:[0-9]{1,3}\\.){3}[0-9]{1,3}:[0-9]{1,5}")) throw new ServiceException("Kafka 初版地址必须为明确的 IPv4:端口");
+        String[] parts = value.split(":"); String[] octets = parts[0].split("\\.");
+        List<String> normalized = new ArrayList<>();
+        for (String octet : octets) { int number = Integer.parseInt(octet); if (number > 255) throw new ServiceException("Kafka IPv4 地址无效"); normalized.add(Integer.toString(number)); }
+        int port = Integer.parseInt(parts[1]); if (port < 1 || port > 65535) throw new ServiceException("Kafka 端口无效");
+        return String.join(".", normalized) + ":" + port;
     }
     void allowed(String address)
     {
