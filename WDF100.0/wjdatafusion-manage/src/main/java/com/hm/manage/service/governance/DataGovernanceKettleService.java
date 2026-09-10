@@ -152,7 +152,7 @@ public class DataGovernanceKettleService
     public synchronized Map<String, Object> definition(String id, long owner)
     {
         Definition d = ownedDefinition(id, owner); Map<String, Object> result = summaryMap(d.summary);
-        String xml = crypto.decrypt(d.encryptedXml); result.put("xmlBase64", DataGovernanceKettleXml.encode(DataGovernanceKettleXml.masked(xml)));
+        String xml = DataGovernanceKettleXml.withExecutionTimeZone(crypto.decrypt(d.encryptedXml)); result.put("executionTimeZone", DataGovernanceKettleXml.executionTimeZone(xml)); result.put("xmlBase64", DataGovernanceKettleXml.encode(DataGovernanceKettleXml.masked(xml)));
         result.put("references", references(xml)); return result;
     }
     public synchronized Map<String, Object> save(String id, DefinitionInput input, long owner)
@@ -266,7 +266,7 @@ public class DataGovernanceKettleService
     public JsonNode validate(String id, long owner)
     {
         String xml, kind; List<StoredFile> inputs;
-        synchronized (this) { Definition d = ownedDefinition(id, owner); requireWorker(); xml = crypto.decrypt(d.encryptedXml); kind = d.summary.kind(); inputs = snapshotInputs(d, xml, owner); }
+        synchronized (this) { Definition d = ownedDefinition(id, owner); requireWorker(); xml = DataGovernanceKettleXml.withExecutionTimeZone(crypto.decrypt(d.encryptedXml)); kind = d.summary.kind(); inputs = snapshotInputs(d, xml, owner); }
         try { return scrub(worker.request("POST", kind.equals("job") ? "/jobs/validate" : "/transformations/validate", Map.of("xml", xml, "inputFiles", workerInputs(inputs))), xml, inputs); }
         catch (DataGovernanceKettleClient.Failure e) { throw new ServiceException("原生校验未完成，请检查 worker 状态"); }
     }
@@ -296,7 +296,7 @@ public class DataGovernanceKettleService
             run = new StoredRun(); run.owner = owner; run.id = UUID.randomUUID().toString(); run.definitionId = id;
             run.kind = definition.summary.kind(); run.revision = definition.summary.revision(); run.mode = mode;
             run.previewStep = target; run.rowLimit = limit; run.requestId = requestId; run.requestFingerprint = fingerprint;
-            xml = crypto.decrypt(definition.encryptedXml); run.encryptedXml = crypto.encrypt(xml); run.xmlSha256 = hash(xml.getBytes(StandardCharsets.UTF_8));
+            xml = DataGovernanceKettleXml.withExecutionTimeZone(crypto.decrypt(definition.encryptedXml)); run.encryptedXml = crypto.encrypt(xml); run.xmlSha256 = hash(xml.getBytes(StandardCharsets.UTF_8));
             run.inputs = snapshotInputs(definition, xml, owner); run.inputsHash = inputsHash(run.inputs);
             run.fingerprint = hash((fingerprint + ":" + run.xmlSha256 + ":" + run.inputsHash).getBytes(StandardCharsets.UTF_8));
             run.state = "PREPARING"; run.submissionState = "PREPARING";
@@ -337,8 +337,9 @@ public class DataGovernanceKettleService
     {
         Definition definition = ownedDefinition(id, owner); if (revision != definition.summary.revision()) conflict();
         FrozenDefinition snapshot = new FrozenDefinition(); snapshot.owner = owner; snapshot.definitionId = id;
-        snapshot.definitionRevision = revision; snapshot.kind = definition.summary.kind(); snapshot.encryptedXml = definition.encryptedXml;
-        String xml = crypto.decrypt(definition.encryptedXml); snapshot.xmlSha256 = hash(xml.getBytes(StandardCharsets.UTF_8));
+        snapshot.definitionRevision = revision; snapshot.kind = definition.summary.kind();
+        String xml = DataGovernanceKettleXml.withExecutionTimeZone(crypto.decrypt(definition.encryptedXml));
+        snapshot.encryptedXml = crypto.encrypt(xml); snapshot.xmlSha256 = hash(xml.getBytes(StandardCharsets.UTF_8));
         snapshot.inputs = snapshotInputs(definition, xml, owner); snapshot.inputsHash = inputsHash(snapshot.inputs); return snapshot;
     }
     synchronized void writeFrozen(String id, FrozenDefinition snapshot)
@@ -363,6 +364,7 @@ public class DataGovernanceKettleService
             initialize(); identifier(runId); if (snapshot.owner != owner) unavailable(); ownedDefinition(snapshot.definitionId, owner); requireWorker();
             // Validate the frozen copy itself; never rebuild it from today's definition or assets.
             xml = crypto.decrypt(snapshot.encryptedXml);
+            DataGovernanceKettleXml.executionTimeZone(xml);
             for (Map<String,Object> reference : references(xml))
                 if (!((String)reference.get("definitionId")).isBlank()) inputReferenceFilename(reference);
             if (Files.exists(root.resolve("runs").resolve(runId + ".json"), LinkOption.NOFOLLOW_LINKS))
@@ -475,7 +477,7 @@ public class DataGovernanceKettleService
             for (StoredFile asset : storedFiles(target.summary.id()))
             { asset.sourceDefinitionId = target.summary.id(); asset.sourceRevision = target.summary.revision(); mergeInput(merged, asset); }
             String filename = inputReferenceFilename(reference);
-            String contents = crypto.decrypt(target.encryptedXml); byte[] bytes = contents.getBytes(StandardCharsets.UTF_8);
+            String contents = DataGovernanceKettleXml.withExecutionTimeZone(crypto.decrypt(target.encryptedXml)); byte[] bytes = contents.getBytes(StandardCharsets.UTF_8);
             StoredFile file = new StoredFile(); file.info = new FileInfo(target.summary.id(), filename, bytes.length, hash(bytes), target.summary.updatedAt());
             file.encryptedContent = crypto.encrypt(Base64.getEncoder().encodeToString(bytes));
             file.sourceDefinitionId = target.summary.id(); file.sourceRevision = target.summary.revision(); mergeInput(merged, file);
@@ -562,6 +564,7 @@ public class DataGovernanceKettleService
         if (run.inputsHash != null) { result.put("inputsHash", run.inputsHash); result.put("snapshotFingerprint", run.fingerprint); }
         result.put("submissionState", run.submissionState); result.put("mode", run.mode); result.put("createdAt", run.createdAt); result.put("updatedAt", run.updatedAt);
         result.put("previewStep", run.previewStep); result.put("rowLimit", run.rowLimit);
+        result.put("executionTimeZone", DataGovernanceKettleXml.executionTimeZone(crypto.decrypt(run.encryptedXml)));
         result.put("requestId", run.requestId); result.put("inputFiles", run.inputs.stream().map(f -> f.info).toList());
         result.putIfAbsent("nodes", List.of()); result.putIfAbsent("files", List.of()); if (run.message != null) result.put("message", run.message);
         return result;
