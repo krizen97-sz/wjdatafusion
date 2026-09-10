@@ -26,7 +26,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 LINUX_ASSETS = Path(__file__).resolve().parents[2] / 'data-governance/kettle-worker/linux'
 IMAGE = json.loads((LINUX_ASSETS / 'image-lock.json').read_text())
 LABEL = 'io.rynew.kettle.'
-OPERATIONS = {'run', 'validate', 'capabilities', 'job', 'job-validate'}
+OPERATIONS = {'run', 'validate', 'load', 'capabilities', 'job', 'job-validate', 'job-load'}
+NETWORK_OPERATIONS = {'run', 'job', 'validate', 'job-validate'}
 DEFAULT_TIMEZONE = 'Asia/Shanghai'
 
 
@@ -51,7 +52,7 @@ def valid_timezone(value):
 
 def operation_timezone(operation_dir, operation):
     if operation == 'capabilities': return valid_timezone(DEFAULT_TIMEZONE)
-    expected = 'job' if operation in {'job', 'job-validate'} else 'transformation'
+    expected = 'job' if operation in {'job', 'job-validate', 'job-load'} else 'transformation'
     path = path_checked(operation_dir / ('transformation.kjb' if expected == 'job' else 'transformation.ktr'), directory=False)
     require(path.stat().st_size <= 4 * 1024 * 1024, 'Operation XML exceeds the timezone inspection limit')
     content = path.read_bytes()
@@ -62,8 +63,11 @@ def operation_timezone(operation_dir, operation):
     return valid_timezone(root.get('data-rynew-timezone', DEFAULT_TIMEZONE))
 
 
-def source_fingerprint(artifact_hash, timezone):
-    return hashlib.sha256(json.dumps({'artifacts': artifact_hash, 'timezone': timezone}, sort_keys=True).encode()).hexdigest()
+def source_fingerprint(artifact_hash, timezone, operation=None, endpoints=()):
+    identity = {'artifacts': artifact_hash, 'timezone': timezone}
+    if operation is not None:
+        identity.update(operation=operation, endpoints=sorted([list(endpoint) for endpoint in endpoints]))
+    return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
 
 def path_checked(value, *, directory=True, exists=True):
@@ -291,9 +295,9 @@ class LinuxRuntime:
         require(not (op / '.rynew-java-ready').exists() and not (op / 'control.stop').exists(), 'Operation control files already exist')
         classpath, artifact_hash = self._artifacts()
         timezone = operation_timezone(op, operation)
-        source_hash = source_fingerprint(artifact_hash, timezone)
+        endpoints = cfg.endpoints if operation in NETWORK_OPERATIONS else ()
+        source_hash = source_fingerprint(artifact_hash, timezone, operation, endpoints)
         self._permissions(op)
-        endpoints = cfg.endpoints if operation in {'run', 'job'} else ()
         short = hashlib.sha256((cfg.instance_id + ':' + op.name + ':' + nonce).encode()).hexdigest()[:20]
         network = 'ryk-' + short; chain = 'RYK_' + short; bridge = 'rk-' + short[:12]
         pool = ipaddress.IPv4Network(cfg.subnet_pool); size = pool.num_addresses // 8
@@ -328,7 +332,7 @@ class LinuxRuntime:
         rules = [['-d', host + '/32', '-p', 'tcp', '-m', 'tcp', '--dport', str(port), '-m', 'comment', '--comment', comment, '-j', 'RETURN'] for host, port in endpoints]
         rules += [['-m', 'comment', '--comment', comment, '-j', 'DROP']]
         jump = ['-i', bridge, '-s', address + '/32', '-m', 'comment', '--comment', comment, '-j', chain]
-        record = {'version': 2, 'runId': op.name, 'operationDir': str(op), 'operation': operation, 'nonce': nonce,
+        record = {'version': 3, 'runId': op.name, 'operationDir': str(op), 'operation': operation, 'nonce': nonce,
                 'sourceHash': source_hash, 'artifactHash': artifact_hash, 'timezone': timezone, 'image': cfg.image, 'labels': labels, 'mounts': mounts, 'javaArgv': java,
                 'containerCreate': create, 'networkName': network if endpoints else None, 'networkId': None, 'containerId': None,
                 'subnet': str(subnet), 'containerIp': address, 'bridgeInterface': bridge, 'hostChain': chain, 'namespaceChain': chain,
@@ -376,7 +380,13 @@ class LinuxRuntime:
         require(record['runId'] == run_id and record['labels'].get(LABEL + 'instance') == self.config.instance_id, 'Journal identity differs')
         if record.get('version', 1) >= 2:
             timezone = valid_timezone(record['timezone'])
-            require(record['sourceHash'] == source_fingerprint(record['artifactHash'], timezone) == record['labels'].get(LABEL + 'source')
+            if record['version'] >= 3:
+                require(record['operation'] in OPERATIONS and (record['operation'] in NETWORK_OPERATIONS or not record['endpoints']),
+                        'Recorded load/catalog operation must stay offline')
+                require(record['javaArgv'][-3] == record['operation'] and record['containerCreate'][-len(record['javaArgv']):] == record['javaArgv'],
+                        'Recorded native operation/command differs')
+            source_hash = source_fingerprint(record['artifactHash'], timezone, record['operation'], record['endpoints']) if record['version'] >= 3 else source_fingerprint(record['artifactHash'], timezone)
+            require(record['sourceHash'] == source_hash == record['labels'].get(LABEL + 'source')
                     and record['labels'].get(LABEL + 'timezone') == timezone and record['commandPlan'].get('timezone') == timezone,
                     'Recorded timezone/source fingerprint differs')
             require([arg for arg in record['javaArgv'] if arg.startswith('-Duser.timezone=')] == ['-Duser.timezone=' + timezone],
