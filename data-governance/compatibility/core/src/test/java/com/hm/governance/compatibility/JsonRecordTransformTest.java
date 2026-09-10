@@ -158,4 +158,23 @@ class JsonRecordTransformTest {
         var row = object(transform.apply(map("original", " value ", "keep", 9)).value());
         assertEquals(" value ", row.get("original")); assertEquals("value", row.get("derived")); assertEquals(9, row.get("keep")); assertFalse(row.containsKey("scratch"));
     }
+    @Test void nonfiniteCodecNumbersAreAllowedOnlyInsideExplicitLegacyDocuments() {
+        var codec = new FixtureCodec(map("overflow", Double.POSITIVE_INFINITY, "notANumber", Double.NaN)) {
+            boolean requestedLegacy;
+            @Override public Object parse(String text, boolean legacy) { requestedLegacy = legacy; return super.parse(text); }
+            @Override public String stringify(Object value, boolean legacy) {
+                assertTrue(requestedLegacy); assertTrue(legacy); serialized = value; return "serialized-legacy";
+            }
+        };
+        var parse = map("op", "parse", "input", "/payload", "document", "doc", "numberMode", "ECMASCRIPT_DOUBLE");
+        var serialize = map("op", "serialize", "document", "doc", "output", "payload");
+        var legacy = new JsonRecordTransform(List.of(parse, serialize), codec);
+        assertEquals("serialized-legacy", object(legacy.apply(map("payload", "fixture-document")).value()).get("payload"));
+        assertEquals(Double.POSITIVE_INFINITY, object(codec.serialized).get("overflow"));
+        assertTrue(Double.isNaN((Double) object(codec.serialized).get("notANumber")));
+        assertThrows(IllegalArgumentException.class, () -> legacy.apply(map("payload", "fixture-document", "outsideDocument", Double.NaN)));
+        var exact = new JsonRecordTransform(List.of(map("op", "parse", "input", "/payload", "document", "doc"), serialize), codec);
+        assertThrows(IllegalArgumentException.class, () -> exact.apply(map("payload", "fixture-document")));
+    }
+
 }

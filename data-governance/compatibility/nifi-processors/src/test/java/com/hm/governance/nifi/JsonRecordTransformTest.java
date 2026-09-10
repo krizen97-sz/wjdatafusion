@@ -105,14 +105,14 @@ class JsonRecordTransformTest {
         exact.enqueue(JSON.toJSONString(Map.of("payload", "{\"integer\":9007199254740993}"))); exact.run();
         assertTrue(JSON.parseObject(new String(exact.getFlowFilesForRelationship(JsonRecordTransform.SUCCESS).get(0).toByteArray(), StandardCharsets.UTF_8)).getString("payload").contains("9007199254740993"));
     }
-    @Test void ecmascriptDecimalConversionCoversShortestRoundTripAndArrayKeyOrder() {
+    @Test void ecmascriptDecimalConversionCoversShortestRoundTripAndLegacyInsertionOrder() {
         assertEquals("0.1", JsonRecordTransform.ecmaNumber(0.1)); assertEquals("1000000000000000100", JsonRecordTransform.ecmaNumber(1000000000000000100d));
         assertEquals("-5e-324", JsonRecordTransform.ecmaNumber(-Double.MIN_VALUE)); assertEquals("1.7976931348623157e+308", JsonRecordTransform.ecmaNumber(Double.MAX_VALUE));
         assertEquals("0", JsonRecordTransform.ecmaNumber(-0.0)); assertEquals("null", JsonRecordTransform.ecmaNumber(Double.NaN));
         var runner = runner(); runner.setProperty(JsonRecordTransform.OPERATIONS, "[{\"op\":\"parse\",\"input\":\"/payload\",\"document\":\"doc\",\"numberMode\":\"ECMASCRIPT_DOUBLE\"},{\"op\":\"serialize\",\"document\":\"doc\",\"output\":\"payload\"}]");
         runner.enqueue(JSON.toJSONString(Map.of("payload", "{\"b\":1,\"10\":2,\"2\":3,\"01\":4}"))); runner.run();
         String result = JSON.parseObject(new String(runner.getFlowFilesForRelationship(JsonRecordTransform.SUCCESS).get(0).toByteArray(), StandardCharsets.UTF_8)).getString("payload");
-        assertEquals("{\"2\":3,\"10\":2,\"b\":1,\"01\":4}", result);
+        assertEquals("{\"b\":1,\"10\":2,\"2\":3,\"01\":4}", result);
     }
     @Test void recordFiltersProduceCompleteOrderedArrayOrExplicitEmpty() {
         var runner = runner(); runner.setProperty(JsonRecordTransform.OPERATIONS, "[{\"op\":\"filter\",\"input\":\"/flag\",\"operator\":\"EQ\",\"value\":true}]");
@@ -122,4 +122,44 @@ class JsonRecordTransformTest {
         runner.clearTransferState(); runner.enqueue("{\"flag\":false}"); runner.run(); runner.assertTransferCount(JsonRecordTransform.EMPTY, 1);
         runner.getFlowFilesForRelationship(JsonRecordTransform.EMPTY).get(0).assertContentEquals("{\"flag\":false}");
     }
+    @Test void legacyRhinoFixtureOrderAndExtremeNumbersMatchTheObservedDocumentContract() {
+        // Synthetic values and key order from the supplied Rhino 1.7R3 oracle; no business endpoints.
+        String document = "{\"keys\":{\"9\":1,\"2\":2,\"01\":3,\"1\":4,\"4294967295\":5,\"plain\":6},\"negativeZero\":-0.0,\"beyondFinite\":1e400,\"underflow\":1e-4000,\"negativeOverflow\":-1e400,\"negativeUnderflow\":-1e-4000}";
+        assertEquals("{\"keys\":{\"9\":1,\"2\":2,\"01\":3,\"1\":4,\"4294967295\":5,\"plain\":6},\"negativeZero\":0,\"beyondFinite\":null,\"underflow\":0,\"negativeOverflow\":null,\"negativeUnderflow\":0}", legacyDocument(document));
+        assertEquals("{\"a\":[null,0,0],\"text\":\"quoted 1e-4000 and 9007199254740993\"}", legacyDocument("{\"a\":[1e999999,1e-999999,-0],\"text\":\"quoted 1e-4000 and 9007199254740993\"}"));
+        assertEquals("null", JsonRecordTransform.ecmaNumber(Double.POSITIVE_INFINITY));
+        assertEquals("null", JsonRecordTransform.ecmaNumber(Double.NEGATIVE_INFINITY));
+        assertEquals("null", JsonRecordTransform.ecmaNumber(Double.NaN));
+    }
+    @Test void legacyNumericBudgetAndStrictTokensRejectWithoutChangingTheOriginalBatch() {
+        for (String number : List.of("1".repeat(1025), "1e1000000", "1e-0004000", "01", "+1", ".1", "1.", "1e", "1e+-2", "NaN", "Infinity", "-Infinity")) {
+            String original = JSON.toJSONString(Map.of("payload", "{\"n\":" + number + "}"));
+            var runner = legacyRunner(); runner.enqueue(original); runner.run();
+            runner.assertTransferCount(JsonRecordTransform.FAILURE, 1); runner.assertTransferCount(JsonRecordTransform.SUCCESS, 0);
+            var file = runner.getFlowFilesForRelationship(JsonRecordTransform.FAILURE).get(0); file.assertContentEquals(original);
+            assertFalse(file.getAttribute("governance.error").contains(number));
+        }
+        assertEquals("{\"n\":null}", legacyDocument("{\"n\":" + "1".repeat(1024) + "}"));
+    }
+    @Test void exactModeStillKeepsLargeIntegersAndDecimalDigitsWithoutDoubleCoercion() {
+        String original = "{\"9\":9007199254740993,\"2\":9007199254740993.123456789012345678901,\"underflow\":1e-400}";
+        var runner = runner(); runner.setProperty(JsonRecordTransform.OPERATIONS,
+            "[{\"op\":\"parse\",\"input\":\"/payload\",\"document\":\"doc\"},{\"op\":\"serialize\",\"document\":\"doc\",\"output\":\"payload\"}]");
+        runner.enqueue(JSON.toJSONString(Map.of("payload", original))); runner.run(); runner.assertTransferCount(JsonRecordTransform.SUCCESS, 1);
+        String output = JSON.parseObject(new String(runner.getFlowFilesForRelationship(JsonRecordTransform.SUCCESS).get(0).toByteArray(), StandardCharsets.UTF_8)).getString("payload");
+        assertTrue(output.contains("9007199254740993.123456789012345678901"));
+        assertEquals(new java.math.BigDecimal("1e-400"), JSON.parseObject(output).getBigDecimal("underflow"));
+        assertTrue(output.indexOf("\"9\"") < output.indexOf("\"2\""));
+    }
+    private TestRunner legacyRunner() {
+        var runner = runner(); runner.setProperty(JsonRecordTransform.OPERATIONS,
+            "[{\"op\":\"parse\",\"input\":\"/payload\",\"document\":\"doc\",\"numberMode\":\"ECMASCRIPT_DOUBLE\"},{\"op\":\"serialize\",\"document\":\"doc\",\"output\":\"payload\"}]");
+        return runner;
+    }
+    private String legacyDocument(String document) {
+        var runner = legacyRunner(); runner.enqueue(JSON.toJSONString(Map.of("payload", document))); runner.run();
+        runner.assertTransferCount(JsonRecordTransform.SUCCESS, 1); runner.assertTransferCount(JsonRecordTransform.FAILURE, 0);
+        return JSON.parseObject(new String(runner.getFlowFilesForRelationship(JsonRecordTransform.SUCCESS).get(0).toByteArray(), StandardCharsets.UTF_8)).getString("payload");
+    }
+
 }
