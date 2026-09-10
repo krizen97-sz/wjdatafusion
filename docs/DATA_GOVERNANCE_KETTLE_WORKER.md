@@ -24,7 +24,7 @@ The broker binds only `127.0.0.1:19162`. Every request, including health, requir
 
 Each operation starts a fresh Java process under macOS Seatbelt (`sandbox-exec`): network access is denied by default and subprocess forks are always denied, including accesses from JNI. File contents are readable only from that operation's private directory, the original read-only jars/classes, the JDK and necessary system paths; writes are limited to that operation's directory. Other operations' XML and output are excluded. Filesystem metadata lookup and root-directory enumeration are allowed because the JVM loader requires them; this does not grant access to other file contents. `HOME`, Kettle home, JNDI root and temporary paths point to the operation directory. The Kettle hostname is fixed to avoid local-host DNS initialization.
 
-There is no Java SecurityManager. A focused Java probe independently verifies that an adjacent private file cannot be read or written and a localhost socket is rejected with `Operation not permitted`. A missing OS sandbox fails closed. This implementation does not silently run unsandboxed on Linux; a container worker remains a separate deployment requirement.
+There is no Java SecurityManager. A focused Java probe independently verifies that an adjacent private file cannot be read or written and a localhost socket is rejected with `Operation not permitted`. A missing OS sandbox fails closed. Linux now dispatches through the separately reviewed Docker adapter only when a trusted `--linux-config` is supplied; it never falls back to Seatbelt or unisolated Java.
 
 The private bearer broker owns definition storage, while the untrusted original engine sees only one immutable operation snapshot. Original XML and uploaded files cannot grant additional filesystem or network permissions. Loading a network plugin is **not** evidence that its network operation is accepted. The broker operator may explicitly register endpoints at startup with repeatable `--allow-endpoint 127.0.0.1:15432`, or `--network-policy /private/policy.json`. The policy must be owned by the broker UID, mode 0600, not a symlink, and contain `{"endpoints":[{"host":"127.0.0.1","port":15432}]}`. Optional `expiresAt` is checked at startup. Policy endpoints are frozen for that broker process; neither XML nor per-run request JSON can add endpoints. Validation and capability discovery remain offline even when execution endpoints are registered.
 
@@ -140,3 +140,52 @@ The original submitted XML and native-serialized effective preview graph have `o
 After prepare and before threads start, the worker replaces only the data object's `ConsumerConnector` reference with an interface proxy. All commitOffsets overloads are blocked and emit `preview-offset-commit-blocked`; every other operation delegates to the original connector. Original jars and operators are unchanged.
 
 The live fixture verified both preview and preview-stop against a saved definition using an existing normal-run group and auto-commit=true. The worker automatically derived different effective groups for the two runs, explicit commit-blocked events occurred, ZooKeeper and broker offsets for those actual effective groups remained absent, group owners were released, the original group's offset remained eight, target-topic rows remained eight even after stop, and stop completed without forced termination. Saved definition and original execution XML bytes remained unchanged. This boundary does not rewrite normal-run semantics or claim an original Kafka 0.8 distributed transaction.
+
+## Linux broker dispatch
+
+The dispatcher requires the separate `kettle_linux_runtime.py` adapter plus its assets, including the identity/ownership API from its `d0ee4a8` update. See [the Linux adapter guide](DATA_GOVERNANCE_KETTLE_LINUX.md) for the pinned image, network policy, ownership checks and deployment prerequisites. This integration has only mock coverage for Linux. No Docker daemon, container, iptables, nsenter, server 250 or root broker was operated during the dispatcher implementation; Linux host acceptance remains required.
+
+Platform behavior is explicit:
+
+| Platform/configuration | Behavior |
+| --- | --- |
+| macOS, no Linux config | Existing Seatbelt launcher and exact localhost grants |
+| macOS with Linux config | Rejected; configuration cannot silently change isolation mode |
+| Linux without private Linux config | Fails closed before any process launch |
+| Linux with `execution_enabled=false` | Can inspect/recover existing owned records; rejects new execution |
+| Linux with reviewed, enabled config | Delegates launch to `LinuxRuntime`; no `sandbox-exec` or host Java fallback |
+
+Linux configuration is a broker-owned mode-600 file. Only its `endpoints` provide network grants; macOS `--network-policy`, `--allow-endpoint` and `--ftp-test-policy` flags cannot be mixed into Linux execution. Health reports `sandbox:"linux-docker"`, the effective registered endpoints and `runtimePolicy.executionEnabled`. Validation and capability discovery still use the adapter's network-none mode.
+
+Four directories must be separate and non-overlapping: artifact `worker_root`, `operations_root`, adapter `state_root`, and the broker's `--runtime` holding definitions, token and `run-records`. The manifest is read from `worker_root`, not from the broker state directory. The adapter mounts only classes/lib read-only and that one operation at `/work/<runId>`; neither controller journal is mounted into the original engine. Container uid/gid access to artifacts must be provisioned deliberately. `stage_run_owner` is opt-in and, when allowed by the adapter, affects only one reserved run, never shared artifacts or controller state.
+
+The adapter returns a Popen-shaped stream handle, but its PID is merely the attach CLI. The broker records and verifies `containerId`, `sourceHash` and the intent nonce instead. A completed restart calls the adapter's read-only status and identity APIs. Incomplete or inconsistent records call its journal recovery and remain `RECOVERY_REQUIRED`, with no recreation or automatic replay. If container launch loses acknowledgement, or the container exits without a witnessed native terminal event, the broker also preserves `RECOVERY_REQUIRED`. Stop uses `request_stop(..., expected_nonce=...)`; force-stop is scoped to the verified container identity and never sends a signal to a saved host PID.
+
+Example preparation and startup on a separately reviewed Linux host, from the integrated clean source tree:
+
+```sh
+# Run preparation as the configured container service uid, with pre-provisioned private directories.
+python3 tools/data-governance/kettle_worker.py prepare \
+  --archive /srv/rynew-kettle/input/kettle6.1.3.0.zip \
+  --runtime /srv/rynew-kettle/artifacts/verified-version \
+  --java-home /usr/lib/jvm/java-17-openjdk-amd64
+
+# Prepare/review mode-600 linux.json from linux/config.example.json; keep execution disabled initially.
+# This is an offline plan, not a container launch.
+python3 data-governance/kettle-worker/linux/smoke.py \
+  --config /srv/rynew-kettle/private/linux.json
+
+# After the host/image/uid/network plan has been reviewed and execution deliberately enabled:
+python3 tools/data-governance/kettle_worker.py serve \
+  --runtime /srv/rynew-kettle/broker \
+  --linux-config /srv/rynew-kettle/private/linux.json \
+  --port 19162 --timeout 120
+```
+
+The Java home and service paths above are examples to verify on the actual host. Use distinct artifact, operation and controller paths in the config; do not reuse the Mac localhost PG/FTP addresses inside a container. Image preparation, service exposure and permissions are separate reviewed deployment steps. No package installation, image pull, global permission change or production deployment is performed by this broker command.
+
+Ten dispatcher-only mock tests cover absent/untrusted/disabled configuration, directory separation, the Linux launch boundary, verified container identity, read-only completed restoration, incomplete recovery, nonce-checked stop, rejection of changed container identity, and ambiguous/unobserved completion without replay. They prohibit host Popen and bare PID signalling. The existing macOS native, recovery and metadata test suites remain required regression checks:
+
+```sh
+python3 data-governance/kettle-worker/tests/test_kettle_worker_linux_dispatch.py
+```
