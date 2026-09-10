@@ -230,6 +230,17 @@ class DataGovernanceKettleApiTest
         assertFalse(shell.path("executionSupported").asBoolean()); assertFalse(shell.path("executable").asBoolean());
         assertTrue(special.path("executable").asBoolean()); assertFalse(special.path("executionValidated").asBoolean());
     }
+    @Test void commaSeparatedNativeAliasesShareTheChineseCatalogAndLoadableEntry() throws Exception
+    {
+        Path catalog = temporary.resolve("aliases.json");
+        mapper.writeValue(catalog.toFile(), Map.of("plugins", List.of(Map.of("kind", "step", "id", "Dummy,LegacyDummy",
+            "registeredClass", "example.DummyMeta", "name", Map.of("zhCN", Map.of("text", "原生空步骤")),
+            "category", Map.of("zhCN", Map.of("text", "流程"))))));
+        properties.setCatalogFile(catalog.toString()); JsonNode result = mapper.valueToTree(service.catalog());
+        assertEquals(1, result.path("steps").size()); JsonNode step = result.path("steps").get(0);
+        assertEquals("Dummy", step.path("id").asText()); assertEquals("原生空步骤", step.path("name").asText());
+        assertEquals(2, step.path("aliases").size()); assertTrue(step.path("loadable").asBoolean());
+    }
     @Test void ownerScopedHistoryReturnsNewestFirstAndRetainsFailureAndUnknownStatesWithoutPolling() throws Exception
     {
         String id = save(xml());

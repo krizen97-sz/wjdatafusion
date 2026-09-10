@@ -93,12 +93,18 @@ public class DataGovernanceKettleService
         for (JsonNode item : inventory.path("plugins"))
         {
             String kind = item.path("kind").asText().equals("job-entry") ? "jobs" : "steps";
-            String key = kind + ":" + item.path("id").asText() + ":" + item.path("registeredClass").asText();
-            Map<String, Object> value = catalogEntry(kind, item.path("id").asText(), item.path("registeredClass").asText(),
-                item.path("name").path("zhCN").path("text").asText(), item.path("category").path("zhCN").path("text").asText(), runtime.get(key), available);
+            List<String> aliases = Arrays.stream(item.path("id").asText().split(",")).map(String::trim).filter(s -> !s.isEmpty()).toList();
+            if (aliases.isEmpty()) continue;
+            JsonNode live = null;
+            for (String alias : aliases)
+            { String key = kind + ":" + alias + ":" + item.path("registeredClass").asText();
+              if (live == null) live = runtime.get(key); seen.add(key); }
+            Map<String, Object> value = catalogEntry(kind, aliases.get(0), item.path("registeredClass").asText(),
+                item.path("name").path("zhCN").path("text").asText(), item.path("category").path("zhCN").path("text").asText(), live, available);
+            value.put("aliases", aliases);
             value.put("catalogKey", item.path("catalogKey").asText()); value.put("nameSource", item.path("name").path("zhCN").path("evidence").asText());
             value.put("classVariantCount", item.path("registeredClassVariants").size());
-            (kind.equals("jobs") ? jobs : steps).add(value); seen.add(key);
+            (kind.equals("jobs") ? jobs : steps).add(value);
         }
         for (var entry : runtime.entrySet()) if (!seen.contains(entry.getKey()))
         {
@@ -159,22 +165,15 @@ public class DataGovernanceKettleService
         {
             if (lower.endsWith(".zip"))
             {
-                try (ZipInputStream zip = new ZipInputStream(stream, StandardCharsets.UTF_8))
+                byte[] archive = stream.readNBytes(20 * 1024 * 1024 + 1);
+                if (archive.length > 20 * 1024 * 1024) reject("ZIP 文件超过 20 MiB");
+                try { candidates = zipCandidates(archive, StandardCharsets.UTF_8); }
+                catch (IllegalArgumentException malformedName)
                 {
-                    ZipEntry entry; long total = 0; int entries = 0;
-                    while ((entry = zip.getNextEntry()) != null)
-                    {
-                        if (++entries > 200) reject("ZIP 成员超过 200 个");
-                        String member = entry.getName().replace('\\', '/');
-                        if (member.startsWith("/") || member.matches("^[A-Za-z]:.*") || Arrays.asList(member.split("/")).contains("..")) reject("ZIP 含目录穿越路径");
-                        if (entry.isDirectory()) continue;
-                        byte[] bytes = zip.readNBytes(20 * 1024 * 1024 + 1); total += bytes.length;
-                        if (total > 20 * 1024 * 1024) reject("ZIP 解压内容总额超过 20 MiB");
-                        if (member.toLowerCase(Locale.ROOT).endsWith(".ktr") || member.toLowerCase(Locale.ROOT).endsWith(".kjb"))
-                        { if (candidates.size() >= 20) reject("ZIP 最多包含 20 个原生 XML 流程"); candidates.add(importCandidate(member, bytes)); }
-                    }
+                    // Actual legacy Hikvision ZIPs use unflagged GBK names. EFS-marked names remain UTF-8 in the JDK.
+                    try { candidates = zipCandidates(archive, java.nio.charset.Charset.forName("GB18030")); }
+                    catch (IllegalArgumentException notChineseName) { candidates = zipCandidates(archive, java.nio.charset.Charset.forName("IBM437")); }
                 }
-                if (candidates.isEmpty()) reject("ZIP 未包含可解析的 KTR/KJB 原生 XML 文件");
             }
             else if (lower.endsWith(".ktr") || lower.endsWith(".kjb")) candidates.add(importCandidate(filename, stream.readNBytes(DataGovernanceKettleXml.MAX_XML_BYTES + 1)));
             else reject("仅接受 .ktr、.kjb 或 .zip 文件");
@@ -186,10 +185,32 @@ public class DataGovernanceKettleService
         for (DefinitionInput input : candidates) { String id = (String)save(null, input, owner).get("id"); result.add(ownedDefinition(id, owner).summary); }
         return result;
     }
+    private List<DefinitionInput> zipCandidates(byte[] archive, java.nio.charset.Charset charset) throws IOException
+    {
+        List<DefinitionInput> result = new ArrayList<>();
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(archive), charset))
+        {
+            ZipEntry entry; long total = 0; int entries = 0;
+            while ((entry = zip.getNextEntry()) != null)
+            {
+                if (++entries > 200) reject("ZIP 成员超过 200 个");
+                String member = entry.getName().replace('\\', '/');
+                if (member.startsWith("/") || member.matches("^[A-Za-z]:.*") || Arrays.asList(member.split("/")).contains("..")) reject("ZIP 含目录穿越路径");
+                if (entry.isDirectory()) continue;
+                byte[] bytes = zip.readNBytes(20 * 1024 * 1024 + 1); total += bytes.length;
+                if (total > 20 * 1024 * 1024) reject("ZIP 解压内容总额超过 20 MiB");
+                if (member.toLowerCase(Locale.ROOT).endsWith(".ktr") || member.toLowerCase(Locale.ROOT).endsWith(".kjb"))
+                { if (result.size() >= 20) reject("ZIP 最多包含 20 个原生 XML 流程"); result.add(importCandidate(member, bytes)); }
+            }
+        }
+        if (result.isEmpty()) reject("ZIP 未包含可解析的 KTR/KJB 原生 XML 文件");
+        return result;
+    }
     private DefinitionInput importCandidate(String member, byte[] bytes)
     {
         try
         {
+            if (!xmlSignature(bytes)) throw new ServiceException("非 XML 成员");
             String xml = DataGovernanceKettleXml.decode(Base64.getEncoder().encodeToString(bytes));
             DataGovernanceKettleXml.prepare(xml, null); Document document = DataGovernanceKettleXml.parse(xml);
             String title = DataGovernanceKettleXml.child(document.getDocumentElement(), "name");
@@ -198,7 +219,13 @@ public class DataGovernanceKettleService
             if (title.isBlank()) title = member.substring(member.lastIndexOf('/') + 1).replaceFirst("(?i)\\.(ktr|kjb)$", "");
             return new DefinitionInput(title.substring(0, Math.min(80, title.length())), null, DataGovernanceKettleXml.encode(xml));
         }
-        catch (ServiceException e) { throw new ServiceException("导入成员不是有效原生 XML 或含不允许的结构：" + member.substring(Math.max(0, member.lastIndexOf('/') + 1))); }
+        catch (ServiceException e) { throw new ServiceException("导入成员不是支持的 UTF-8 原生 XML（可能为二进制、加密内容或不允许的结构），未替换其他附件：" + member.substring(Math.max(0, member.lastIndexOf('/') + 1))); }
+    }
+    private static boolean xmlSignature(byte[] bytes)
+    {
+        int offset = bytes.length >= 3 && (bytes[0] & 255) == 239 && (bytes[1] & 255) == 187 && (bytes[2] & 255) == 191 ? 3 : 0;
+        while (offset < bytes.length && (bytes[offset] == ' ' || bytes[offset] == '\r' || bytes[offset] == '\n' || bytes[offset] == '\t')) offset++;
+        return offset < bytes.length && bytes[offset] == '<';
     }
     public synchronized List<FileInfo> files(String id, long owner)
     { ownedDefinition(id, owner); return storedFiles(id).stream().map(f -> f.info).toList(); }

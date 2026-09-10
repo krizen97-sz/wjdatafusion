@@ -33,7 +33,8 @@ public final class DataGovernanceKettleXml
         {
             byte[] bytes = Base64.getDecoder().decode(base64);
             if (bytes.length > MAX_XML_BYTES) reject("XML 最大为 2 MiB");
-            return StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString();
+            String decoded = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString();
+            return decoded.startsWith("\uFEFF") ? decoded.substring(1) : decoded;
         }
         catch (ServiceException e) { throw e; }
         catch (Exception e) { throw new ServiceException("XML 必须为 UTF-8 的有效 Base64"); }
