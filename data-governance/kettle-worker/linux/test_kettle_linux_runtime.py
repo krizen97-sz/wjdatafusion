@@ -174,9 +174,31 @@ class LinuxTests(unittest.TestCase):
             controller, runner = self.controller()
             with self.assertRaises(RuntimeError): controller.plan(self.op, 'run')
             self.assertEqual([], runner.calls)
-    def test_validation_stays_offline_with_trusted_endpoints(self):
+    def test_explicit_validation_uses_only_trusted_endpoints(self):
         controller, _ = self.controller(endpoints=[{'host': '10.20.30.40', 'port': 5432}])
-        self.assertEqual([], controller.plan(self.op, 'validate')['endpoints'])
+        self.assertEqual([('10.20.30.40', 5432)], controller.plan(self.op, 'validate')['endpoints'])
+        offline, _ = self.controller()
+        self.assertEqual([], offline.plan(self.op, 'validate')['endpoints'])
+    def test_trans_and_job_load_never_connect_while_field_queries_use_registered_endpoints(self):
+        controller, runner = self.controller(endpoints=[{'host': '10.20.30.40', 'port': 5432}])
+        (self.op / 'transformation.ktr').write_text('<transformation><network>host</network><endpoint>10.1.1.1:9999</endpoint></transformation>')
+        (self.op / 'transformation.kjb').write_text('<job data-rynew-timezone="UTC"><endpoint>10.1.1.1:9999</endpoint></job>')
+        (self.op / 'transformation.kjb').chmod(0o600)
+        for operation in ['load', 'job-load', 'capabilities']:
+            plan = controller.plan(self.op, operation)
+            self.assertEqual([], plan['endpoints']); self.assertIsNone(plan['commandPlan']['networkCreate'])
+            self.assertEqual([], plan['commandPlan']['hostFirewall']); self.assertEqual([], plan['commandPlan']['namespaceFirewall'])
+            self.assertEqual('none', plan['containerCreate'][plan['containerCreate'].index('--network') + 1])
+        for operation in ['validate', 'job-validate']:
+            plan = controller.plan(self.op, operation)
+            self.assertEqual([('10.20.30.40', 5432)], plan['endpoints'])
+            self.assertNotIn('10.1.1.1', str(plan['hostRules'])); self.assertTrue(plan['commandPlan']['namespaceFirewall'])
+        self.assertEqual([], runner.calls)
+    def test_load_launch_never_installs_network_policy(self):
+        controller, runner = self.controller(endpoints=[{'host': '10.20.30.40', 'port': 5432}])
+        controller.launch(self.op, 'load')
+        self.assertIsNone(runner.network)
+        self.assertFalse(any(Path(call[0]).name in {'iptables', 'ip6tables', 'nsenter'} for call in runner.calls))
     def test_no_unisolated_fallback_on_mac_or_disabled_configuration(self):
         for platform, enabled in [('darwin', True), ('linux', False)]:
             runner = FakeRunner(); controller = runtime.LinuxRuntime(self.config(execution_enabled=enabled), runner=runner, host_platform=platform)
@@ -436,6 +458,23 @@ class LinuxTests(unittest.TestCase):
         controller._save(record, create=True)
         identity = controller.identity_for_run('run-one')
         self.assertEqual('UTC', identity['timezone']); self.assertEqual(original_hash, identity['sourceHash'])
+    def test_source_identity_binds_operation_and_effective_endpoint_policy(self):
+        controller, _ = self.controller(endpoints=[{'host': '10.20.30.40', 'port': 5432}]); offline, _ = self.controller()
+        load = controller.plan(self.op, 'load'); validate = controller.plan(self.op, 'validate')
+        self.assertNotEqual(load['sourceHash'], validate['sourceHash'])
+        self.assertNotEqual(validate['sourceHash'], offline.plan(self.op, 'validate')['sourceHash'])
+        self.assertEqual(load['sourceHash'], offline.plan(self.op, 'load')['sourceHash'])
+        controller._save(validate, create=True)
+        validate['endpoints'] = []; controller._save(validate)
+        with self.assertRaises(RuntimeError): controller._read('run-one')
+    def test_version_two_timezone_records_restore_using_original_hash_formula(self):
+        controller, _ = self.controller(); record = controller.plan(self.op, 'run')
+        record['version'] = 2
+        original = runtime.source_fingerprint(record['artifactHash'], record['timezone'])
+        record['sourceHash'] = original; record['labels'][runtime.LABEL + 'source'] = original
+        controller._save(record, create=True)
+        identity = controller.identity_for_run('run-one')
+        self.assertEqual(original, identity['sourceHash']); self.assertEqual('Asia/Shanghai', identity['timezone'])
     def test_cleanup_can_resume_after_acknowledged_container_removal(self):
         controller, runner = self.controller(endpoints=[{'host': '10.20.30.40', 'port': 5432}]); controller.launch(self.op, 'run')
         runner.container['State']['Running'] = False

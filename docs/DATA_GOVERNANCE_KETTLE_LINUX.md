@@ -51,17 +51,26 @@ plan/launch 明确检查容器 uid/gid 对制品的目录遍历和文件读取�
 
 ## 根 XML 时区与恢复身份
 
-业务运行缺省时区为 `Asia/Shanghai`。plan 在该 operation 自己的 `transformation.ktr` 或 `transformation.kjb` 中，只读取根元素的 `data-rynew-timezone` 属性；run/validate 共用 KTR 规则，job/job-validate 共用 KJB 规则。无图的 capabilities 固定使用相同缺省值。空属性不是缺省，会被拒绝。
+业务运行缺省时区为 `Asia/Shanghai`。plan 在该 operation 自己的 `transformation.ktr` 或 `transformation.kjb` 中，只读取根元素的 `data-rynew-timezone` 属性；run/validate/load 共用 KTR 规则，job/job-validate/job-load 共用 KJB 规则。无图的 capabilities 固定使用相同缺省值。空属性不是缺省，会被拒绝。
 
 只接受 `UTC` 或包含 `/`、且能由宿主 Python ZoneInfo 校验存在的 IANA 名称，例如 `Asia/Shanghai`、`America/Los_Angeles`、`Etc/GMT-8`、`US/Pacific`。拒绝 `CST`、`EST`、固定 offset、路径遍历、空白和额外 JVM 参数；XML 禁止 DTD/entity，限制大小并要求 UTF-8。worker 在启动后还按 Java 可用 ZoneId 检查，两端都不把未知值静默退回 GMT。
 
 有效值通过唯一的 `-Duser.timezone=<zone>` 进入原 JVM。Job 的整个 JVM 使用根 Job 时区，子 TRANS 在同一 JVM 内继承，不读取子节点的时区属性来重新启动或改写 JVM。launch 签名保持不变，也没有接受 XML 任意 argv 的接口。
 
-新 version-2 journal 记录 `timezone`、原 `artifactHash` 和包含有效时区的 `sourceHash`；commandPlan 与容器 labels 同步记录时区。读取 journal 时复算摘要并核对 JVM 参数，实际容器 inspect 还核对冻结的 Entrypoint/Cmd。恢复使用原 journal 的时区，不重新读取可变化的 XML。旧 version-1 UTC journal 继续保持原 sourceHash 和身份，不重写成新默认值。
+新 version-3 journal 记录 `timezone`、原 `artifactHash` 和包含有效时区、实际 operation、实际端点集的 `sourceHash`；commandPlan 与容器 labels 同步记录时区。读取 journal 时复算摘要并核对 JVM/operation 参数，实际容器 inspect 还核对冻结的 Entrypoint/Cmd。恢复使用原 journal 的时区及网络路径，不重新读取可变化的 XML。旧 version-1 UTC journal 与 version-2 时区 journal 分别按原摘要公式保持身份，不重写为新值。
 
 ## 默认断网及可信端点
 
-默认 `endpoints=[]`，运行容器使用 **`--network none`**，不调用任何 firewall/network 创建命令。CSV→Script→File 不需要放开网络。validate、job-validate、capabilities 也保持断网。
+默认 `endpoints=[]`，运行容器使用 **`--network none`**，不调用任何 firewall/network 创建命令。CSV→Script→File 不需要放开网络。操作与权限固定对应如下：
+
+| Operation | 用途 | 网络 |
+| --- | --- | --- |
+| `load` / `job-load` | 保存时只加载 XML、确认节点身份，不发现字段 | 始终 network none，即使配置有端点 |
+| `validate` / `job-validate` | 用户显式请求的元数据/字段读取；原插件可能查询 TableInput/DBLookup 元数据 | 仅使用配置中的 trusted endpoints；配置为空则断网 |
+| `run` / `job` | 执行原转换/作业 | 仅使用配置中的 trusted endpoints |
+| `capabilities` | 无图的插件目录/默认值 | 始终 network none |
+
+字段发现由配套 worker 保持 `metadata-only` 语义，不等于启动转换线程。保存必须调用 load/job-load，不能借 validate 使保存隐式访问连接。broker 的 XML 根类型、KTR/KJB 文件选择和 plan 的 expectedEndpoints 必须同表一致；早期 `7e8d80e` 只把 run/job/validate 视为可联网，需配套加入 job-validate 与 job-load 路径后再使用。
 
 仅受控配置文件中的显式 IPv4 和 TCP 端口能提供网络授权；原 XML、流程变量、previewStep 或命令参数不能增加授权。该文件必须由控制器用户持有，权限 600；`execution_enabled` 默认 false。
 
@@ -168,7 +177,7 @@ python3 data-governance/kettle-worker/linux/test_export_image.py -v
 sh -n data-governance/kettle-worker/linux/gate.sh
 ```
 
-已通过 46 项 adapter 测试、15 项网络脚本测试和 8 项导出器合成测试。除现有隔离、nonce、权限、镜像、清理/恢复边界外，新增时区默认/自定义值、Job/validate 一致性、XML/argv 注入、时区摘要/实际命令变更拒绝、旧 UTC journal 保留。控制文件测试实际创建本机文件，以 umask 0777 验证 FD ownership/mode 在 rename 前完成。网络脚本测试覆盖数字协议 6/17、解析失败保留原始内核文本、停止阶段事件落盘后关闭日志；UDP receive 超时本身不能判定为成功。以上测试中 Docker、iptables、nsenter 和网络 listener 为 mock，未调用真实服务。
+已通过 50 项 adapter 测试、15 项网络脚本测试和 8 项导出器合成测试。除现有隔离、nonce、权限、镜像、清理/恢复边界外，新增时区默认/自定义值、Job/validate 一致性、XML/argv 注入、时区摘要/实际命令变更拒绝、旧 UTC/v2 journal 保留；load/job-load 无条件断网、validate/job-validate 只使用登记端点，以及 operation/实际网络集进入摘要。控制文件测试实际创建本机文件，以 umask 0777 验证 FD ownership/mode 在 rename 前完成。网络脚本测试覆盖数字协议 6/17、解析失败保留原始内核文本、停止阶段事件落盘后关闭日志；UDP receive 超时本身不能判定为成功。以上测试中 Docker、iptables、nsenter 和网络 listener 为 mock，未调用真实服务。
 
 ## 根任务执行的 250 候选实机证据
 
