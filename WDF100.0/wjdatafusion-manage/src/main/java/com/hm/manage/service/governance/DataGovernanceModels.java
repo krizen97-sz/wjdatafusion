@@ -52,6 +52,8 @@ public final class DataGovernanceModels
         public String engineTestGroupId;
         public String definitionHash;
         public String definitionCapturedAt;
+        public boolean artifactsManifestAvailable;
+        public int artifactCount;
     }
 
     /** Private persistence envelope; controller returns only run. */
