@@ -51,6 +51,7 @@ JSON 响应沿用 `AjaxResult`，下文描述的内容均位于 `data`。真实�
 | `DELETE /definitions/{id}/files/{fileId}` | 无 | 普通成功响应；只删除此定义的输入文件 |
 | `POST /definitions/{id}/validate` | 无 | 原生校验结果；不会自动修改已保存的 XML |
 | `POST /definitions/{id}/runs` | `{revision,mode,previewStep?,rowLimit?,requestId?}` | 持久化的运行记录，成功提交或失败/未知状态均有 `id` |
+| `GET /definitions/{id}/runs` | 无 | 当前用户此定义的运行历史摘要，按创建时间倒序；不逐条轮询 worker |
 | `GET /runs/{id}` | 无 | 合并原生快照的扁平运行记录 |
 | `GET /runs/{id}/events?after=0` | 非负游标 | `{events,nextCursor,state,workerAvailable}` |
 | `POST /runs/{id}/stop` | 无 | 原生停止结果合并后的运行记录 |
@@ -64,11 +65,12 @@ JSON 响应沿用 `AjaxResult`，下文描述的内容均位于 `data`。真实�
 
 目录合并原生 `/capabilities` 和独立静态清单。静态清单中同一个 ID、不同 Meta 类仍分别保留；仅当 `kind + id + className` 对上 worker 当前登记时才标记 `loadable=true`，不根据同名 ID 猜测加载版本。
 
-目录条目包括 `id,kind,name,category,className,catalogKey?,nameSource?,classVariantCount?,discovered,loadable,executable,executionValidated,status,defaultXmlBase64?`。其中：
+目录条目包括 `id,kind,name,category,className,catalogKey?,nameSource?,classVariantCount?,discovered,loadable,executionSupported,executable,executionValidated,status,defaultXmlBase64?`。其中：
 
 - `discovered`：静态或原生登记中找到。
 - `loadable`：当前原生 worker 能构造对应登记类。
-- `executable`：worker 可用且该登记类可加载，表示可以尝试提交；不是行为验收结论。
+- `executionSupported`：遵从 native 对此工具的执行支持声明；Job 没有明确声明时默认为不支持。它与类能否构造分开。
+- `executable`：worker 可用、登记类可加载且允许执行，表示可以尝试提交；不是行为验收结论。不能把所有可构造的 Job Meta 都标为可执行，例如只支持 SPECIAL/TRANS/FTP_PUT 的 worker 必须将其他 Job 留为不可执行。
 - `executionValidated`：本目录不自动宣称逐工具执行已验收，保持 `false`。
 - `status`：`DISCOVERED`、`LOAD_FAILED` 或 `LOADABLE`。
 - `defaultXmlBase64`：原 Meta 的配置片段，不包含完整 step/entry 外壳；敏感默认值清空，临时稳定 ID 移除。浏览器创建节点时补 `name/type/GUI`，不能把片段作为完整转换运行。
@@ -130,6 +132,8 @@ Job 校验和运行时，平台核对绑定属于当前用户且类型为转换�
 `requestId` 建议由浏览器为一次逻辑运行生成并在网络重试时保留。同一用户、同一定义、同一 requestId 和相同请求参数返回已有记录；即使之后定义被编辑也不会再次提交。相同 requestId 用不同参数/修订会冲突。系统不自动重发未知提交，只允许 GET 原 runId 核查。上传文件后来变化不会替换已受理请求的快照。
 
 worker 也可能在受理后报告 `PREPARING`，因此平台用 `submissionState` 区分本地准备与原生执行准备。读取运行时可按原 runId 更新状态；上游不可用时返回最后保存的记录及 `workerStateAvailable=false/reconciliationMessage`，绝不将旧快照伪装成当前实时状态。
+
+`GET /definitions/{id}/runs` 从平台持久化记录恢复历史，worker 不可用时仍能查询。摘要包含 `id,definitionId,kind,revision,xmlSha256,state,submissionState,createdAt,updatedAt,mode,previewStep,rowLimit,requestId,message?`，保留 `VALIDATION_FAILED/PREPARATION_FAILED/SUBMISSION_UNKNOWN` 等真实状态；中断时残留的 `SUBMITTING` 显示为 `SUBMISSION_UNKNOWN`。它不包含 XML、加密输入、采样行或原生大快照，也不自动对历史记录发远程请求。用户选择某次历史后再读取单次运行和事件。
 
 事件和快照会屏蔽 XML 及关联子转换中已知的秘密值、明显秘密键和赋值日志，不返回 worker 私有目录、classpath 或原 XML。下载仍是完整二进制流，经过 owner 检查，保留原始文件内容、长度和 partial 标识。
 

@@ -115,7 +115,10 @@ public class DataGovernanceKettleService
         result.put("id", id); result.put("kind", kind.equals("jobs") ? "job-entry" : "step"); result.put("name", name);
         result.put("category", category); result.put("className", className); result.put("discovered", true);
         boolean loadable = live != null && live.path("loadable").asBoolean(false);
-        result.put("loadable", loadable); result.put("executable", available && loadable); result.put("executionValidated", false);
+        boolean supported = live != null && (live.has("executionSupported")
+            ? live.path("executionSupported").asBoolean(false) : !kind.equals("jobs"));
+        result.put("loadable", loadable); result.put("executionSupported", supported);
+        result.put("executable", available && loadable && supported); result.put("executionValidated", false);
         result.put("status", loadable ? "LOADABLE" : live == null ? "DISCOVERED" : "LOAD_FAILED");
         if (loadable && live.hasNonNull("defaultXml"))
             try { result.put("defaultXmlBase64", DataGovernanceKettleXml.encode(DataGovernanceKettleXml.template(live.path("defaultXml").asText()))); }
@@ -302,6 +305,41 @@ public class DataGovernanceKettleService
         if (!workerStateAvailable && Set.of("ACCEPTED", "UNKNOWN", "SUBMITTING").contains(run.submissionState))
             result.put("reconciliationMessage", "worker 当前未返回此运行状态，展示已保存快照；不会自动重复提交");
         return result;
+    }
+    public synchronized List<Map<String,Object>> runs(String definitionId, long owner)
+    {
+        ownedDefinition(definitionId, owner);
+        List<Map<String,Object>> result = new ArrayList<>();
+        for (Path path : list(root.resolve("runs")))
+        {
+            // Skip encrypted payloads and row snapshots without materializing them for a history query.
+            Map<String,Object> summary = readRunSummary(path);
+            if (((Number)summary.getOrDefault("owner", -1L)).longValue() != owner || !definitionId.equals(summary.get("definitionId"))) continue;
+            summary.remove("owner");
+            if ("SUBMITTING".equals(summary.get("state"))) summary.put("state", "SUBMISSION_UNKNOWN");
+            result.add(summary);
+        }
+        result.sort(Comparator.comparing((Map<String,Object> r) -> Instant.parse((String)r.get("createdAt"))).reversed());
+        return result;
+    }
+    private Map<String,Object> readRunSummary(Path path)
+    {
+        Set<String> allowed = Set.of("owner", "id", "definitionId", "kind", "revision", "xmlSha256", "state", "submissionState",
+            "createdAt", "updatedAt", "mode", "previewStep", "rowLimit", "requestId", "message");
+        Map<String,Object> result = new LinkedHashMap<>();
+        try (var parser = mapper.getFactory().createParser(path.toFile()))
+        {
+            if (parser.nextToken() != com.fasterxml.jackson.core.JsonToken.START_OBJECT) reject("运行历史记录无效");
+            com.fasterxml.jackson.core.JsonToken token;
+            while ((token = parser.nextToken()) != com.fasterxml.jackson.core.JsonToken.END_OBJECT)
+            {
+                if (token != com.fasterxml.jackson.core.JsonToken.FIELD_NAME) reject("运行历史记录无效");
+                String field = parser.currentName(); parser.nextToken();
+                if (allowed.contains(field)) result.put(field, mapper.readValue(parser, Object.class)); else parser.skipChildren();
+            }
+            return result;
+        }
+        catch (ServiceException e) { throw e; } catch (Exception e) { throw new ServiceException("运行历史读取失败"); }
     }
     public Map<String, Object> events(String id, long after, long owner)
     {

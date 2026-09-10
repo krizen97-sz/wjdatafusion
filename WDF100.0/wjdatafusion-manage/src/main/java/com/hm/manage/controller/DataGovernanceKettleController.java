@@ -54,6 +54,8 @@ public class DataGovernanceKettleController extends BaseController
     @PostMapping("/definitions/{id}/runs") @PreAuthorize("@ss.hasPermi('governance:flow:test')")
     @Log(title="运行原生 Kettle 流程", businessType=BusinessType.OTHER, isSaveRequestData=false, isSaveResponseData=false)
     public AjaxResult submit(@PathVariable String id, @RequestBody RunInput input) { return success(service.submit(id, input, getUserId())); }
+    @GetMapping("/definitions/{id}/runs") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
+    public AjaxResult runs(@PathVariable String id) { return success(service.runs(id, getUserId())); }
     @GetMapping("/runs/{id}") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
     public AjaxResult run(@PathVariable String id) { return success(service.run(id, getUserId())); }
     @GetMapping("/runs/{id}/events") @PreAuthorize("@ss.hasPermi('governance:flow:list')")
