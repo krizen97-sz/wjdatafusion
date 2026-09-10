@@ -65,7 +65,7 @@ class DataGovernanceKettleLiveTest
             service.upload(childId, "中文作业输入.csv", new ByteArrayInputStream("name\nalice\nbob\n".getBytes(StandardCharsets.UTF_8)), 73);
             Map<String,String> defaults = new HashMap<>(); for (JsonNode entry : capabilities.path("jobs")) defaults.put(entry.path("id").asText(), entry.path("defaultXml").asText());
             assertTrue(defaults.containsKey("SPECIAL")); assertTrue(defaults.containsKey("TRANS"));
-            Document document = DataGovernanceKettleXml.parse("<job><name>synthetic-api-job</name><entries/><hops/></job>");
+            Document document = DataGovernanceKettleXml.parse("<job data-rynew-timezone='UTC'><name>synthetic-api-job</name><entries/><hops/></job>");
             Element entries = (Element)document.getElementsByTagName("entries").item(0);
             String[] types = {"SPECIAL", "TRANS"}, names = {"开始", "运行子转换"};
             for (int i = 0; i < types.length; i++)
@@ -100,7 +100,7 @@ class DataGovernanceKettleLiveTest
     static String fixture(JsonNode capabilities, String inputFilename)
     {
         Map<String,String> defaults = new HashMap<>(); for (JsonNode step : capabilities.path("steps")) defaults.put(step.path("id").asText(), step.path("defaultXml").asText());
-        Document document = DataGovernanceKettleXml.parse("<transformation><info><name>synthetic-api-native</name><trans_type>Normal</trans_type><size_rowset>100</size_rowset><capture_step_performance>N</capture_step_performance><feedback_shown>N</feedback_shown></info><order/></transformation>");
+        Document document = DataGovernanceKettleXml.parse("<transformation data-rynew-timezone='UTC'><info><name>synthetic-api-native</name><trans_type>Normal</trans_type><size_rowset>100</size_rowset><capture_step_performance>N</capture_step_performance><feedback_shown>N</feedback_shown></info><order/></transformation>");
         Element root = document.getDocumentElement(); String[] types = {"CsvInput", "ScriptValueMod", "TextFileOutput"}; String[] names = {"file-input", "native-script", "file-output"};
         for (int i = 0; i < types.length; i++)
         {

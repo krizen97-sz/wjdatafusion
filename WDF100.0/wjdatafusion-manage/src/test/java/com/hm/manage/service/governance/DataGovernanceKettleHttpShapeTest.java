@@ -48,6 +48,9 @@ class DataGovernanceKettleHttpShapeTest
             assertEquals(1, run.getJSONArray("files").size()); assertTrue(run.getBooleanValue("finalized")); assertEquals(0, run.getIntValue("exitCode"));
             assertEquals(123.5, run.getDoubleValue("finishedAt")); assertEquals(2, run.getIntValue("schemaVersion")); assertEquals(0, run.getIntValue("errors"));
             assertEquals("source", run.getString("previewStep")); assertEquals(37, run.getIntValue("rowLimit"));
+            assertEquals("Asia/Shanghai", run.getString("executionTimeZone"));
+            JSONObject definitionJson = JSON.parseObject(JSON.toJSONString(controller.definition(definition))).getJSONObject("data");
+            assertEquals("Asia/Shanghai", definitionJson.getString("executionTimeZone"));
             JSONObject events = JSON.parseObject(JSON.toJSONString(controller.events(runId, 0))).getJSONObject("data");
             assertEquals(1, events.getJSONArray("events").size()); assertEquals(1, events.getIntValue("nextCursor")); assertTrue(events.getJSONArray("events").getJSONObject(0).getJSONObject("row").getBooleanValue("ok"));
             JSONObject validation = JSON.parseObject(JSON.toJSONString(controller.validate(definition))).getJSONObject("data");

@@ -228,3 +228,11 @@ mvn -f WDF100.0/pom.xml -pl wjdatafusion-manage -am \
 上传资产和绑定子转换 XML 仅由 worker 写入 `${INPUT_DIR}`，`${WORK_DIR}` 只承载运行输出。绑定 TRANS 的 filename 必须精确匹配 `${INPUT_DIR}/` 加目标定义的 `runtimeFilename`，避免同名歧义。CSV 等输入节点也使用 `${INPUT_DIR}/文件名`；文本输出仍写 `${WORK_DIR}/文件名`。FTP 通配符应只扫描输出目录。平台不把输入复制到输出，也不自动迁移旧路径。
 
 保存草稿允许保留旧路径；显式校验、运行冻结及计划冻结时拒绝绑定子转换的 WORK_DIR 或别名路径。执行已有计划也检查其冻结 XML 的引用协议，不读取当前定义重建快照；升级前的本地旧协议计划需要暂停、重新编辑并冻结后才能执行。
+
+### 原生执行时区
+
+定义根元素使用 `data-rynew-timezone="Asia/Shanghai"`。新保存未指定时区时写入 Asia/Shanghai；显式值必须为 UTC 或含 `/` 的有效 IANA 区域 ID，且存在于 Java `ZoneId.getAvailableZoneIds()`。拒绝空值、空白、EST/CST 缩写、自造 GMT 偏移和裸 `+08:00`。未知 XML 子字段保持原样，时区只读取定义根属性。
+
+definition detail/save 返回 `executionTimeZone`；live run 详情也返回该字段，值从运行自己的冻结 XML 取得，不由当前画布或 worker 响应覆盖。执行时区随加密 XML 和 SHA-256 冻结，编辑为 UTC 不改变此前计划或运行的时区。旧本地草稿缺失属性按 Asia/Shanghai 读取，首次校验/执行/新计划冻结时将默认值写入执行副本；不修改原附件，也不更换已有冻结快照。
+
+worker 据根属性为独立 JVM 设置时区，因此原 JavaScript Date、日期字段转换和 TextFileOutput add_date/add_time 使用同一执行环境。Job 的子 TRANS 在同一个 JVM 内继承父 Job 时区；子 KTR 的根属性仅控制其单独运行，不在同一 Job 中切换 JVM 全局时区。计划 cron 的调度 `timeZone` 和原 XML 的执行时区是两个独立设置。需要 UTC 的测试必须在 XML 根属性显式写 UTC。

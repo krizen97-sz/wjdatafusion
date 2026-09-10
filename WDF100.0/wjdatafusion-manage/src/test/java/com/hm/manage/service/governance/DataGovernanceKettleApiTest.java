@@ -39,6 +39,54 @@ class DataGovernanceKettleApiTest
     DefinitionInput input(Long revision, String xml) { return new DefinitionInput("测试原生流程", revision, DataGovernanceKettleXml.encode(xml)); }
     String save(String xml) { return (String)service.save(null, input(null, xml), 7).get("id"); }
     String returned(String id) { return DataGovernanceKettleXml.decode((String)service.definition(id, 7).get("xmlBase64")); }
+    @Test void executionTimeZoneDefaultsToShanghaiAndRejectsInvalidOrImplicitOffsetValues()
+    {
+        String id = save(xml());
+        assertEquals("Asia/Shanghai", service.definition(id, 7).get("executionTimeZone"));
+        assertEquals("Asia/Shanghai", DataGovernanceKettleXml.parse(returned(id)).getDocumentElement().getAttribute(DataGovernanceKettleXml.TIME_ZONE));
+        for (String zone : List.of("UTC", "Europe/Paris", "Asia/Shanghai"))
+        {
+            String explicit = save(xml().replace("<transformation>", "<transformation data-rynew-timezone='" + zone + "'>"));
+            assertEquals(zone, service.definition(explicit, 7).get("executionTimeZone"));
+        }
+        for (String zone : List.of("", "EST", "CST", "SystemV/Unknown", "+08:00", "GMT+08:00", "Asia/NotHere", " Asia/Shanghai", "UTC "))
+            assertThrows(ServiceException.class, () -> save(xml().replace("<transformation>", "<transformation data-rynew-timezone='" + zone + "'>")));
+        assertTrue(worker.calls.isEmpty());
+    }
+    @Test void executionTimeZoneIsFrozenWithXmlAndLaterEditsCannotChangeRunZone() throws Exception
+    {
+        String id = save(xml()); FrozenDefinition first = service.captureFrozen(id, 1L, 7);
+        service.save(id, input(1L, returned(id).replace("data-rynew-timezone=\"Asia/Shanghai\"", "data-rynew-timezone=\"UTC\"")), 7);
+        FrozenDefinition second = service.captureFrozen(id, 2L, 7);
+        assertEquals("UTC", service.definition(id, 7).get("executionTimeZone")); assertNotEquals(first.xmlSha256, second.xmlSha256);
+        String frozenId = UUID.randomUUID().toString(); service.writeFrozen(frozenId, first);
+        var oldRun = service.submitFrozen(service.readFrozen(frozenId, 7), UUID.randomUUID().toString(), 7);
+        assertEquals("Asia/Shanghai", oldRun.get("executionTimeZone")); assertEquals(first.xmlSha256, oldRun.get("xmlSha256"));
+        var newRun = service.submit(id, new RunInput(2L, "run", null, 20, "timezone-v2"), 7);
+        assertEquals("UTC", newRun.get("executionTimeZone"));
+        assertEquals("Asia/Shanghai", service.run((String)oldRun.get("id"), 7).get("executionTimeZone"));
+    }
+    @Test void legacyMissingZoneUsesShanghaiAndNewSnapshotWritesItsEffectiveZone() throws Exception
+    {
+        String id = save(xml()); Path path = temporary.resolve("definitions").resolve(id + ".json");
+        Definition legacy = mapper.readValue(Files.readString(path), Definition.class);
+        Document document = DataGovernanceKettleXml.parse(crypto().decrypt(legacy.encryptedXml)); document.getDocumentElement().removeAttribute(DataGovernanceKettleXml.TIME_ZONE);
+        legacy.encryptedXml = crypto().encrypt(DataGovernanceKettleXml.serialize(document)); Files.writeString(path, mapper.writeValueAsString(legacy));
+        assertEquals("Asia/Shanghai", service.definition(id, 7).get("executionTimeZone"));
+        FrozenDefinition frozen = service.captureFrozen(id, 1L, 7);
+        assertTrue(crypto().decrypt(frozen.encryptedXml).contains("data-rynew-timezone=\"Asia/Shanghai\""));
+        var run = service.submit(id, new RunInput(1L, "run", null, 20, "timezone-legacy"), 7);
+        assertEquals("Asia/Shanghai", run.get("executionTimeZone"));
+    }
+    @Test void jobRunReportsParentZoneWhileRetainingChildStandaloneZoneInFrozenXml() throws Exception
+    {
+        String child = save(xml().replace("<transformation>", "<transformation data-rynew-timezone='UTC'>"));
+        String job = save(jobXml(child)); FrozenDefinition snapshot = service.captureFrozen(job, 1L, 7);
+        String childXml = DataGovernanceKettleXml.decode(crypto().decrypt(snapshot.inputs.get(0).encryptedContent));
+        assertEquals("UTC", DataGovernanceKettleXml.executionTimeZone(childXml));
+        var run = service.submitFrozen(snapshot, UUID.randomUUID().toString(), 7);
+        assertEquals("Asia/Shanghai", run.get("executionTimeZone")); // worker's Job JVM applies this parent setting
+    }
     @Test void unknownXmlCdataCommentsAndExtensionAttributesSurviveAndSecretsNeverReturn() throws Exception
     {
         String id = save(xml()); String response = returned(id);

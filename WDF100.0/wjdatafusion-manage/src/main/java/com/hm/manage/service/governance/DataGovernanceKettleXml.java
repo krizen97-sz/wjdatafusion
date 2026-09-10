@@ -4,6 +4,7 @@ import com.hm.common.exception.ServiceException;
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.charset.*;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.regex.Pattern;
 import javax.xml.XMLConstants;
@@ -19,6 +20,9 @@ public final class DataGovernanceKettleXml
 {
     public static final int MAX_XML_BYTES = 2 * 1024 * 1024;
     public static final String ID = "data-rynew-id";
+    public static final String TIME_ZONE = "data-rynew-timezone";
+    public static final String DEFAULT_TIME_ZONE = "Asia/Shanghai";
+    private static final Set<String> TIME_ZONES = ZoneId.getAvailableZoneIds();
     private static final String SECRET_ID = "data-rynew-secret-id";
     private static final String MARKER = "__RYNEW_SECRET_";
     private static final Set<String> ANCHOR_TAGS = Set.of("step", "entry", "connection");
@@ -46,6 +50,7 @@ public final class DataGovernanceKettleXml
         Document document = parse(xml);
         String kind = document.getDocumentElement().getTagName();
         if (!kind.equals("transformation") && !kind.equals("job")) reject("仅接受 transformation 或 job 根节点的原生 XML");
+        document.getDocumentElement().setAttribute(TIME_ZONE, executionTimeZone(document.getDocumentElement()));
         stabilize(document);
         Map<String, Slot> old = previous == null ? Map.of() : indexSlots(parse(previous));
         Set<String> consumed = new HashSet<>();
@@ -65,6 +70,20 @@ public final class DataGovernanceKettleXml
         if (result.getBytes(StandardCharsets.UTF_8).length > MAX_XML_BYTES) reject("XML 最大为 2 MiB");
         int nodes = kind.equals("job") ? document.getElementsByTagName("entry").getLength() : document.getElementsByTagName("step").getLength();
         return new Prepared(result, kind, nodes);
+    }
+    public static String executionTimeZone(String xml) { return executionTimeZone(parse(xml).getDocumentElement()); }
+    private static String executionTimeZone(Element root)
+    {
+        String value = root.hasAttribute(TIME_ZONE) ? root.getAttribute(TIME_ZONE) : DEFAULT_TIME_ZONE;
+        if ((!value.equals("UTC") && !value.contains("/")) || !TIME_ZONES.contains(value))
+            reject("执行时区必须是有效 IANA 区域时区 ID，例如 Asia/Shanghai 或 UTC");
+        return value;
+    }
+    static String withExecutionTimeZone(String xml)
+    {
+        Document document = parse(xml); Element root = document.getDocumentElement(); String value = executionTimeZone(root);
+        if (root.hasAttribute(TIME_ZONE)) return xml;
+        root.setAttribute(TIME_ZONE, value); return serialize(document);
     }
     public static String masked(String xml)
     {
