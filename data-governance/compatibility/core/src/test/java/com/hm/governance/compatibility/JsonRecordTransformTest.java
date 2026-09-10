@@ -153,6 +153,65 @@ class JsonRecordTransformTest {
         assertThrows(IllegalArgumentException.class, () -> transform(rule).apply(map("timestamp", null)));
         rule.put("threshold", "invalid-threshold"); assertThrows(Exception.class, () -> transform(rule));
     }
+    @Test void nativeDatePolicyRequiresAnExplicitSupportingCodec() {
+        var rule = map("op", "dateGate", "input", "/timestamp", "output", "after", "parser", "RHINO_DATE", "threshold", "boundary", "zone", "UTC", "onInvalid", "FALSE");
+        assertThrows(IllegalArgumentException.class, () -> transform(rule));
+        var codec = new FixtureCodec(map()) {
+            @Override public Long legacyDateParse(String value, String zone) {
+                assertEquals("UTC", zone);
+                return switch (value) { case "boundary" -> 100L; case "later" -> 101L; case "earlier" -> 99L; default -> null; };
+            }
+        };
+        var nativeTransform = new JsonRecordTransform(List.of(rule), codec);
+        assertEquals(false, object(nativeTransform.apply(map("timestamp", "boundary")).value()).get("after"));
+        assertEquals(true, object(nativeTransform.apply(map("timestamp", "later")).value()).get("after"));
+        assertEquals(false, object(nativeTransform.apply(map("timestamp", "earlier")).value()).get("after"));
+        assertEquals(false, object(nativeTransform.apply(map("timestamp", "invalid-date")).value()).get("after"));
+        rule.put("onInvalid", "FAIL");
+        var rejecting = new JsonRecordTransform(List.of(rule), codec);
+        assertThrows(IllegalArgumentException.class, () -> rejecting.apply(map("timestamp", "invalid-date")));
+    }
+    @Test void nativeDateConfigurationAndEnvironmentFailuresCannotBecomeFalse() {
+        var rule = map("op", "dateGate", "input", "/timestamp", "output", "after", "parser", "RHINO_DATE", "threshold", "boundary", "zone", "UTC", "onInvalid", "FALSE");
+        var codec = new FixtureCodec(map()) {
+            @Override public Long legacyDateParse(String value, String zone) {
+                if (value.equals("boundary")) return 100L;
+                if (value.equals("environment-changed")) throw new IllegalStateException("Zone drift");
+                return null;
+            }
+        };
+        var nativeTransform = new JsonRecordTransform(List.of(rule), codec);
+        assertThrows(IllegalStateException.class, () -> nativeTransform.apply(map("timestamp", "environment-changed")));
+        assertThrows(IllegalArgumentException.class, () -> nativeTransform.apply(map("timestamp", null)));
+        assertThrows(IllegalArgumentException.class, () -> nativeTransform.apply(map("timestamp", 1)));
+        assertThrows(IllegalArgumentException.class, () -> nativeTransform.apply(map("timestamp", "x".repeat(257))));
+        rule.put("threshold", "invalid-threshold");
+        assertThrows(IllegalArgumentException.class, () -> new JsonRecordTransform(List.of(rule), codec));
+        rule.put("threshold", "boundary"); rule.put("pattern", "uuuu/MM/dd");
+        assertThrows(IllegalArgumentException.class, () -> new JsonRecordTransform(List.of(rule), codec));
+        rule.remove("pattern"); rule.put("parser", "unrecognized");
+        assertThrows(IllegalArgumentException.class, () -> new JsonRecordTransform(List.of(rule), codec));
+    }
+    @Test void nativeDateLateFailurePreservesEverySourceRecord() {
+        var codec = new FixtureCodec(map()) {
+            @Override public Long legacyDateParse(String value, String zone) { return value.equals("bad") ? null : 100L; }
+        };
+        var nativeTransform = new JsonRecordTransform(List.of(map("op", "dateGate", "input", "/timestamp", "output", "after", "parser", "RHINO_DATE", "threshold", "boundary", "zone", "UTC")), codec);
+        var first = map("timestamp", "good", "keep", "original"); var last = map("timestamp", "bad");
+        assertThrows(IllegalArgumentException.class, () -> nativeTransform.apply(List.of(first, last)));
+        assertFalse(first.containsKey("after")); assertFalse(last.containsKey("after")); assertEquals("original", first.get("keep"));
+    }
+    @Test void strictDateDefaultNeverUsesTheLegacyCodec() {
+        var codec = new FixtureCodec(map()) {
+            @Override public Long legacyDateParse(String value, String zone) { fail("STRICT called a legacy codec"); return null; }
+        };
+        var rule = map("op", "dateGate", "input", "/timestamp", "output", "after", "pattern", "uuuu/MM/dd HH:mm:ss", "threshold", "2030/01/01 00:00:00", "zone", "UTC", "onInvalid", "FALSE");
+        var strict = new JsonRecordTransform(List.of(rule), codec);
+        assertEquals(true, object(strict.apply(map("timestamp", "2030/01/01 00:00:01")).value()).get("after"));
+        assertEquals(false, object(strict.apply(map("timestamp", "2030/02/30 12:00:00")).value()).get("after"));
+        rule.put("parser", "STRICT");
+        assertEquals(false, object(new JsonRecordTransform(List.of(rule), codec).apply(map("timestamp", "2030/01/02")).value()).get("after"));
+    }
     @Test void explicitlyRemovedScratchFieldsDoNotChangeTheOriginalSource() {
         var transform = transform(map("op", "copy", "input", "/original", "output", "scratch"), map("op", "trim", "input", "/scratch", "output", "derived"), map("op", "remove", "output", "scratch"));
         var row = object(transform.apply(map("original", " value ", "keep", 9)).value());

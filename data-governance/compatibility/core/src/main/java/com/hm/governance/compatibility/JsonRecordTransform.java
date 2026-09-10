@@ -41,6 +41,10 @@ public final class JsonRecordTransform {
             if (ecmascriptDouble) throw invalid("Codec does not support ECMAScript number serialization");
             return stringify(value);
         }
+        /** Null represents an invalid native date; configuration/zone errors must throw. */
+        default Long legacyDateParse(String text, String zone) {
+            throw invalid("Codec does not support RHINO_DATE parsing");
+        }
     }
     public record Result(Object value, int inputRecords, int outputRecords) {
         public boolean empty() { return outputRecords == 0; }
@@ -226,13 +230,29 @@ public final class JsonRecordTransform {
                 };
             }
             case "dateGate" -> {
-                keys(rule, "op", "input", "output", "pattern", "threshold", "zone", "onInvalid");
+                keys(rule, "op", "input", "output", "pattern", "threshold", "zone", "onInvalid", "parser");
                 List<String> input = pointer(string(rule, "input")); String output = name(string(rule, "output"));
-                String pattern = string(rule, "pattern"), threshold = string(rule, "threshold"), zoneText = string(rule, "zone");
-                if (pattern.length() > 128 || threshold.length() > 128 || zoneText.length() > 128) throw invalid("Date configuration limit");
-                DateTimeFormatter format = DateTimeFormatter.ofPattern(pattern, Locale.ROOT).withResolverStyle(ResolverStyle.STRICT);
-                ZoneId zone = ZoneId.of(zoneText); var boundary = instant(threshold, format, zone);
+                String parser = choice(rule, "parser", "STRICT", "STRICT", "RHINO_DATE");
+                String threshold = string(rule, "threshold"), zoneText = string(rule, "zone");
+                if (threshold.length() > 128 || zoneText.length() > 128) throw invalid("Date configuration limit");
+                ZoneId zone = ZoneId.of(zoneText);
                 String onInvalid = choice(rule, "onInvalid", "FAIL", "FAIL", "FALSE");
+                if (parser.equals("RHINO_DATE")) {
+                    if (rule.containsKey("pattern")) throw invalid("pattern is supported only by STRICT dates");
+                    Long boundary = codec.legacyDateParse(threshold, zoneText);
+                    if (boundary == null) throw invalid("Valid RHINO_DATE threshold required");
+                    yield state -> {
+                        String value = text(required(resolve(state.row, input)));
+                        if (value.length() > 256) throw invalid("Legacy date text limit");
+                        Long instant = codec.legacyDateParse(value, zoneText);
+                        if (instant == null && !onInvalid.equals("FALSE")) throw invalid("Invalid RHINO_DATE text");
+                        state.row.put(output, instant != null && instant > boundary);
+                    };
+                }
+                String pattern = string(rule, "pattern");
+                if (pattern.length() > 128) throw invalid("Date configuration limit");
+                DateTimeFormatter format = DateTimeFormatter.ofPattern(pattern, Locale.ROOT).withResolverStyle(ResolverStyle.STRICT);
+                var boundary = instant(threshold, format, zone);
                 yield state -> {
                     String text = text(required(resolve(state.row, input)));
                     if (text.length() > 1024) throw invalid("Date text limit");
