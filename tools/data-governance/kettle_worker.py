@@ -516,7 +516,7 @@ class Worker:
                                 if key in event:
                                     run[key] = event[key]
                         if event['type'] == 'execution-snapshot':
-                            for key in ['originalXmlSha', 'effectiveXmlSha', 'previewOverrides']:
+                            for key in ['originalXmlSha', 'effectiveXmlSha', 'previewOverrides', 'previewProjection']:
                                 if key in event:
                                     run[key] = event[key]
                         if event['type'] in {'state', 'terminal'}:
