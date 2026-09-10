@@ -136,6 +136,11 @@ public class DataGovernanceKettleService
         if (loadable && live.hasNonNull("defaultXml"))
             try { result.put("defaultXmlBase64", DataGovernanceKettleXml.encode(DataGovernanceKettleXml.template(live.path("defaultXml").asText()))); }
             catch (ServiceException ignored) { result.put("defaultXmlUnavailable", true); }
+        if (loadable && live.hasNonNull("configurationTemplateXml"))
+            try { result.put("configurationTemplateXmlBase64", DataGovernanceKettleXml.encode(DataGovernanceKettleXml.template(live.path("configurationTemplateXml").asText()))); }
+            catch (ServiceException ignored) { result.put("configurationTemplateXmlUnavailable", true); }
+        if (live != null) for (String key : List.of("allocationApplied", "allocationMethod", "allocationArguments", "allocationReason", "configurationTemplateReadback"))
+            if (live.has(key)) result.put(key, mapper.convertValue(live.get(key), Object.class));
         return result;
     }
     public synchronized List<Summary> definitions(long owner)
@@ -547,6 +552,7 @@ public class DataGovernanceKettleService
         result.put("xmlSha256", run.xmlSha256); result.put("state", run.state.equals("SUBMITTING") ? "SUBMISSION_UNKNOWN" : run.state);
         if (run.inputsHash != null) { result.put("inputsHash", run.inputsHash); result.put("snapshotFingerprint", run.fingerprint); }
         result.put("submissionState", run.submissionState); result.put("mode", run.mode); result.put("createdAt", run.createdAt); result.put("updatedAt", run.updatedAt);
+        result.put("previewStep", run.previewStep); result.put("rowLimit", run.rowLimit);
         result.put("requestId", run.requestId); result.put("inputFiles", run.inputs.stream().map(f -> f.info).toList());
         result.putIfAbsent("nodes", List.of()); result.putIfAbsent("files", List.of()); if (run.message != null) result.put("message", run.message);
         return result;
