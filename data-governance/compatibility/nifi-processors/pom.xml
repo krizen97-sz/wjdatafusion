@@ -9,6 +9,10 @@
     <dependency><groupId>org.apache.nifi</groupId><artifactId>nifi-api</artifactId><version>${nifi.version}</version><scope>provided</scope></dependency>
     <dependency><groupId>org.apache.nifi</groupId><artifactId>nifi-utils</artifactId><version>${nifi.version}</version><scope>provided</scope></dependency>
     <dependency><groupId>com.alibaba.fastjson2</groupId><artifactId>fastjson2</artifactId><version>2.0.61</version></dependency>
+    <!-- Official 1.7R3 Date-only oracle; POM/source license: MPL 1.1 or GPL 2.
+         See https://repo.maven.apache.org/maven2/org/mozilla/rhino/1.7R3/rhino-1.7R3.pom
+         and the NativeDate.java license header in its sources JAR. No vendor JAR is bundled. -->
+    <dependency><groupId>org.mozilla</groupId><artifactId>rhino</artifactId><version>1.7R3</version></dependency>
     <dependency><groupId>org.apache.nifi</groupId><artifactId>nifi-mock</artifactId><version>${nifi.version}</version><scope>test</scope></dependency>
     <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
   </dependencies>

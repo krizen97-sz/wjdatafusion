@@ -203,4 +203,67 @@ class JsonRecordTransformTest {
         return JSON.parseObject(new String(runner.getFlowFilesForRelationship(JsonRecordTransform.SUCCESS).get(0).toByteArray(), StandardCharsets.UTF_8)).getString("out");
     }
 
+    @Test void nativeDateProcessorMatchesTheTwelveOriginalScriptVectors() {
+        Object[][] cases = {
+            {"2019-12-24T10:22:24", false}, {"2019-12-24T10:22:25", false}, {"2019-12-24T10:22:26", true},
+            {"invalid-date", false}, {"2020-02-30T12:00:00", true}, {"2020-01-01T00:00", true},
+            {"2020-01-01T00:00:00Z", true}, {"2020-01-01T00:00:00+08:00", true},
+            {"2019-02-29T00:00:00", false}, {"2020-01-01", true}, {"", false}, {null, null}
+        };
+        for (Object[] sample : cases) {
+            var runner = dateRunner("FALSE", "2019/12/24 10:22:25", BoundedRhinoDateParser.engineZoneId());
+            String original = "{\"passTime\":" + JSON.toJSONString(sample[0]) + ",\"keep\":\"retained\"}";
+            runner.enqueue(original); runner.run();
+            if (sample[1] == null) {
+                runner.assertTransferCount(JsonRecordTransform.FAILURE, 1); runner.assertTransferCount(JsonRecordTransform.SUCCESS, 0);
+                runner.getFlowFilesForRelationship(JsonRecordTransform.FAILURE).get(0).assertContentEquals(original);
+            } else {
+                runner.assertTransferCount(JsonRecordTransform.SUCCESS, 1); runner.assertTransferCount(JsonRecordTransform.FAILURE, 0);
+                var output = JSON.parseObject(new String(runner.getFlowFilesForRelationship(JsonRecordTransform.SUCCESS).get(0).toByteArray(), StandardCharsets.UTF_8));
+                assertEquals(sample[1], output.get("c")); assertEquals(sample[0], output.get("passTime")); assertEquals("retained", output.get("keep")); assertFalse(output.containsKey("scratchDate"));
+            }
+            runner.shutdown();
+        }
+    }
+    @Test void nativeDateFailureIsAtomicAndDoesNotInferSuccessFromEarlierRows() {
+        var runner = dateRunner("FAIL", "2019/12/24 10:22:25", BoundedRhinoDateParser.engineZoneId());
+        String original = "[{\"passTime\":\"2020-01-01T12:00:00\"},{\"passTime\":\"invalid-date\"}]";
+        runner.enqueue(original); runner.run(); runner.assertTransferCount(JsonRecordTransform.FAILURE, 1); runner.assertTransferCount(JsonRecordTransform.SUCCESS, 0);
+        runner.getFlowFilesForRelationship(JsonRecordTransform.FAILURE).get(0).assertContentEquals(original);
+    }
+    @Test void nativeDateRejectsBadThresholdPatternAndZoneEvenWhenInvalidTextMapsToFalse() {
+        var threshold = dateRunner("FALSE", "not-a-valid-threshold", BoundedRhinoDateParser.engineZoneId());
+        threshold.enqueue("{\"passTime\":\"2020-01-01\"}"); threshold.run(); threshold.assertTransferCount(JsonRecordTransform.FAILURE, 1);
+        String other = java.time.ZoneId.of(BoundedRhinoDateParser.engineZoneId()).normalized().equals(java.time.ZoneOffset.UTC) ? "Asia/Shanghai" : "UTC";
+        var zone = dateRunner("FALSE", "2019/12/24 10:22:25", other);
+        zone.enqueue("{\"passTime\":\"invalid-date\"}"); zone.run(); zone.assertTransferCount(JsonRecordTransform.FAILURE, 1);
+        assertTrue(zone.getFlowFilesForRelationship(JsonRecordTransform.FAILURE).get(0).getAttribute("governance.error").startsWith("RHINO_DATE_ZONE_MISMATCH"));
+        var rules = new java.util.ArrayList<>(dateOperations("FALSE", "2019/12/24 10:22:25", BoundedRhinoDateParser.engineZoneId()));
+        var gate = new java.util.LinkedHashMap<>(rules.get(5)); gate.put("pattern", "uuuu/MM/dd HH:mm:ss"); rules.set(5, gate);
+        var pattern = runner(); pattern.setProperty(JsonRecordTransform.OPERATIONS, JSON.toJSONString(rules));
+        pattern.enqueue("{\"passTime\":\"2020-01-01\"}"); pattern.run(); pattern.assertTransferCount(JsonRecordTransform.FAILURE, 1);
+    }
+    @Test void strictDatesAndExactNumbersRemainDefaultAfterAddingNativeDates() {
+        var runner = runner(); runner.setProperty(JsonRecordTransform.OPERATIONS,
+            "[{\"op\":\"parse\",\"input\":\"/payload\",\"document\":\"doc\"},{\"op\":\"serialize\",\"document\":\"doc\",\"output\":\"payload\"}," +
+            "{\"op\":\"dateGate\",\"input\":\"/timestamp\",\"output\":\"after\",\"pattern\":\"uuuu/MM/dd HH:mm:ss\",\"threshold\":\"2030/01/01 00:00:00\",\"zone\":\"Pacific/Honolulu\",\"onInvalid\":\"FALSE\"}]");
+        String payload = "{\"precise\":9007199254740993.1234567890123456789}";
+        runner.enqueue(JSON.toJSONString(Map.of("payload", payload, "timestamp", "2030/02/30 12:00:00"))); runner.run(); runner.assertTransferCount(JsonRecordTransform.SUCCESS, 1);
+        var output = JSON.parseObject(new String(runner.getFlowFilesForRelationship(JsonRecordTransform.SUCCESS).get(0).toByteArray(), StandardCharsets.UTF_8));
+        assertEquals(payload, output.getString("payload")); assertEquals(false, output.get("after"));
+    }
+    private TestRunner dateRunner(String onInvalid, String threshold, String zone) {
+        var runner = runner(); runner.setProperty(JsonRecordTransform.OPERATIONS, JSON.toJSONString(dateOperations(onInvalid, threshold, zone))); return runner;
+    }
+    private List<Map<String, Object>> dateOperations(String onInvalid, String threshold, String zone) {
+        return List.of(
+            Map.of("op", "copy", "input", "/passTime", "output", "scratchDate"),
+            Map.of("op", "replace", "input", "/scratchDate", "output", "scratchDate", "find", "T", "replacement", " ", "mode", "FIRST"),
+            Map.of("op", "replace", "input", "/scratchDate", "output", "scratchDate", "find", "+", "replacement", " ", "mode", "FIRST"),
+            Map.of("op", "substring", "input", "/scratchDate", "output", "scratchDate", "start", 0, "end", 19),
+            Map.of("op", "replace", "input", "/scratchDate", "output", "scratchDate", "find", "-", "replacement", "/", "mode", "ALL"),
+            Map.of("op", "dateGate", "input", "/scratchDate", "output", "c", "parser", "RHINO_DATE", "threshold", threshold, "zone", zone, "onInvalid", onInvalid),
+            Map.of("op", "remove", "output", "scratchDate"));
+    }
+
 }
