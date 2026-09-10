@@ -42,7 +42,7 @@ class DataGovernanceModernDesignerTest
         when(client.json(anyString(), anyString(), any())).thenAnswer(call -> {
             String method = call.getArgument(0), path = call.getArgument(1);
             if (method.equals("GET") && path.contains("/controller-services?")) return mapper.valueToTree(map("controllerServices", services));
-            if (method.equals("GET") && path.equals("/flow/processor-types")) return mapper.valueToTree(map("processorTypes", designer.nodeTypes().stream().map(t -> map("type", t.type(), "bundle", map("group", "test", "artifact", "test-nar", "version", "2.11.0"))).toList()));
+            if (method.equals("GET") && path.equals("/flow/processor-types")) return mapper.valueToTree(map("processorTypes", designer.nodeTypes().stream().map(t -> map("type", t.type(), "bundle", t.type().startsWith("com.hm.governance.") ? map("group", "com.hm.governance", "artifact", "governance-nifi-nar", "version", CURRENT_COMPATIBILITY_BUNDLE) : map("group", "test", "artifact", "test-nar", "version", "2.11.0"))).toList()));
             mutations++;
             if (method.equals("POST") && path.endsWith("/processors"))
             {

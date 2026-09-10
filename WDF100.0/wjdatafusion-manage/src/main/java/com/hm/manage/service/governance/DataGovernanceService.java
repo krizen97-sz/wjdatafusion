@@ -47,8 +47,8 @@ public class DataGovernanceService
                 map("type", "object", "additionalProperties", false, "properties", map(), "inputExample", "[{\"message\":\"示例\",\"picture\":\"\"}]")),
             new Template(LOOKUP_TEMPLATE, "快照查表样本流程", "合成双键字典与非空条件；可在节点中显式加载数据库快照，未命中保留默认字符串0", engine.supports(LOOKUP) ? "AVAILABLE" : "ENGINE_REQUIRED",
                 map("type", "object", "additionalProperties", false, "properties", map(), "inputExample", "[{\"camera\":\"CAM-001\",\"platform\":\"DEMO\"},{\"camera\":\"UNKNOWN\",\"platform\":\"DEMO\"}]")),
-            new Template("vehicle-pass", "普通过车业务流程", "需要查表快照、文件协议与 FTP 交付适配后才能执行", "ADAPTER_REQUIRED", map()),
-            new Template("vehicle-violation", "违法告警业务流程", "需要业务规则、Kafka 确认边界与文件交付适配后才能执行", "ADAPTER_REQUIRED", map()));
+            new Template("vehicle-pass", "普通过车业务流程", "已有合成样本验证图；正式模板仍需确认实时字典、原文件命名和接收协议", "ADAPTER_REQUIRED", map()),
+            new Template("vehicle-violation", "违法告警业务流程", "已有合成样本验证图；正式模板仍需接入白名单Kafka回写与实际业务数据对照", "ADAPTER_REQUIRED", map()));
     }
 
     public List<CatalogItem> catalog()
@@ -63,11 +63,12 @@ public class DataGovernanceService
             {"attributes", "常量与属性", "转换", "AVAILABLE", "UpdateAttribute：仅 sample.* 字段"},
             {"capture", "结果观察", "输出", "AVAILABLE", "停止的观察节点前队列，读取真实引擎输出"},
             {"postgres-lookup", "PostgreSQL 实时查表", "查询", "ADAPTER_REQUIRED", "逐批实时查询与长表缓存尚未接入；当前可用显式数据库快照与多条件快照查表"},
-            {"kafka-consumer", "Kafka 消费", "输入", "ADAPTER_REQUIRED", "业务源需要独立连接与位点迁移，安全样本测试禁止连接"},
+            {"kafka-batch", "Kafka 有界取批", "输入", "AVAILABLE", "在Kafka批次页配置允许的源并显式取批、执行和确认位点；需服务端启用，最多100条或256KiB"},
+            {"kafka-consumer", "Kafka 持续消费与旧组迁移", "输入", "ADAPTER_REQUIRED", "持续轮询、生产认证与旧ZooKeeper位点迁移尚未接入"},
             {"kafka-producer", "Kafka 发送", "输出", "ADAPTER_REQUIRED", "业务目标需要确认与幂等策略，安全样本测试禁止发送"},
-            {"protocol-file", "协议文件落盘与交付", "输出", "ADAPTER_REQUIRED", "文本编码已支持；实际文件清单、交付台账与整批成功后上传仍待接入"},
-            {"ftp-delivery", "FTP 交付", "输出", "ADAPTER_REQUIRED", "需交付确认台账和协议适配，测试禁止访问实际目标"},
-            {"business-script", "海康消息转换", "转换", "ADAPTER_REQUIRED", "需要迁移原 JavaScript 和数组、日期、空值语义"}
+            {"protocol-file", "完整产物落盘", "输出", "AVAILABLE", "整批成功且清理确认后发布完整文件清单；有界预览不能替代交付原件"},
+            {"ftp-delivery", "FTP 批次交付", "输出", "AVAILABLE", "独立连接、完整产物上传、回读摘要核对与完成标记；失败保留本地产物，旧目录扫描语义需另行适配"},
+            {"business-script", "海康完整业务适配", "转换", "ADAPTER_REQUIRED", "字段处理已提供显式旧JSON、数组与Rhino日期模式；完整替换仍需实际样本、字典和源目标协议验收"}
         };
         for (String[] entry : entries) items.add(new CatalogItem(entry[0], entry[1], entry[2],
             entry[0].equals("json-jolt") ? engine.supports(JOLT) ? "AVAILABLE" : "ENGINE_REQUIRED" : entry[3], entry[4],
@@ -76,6 +77,8 @@ public class DataGovernanceService
             "只转换封闭 JSON 数组；无文件系统、网络或业务源目标访问", List.of("JSON_ARRAY"), List.of("TEXT")));
         items.add(new CatalogItem("snapshot-lookup", "批次快照查表", "查询", engine.supports(LOOKUP) ? "AVAILABLE" : "ENGINE_REQUIRED",
             "多键等值、非空条件、默认值与重复键策略；显式加载字典快照并随发布版本冻结，不自动实时刷新数据库", List.of("JSON", "JSON_ARRAY"), List.of("JSON", "JSON_ARRAY")));
+        items.add(new CatalogItem("json-record-transform", "结构化字段处理", "转换", engine.supports(RECORD_TRANSFORM) ? "AVAILABLE" : "ENGINE_REQUIRED",
+            "受控规则处理JSON字符串、字面替换、数组广播和记录过滤；旧脚本兼容模式显式配置，不执行任意代码", List.of("JSON", "JSON_ARRAY"), List.of("JSON", "JSON_ARRAY")));
         return items;
     }
 

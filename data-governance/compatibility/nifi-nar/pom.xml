@@ -1,9 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
   <modelVersion>4.0.0</modelVersion>
-  <parent><groupId>com.hm.governance</groupId><artifactId>governance-compatibility</artifactId><version>1.2.1</version></parent>
+  <parent><groupId>com.hm.governance</groupId><artifactId>governance-compatibility</artifactId><version>1.2.3</version></parent>
   <artifactId>governance-nifi-nar</artifactId>
   <packaging>nar</packaging>
   <dependencies><dependency><groupId>com.hm.governance</groupId><artifactId>governance-nifi-processors</artifactId><version>${project.version}</version></dependency></dependencies>
-  <build><plugins><plugin><groupId>org.apache.nifi</groupId><artifactId>nifi-nar-maven-plugin</artifactId><version>2.4.0</version><extensions>true</extensions></plugin></plugins></build>
+  <build><plugins>
+    <!-- A version change must never retain old JARs in META-INF/bundled-dependencies. -->
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-clean-plugin</artifactId><version>3.4.1</version>
+      <executions><execution><id>clear-nar-staging</id><phase>initialize</phase><goals><goal>clean</goal></goals></execution></executions>
+    </plugin>
+    <plugin><groupId>org.apache.nifi</groupId><artifactId>nifi-nar-maven-plugin</artifactId><version>2.4.0</version><extensions>true</extensions></plugin>
+  </plugins></build>
 </project>

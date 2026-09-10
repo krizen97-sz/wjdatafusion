@@ -50,10 +50,10 @@
 <script setup>
 import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { nodeKind, nodeSummary } from '../nodeCatalog'
-import { canvasPosition, clamp, edgeGeometry, enginePosition, graphBounds, NODE_HEIGHT, NODE_WIDTH, portPosition, relationshipLabel } from '../graphRules'
+import { canvasPosition, clamp, edgeGeometry, enginePosition, graphBounds, NODE_HEIGHT, NODE_WIDTH, portPosition, relationshipLabel, visibleConnections } from '../graphRules'
 import { runState } from '../workspaceRules'
 
-const props = defineProps({ nodes: { type: Array, default: () => [] }, connections: { type: Array, default: () => [] }, selectedNodeId: String, selectedEdgeId: String, editable: Boolean, run: Object, resultStale: Boolean })
+const props = defineProps({ nodes: { type: Array, default: () => [] }, connections: { type: Array, default: () => [] }, showAuxiliary: Boolean, selectedNodeId: String, selectedEdgeId: String, editable: Boolean, run: Object, resultStale: Boolean })
 const emit = defineEmits(['select-node', 'select-edge', 'move-node', 'add-node', 'connect'])
 const viewport = ref(), zoom = ref(0.9), pan = ref({ x: 40, y: 100 }), gesture = ref(null), previewPosition = ref(null)
 const linkSourceId = ref(''), linkPoint = ref(null)
@@ -64,7 +64,7 @@ const worldStyle = computed(() => ({ transform: `translate(${pan.value.x}px, ${p
 const edgePlaneStyle = { overflow: 'visible', width: '1px', height: '1px' }
 const renderedEdges = computed(() => {
   const groups = new Map()
-  return props.connections.map(edge => {
+  return visibleConnections(props.connections, props.showAuxiliary, props.selectedNodeId).map(edge => {
     const key = `${edge.sourceId}:${edge.targetId}`, index = groups.get(key) || 0
     groups.set(key, index + 1)
     return { ...edge, geometry: edgeGeometry(edge, displayNodes.value, index) }

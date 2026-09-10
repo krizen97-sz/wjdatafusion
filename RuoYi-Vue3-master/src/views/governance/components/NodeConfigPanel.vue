@@ -54,6 +54,16 @@
             </template>
 
             <lookup-node-fields v-else-if="kind.key === 'lookup'" :properties="draft.properties" :readonly="locked" @update="({ key, value }) => setProperty(key, value)" @load-snapshot="emit('load-snapshot')" />
+            <template v-else-if="kind.key === 'record-transform'">
+              <el-form-item label="字段处理规则（Operations JSON）">
+                <el-input :model-value="property('Operations')" type="textarea" :autosize="{ minRows: 12, maxRows: 24 }" aria-label="字段处理规则JSON" spellcheck="false" @update:model-value="setProperty('Operations', $event)" />
+              </el-form-item>
+              <p class="governance-node-config__help">按顺序执行字段提取、常量、裁剪、字面替换、数组广播、过滤和序列化。最多64条规则；支持JSON Pointer，不执行脚本或网络请求。</p>
+              <el-collapse><el-collapse-item title="规则示例与兼容设置" name="help">
+                <p class="governance-node-config__help">去除两端空白：{ "op": "trim", "input": "/message", "output": "message", "mode": "BOTH" }</p>
+                <p class="governance-node-config__help">默认保留精确数字并严格检查日期。仅复刻旧脚本时显式选择ECMASCRIPT_DOUBLE（可能损失数字精度）或日期onInvalid=FALSE。</p>
+              </el-collapse-item></el-collapse>
+            </template>
             <template v-else-if="kind.key === 'jolt'">
               <el-form-item label="JSON 转换规则">
                 <el-input :model-value="property('Jolt Specification')" type="textarea" :autosize="{ minRows: 10, maxRows: 22 }" spellcheck="false" placeholder='[{ "operation": "shift", "spec": { "message": "content" } }]' @update:model-value="setProperty('Jolt Specification', $event)" />

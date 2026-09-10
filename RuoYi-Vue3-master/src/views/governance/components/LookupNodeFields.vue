@@ -13,7 +13,7 @@
           <el-form-item label="字典记录（JSON 对象数组）" :error="snapshot.error">
             <el-input :model-value="property('Lookup Rows')" type="textarea" :autosize="{ minRows: 5, maxRows: 12 }" :readonly="readonly" spellcheck="false" aria-label="字典快照 JSON" @update:model-value="updateProperty('Lookup Rows', $event)" />
           </el-form-item>
-          <p class="governance-lookup-fields__help">最多 1000 条记录、256 KiB。原文会完整保留，不在浏览器中重新序列化数字。</p>
+          <p class="governance-lookup-fields__help">最多 1000 条记录、64 KiB。原文会完整保留，不在浏览器中重新序列化数字。</p>
         </el-collapse-item>
       </el-collapse>
     </section>

@@ -60,7 +60,13 @@ def main():
           "token":{"secret":keys["jwt"]},"support":{"credential":{"key":keys["support"]}},
           "data-governance":{"enabled":True,"storage-dir":str(app/"state"),"nifi":{"base-url":binding["baseUrl"],"root-group-id":binding["rootGroupId"],"credentials-file":binding["credentialsFile"]}}
         }
-        config=private/"application-governance.yml";write(config,doc)
+        config=private/"application-governance.yml"
+        if config.exists():
+            previous=read(config)
+            for option in ("test-timeout-seconds", "connection-allowed-endpoints", "ftp-allowed-endpoints"):
+                if option in previous.get("data-governance",{}):doc["data-governance"][option]=previous["data-governance"][option]
+            if "data-governance-kafka" in previous:doc["data-governance-kafka"]=previous["data-governance-kafka"]
+        write(config,doc)
         print(json.dumps({"prepared":True,"configFile":str(config),"database":"rynew_governance_dev","port":8083}));return
     record=read(state) if state.exists() else None
     current=identity(record.get("pid")) if record else None

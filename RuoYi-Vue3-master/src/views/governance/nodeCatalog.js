@@ -8,6 +8,7 @@ export const NODE_KINDS = Object.freeze([
   { key: 'route', label: '条件分流', type: `${STANDARD}RouteOnAttribute`, role: 'PROCESSOR', category: 'route', icon: 'Share', description: '根据字段条件选择分支，未命中数据进入默认分支。', defaults: { 'Routing Strategy': 'Route to Property name', accepted: '${sample.value:isEmpty():not()}' }, relationships: ['accepted', 'unmatched'] },
   { key: 'attributes', label: '字段属性', type: UPDATE, role: 'PROCESSOR', category: 'transform', icon: 'SetUp', description: '设置 sample.* 字段属性，供后续条件和转换使用。', defaults: {}, relationships: ['success'] },
   { key: 'lookup', label: '快照查表', type: 'com.hm.governance.nifi.JsonLookupSnapshot', role: 'PROCESSOR', category: 'lookup', icon: 'Coin', description: '用固定字典快照执行多条件查表，支持默认值和重复匹配处理。', defaults: { 'Lookup Rows': '[]', 'Match Fields': '[]', 'Return Fields': '[]', 'Missing Match': 'KEEP', 'Multiple Matches': 'FAIL' }, relationships: ['success', 'empty', 'failure'] },
+  { key: 'record-transform', label: '字段处理', type: 'com.hm.governance.nifi.JsonRecordTransform', role: 'PROCESSOR', category: 'transform', icon: 'Operation', description: '用受控规则提取字段、处理字符串、广播写回及过滤记录。', defaults: { Operations: '[{"op":"trim","input":"/message","output":"message","mode":"BOTH"}]' }, relationships: ['success', 'empty', 'failure'] },
   { key: 'jolt', label: 'JSON 转换', type: 'org.apache.nifi.processors.jolt.JoltTransformJSON', role: 'PROCESSOR', category: 'transform', icon: 'Switch', description: '通过内联转换规则重组 JSON 字段和结构。', defaults: { 'Jolt Transform': 'jolt-transform-chain', 'Jolt Specification': '[\n  { "operation": "shift", "spec": { "*": "&" } }\n]', 'JSON Source': 'FLOW_FILE' }, relationships: ['success', 'failure'] },
   { key: 'delimited', label: '协议文本', type: 'com.hm.governance.nifi.DelimitedTextWriter', role: 'PROCESSOR', category: 'output', icon: 'Document', description: '将 JSON 数组编码为文本分片，配置字段顺序、分隔符和表头。', defaults: { 'Field Order': 'message,picture', 'Delimiter Hex': '7C 1F', 'Include Header': 'true', 'Split Limit': '75', 'Count Basis': 'DATA_RECORDS', 'Maximum File Age Millis': '0', 'Arrival Time Field': null, 'Filename Prefix': 'dataset' }, relationships: ['success', 'empty', 'failure'] },
   { key: 'capture', label: '结果输出', type: UPDATE, role: 'CAPTURE', category: 'output', icon: 'DataAnalysis', description: '观察到达终点的内容、字段和执行结果。', defaults: {}, relationships: [] }
@@ -28,6 +29,7 @@ export function nodeSummary(node) {
     case 'route': return `${dynamicEntries(node).length} 个条件分支`
     case 'attributes': return `${dynamicEntries(node).length} 个字段属性`
     case 'lookup': return '多条件 · 批次快照'
+    case 'record-transform': return '提取 · 派生 · 过滤'
     case 'jolt': {
       try {
         const spec = JSON.parse(properties['Jolt Specification'] || 'null')

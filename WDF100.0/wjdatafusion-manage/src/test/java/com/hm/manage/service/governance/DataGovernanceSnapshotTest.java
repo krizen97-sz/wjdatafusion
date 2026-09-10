@@ -102,4 +102,31 @@ class DataGovernanceSnapshotTest
         finally { service.close(); repository.close(); }
     }
 
+    @Test void fullBusinessGraphCapacityRemainsBoundedAndRulesCannotInvokeScripts()
+    {
+        List<Map<String, Object>> nodes = new java.util.ArrayList<>(), links = new java.util.ArrayList<>();
+        for (int i = 0; i < 32; i++)
+        {
+            String id = new java.util.UUID(0, i + 10).toString();
+            nodes.add(node(id, i == 0 ? STANDARD + "GenerateFlowFile" : UPDATE, i == 31 ? CAPTURE : "", map()));
+            if (i > 0) links.add(edge(new java.util.UUID(0, i + 9).toString(), id));
+        }
+        JsonNode graph = mapper.valueToTree(map("processors", nodes, "connections", links));
+        assertEquals(32, new DataGovernanceSafeFlow(graph).order.size());
+        nodes.add(node(new java.util.UUID(0, 99).toString(), UPDATE, "", map()));
+        assertThrows(DataGovernanceSafeFlow.UnsupportedFlow.class, () -> new DataGovernanceSafeFlow(mapper.valueToTree(map("processors", nodes, "connections", links))));
+        assertDoesNotThrow(() -> new DataGovernanceSafeFlow(graph(RECORD_TRANSFORM, map("Operations", "[{\"op\":\"constant\",\"output\":\"value\",\"value\":\"${literal} #{literal}\"}]"))));
+        assertThrows(DataGovernanceSafeFlow.UnsupportedFlow.class, () -> new DataGovernanceSafeFlow(graph(RECORD_TRANSFORM, map("Operations", "[{\"op\":\"eval\",\"code\":\"runtime-command\"}]"))));
+        assertThrows(DataGovernanceSafeFlow.UnsupportedFlow.class, () -> new DataGovernanceSafeFlow(graph(RECORD_TRANSFORM, map("Operations", "[]"))));
+    }
+    @Test void newNodesPreferTheCurrentBundleWhileFrozenRunsKeepTheirExactBundle()
+    {
+        var oldBundle = mapper.valueToTree(map("group", "com.hm.governance", "artifact", "governance-nifi-nar", "version", "1.2.0"));
+        var current = mapper.valueToTree(map("group", "com.hm.governance", "artifact", "governance-nifi-nar", "version", CURRENT_COMPATIBILITY_BUNDLE));
+        JsonNode types = mapper.valueToTree(List.of(map("type", RECORD_TRANSFORM, "bundle", oldBundle), map("type", RECORD_TRANSFORM, "bundle", current)));
+        assertEquals(current, selectBundle(RECORD_TRANSFORM, types, null));
+        assertEquals(oldBundle, selectBundle(RECORD_TRANSFORM, types, oldBundle));
+        assertNull(selectBundle(RECORD_TRANSFORM, types, mapper.valueToTree(map("group", "missing"))));
+    }
+
 }

@@ -1,0 +1,10 @@
+import request from '@/utils/request'
+const id = value => encodeURIComponent(String(value))
+export const listFtpConnections = () => request({ url: '/governance/ftp-connections', method: 'get' })
+export const saveFtpConnection = (key, data) => request({ url: `/governance/ftp-connections${key ? `/${id(key)}` : ''}`, method: key ? 'put' : 'post', data })
+export const testFtpConnection = key => request({ url: `/governance/ftp-connections/${id(key)}/test`, method: 'post', timeout: 20000 })
+export const getArtifacts = runId => request({ url: `/governance/test-runs/${id(runId)}/artifacts`, method: 'get' })
+export const downloadArtifact = (runId, artifactId) => request({ url: `/governance/test-runs/${id(runId)}/artifacts/${id(artifactId)}/content`, method: 'get', responseType: 'blob', timeout: 60000 })
+export const listDeliveries = runId => request({ url: '/governance/deliveries', method: 'get', params: { runId } })
+export const submitDelivery = data => request({ url: '/governance/deliveries', method: 'post', data, timeout: 30000 })
+export const retryDelivery = (key, revision) => request({ url: `/governance/deliveries/${id(key)}/retry`, method: 'post', data: { revision, refreshCredentials: true }, timeout: 30000 })

@@ -26,6 +26,8 @@ public class DataGovernanceEngine
     static final String DELIMITED = "delimited-safe-v1";
     static final String WRITER = "com.hm.governance.nifi.DelimitedTextWriter";
     static final String LOOKUP = "com.hm.governance.nifi.JsonLookupSnapshot";
+    static final String RECORD_TRANSFORM = "com.hm.governance.nifi.JsonRecordTransform";
+    static final String CURRENT_COMPATIBILITY_BUNDLE = "1.2.3";
     static final String LOOKUP_TEMPLATE = "lookup-safe-v1";
     // NiFi processor cards are about 350 px wide; leave room for connection labels.
     private static final double TEMPLATE_COLUMN = 520;
@@ -197,23 +199,33 @@ public class DataGovernanceEngine
     JsonNode createProcessor(String group, String name, String type, String comments, Map<String, Object> props,
                              List<String> terminated, double x, JsonNode requestedBundle)
     {
-        JsonNode bundle = null;
-        for (JsonNode processor : client.json("GET", "/flow/processor-types", null).path("processorTypes"))
-            if (processor.path("type").asText().equals(type) && (requestedBundle == null || requestedBundle.equals(processor.path("bundle"))))
-            { bundle = processor.path("bundle"); break; }
+        JsonNode bundle = selectBundle(type, client.json("GET", "/flow/processor-types", null).path("processorTypes"), requestedBundle);
         if (bundle == null) throw new ServiceException("NiFi 未安装快照所需组件版本 " + type.substring(type.lastIndexOf('.') + 1));
         return client.json("POST", "/process-groups/" + id(group) + "/processors", map("revision", map("version", 0),
             "component", map("name", name, "type", type, "bundle", bundle, "comments", comments,
                 "position", map("x", x, "y", 100), "config", map("comments", comments, "properties", props, "schedulingStrategy", "TIMER_DRIVEN",
                     "schedulingPeriod", "0 sec", "concurrentlySchedulableTaskCount", 1, "autoTerminatedRelationships", terminated))));
     }
+    static JsonNode selectBundle(String type, JsonNode processors, JsonNode requested)
+    {
+        JsonNode fallback = null;
+        for (JsonNode processor : processors)
+        {
+            if (!type.equals(processor.path("type").asText())) continue;
+            JsonNode candidate = processor.path("bundle");
+            if (requested != null) { if (requested.equals(candidate)) return candidate; continue; }
+            if (fallback == null) fallback = candidate;
+            if (type.startsWith("com.hm.governance.") && candidate.path("group").asText().equals("com.hm.governance")
+                && candidate.path("artifact").asText().equals("governance-nifi-nar") && candidate.path("version").asText().equals(CURRENT_COMPATIBILITY_BUNDLE)) return candidate;
+        }
+        return requested == null && !type.startsWith("com.hm.governance.") ? fallback : null;
+    }
     public boolean supports(String type)
     {
         if (!client.configured()) return false;
         try
         {
-            for (JsonNode processor : client.json("GET", "/flow/processor-types", null).path("processorTypes"))
-                if (type.equals(processor.path("type").asText())) return true;
+            return selectBundle(type, client.json("GET", "/flow/processor-types", null).path("processorTypes"), null) != null;
         }
         catch (ServiceException ignored) { }
         return false;

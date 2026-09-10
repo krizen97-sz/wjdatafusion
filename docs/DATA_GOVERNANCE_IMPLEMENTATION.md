@@ -4,6 +4,8 @@
 
 v4.5.1已将日常设计入口升级为平台内画布，见[平台内ETL设计器](DATA_GOVERNANCE_DESIGNER.md)。本文保留v4.5.0底座、执行边界和运行方式；原生NiFi入口仅用于高级管理。
 
+当前开发版为v4.7.0：执行上限已扩为32个节点/96条连接，新增[结构化字段与原插件兼容规则](DATA_GOVERNANCE_RECORD_RULES.md)、[完整产物及FTP交付](DATA_GOVERNANCE_DELIVERY.md)、[Kafka有界批次](DATA_GOVERNANCE_KAFKA_BATCH.md)和[可选交付调度](DATA_GOVERNANCE_SCHEDULER.md)。下面的v4.5.0验证数字和业务待办保留为历史记录，当前验收以这些专题文档及v4.7.0验收记录为准。
+
 ## 已实现
 
 - RYNEW 项目/流程目录、组件可用性、原生 NiFi 设计入口及隔离样本测试台。
@@ -65,10 +67,10 @@ python3 tools/data-governance/smoke_permissions.py --runtime "$DG_RUNTIME" --app
 
 ```sh
 # 在子进程中选择已校验的独立Java21，不更改系统默认Java。
-env JAVA_HOME="$DG_JAVA21" mvn -f data-governance/compatibility/pom.xml package
+python3 tools/data-governance/build_compatibility.py --java-home "$DG_JAVA21"
 ```
 
-NAR制品为 `data-governance/compatibility/nifi-nar/target/governance-nifi-nar-1.0.0.nar`。安装仅针对本任务的独立NiFi，记录制品摘要及配置备份；新包需验证真实注册和实际执行，不能只看构建通过。
+当前NAR制品为 `data-governance/compatibility/nifi-nar/target/governance-nifi-nar-1.2.3.nar`。构建工具执行clean verify并检查唯一组件版本，防止旧暂存JAR混入新包。安装使用`install_compatibility.py`，仅针对本任务的独立NiFi，记录制品摘要及配置备份，保留冻结版本需要的旧包；新包需验证真实注册和实际执行，不能只看构建通过。
 
 封闭批次中的 `KETTLE_HEADER_INCLUSIVE` 使用原写入计数（含表头），纯行数滚动下75条数据分成74＋1；`DATA_RECORDS` 则明确按数据记录计数。最大文件年龄是下一条记录到达时严格超过阈值才滚动，非定时flush。到达时间必须是非负long整数；非法UTF-8和越界时间戳会拒绝，不静默修正。
 

@@ -20,6 +20,7 @@ public interface DataGovernanceRunRepository
         run.id = source.id; run.status = source.status; run.flowId = source.flowId; run.projectId = source.projectId;
         run.createdAt = source.createdAt; run.updatedAt = source.updatedAt; run.error = source.error;
         run.cleanupConfirmed = source.cleanupConfirmed; run.engineTestGroupId = source.engineTestGroupId;
+        run.artifactsManifestAvailable = source.artifactsManifestAvailable; run.artifactCount = source.artifactCount;
         run.definitionHash = source.definitionHash; run.definitionCapturedAt = source.definitionCapturedAt;
         return result;
     }

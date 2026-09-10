@@ -25,16 +25,21 @@ public class DataGovernanceKafkaService
     private final DataGovernanceRunRepository runs;
     private final Supplier<DataGovernanceKafkaTransport> transport;
     private final Supplier<DataGovernanceScheduleDelivery> deliveries;
+    private final Supplier<DataGovernanceArtifactStore> artifacts;
     private final ObjectMapper mapper = new ObjectMapper();
     private boolean initialized;
     @Autowired
     public DataGovernanceKafkaService(DataGovernanceKafkaProperties properties, DataGovernanceKafkaStore store,
         DataGovernanceRunRepository runs, ObjectProvider<DataGovernanceKafkaTransport> transport,
-        ObjectProvider<DataGovernanceScheduleDelivery> deliveries)
-    { this(properties, store, runs, transport::getIfAvailable, deliveries::getIfAvailable); }
+        ObjectProvider<DataGovernanceScheduleDelivery> deliveries, ObjectProvider<DataGovernanceArtifactStore> artifacts)
+    { this(properties, store, runs, transport::getIfAvailable, deliveries::getIfAvailable, artifacts::getIfAvailable); }
     DataGovernanceKafkaService(DataGovernanceKafkaProperties properties, DataGovernanceKafkaStore store,
         DataGovernanceRunRepository runs, Supplier<DataGovernanceKafkaTransport> transport, Supplier<DataGovernanceScheduleDelivery> deliveries)
-    { this.properties = properties; this.store = store; this.runs = runs; this.transport = transport; this.deliveries = deliveries; }
+    { this(properties, store, runs, transport, deliveries, () -> null); }
+    DataGovernanceKafkaService(DataGovernanceKafkaProperties properties, DataGovernanceKafkaStore store,
+        DataGovernanceRunRepository runs, Supplier<DataGovernanceKafkaTransport> transport, Supplier<DataGovernanceScheduleDelivery> deliveries,
+        Supplier<DataGovernanceArtifactStore> artifacts)
+    { this.properties = properties; this.store = store; this.runs = runs; this.transport = transport; this.deliveries = deliveries; this.artifacts = artifacts; }
 
     private void initialize()
     {
@@ -146,6 +151,19 @@ public class DataGovernanceKafkaService
         result.sort(Comparator.comparing(ReceiptSummary::createdAt).reversed()); return result.stream().limit(200).toList();
     }
     /** Server-only association. No HTTP route accepts a client-supplied successful run or target. */
+    synchronized void reserveExecution(String id, String runId, String inputSha, DataGovernanceScheduleDelivery.Binding delivery, long owner)
+    {
+        initialize(); DataGovernanceEngine.id(runId); Receipt receipt = ownedReceipt(id, owner);
+        if (!receipt.leaseHeld || !Objects.equals(inputSha, receipt.inputSha256) || !Objects.equals(inputSha, hash(receipt.inputJson))) throw new ServiceException("源批次内容或租约已变化");
+        if (receipt.executionIntentAt != null) {
+            if (Objects.equals(runId, receipt.reservedRunId) && sameTarget(delivery, receipt.deliveryBinding)) return;
+            throw new ServiceException("源批次已保留另一执行意图");
+        }
+        if (receipt.runId != null || !Set.of("RECEIVED", "EMPTY").contains(receipt.status)) throw new ServiceException("该批次不能保留执行意图");
+        if (delivery != null && (deliveries.get() == null || !sameTarget(delivery, deliveries.get().target(delivery.id(), owner)))) throw new ServiceException("交付目标已改变");
+        receipt.reservedRunId = runId; receipt.executionIntentAt = Instant.now().toString(); receipt.deliveryBinding = delivery;
+        receipt.status = "EXECUTION_PLANNED"; save(receipt);
+    }
     synchronized ReceiptSummary attachRun(String id, String runId, DataGovernanceScheduleDelivery.Binding delivery, long owner)
     {
         initialize(); Receipt receipt = ownedReceipt(id, owner); StoredRun run = ownedRun(runId, owner); checkInput(receipt, run);
@@ -153,7 +171,8 @@ public class DataGovernanceKafkaService
             if (receipt.runId.equals(runId) && sameTarget(receipt.deliveryBinding, delivery)) return summary(receipt);
             throw new ServiceException("Kafka 批次已绑定执行，不能替换运行或交付目标");
         }
-        if (!receipt.leaseHeld || !Set.of("RECEIVED", "EMPTY").contains(receipt.status)) throw new ServiceException("该 Kafka 批次不能绑定执行");
+        if (!receipt.leaseHeld || !Set.of("RECEIVED", "EMPTY", "EXECUTION_PLANNED").contains(receipt.status)) throw new ServiceException("该 Kafka 批次不能绑定执行");
+        if (receipt.executionIntentAt != null && (!Objects.equals(runId, receipt.reservedRunId) || !sameTarget(delivery, receipt.deliveryBinding))) throw new ServiceException("真实运行与保留的执行意图不一致");
         if (delivery != null) {
             DataGovernanceScheduleDelivery bridge = deliveries.get(); if (bridge == null) throw new ServiceException("FTP 交付桥未配置");
             if (!sameTarget(delivery, bridge.target(delivery.id(), owner))) throw new ServiceException("FTP 目标已变化");
@@ -203,6 +222,7 @@ public class DataGovernanceKafkaService
             receipt.deliveryStatus = "SKIPPED_EMPTY";
             return;
         }
+        verifyArtifacts(stored, owner);
         if (receipt.deliveryBinding != null) {
             DataGovernanceScheduleDelivery bridge = deliveries.get(); if (bridge == null) throw new ServiceException("FTP 交付桥未配置");
             var delivery = bridge.find(run.id, receipt.deliveryBinding.id(), owner);
@@ -211,10 +231,35 @@ public class DataGovernanceKafkaService
             receipt.deliveryStatus = "DELIVERED";
         }
     }
+    private void verifyArtifacts(StoredRun stored, long owner)
+    {
+        var run = stored.run; DataGovernanceArtifactStore files = artifacts.get();
+        if (files == null || !run.artifactsManifestAvailable || run.artifactCount < 1) throw new ServiceException("成功执行缺少完整本地产物，不能确认 Kafka 位点");
+        var manifest = files.manifest(run.id, owner);
+        if (!run.id.equals(manifest.runId()) || owner != manifest.submitterId() || run.definitionHash == null
+            || !run.definitionHash.equals(manifest.definitionHash()) || manifest.artifacts().size() != run.artifactCount)
+            throw new ServiceException("完整产物清单与执行归属、定义或数量不一致");
+        if (run.artifactCount > DataGovernanceArtifactStore.MAX_ARTIFACTS) throw new ServiceException("完整产物数量超出限制");
+        long total = 0; byte[] buffer = new byte[8192];
+        for (var artifact : manifest.artifacts()) {
+            if (artifact.byteSize() < 0 || artifact.byteSize() > DataGovernanceArtifactStore.MAX_ARTIFACT_BYTES
+                || artifact.byteSize() > DataGovernanceArtifactStore.MAX_TOTAL_BYTES - total) throw new ServiceException("完整产物大小超出限制");
+            try (var input = files.read(run.id, artifact.id(), owner)) {
+                long size = 0; MessageDigest digest = MessageDigest.getInstance("SHA-256"); int count;
+                while ((count = input.read(buffer)) != -1) {
+                    if (count <= 0 || count > artifact.byteSize() - size) throw new ServiceException("完整产物长度校验失败");
+                    digest.update(buffer, 0, count); size += count;
+                }
+                if (size != artifact.byteSize() || !HexFormat.of().formatHex(digest.digest()).equals(artifact.sha256())) throw new ServiceException("完整产物摘要校验失败");
+                total += size;
+            } catch (ServiceException error) { throw error; }
+            catch (Exception error) { throw new ServiceException("完整产物读取校验失败，不能确认 Kafka 位点"); }
+        }
+    }
     public synchronized ReceiptSummary release(String id, long owner)
     {
         initialize(); Receipt receipt = ownedReceipt(id, owner);
-        if (receipt.runId != null || receipt.commitIntentAt != null || !Set.of("RECEIVED", "EMPTY", "FAILED").contains(receipt.status)) throw new ServiceException("已关联执行或尝试确认的批次不能直接释放");
+        if (receipt.runId != null || receipt.executionIntentAt != null || receipt.commitIntentAt != null || !Set.of("RECEIVED", "EMPTY", "FAILED").contains(receipt.status)) throw new ServiceException("已保留执行、关联运行或尝试确认的批次不能直接释放");
         receipt.leaseHeld = false; receipt.status = "RELEASED"; receipt.error = "已显式释放本地租约；未修改 Kafka 位点"; save(receipt); return summary(receipt);
     }
     private StoredRun ownedRun(String id, long owner)

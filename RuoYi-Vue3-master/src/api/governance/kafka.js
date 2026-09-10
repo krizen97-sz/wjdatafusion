@@ -1,0 +1,13 @@
+import request from '@/utils/request'
+const id = value => encodeURIComponent(String(value))
+export const kafkaStatus = () => request({ url: '/governance/kafka-status', method: 'get' })
+export const kafkaProfiles = () => request({ url: '/governance/kafka-profiles', method: 'get' })
+export const saveKafkaProfile = (key, data) => request({ url: `/governance/kafka-profiles${key ? `/${id(key)}` : ''}`, method: key ? 'put' : 'post', data })
+export const receiveKafkaBatch = key => request({ url: `/governance/kafka-profiles/${id(key)}/receive`, method: 'post', timeout: 30000, headers: { repeatSubmit: false } })
+export const kafkaReceipts = () => request({ url: '/governance/kafka-receipts', method: 'get' })
+export const kafkaReceipt = key => request({ url: `/governance/kafka-receipts/${id(key)}`, method: 'get' })
+export const kafkaExecution = key => request({ url: `/governance/kafka-receipts/${id(key)}/execution`, method: 'get' })
+export const executeKafkaBatch = (key, data) => request({ url: `/governance/kafka-receipts/${id(key)}/execute`, method: 'post', data, timeout: 30000 })
+export const recoverKafkaExecution = key => request({ url: `/governance/kafka-receipts/${id(key)}/execution/recover`, method: 'post', timeout: 30000 })
+export const commitKafkaBatch = key => request({ url: `/governance/kafka-receipts/${id(key)}/commit`, method: 'post', timeout: 30000 })
+export const releaseKafkaBatch = key => request({ url: `/governance/kafka-receipts/${id(key)}/release`, method: 'post' })

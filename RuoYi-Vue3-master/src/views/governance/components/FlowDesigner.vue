@@ -39,7 +39,7 @@
           <el-empty v-if="!groups.length" description="没有匹配的组件" :image-size="44" />
           <section class="etl-palette__future">
             <h3>业务连接器</h3>
-            <p>Kafka实时采集、FTP交付与海康业务链</p>
+            <p>持续流式采集与其他海康专属插件</p>
             <el-tag size="small" type="info" effect="plain">适配中</el-tag>
           </section>
         </el-scrollbar>
@@ -47,10 +47,11 @@
       <main class="etl-designer__main">
         <div class="etl-designer__canvas" v-loading="loading">
           <flow-diagram ref="diagram" :key="flow.id" :nodes="graph.nodes" :connections="graph.connections" :selected-node-id="selectedNodeId" :selected-edge-id="selectedEdgeId"
-            :editable="canWrite" :run="run" :result-stale="resultStale" @select-node="selectNode" @select-edge="selectEdge" @move-node="moveNode" @add-node="addNode" @connect="connectNodes" />
+            :editable="canWrite" :run="run" :result-stale="resultStale" :show-auxiliary="showAuxiliary" @select-node="selectNode" @select-edge="selectEdge" @move-node="moveNode" @add-node="addNode" @connect="connectNodes" />
         </div>
         <footer class="etl-designer__status">
           <div><el-text size="small" type="info">{{ graph.nodes.length }} 个节点 · {{ graph.connections.length }} 条连接</el-text><el-text v-if="run" size="small" :type="resultStale ? 'info' : runState(run.status).type">{{ resultStale ? '历史测试结果，编辑后请重新测试' : runState(run.status).label }}</el-text></div>
+          <el-switch v-if="auxiliaryCount" v-model="showAuxiliary" :active-text="`显示异常与空批次（${auxiliaryCount}）`" aria-label="显示全部异常与空批次连接" title="关闭时展示主流程；选中节点可查看它的全部下游连接" size="small" />
           <el-button link :icon="testOpen ? 'ArrowDown' : 'ArrowUp'" @click="testOpen = !testOpen">{{ testOpen ? '收起测试台' : '样本与运行结果' }}</el-button>
         </footer>
         <div v-show="testOpen" class="etl-designer__tests">
@@ -93,7 +94,7 @@
 import { computed, getCurrentInstance, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { createGovernanceDesignConnection, createGovernanceDesignNode, deleteGovernanceDesignConnection, deleteGovernanceDesignNode, getGovernanceDesign, listGovernanceDesignNodeTypes, updateGovernanceDesignNode } from '@/api/governance'
 import { NODE_KINDS } from '../nodeCatalog'
-import { arrangeNodes, connectionIssue, designSignature, relationshipLabel } from '../graphRules'
+import { arrangeNodes, connectionIssue, designSignature, relationshipLabel, isAuxiliaryConnection } from '../graphRules'
 import { errorMessage, runState, safeDesignerPath } from '../workspaceRules'
 import FlowDiagram from './FlowDiagram.vue'
 import NodeConfigPanel from './NodeConfigPanel.vue'
@@ -106,6 +107,8 @@ const { proxy } = getCurrentInstance()
 const graph = ref({ nodes: [], connections: [], editable: false, issues: [] })
 const loadedFlowId = ref(''), nodeTypes = ref([]), error = ref(''), loading = ref(false), busy = ref(false), saveMessage = ref('')
 const search = ref(''), selectedNodeId = ref(''), selectedEdgeId = ref(''), configDirty = ref(false), configPanel = ref(), diagram = ref(), testPanel = ref()
+const showAuxiliary = ref(false)
+const auxiliaryCount = computed(() => graph.value.connections.filter(isAuxiliaryConnection).length)
 const testOpen = ref(false), run = ref(null), trustedRun = ref(''), testedSignature = ref('')
 const testSubmitting = ref(false), pendingTestSignature = ref('')
 const snapshotOpen = ref(false), snapshotTarget = ref('')
@@ -178,7 +181,7 @@ function dragKind(event, kind) {
 async function addNode({ key, position }) {
   const kind = NODE_KINDS.find(item => item.key === key)
   if (!canWrite.value || !kind || !available(kind)) return
-  if (graph.value.nodes.length >= 12) { proxy.$modal.msgWarning('当前隔离测试最多支持 12 个节点。'); return }
+  if (graph.value.nodes.length >= 32) { proxy.$modal.msgWarning('当前隔离测试最多支持 32 个节点。'); return }
   const duplicates = graph.value.nodes.filter(n => n.name?.startsWith(kind.label)).length
   const value = await mutate(id => createGovernanceDesignNode(id, { type: kind.type, role: kind.role, name: `${kind.label}${duplicates ? ` ${duplicates + 1}` : ''}`, position: position || diagram.value.centerPosition(), properties: { ...kind.defaults } }), '节点已保存')
   if (value?.id) { selectedEdgeId.value = ''; selectedNodeId.value = value.id }
@@ -286,7 +289,7 @@ defineExpose({ confirmLeave, hasUnsaved: () => configDirty.value || busy.value |
 .etl-designer__main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .etl-designer__canvas { display: flex; flex: 1; min-height: 260px; }
 .etl-designer__canvas > .flow-diagram { flex: 1; }
-.etl-designer__status { display: flex; justify-content: space-between; align-items: center; gap: var(--el-font-size-base); padding: 0 var(--el-font-size-base); min-height: var(--el-component-size-large); border-top: 1px solid var(--surface-border); }
+.etl-designer__status { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: var(--el-font-size-base); padding: 0 var(--el-font-size-base); min-height: var(--el-component-size-large); border-top: 1px solid var(--surface-border); }
 .etl-designer__status > div { display: flex; align-items: center; gap: var(--el-font-size-base); flex-wrap: wrap; }
 .etl-designer__tests { height: 290px; min-height: 210px; overflow: auto; border-top: 1px solid var(--surface-border); padding: var(--el-font-size-base); }
 .etl-inspector { min-height: 0; min-width: 0; overflow: auto; border-left: 1px solid var(--surface-border); }

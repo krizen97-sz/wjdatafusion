@@ -40,6 +40,8 @@ class DataGovernanceModernDesignerLiveEngineTest
             {
                 DesignNode node = designer.createNode(flow.id(), new CreateDesignNode(type.type(), type.name(), type.role(), new DesignPosition(column++ * 300, 150), null));
                 assertTrue(node.editable(), type.id() + ": " + node.issues()); assertEquals(type.role(), node.role());
+                if (type.type().startsWith("com.hm.governance.")) assertEquals(CURRENT_COMPATIBILITY_BUNDLE,
+                    client.json("GET", "/processors/" + node.id(), null).path("component").path("bundle").path("version").asText());
                 created.put(type.id(), node);
             }
             assertEquals(designer.nodeTypes().size(), designer.design(flow.id()).nodes().size());

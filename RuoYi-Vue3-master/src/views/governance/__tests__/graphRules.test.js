@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { arrangeNodes, canvasPosition, connectionIssue, designSignature, edgeGeometry, enginePosition, graphBounds } from '../graphRules.js'
+import { arrangeNodes, canvasPosition, connectionIssue, designSignature, edgeGeometry, enginePosition, graphBounds, visibleConnections } from '../graphRules.js'
 
 const nodes = [
   { id: 'input', type: 'org.apache.nifi.processors.standard.GenerateFlowFile', position: { x: 0, y: 100 } },
@@ -57,4 +57,30 @@ test('downward branch labels stay clear of an upper-node caption at a narrow vie
   const zoom = 0.57
   const upperCaptionLeft = canvasPosition(nodes[2]).x + 72 - 116 / (2 * zoom)
   assert.ok(geometry.label.x + 48 / (2 * zoom) < upperCaptionLeft)
+})
+test('long graphs fold without overlapping nodes or changing execution topology', () => {
+  const chain = Array.from({ length: 14 }, (_, i) => ({ id: String(i), properties: { sample: String(i) } }))
+  const edges = chain.slice(1).map((node, i) => ({ sourceId: String(i), targetId: node.id, relationships: ['success'] }))
+  const signature = designSignature({ nodes: chain, connections: edges })
+  const arranged = arrangeNodes(chain, edges)
+  assert.equal(new Set(arranged.map(node => JSON.stringify(node.position))).size, chain.length)
+  assert.ok(graphBounds(arranged).width < 1000)
+  assert.ok(graphBounds(arranged).height > 500)
+  assert.equal(designSignature({ nodes: arranged, connections: edges }), signature)
+  const wrap = edgeGeometry(edges[3], arranged)
+  assert.ok(wrap.bounds.minY >= canvasPosition(arranged[3]).y)
+  assert.ok(wrap.label.y > canvasPosition(arranged[3]).y + 120)
+})
+test('main-flow display preserves all real edges and only collapses pure empty or failure routes', () => {
+  const edges = [
+    { sourceId: 'a', relationships: ['success'] },
+    { sourceId: 'a', relationships: ['failure'] },
+    { sourceId: 'b', relationships: ['empty'] },
+    { sourceId: 'b', relationships: ['failure', 'accepted'] },
+    { sourceId: 'c', relationships: [] }
+  ]
+  assert.deepEqual(visibleConnections(edges, false, ''), [edges[0], edges[3], edges[4]])
+  assert.deepEqual(visibleConnections(edges, false, 'a'), [edges[0], edges[1], edges[3], edges[4]])
+  assert.deepEqual(visibleConnections(edges, true, ''), edges)
+  assert.equal(edges.length, 5)
 })

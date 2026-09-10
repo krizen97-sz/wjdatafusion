@@ -40,6 +40,8 @@ public final class DataGovernanceKafkaModels
         public Map<String, String> startOffsets = new LinkedHashMap<>();
         public Map<String, String> nextOffsets = new LinkedHashMap<>();
         public String runId;
+        public String reservedRunId;
+        public String executionIntentAt;
         public DataGovernanceScheduleDelivery.Binding deliveryBinding;
         public String commitIntentAt;
         public String deliveryStatus;

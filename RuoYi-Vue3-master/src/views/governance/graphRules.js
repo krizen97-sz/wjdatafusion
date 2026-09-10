@@ -30,12 +30,21 @@ export function portPosition(node, direction) {
 export function relationshipLabel(value) {
   return ({ success: '成功', matched: '匹配', unmatched: '未匹配', failure: '异常', accepted: '满足条件', empty: '空批次' })[value] || value || '未指定关系'
 }
+export const isAuxiliaryConnection = edge => !!edge.relationships?.length && edge.relationships.every(value => value === 'failure' || value === 'empty')
+export function visibleConnections(connections, showAuxiliary, selectedNodeId) {
+  return connections.filter(edge => showAuxiliary || !isAuxiliaryConnection(edge) || edge.sourceId === selectedNodeId)
+}
 export function edgeGeometry(edge, nodes, index = 0) {
   const source = nodes.find(n => n.id === edge.sourceId), target = nodes.find(n => n.id === edge.targetId)
   if (!source || !target) return null
   const a = portPosition(source, 'out'), b = portPosition(target, 'in')
   const distance = Math.max(44, Math.abs(b.x - a.x) * 0.5)
   const parallel = index ? (index % 2 ? 1 : -1) * Math.ceil(index / 2) * 32 : 0
+  if (b.x <= a.x && b.y > a.y + NODE_HEIGHT) {
+    const lane = b.y - 52 - index * 18
+    const points = [a, { x: a.x + 32, y: a.y }, { x: a.x + 32, y: lane }, { x: b.x - 32, y: lane }, { x: b.x - 32, y: b.y }, b]
+    return { path: roundedPath(points), label: { x: (a.x + b.x) / 2, y: lane - 10 }, bounds: { minY: a.y, maxY: b.y } }
+  }
   const middleNodes = nodes.filter(n => n.id !== source.id && n.id !== target.id).map(canvasPosition)
     .filter(p => p.x + NODE_WIDTH / 2 > a.x && p.x + NODE_WIDTH / 2 < b.x)
   if (b.x <= a.x || middleNodes.length) {
@@ -77,7 +86,7 @@ export function connectionIssue(nodes, connections, sourceId, targetId, relation
   if (sourceId === targetId) return '不能连接到节点自身。'
   if (source.role === 'CAPTURE') return '结果输出是流程终点，不能再添加下游节点。'
   if (target.type?.endsWith('.GenerateFlowFile')) return '样本输入是流程起点，不能接收上游连接。'
-  if (connections.length >= 24) return '当前隔离测试最多支持 24 条连接。'
+  if (connections.length >= 96) return '当前隔离测试最多支持 96 条连接。'
   if (relationship && connections.some(e => e.sourceId === sourceId && e.targetId === targetId && e.relationships?.includes(relationship))) return '这条分支连接已经存在。'
   const pending = [targetId], seen = new Set()
   while (pending.length) {
@@ -110,10 +119,20 @@ export function arrangeNodes(nodes, connections) {
     })
   }
   if (visited !== nodes.length) throw new Error('流程包含环路，无法自动整理。')
+  const columnCount = Math.max(0, ...depth.values()) + 1
+  const foldWidth = columnCount > 6 ? 4 : columnCount
+  const counts = new Map()
+  depth.forEach(column => counts.set(column, (counts.get(column) || 0) + 1))
+  const bandHeights = []
+  for (let start = 0; start < columnCount; start += foldWidth) {
+    bandHeights.push(Math.max(1, ...Array.from({ length: foldWidth }, (_, i) => counts.get(start + i) || 0)) * 164 + 64)
+  }
   const rows = new Map()
   return nodes.map(n => {
     const column = depth.get(n.id), row = rows.get(column) || 0
     rows.set(column, row + 1)
-    return { ...n, position: enginePosition({ x: column * 232, y: row * 164 + 60 }) }
+    const band = Math.floor(column / foldWidth)
+    const y = bandHeights.slice(0, band).reduce((sum, height) => sum + height, 0) + row * 164 + 60
+    return { ...n, position: enginePosition({ x: (column % foldWidth) * 232, y }) }
   })
 }

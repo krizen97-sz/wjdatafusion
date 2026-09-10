@@ -371,7 +371,7 @@ class FixtureBuilder:
                           'All seven business lookups remain independent; synthetic dictionaries have unique keys and use explicit FAIL for ambiguous matches.',
                           'Raw XML return defaults are retained literally; complete original database/cache/duplicate-selection behavior is not certified.',
                           'Original source JsonInput behavior uses KETTLE_STRING, missing=NULL, and no input trimming, based on direct original-class oracle.',
-                          'The valid full date and invalid-text range is tested; Rhino calendar overflow, missing seconds and date-only forms remain different.',
+                          ('RHINO_DATE uses the verified native parser and the explicit engine timezone; extra date boundaries are covered by the separate native oracle.' if any(rule.get('parser') == 'RHINO_DATE' for rule in self.date) else 'The valid full date and invalid-text range is tested; strict parsing differs for overflow and incomplete dates.'),
                           'Header-inclusive row limits are configured; eight records do not exercise the 200-line boundary.',
                           'Filename prefix and arrival timestamps are synthetic. Original per-file clock naming and live stream arrival/lifecycle equivalence are not claimed; original max-wait value is retained with explicit fixture arrival timestamps.']}
 
@@ -753,7 +753,7 @@ def main():
     require(contract.get('format') == 'RYNEW_ETL_EXACT_STATIC_CONTRACT_V1', 'Unexpected original contract format')
     require(operations.get('sourceContract') == args.contract.name, 'Operations do not reference the supplied original contract')
     spec = {'format': FORMAT, 'sourceContractHash': digest(args.contract.read_bytes()), 'operationsHash': digest(args.operations.read_bytes()),
-            'requirements': {'safeGraphNodes': 32, 'safeGraphEdges': 96, 'inputRecords': 100, 'inputBytes': 262144, 'features': ['get.KETTLE_STRING', 'parse.KETTLE_JSON', 'parse.onEmpty.NULL', 'complete-run-artifacts']},
+            'requirements': {'compatibilityBundle': '1.2.3', 'safeGraphNodes': 32, 'safeGraphEdges': 96, 'inputRecords': 100, 'inputBytes': 262144, 'features': ['get.KETTLE_STRING', 'parse.KETTLE_JSON', 'parse.onEmpty.NULL', 'complete-run-artifacts']},
             'flows': [FixtureBuilder(business, contract['flows'][business], operations['operations']).build() for business in ['normal', 'violation']]}
     validate_spec(spec)
     target = private / ('business-fixtures-' + digest(spec)[:12])

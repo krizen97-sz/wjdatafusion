@@ -37,6 +37,7 @@ public class DataGovernanceDesigner
             new DesignNodeType("jolt", "JSON 转换", JOLT, "PROCESSOR", strings("Jolt Transform", "jolt-transform-chain", "Jolt Specification", "[{\"operation\":\"shift\",\"spec\":{\"*\":\"&\"}}]", "JSON Source", "FLOW_FILE"), List.of("success", "failure")),
             new DesignNodeType("delimited", "协议文本输出", WRITER, "PROCESSOR", strings("Field Order", "message,picture", "Delimiter Hex", "7C 1F", "Include Header", "true", "Split Limit", "75", "Count Basis", "KETTLE_HEADER_INCLUSIVE", "Maximum File Age Millis", "0", "Filename Prefix", "sample"), List.of("success", "empty", "failure")),
             new DesignNodeType("lookup", "快照查表", LOOKUP, "PROCESSOR", strings("Lookup Rows", "[]", "Match Fields", "[]", "Return Fields", "[]", "Missing Match", "KEEP", "Multiple Matches", "FAIL"), List.of("success", "empty", "failure")),
+            new DesignNodeType("record-transform", "字段处理", RECORD_TRANSFORM, "PROCESSOR", strings("Operations", "[{\"op\":\"trim\",\"input\":\"/message\",\"output\":\"message\",\"mode\":\"BOTH\"}]"), List.of("success", "empty", "failure")),
             new DesignNodeType("capture", "结果观察", UPDATE, "CAPTURE", Map.of(), List.of()));
     }
 
@@ -54,7 +55,7 @@ public class DataGovernanceDesigner
     public synchronized DesignNode createNode(String flowId, CreateDesignNode request)
     {
         Draft draft = writable(flowId);
-        if (draft.nodes.size() >= 12) reject("一个样本流程最多支持 12 个节点");
+        if (draft.nodes.size() >= DataGovernanceSafeFlow.MAX_NODES) reject("一个样本流程最多支持 32 个节点");
         if (request == null || !DataGovernanceSafeFlow.TYPES.contains(request.type())) reject("组件类型尚未开放平台编辑");
         String role = request.role() == null ? "PROCESSOR" : request.role();
         if (!Set.of("PROCESSOR", "CAPTURE").contains(role) || (role.equals("CAPTURE") && !UPDATE.equals(request.type()))) reject("节点角色无效");
@@ -67,9 +68,7 @@ public class DataGovernanceDesigner
         String comments = role.equals("CAPTURE") ? CAPTURE : "";
         JsonNode candidate = candidate(request.type(), comments, values);
         validate(candidate);
-        JsonNode bundle = null;
-        for (JsonNode type : client.json("GET", "/flow/processor-types", null).path("processorTypes"))
-            if (request.type().equals(type.path("type").asText())) { bundle = type.path("bundle"); break; }
+        JsonNode bundle = DataGovernanceEngine.selectBundle(request.type(), client.json("GET", "/flow/processor-types", null).path("processorTypes"), null);
         if (bundle == null) reject("独立引擎尚未安装该组件");
         JsonNode created = client.json("POST", "/process-groups/" + id(flowId) + "/processors", map("revision", map("version", 0),
             "component", map("name", name, "type", request.type(), "bundle", bundle, "position", position,
@@ -118,7 +117,7 @@ public class DataGovernanceDesigner
     public synchronized DesignConnection createConnection(String flowId, CreateDesignConnection request)
     {
         Draft draft = writable(flowId);
-        if (draft.edges.size() >= 24) reject("一个样本流程最多支持 24 条连接");
+        if (draft.edges.size() >= DataGovernanceSafeFlow.MAX_CONNECTIONS) reject("一个样本流程最多支持 96 条连接");
         if (request == null) reject("连接不能为空");
         JsonNode from = member(draft.nodes, request.sourceId(), "来源节点").path("component");
         JsonNode to = member(draft.nodes, request.targetId(), "目标节点").path("component");
@@ -221,7 +220,7 @@ public class DataGovernanceDesigner
             if (raw.isNull()) continue; // NiFi includes null optional descriptors; they hold no configuration.
             if (!raw.isTextual() || !allowedKey(type, key) || p.path("config").path("descriptors").path(key).path("sensitive").asBoolean()) reject("节点包含未经审核的属性");
             String value = raw.asText(); total += value.length();
-            if (value.length() > 65536 || total > 131072 || (!type.equals(LOOKUP) && value.contains("#{"))) reject("节点属性过长或引用了环境参数");
+            if (value.length() > 65536 || total > 131072 || (!Set.of(LOOKUP, RECORD_TRANSFORM).contains(type) && value.contains("#{"))) reject("节点属性过长或引用了环境参数");
             if (type.equals(STANDARD + "GenerateFlowFile"))
             {
                 if (value.contains("${")) reject("样本输入内容必须为纯文本，不允许环境表达式");
@@ -242,6 +241,7 @@ public class DataGovernanceDesigner
         if (type.equals(UPDATE)) return UPDATE_KEYS.contains(key) || key.matches("sample\\.[A-Za-z0-9_.-]{1,64}");
         if (type.equals(JOLT)) return JOLT_KEYS.contains(key);
         if (type.equals(LOOKUP)) return LOOKUP_KEYS.contains(key);
+        if (type.equals(RECORD_TRANSFORM)) return key.equals("Operations");
         return type.equals(WRITER) && WRITER_KEYS.contains(key);
     }
 

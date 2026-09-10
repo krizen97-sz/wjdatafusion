@@ -19,8 +19,10 @@ import static com.hm.manage.service.governance.DataGovernanceEngine.*;
 /** Fail closed: the current saved graph is inspected before any execution clone is created. */
 final class DataGovernanceSafeFlow
 {
+    static final int MAX_NODES = 32;
+    static final int MAX_CONNECTIONS = 96;
     static final Set<String> TYPES = Set.of(STANDARD + "GenerateFlowFile", STANDARD + "EvaluateJsonPath",
-        STANDARD + "RouteOnAttribute", JOLT, UPDATE, WRITER, LOOKUP);
+        STANDARD + "RouteOnAttribute", JOLT, UPDATE, WRITER, LOOKUP, RECORD_TRANSFORM);
     final Map<String, JsonNode> processors = new LinkedHashMap<>();
     final List<JsonNode> connections = new ArrayList<>();
     final List<String> order = new ArrayList<>();
@@ -50,8 +52,8 @@ final class DataGovernanceSafeFlow
             }
             validateProperties(p);
         }
-        if (processors.size() < 2 || processors.size() > 12 || source == null || capture == null)
-            unsupported("样本测试需要 2 至 12 个安全节点、一个样本输入和一个结果观察节点");
+        if (processors.size() < 2 || processors.size() > MAX_NODES || source == null || capture == null)
+            unsupported("样本测试需要 2 至 32 个安全节点、一个样本输入和一个结果观察节点");
         Map<String, Integer> degrees = new HashMap<>();
         Map<String, List<String>> targets = new HashMap<>();
         processors.keySet().forEach(p -> degrees.put(p, 0));
@@ -68,7 +70,7 @@ final class DataGovernanceSafeFlow
             connections.add(c); degrees.merge(to, 1, Integer::sum);
             targets.computeIfAbsent(from, key -> new ArrayList<>()).add(to);
         }
-        if (connections.size() > 24) unsupported("样本测试连接数超过上限");
+        if (connections.size() > MAX_CONNECTIONS) unsupported("样本测试最多支持96条连接");
         List<String> ready = new ArrayList<>();
         degrees.forEach((p, n) -> { if (n == 0) ready.add(p); });
         if (ready.size() != 1 || !ready.contains(source)) unsupported("画布包含未连接到样本输入的节点");
@@ -152,6 +154,21 @@ final class DataGovernanceSafeFlow
         properties.fields().forEachRemaining(entry -> {
             if (entry.getValue().isNull()) return;
             String key = entry.getKey(), value = entry.getValue().asText();
+            if (type.equals(RECORD_TRANSFORM))
+            {
+                if (!key.equals("Operations") || value.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 32768) unsupported("字段处理仅接受有界Operations规则");
+                try
+                {
+                    JsonNode array = new com.fasterxml.jackson.databind.ObjectMapper().enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
+                        .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(value);
+                    if (!array.isArray() || array.isEmpty() || array.size() > 64) unsupported("字段处理需要1至64条规则");
+                    Set<String> operations = Set.of("parse", "get", "constant", "copy", "trim", "replace", "substring", "set", "broadcast", "serialize", "dateGate", "filter", "remove");
+                    for (JsonNode rule : array) if (!rule.isObject() || !operations.contains(rule.path("op").asText())) unsupported("字段处理规则包含未支持操作");
+                }
+                catch (UnsupportedFlow e) { throw e; }
+                catch (Exception e) { unsupported("字段处理规则不是有效JSON"); }
+                return; // Literal rules only; this processor never invokes scripts or NiFi expression evaluation.
+            }
             if (type.equals(LOOKUP))
             {
                 if (!Set.of("Lookup Rows", "Match Fields", "Return Fields", "Missing Match", "Multiple Matches").contains(key)

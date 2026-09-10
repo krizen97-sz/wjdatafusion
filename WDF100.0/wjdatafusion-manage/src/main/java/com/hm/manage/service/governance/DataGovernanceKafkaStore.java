@@ -85,6 +85,7 @@ public class DataGovernanceKafkaStore
                 ByteBuffer data = ByteBuffer.wrap(bytes); while (data.hasRemaining()) output.write(data); output.force(true);
             }
             Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            try (FileChannel directory = FileChannel.open(root, StandardOpenOption.READ)) { directory.force(true); }
         }
         catch (ServiceException e) { throw e; }
         catch (Exception e) { throw new ServiceException("Kafka 记录原子保存失败"); }

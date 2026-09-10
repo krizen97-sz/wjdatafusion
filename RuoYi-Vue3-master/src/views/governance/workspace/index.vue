@@ -84,11 +84,19 @@
       </el-tab-pane>
       <el-tab-pane label="发布与定时任务" name="schedules" lazy>
         <template #label><span class="motion-control-label"><svg-icon icon-class="time" class="motion-control-label__icon" /><span class="motion-control-label__text">发布与定时任务</span></span></template>
-        <schedule-workbench v-if="activeTab === 'schedules'" :flows="flows" :selected-flow-id="selectedFlowId" :engine-ready="engineReady" @select-flow="selectedFlowId = String($event)" />
+        <schedule-workbench v-if="activeTab === 'schedules'" :flows="flows" :selected-flow-id="selectedFlowId" :engine-ready="engineReady" @select-flow="selectedFlowId = String($event)" @show-delivery="showDelivery" />
       </el-tab-pane>
       <el-tab-pane label="数据连接" name="connections" lazy>
         <template #label><span class="motion-control-label"><svg-icon icon-class="server" class="motion-control-label__icon" /><span class="motion-control-label__text">数据连接</span></span></template>
         <connection-workbench v-if="activeTab === 'connections'" :engine-ready="engineReady" />
+      </el-tab-pane>
+      <el-tab-pane label="文件交付" name="deliveries" lazy>
+        <template #label><span class="motion-control-label"><svg-icon icon-class="download" class="motion-control-label__icon" /><span class="motion-control-label__text">文件交付</span></span></template>
+        <delivery-workbench v-if="activeTab === 'deliveries'" :flow-id="selectedFlowId" :flows="flows" :initial-run-id="deliveryFocus.runId" :initial-delivery-id="deliveryFocus.deliveryId" @select-flow="deliveryFocus = {}; selectedFlowId = String($event)" />
+      </el-tab-pane>
+      <el-tab-pane label="Kafka批次" name="kafka" lazy>
+        <template #label><span class="motion-control-label"><svg-icon icon-class="server" class="motion-control-label__icon" /><span class="motion-control-label__text">Kafka批次</span></span></template>
+        <kafka-workbench v-if="activeTab === 'kafka'" :flow-id="selectedFlowId" :flows="flows" @select-flow="selectedFlowId = String($event)" />
       </el-tab-pane>
     </el-tabs>
 
@@ -128,14 +136,17 @@ import TestWorkbench from '../components/TestWorkbench.vue'
 import FlowDesigner from '../components/FlowDesigner.vue'
 import ScheduleWorkbench from '../components/ScheduleWorkbench.vue'
 import ConnectionWorkbench from '../components/ConnectionWorkbench.vue'
+import DeliveryWorkbench from '../components/DeliveryWorkbench.vue'
+import KafkaWorkbench from '../components/KafkaWorkbench.vue'
 
 const { proxy } = getCurrentInstance()
 const route = useRoute()
 const router = useRouter()
-const activeTab = ref(['flows', 'designer', 'tests', 'catalog', 'schedules', 'connections'].includes(route.query.tab) ? route.query.tab : 'flows')
+const activeTab = ref(['flows', 'designer', 'tests', 'catalog', 'schedules', 'connections', 'deliveries', 'kafka'].includes(route.query.tab) ? route.query.tab : 'flows')
 const designerRef = ref()
 const projectId = ref('')
 const selectedFlowId = ref('')
+const deliveryFocus = ref({})
 const projects = ref([])
 const flows = ref([])
 const templates = ref([])
@@ -243,6 +254,7 @@ async function loadFlows() {
 function searchFlows() { appliedName.value = query.name.trim(); query.pageNum = 1 }
 function resetFlowQuery() { query.name = ''; searchFlows() }
 function selectFlowForTest(flow) { selectedFlowId.value = String(flow.id); activeTab.value = 'tests' }
+function showDelivery(value) { deliveryFocus.value = { runId: value?.runId || '', deliveryId: value?.deliveryId || '' }; activeTab.value = 'deliveries' }
 function openProjectDialog() {
   projectForm.name = ''; projectForm.description = ''; projectSubmitError.value = ''
   projectDialogOpen.value = true
@@ -300,7 +312,7 @@ watch(projectId, () => {
 })
 watch([activeTab, selectedFlowId], syncRoute)
 watch(() => route.query, (value) => {
-  if (['flows', 'designer', 'tests', 'catalog', 'schedules', 'connections'].includes(value.tab)) activeTab.value = value.tab
+  if (['flows', 'designer', 'tests', 'catalog', 'schedules', 'connections', 'deliveries', 'kafka'].includes(value.tab)) activeTab.value = value.tab
   const id = String(value.projectId || '')
   if (id && projects.value.some((item) => String(item.id) === id)) projectId.value = id
   const flowId = String(value.flowId || '')

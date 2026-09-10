@@ -50,7 +50,7 @@ class DataGovernanceDesignerTest
             if (method.equals("GET") && path.equals("/flow/processor-types"))
                 return mapper.valueToTree(map("processorTypes", List.of(STANDARD + "GenerateFlowFile", STANDARD + "EvaluateJsonPath",
                     STANDARD + "RouteOnAttribute", UPDATE, WRITER).stream().map(type -> map("type", type,
-                    "bundle", map("group", "test", "artifact", "test-nar", "version", "2.11.0"))).toList()));
+                    "bundle", type.startsWith("com.hm.governance.") ? map("group", "com.hm.governance", "artifact", "governance-nifi-nar", "version", CURRENT_COMPATIBILITY_BUNDLE) : map("group", "test", "artifact", "test-nar", "version", "2.11.0"))).toList()));
             if (method.equals("POST") && (path.equals("/process-groups/" + flow + "/processors")
                 || path.equals("/process-groups/" + flow + "/connections")))
             {

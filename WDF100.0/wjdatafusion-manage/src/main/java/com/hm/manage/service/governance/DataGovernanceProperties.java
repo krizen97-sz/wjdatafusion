@@ -11,6 +11,7 @@ public class DataGovernanceProperties
     private String storageDir = System.getProperty("user.home") + "/.rynew/data-governance";
     private int testTimeoutSeconds = 60;
     private java.util.List<String> connectionAllowedEndpoints = java.util.List.of("127.0.0.1:15432", "::1:15432");
+    private java.util.List<String> ftpAllowedEndpoints = java.util.List.of("127.0.0.1:2121");
     private final Nifi nifi = new Nifi();
 
     public String getStorageDir() { return storageDir; }
@@ -20,6 +21,8 @@ public class DataGovernanceProperties
     public Nifi getNifi() { return nifi; }
     public java.util.List<String> getConnectionAllowedEndpoints() { return connectionAllowedEndpoints; }
     public void setConnectionAllowedEndpoints(java.util.List<String> value) { connectionAllowedEndpoints = value == null ? java.util.List.of() : java.util.List.copyOf(value); }
+    public java.util.List<String> getFtpAllowedEndpoints() { return ftpAllowedEndpoints; }
+    public void setFtpAllowedEndpoints(java.util.List<String> value) { ftpAllowedEndpoints = value == null ? java.util.List.of() : java.util.List.copyOf(value); }
 
     public static class Nifi
     {

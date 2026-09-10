@@ -8,8 +8,9 @@ function node(key, properties = {}) {
 }
 
 test('capture role remains distinct from a transform with the same NiFi type', () => {
-  assert.equal(NODE_KINDS.length, 8)
+  assert.equal(NODE_KINDS.length, 9)
   assert.equal(nodeKind({ type: 'com.hm.governance.nifi.JsonLookupSnapshot', role: 'PROCESSOR' }).key, 'lookup')
+  assert.equal(nodeKind(node('record-transform')).category, 'transform')
   assert.equal(nodeKind(node('attributes')).category, 'transform')
   assert.equal(nodeKind(node('capture')).key, 'capture')
   assert.equal(nodeKind({ type: 'external.Plugin', role: 'PROCESSOR' }).key, 'unknown')
