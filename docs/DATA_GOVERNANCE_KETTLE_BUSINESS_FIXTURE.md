@@ -1,6 +1,6 @@
 # 原 18/24 步业务图的隔离夹具
 
-本目录包含离线准备器、产物校验器及经过单独授权的本地执行 runner。离线准备命令本身不运行原图、不联网；后续真实验收已完成两条原业务转换，违法图完整交付通过，普通图发现原 FTP 每次最多 80 份导致部分交付。结果与边界见下方“真实验收结果”。
+本目录包含离线准备器、产物校验器及经过单独授权的本地执行 runner。离线准备命令本身不运行原图、不联网；第一套真实验收发现普通图受原 FTP 每次 80 份上限影响而部分交付；接入有限 FTP 分批后，第二套全新命名空间中的两条原图已完整通过。两套结果独立保留，不能用第二套通过覆盖第一套原行为证据。
 
 脚本只读三个原 ZIP：`851987.zip` 的 18 步普通图、`851988.zip` 的 2 项普通作业，以及 `917552.zip` 的 24 步违法图和 3 项作业。不会修改附件，也不拿可解析 ZIP 替代 `917552 (1).zip` 的未支持二进制成员。生成的 XML、消息和 SQL 必须留在 Git 外的私有新目录，目录权限 700、文件 600；已有证据不覆盖。
 
@@ -123,7 +123,7 @@ python3 tools/data-governance/run_kettle_business_fixture.py resume \
 runner 的四个定向测试验证未确认 broker/输入被修改时禁止提交、执行意图先于网络调用、未知提交不重放，group 已被消费/占用时阻止提交，以及非本地凭据和其他数据库名称被拒绝。这些测试不计作业务图执行通过。
 
 
-## 真实验收结果
+## 第一套：原 FTP 行为基线
 
 私有证据根：`/Users/krizen/Documents/Code/projects/2026projects/rynew-runtime/data-governance-kettle-v2/business-live/acceptance-01`，总报告 `acceptance.json` 状态为 **PARTIAL_DELIVERY**。所有原图、凭据、消息、完整事件和产物只保存在该私有运行目录及原 worker 自有目录，未入 Git。两个运行都已结束，没有停止现有服务或删除数据库/topic/group。
 
@@ -154,4 +154,29 @@ runner 的四个定向测试验证未确认 broker/输入被修改时禁止提�
 
 `business-live/acceptance-02` 已独立准备，slug 为 `business_9677ebe75102`，数据库名为 `rynew_kettle_fixture_business_9677ebe75102`。新建三个唯一单分区 topic 与两个专属 group，输入末尾 offset 为 10000/200，egress 为 0，两个 group 初始 offset 均为 0；FTP 仅创建新 slug 的 ordinary/illegal 子目录。42 步的 processingSha256 与第一套逐项相同，原 LIMIT/TIMEOUT/STOPONEMPTY/offset reset/auto commit、SQL/Script/条件/Writer 配置未改。
 
-该第二套目前为 PREPARED_NOT_SUBMITTED，等待主任务确认 `NativeFtpBatchDelivery` 与新 broker 编译、接入完成。未来修复版完整执行必须独立证明：普通一次 TRANS、单次消费 10000、FTP 两个原生 pass 处理 80+56 并全部实际 RETR；违法一次 TRANS、单次消费 200、FTP 一个 pass 及唯一 Kafka 回写。第一套 PARTIAL_DELIVERY 报告、已消费 group、80 份 FTP 读回及原 run 的 56 份残留全部保留，不重用、不补写为通过。
+第二套在主任务明确确认 `NativeFtpBatchDelivery` 与新 broker 编译、接入完成后提交，现已全部结束并完整通过。追加 FTP pass 仍调用原插件，仅继续交付本次冻结的输出文件，不重新运行 TRANS/Kafka。第一套 PARTIAL_DELIVERY 报告、已消费 group、80 份 FTP 读回及原 run 的 56 份残留已再次核对全部保留，不重用、不补写为通过。
+
+
+## 第二套：有限 FTP 分批后的完整验收
+
+总报告为 `business-live/acceptance-02/acceptance.json`，状态 **PASSED_LOCAL_ORIGINAL_GRAPH_ACCEPTANCE**。两条运行均为 SUCCEEDED / exitCode=0，原处理摘要与第一套逐项一致；只改变新夹具的连接/命名空间，未缩减输入、调整 Writer 分片、改变条件或重发第一套消息。
+
+| 证据项 | 普通原图＋新增复合作业 | 违法原图＋原作业 |
+| --- | --- | --- |
+| runId | `cdf74f29-9aa8-4768-8cc9-3388878f5e1f` | `a843ff77-b288-459f-9778-05655f1308c0` |
+| TRANS BEFORE 事件 | 1 次 | 1 次 |
+| 原源节点完成计数 | 1 次，I/W=10000 | 1 次，I/W=200 |
+| 分支核对 | 9998 文件、2 丢弃 | 192 文件、7 丢弃、1 Kafka |
+| 原 FTP 调用批次 | 2 次，80+56 | 1 次，1 份 |
+| FTP 实际 RETR | 136 份，9998 条 | 1 份，192 条 |
+| RETR SHA 与冻结源 SHA | 136/136 全部一致 | 1/1 一致 |
+| helper 源文件删除计数 | 136 | 1 |
+| 新 run/output 残留 CSV | 0 | 0 |
+| 原 group 最终 offset | 10000，无 owners | 200，无 owners |
+| 独立 Kafka 回写捕获 | 无回写节点 | 1 条，原 payload 字符串完全相同 |
+
+`*-ftp-batch-manifest.json` 是从本次 operation 私有 delivery 目录复制的原 helper manifest；其中 `remoteHashVerified` 仍明确为 false。`*-batch-acceptance.json` 的 `remoteHashesIndependentlyVerified=true` 则来自逐一读取实际 FTP RETR 捕获文件并计算 SHA，与 manifest 冻结源列表做全量同名集合/摘要比较，绝非照抄 helper 的成功状态。每一 pass 均 `nativeResultBoolean=true,nativeErrors=0`，源计数和一次 TRANS 事件同时证明没有通过重跑消费来填补文件。
+
+第二套还保留原始 `*-events.ndjson`、结构化 `*-native-step-metrics.json`、输入/输出与源类摘要、运行意图 journal、原生校验和终态、Kafka 前后 offsets、FTP RETR 文件与传输清单。服务和共享 classes 在运行期间保持固定，两条运行结束后才通知主任务可继续发布。没有停止既有 PostgreSQL、Kafka、FTP 或 broker。
+
+该结论限定为当前 macOS 本地隔离服务上的合成分支验收。私有 URL 替换命中、多 result 的 `target[i]` 形状、生产业务数据等价性，以及这两条完整图在 Linux 部署环境中的执行，仍未由本报告覆盖。
