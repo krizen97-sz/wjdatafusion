@@ -484,7 +484,7 @@ class Worker:
         cmd = None
         if not self.linux_runtime:
             profile = directory / 'sandbox.sb'
-            ftp_ports = [endpoint['port'] for endpoint in self.endpoints] if operation in {'run', 'job'} else []
+            ftp_ports = [endpoint['port'] for endpoint in self.endpoints] if operation in {'run', 'job', 'validate'} else []
             if operation == 'job' and self.ftp_test_policy:
                 policy = self.ftp_policy_snapshot
                 if policy.get('purpose') != 'synthetic-local-ftp' or not time.time() < policy.get('expiresAt', 0) <= time.time() + 3600:
@@ -504,6 +504,8 @@ class Worker:
                 plan = self.linux_runtime.plan(directory, operation, preview_step, row_limit, launch_id=nonce)
                 if plan.get('timezone') != time_zone:
                     raise ValueError('Linux adapter plan does not implement the frozen execution timezone')
+                if {tuple(endpoint) for endpoint in plan.get('endpoints', [])} != (set(self.linux_runtime.config.endpoints) if operation in {'run', 'job', 'validate'} else set()):
+                    raise ValueError('Linux adapter operation does not match the trusted endpoint policy')
                 run['runtimePlan'] = {'sourceHash': plan['sourceHash'], 'timezone': plan['timezone']}
                 self._persist(run)
                 process = self.linux_runtime.launch(directory, operation, preview_step, row_limit, launch_id=nonce, stderr=log)
@@ -706,8 +708,8 @@ class Worker:
         finally:
             os.close(directory)
 
-    def validate(self, xml):
-        result = self.wait(self.launch('validate', xml))
+    def validate(self, xml, discover_fields=True):
+        result = self.wait(self.launch('validate' if discover_fields else 'load', xml))
         event = next((e for e in self.runs[result['id']]['events'] if e['type'] == 'validation'), None)
         return event or {'valid': False, 'state': result['state'], 'errors': [e for e in self.runs[result['id']]['events'] if e['type'] == 'terminal']}
 
@@ -727,8 +729,8 @@ class Worker:
     def save(self, identifier, xml):
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', identifier):
             raise ValueError('Invalid transformation id')
-        validation = self.validate(xml)
-        if not validation.get('valid'):
+        validation = self.validate(xml, discover_fields=False)
+        if not validation.get('metadataLoaded', validation.get('valid')):
             return validation
         digest = hashlib.sha256(xml.encode()).hexdigest()
         path = self.store / (identifier + '.ktr')
@@ -773,7 +775,7 @@ def serve(worker, port):
                     raise ValueError('Request too large')
                 body = json.loads(self.rfile.read(length) or '{}') if length else {}
                 if self.command == 'GET' and parts == ['health']:
-                    result = {'status': 'UP', 'engine': 'original-kettle', 'sandbox': worker.runtime_kind, 'protocolVersion': 1, 'runtimePolicy': {'mode': 'registered-endpoints' if worker.endpoints else 'deny-all', 'endpoints': worker.endpoints, 'validationNetwork': 'deny-all', 'ftpFixturePolicy': worker.ftp_test_policy is not None, 'executionEnabled': bool(worker.linux_runtime.config.execution_enabled) if worker.linux_runtime else True}}
+                    result = {'status': 'UP', 'engine': 'original-kettle', 'sandbox': worker.runtime_kind, 'protocolVersion': 1, 'runtimePolicy': {'mode': 'registered-endpoints' if worker.endpoints else 'deny-all', 'endpoints': worker.endpoints, 'validationNetwork': 'registered-endpoints' if worker.endpoints else 'deny-all', 'ftpFixturePolicy': worker.ftp_test_policy is not None, 'executionEnabled': bool(worker.linux_runtime.config.execution_enabled) if worker.linux_runtime else True}}
                 elif self.command == 'GET' and parts == ['capabilities']:
                     result = worker.capabilities()
                 elif self.command == 'POST' and parts == ['transformations', 'validate']:

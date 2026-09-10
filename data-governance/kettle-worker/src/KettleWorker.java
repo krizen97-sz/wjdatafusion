@@ -152,12 +152,22 @@ public final class KettleWorker {
     Set<String> names=new HashSet<>();for(StepMeta step:meta.getSteps()){if(!names.add(step.getName()))throw new IllegalArgumentException("Duplicate step name");if(step.getStepMetaInterface()==null)throw new IllegalArgumentException("Missing step plugin: "+step.getStepID());if(meta.hasLoop(step))throw new IllegalArgumentException("Cyclic transformation");}
     return meta;
   }
+  static String boundedError(Exception error){String message=safe(String.valueOf(error.getMessage()));return message.length()>1024?message.substring(0,1024):message;}
+  static void validateMetadata(TransMeta meta) {
+    List<Map<String,Object>> inspected=nodes(meta);List<Map<String,Object>> diagnostics=new ArrayList<>();
+    for(Map<String,Object> node:inspected)for(String direction:List.of("input","output")) {
+      String key=direction.equals("input")?"inputFieldError":"fieldError";
+      if(node.containsKey(key))diagnostics.add(Map.of("node",node.get("name"),"direction",direction,"errorClass",node.get(key),"message",node.getOrDefault(key+"Message","")));
+    }
+    event("validation",Map.of("valid",diagnostics.isEmpty(),"metadataLoaded",true,"validationScope","metadata-only","fieldsRequested",true,"fieldsResolved",diagnostics.isEmpty(),"name",meta.getName(),"nodes",inspected,"fieldDiagnostics",diagnostics));
+  }
   static List<Map<String,Object>> fieldList(RowMetaInterface row) {
     List<Map<String,Object>> fields=new ArrayList<>();
     if(row!=null)for(ValueMetaInterface field:row.getValueMetaList())fields.add(fieldInfo(field));
     return fields;
   }
-  static List<Map<String,Object>> nodes(TransMeta meta) {
+  static List<Map<String,Object>> nodes(TransMeta meta) {return nodes(meta,true);}
+  static List<Map<String,Object>> nodes(TransMeta meta,boolean discoverFields) {
     List<Map<String,Object>> result=new ArrayList<>();
     for(StepMeta step:meta.getSteps()) {
       Map<String,Object> node=new LinkedHashMap<>();
@@ -165,11 +175,12 @@ public final class KettleWorker {
       node.put("className",step.getStepMetaInterface().getClass().getName());
       node.put("classSource",source(step.getStepMetaInterface().getClass()));
       node.put("previewCollector","Y".equals(step.getAttribute("kettle_worker","preview_collector")));
+      if(!discoverFields){result.add(node);continue;}
       node.put("inputFields",List.of());
       try{node.put("inputFields",fieldList(meta.getPrevStepFields(step)));}
-      catch(Exception error){node.put("inputFieldError",error.getClass().getSimpleName());}
+      catch(Exception error){node.put("inputFieldError",error.getClass().getName());node.put("inputFieldErrorMessage",boundedError(error));}
       try{node.put("fields",fieldList(meta.getStepFields(step)));}
-      catch(Exception error){node.put("fieldError",error.getClass().getSimpleName());}
+      catch(Exception error){node.put("fieldError",error.getClass().getName());node.put("fieldErrorMessage",boundedError(error));}
       result.add(node);
     }
     return result;
@@ -261,7 +272,25 @@ public final class KettleWorker {
     if(trans.getSteps().isEmpty())throw new IllegalArgumentException("Transformation has no executable drawn steps");
     if(!target.isEmpty())guardKafkaPreview(trans);
     for(StepMetaDataCombi c:trans.getSteps()){Map<String,AtomicInteger> counts=new HashMap<>();counts.put("read",new AtomicInteger());counts.put("written",new AtomicInteger());counts.put("error",new AtomicInteger());c.step.addRowListener(new RowAdapter(){
-      void row(String direction,RowMetaInterface rowMeta,Object[] values){int count=counts.get(direction).incrementAndGet();if(count<=limit){Map<String,Object> fields=new LinkedHashMap<>();for(int i=0;i<rowMeta.size();i++){Object value=values[i];try{value=value==null?null:rowMeta.getValueMeta(i).getString(value);}catch(Exception ignored){value="[unavailable]";}String text=value==null?null:value.toString();fields.put(rowMeta.getValueMeta(i).getName(),text!=null&&text.length()>4096?text.substring(0,4096):text);}Map<String,Object> data=new LinkedHashMap<>();data.put("node",c.stepname);data.put("copy",c.copy);data.put("direction",direction);data.put("rowNumber",count);data.put("fields",fields);List<Map<String,Object>> types=new ArrayList<>();for(ValueMetaInterface field:rowMeta.getValueMetaList())types.add(fieldInfo(field));data.put("fieldsMeta",types);event("row",data);}if(!target.isEmpty()&&c.stepname.equals(target)&&direction.equals("written")&&count>=limit&&previewLimit.compareAndSet(false,true)){Thread stop=new Thread(trans::stopAll);stop.setDaemon(true);stop.start();}}
+      void row(String direction,RowMetaInterface rowMeta,Object[] values) {
+        int count=counts.get(direction).incrementAndGet();
+        if(count<=limit) {
+          Map<String,Object> fields=new LinkedHashMap<>();List<Map<String,Object>> errors=new ArrayList<>();
+          for(int i=0;i<rowMeta.size();i++) {
+            ValueMetaInterface field=rowMeta.getValueMeta(i);
+            try {
+              String value=values[i]==null?null:field.getString(values[i]);
+              fields.put(field.getName(),value!=null&&value.length()>4096?value.substring(0,4096):value);
+            } catch(Exception error) {
+              String message=safe(String.valueOf(error.getMessage()));if(message.length()>1024)message=message.substring(0,1024);
+              errors.add(Map.of("name",field.getName(),"type",field.getTypeDesc(),"errorClass",error.getClass().getName(),"message",message));
+            }
+          }
+          Map<String,Object> data=new LinkedHashMap<>();data.put("node",c.stepname);data.put("copy",c.copy);data.put("direction",direction);data.put("rowNumber",count);
+          data.put("fields",fields);data.put("fieldErrors",errors);data.put("fieldsMeta",fieldList(rowMeta));event("row",data);
+        }
+        if(!target.isEmpty()&&c.stepname.equals(target)&&direction.equals("written")&&count>=limit&&previewLimit.compareAndSet(false,true)){Thread stop=new Thread(trans::stopAll);stop.setDaemon(true);stop.start();}
+      }
       @Override public void rowReadEvent(RowMetaInterface m,Object[] r){row("read",m,r);}@Override public void rowWrittenEvent(RowMetaInterface m,Object[] r){row("written",m,r);}@Override public void errorRowWrittenEvent(RowMetaInterface m,Object[] r){row("error",m,r);}
     });}
     event("state",Map.of("state","RUNNING"));trans.startThreads();while(!trans.isFinished()){event("metrics",Map.of("nodes",metrics(trans),"errors",trans.getErrors()));Thread.sleep(100);}trans.waitUntilFinished();
@@ -278,7 +307,7 @@ public final class KettleWorker {
       else if(operation.equals("probe")){Map<String,Object> proof=new LinkedHashMap<>();Path outside=Paths.get(args[2]);try{Files.readString(outside.resolve("synthetic-private.txt"));proof.put("readBlocked",false);}catch(java.nio.file.FileSystemException e){proof.put("readBlocked",String.valueOf(e.getReason()).contains("Operation not permitted"));}try{Files.writeString(outside.resolve("blocked"),"synthetic");proof.put("writeBlocked",false);}catch(java.nio.file.FileSystemException e){proof.put("writeBlocked",String.valueOf(e.getReason()).contains("Operation not permitted"));}try{new java.net.Socket("127.0.0.1",9).close();proof.put("networkBlocked",false);}catch(java.net.SocketException e){proof.put("networkBlocked",String.valueOf(e.getMessage()).contains("Operation not permitted"));}proof.put("securityManagerInstalled",System.getSecurityManager()!=null);event("sandbox-proof",proof);}
       else if(operation.equals("job")||operation.equals("job-validate")){Class.forName("NativeJobExecutor").getMethod(operation.equals("job")?"run":"validate",Path.class).invoke(null,root);}
       else if(operation.equals("capabilities")){for(Map<String,Object> entry:catalog){try{Class<?> type=Class.forName((String)entry.get("className"));StepMetaInterface meta=(StepMetaInterface)type.getDeclaredConstructor().newInstance();meta.setDefault();entry.put("loadable",true);entry.put("classSource",source(type));entry.put("defaultXml",meta.getXML());configurationTemplate(entry,type);}catch(Throwable e){entry.put("loadable",false);entry.put("loadError",e.getClass().getSimpleName());}}discoverJobs();event("capabilities",Map.of("engine","Kettle 6.1 original archive","steps",catalog,"jobs",jobCatalog,"networkPolicy","deny-all","filesystemPolicy","private-operation-directory"));}
-      else {TransMeta meta=load();if(operation.equals("validate")){event("validation",Map.of("valid",true,"name",meta.getName(),"nodes",nodes(meta)));}else if(operation.equals("run")){execute(meta,args.length>2?args[2]:"",args.length>3?Integer.parseInt(args[3]):20);}else throw new IllegalArgumentException("Unknown operation");}
+      else {TransMeta meta=load();if(operation.equals("load")){event("validation",Map.of("valid",true,"metadataLoaded",true,"validationScope","xml-load","fieldsRequested",false,"name",meta.getName(),"nodes",nodes(meta,false)));}else if(operation.equals("validate")){validateMetadata(meta);}else if(operation.equals("run")){execute(meta,args.length>2?args[2]:"",args.length>3?Integer.parseInt(args[3]):20);}else throw new IllegalArgumentException("Unknown operation");}
     }catch(Throwable e){exit=1;event("terminal",Map.of("state","FAILED","errors",1,"errorClass",e.getClass().getName(),"message",safe(String.valueOf(e.getMessage()))));e.printStackTrace(System.err);}
     finally{try{((org.apache.commons.vfs2.impl.DefaultFileSystemManager)org.pentaho.di.core.vfs.KettleVFS.getInstance().getFileSystemManager()).close();}catch(Throwable ignored){}}
     System.exit(exit);
