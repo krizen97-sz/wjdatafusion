@@ -76,7 +76,8 @@ class FakeRunner:
                     mounts.append({'Type': 'bind', 'Source': parts['src'], 'Destination': parts['dst'], 'RW': 'readonly' not in arg.split(',')})
             network = args[args.index('--network') + 1]
             image = next(value for value in args if value in {runtime.IMAGE['image'], runtime.IMAGE['configDigest']})
-            self.container = {'Id': 'a' * 64, 'Image': runtime.IMAGE['configDigest'], 'Config': {'Labels': labels, 'Image': image, 'User': args[args.index('--user') + 1]},
+            self.container = {'Id': 'a' * 64, 'Image': runtime.IMAGE['configDigest'], 'Config': {'Labels': labels, 'Image': image, 'User': args[args.index('--user') + 1],
+                              'Entrypoint': ['/bin/sh'], 'Cmd': args[args.index(image) + 1:]},
                               'HostConfig': {'ReadonlyRootfs': True, 'Privileged': False, 'CapDrop': ['ALL'], 'SecurityOpt': ['no-new-privileges:true'],
                                              'PortBindings': {}, 'NetworkMode': network}, 'Mounts': mounts,
                               'State': {'Running': False, 'ExitCode': 0, 'Pid': 2345, 'StartedAt': 'one-start'},
@@ -380,6 +381,61 @@ class LinuxTests(unittest.TestCase):
     def test_offline_and_repo_selector_are_bound_to_distinct_source_hashes(self):
         online, _ = self.controller(); offline, _ = self.controller(image=runtime.IMAGE['configDigest'])
         self.assertNotEqual(online.plan(self.op, 'run')['sourceHash'], offline.plan(self.op, 'run')['sourceHash'])
+    def test_business_timezone_defaults_and_root_attribute_are_fingerprinted(self):
+        controller, runner = self.controller(); default = controller.plan(self.op, 'run')
+        self.assertEqual('Asia/Shanghai', default['timezone']); self.assertIn('-Duser.timezone=Asia/Shanghai', default['javaArgv'])
+        self.assertEqual(default['timezone'], default['commandPlan']['timezone'])
+        self.assertEqual(default['timezone'], default['labels'][runtime.LABEL + 'timezone'])
+        (self.op / 'transformation.ktr').write_text('<transformation data-rynew-timezone="America/Los_Angeles"><step data-rynew-timezone="UTC"/></transformation>')
+        other = controller.plan(self.op, 'run'); validation = controller.plan(self.op, 'validate')
+        self.assertEqual('America/Los_Angeles', other['timezone']); self.assertEqual(other['timezone'], validation['timezone'])
+        self.assertEqual(default['artifactHash'], other['artifactHash']); self.assertNotEqual(default['sourceHash'], other['sourceHash'])
+        self.assertEqual([], runner.calls)
+    def test_timezone_rejects_empty_offsets_abbreviations_and_argv_injection(self):
+        controller, runner = self.controller()
+        for zone in ['', ' ', 'CST', 'EST', '+08:00', 'GMT+08:00', 'Asia/Shanghai -Xmx8g', '../../etc/passwd', 'Asia/Unknown', 'UTC\n--privileged']:
+            with self.subTest(zone=zone):
+                (self.op / 'transformation.ktr').write_text('<transformation data-rynew-timezone="' + zone + '"/>')
+                with self.assertRaises(RuntimeError): controller.plan(self.op, 'run')
+        self.assertEqual([], runner.calls)
+        for zone in ['UTC', 'Asia/Shanghai', 'America/Los_Angeles', 'Etc/GMT-8', 'US/Pacific']:
+            self.assertEqual(zone, runtime.valid_timezone(zone))
+    def test_timezone_inspection_refuses_doctype_invalid_xml_and_wrong_root(self):
+        controller, runner = self.controller()
+        for xml in ['<!DOCTYPE transformation [<!ENTITY tz "UTC">]><transformation data-rynew-timezone="&tz;"/>', '<transformation', '<job data-rynew-timezone="UTC"/>']:
+            (self.op / 'transformation.ktr').write_text(xml)
+            with self.assertRaises(RuntimeError): controller.plan(self.op, 'run')
+        self.assertEqual([], runner.calls)
+    def test_job_uses_only_root_timezone_and_capabilities_needs_no_graph(self):
+        controller, runner = self.controller()
+        (self.op / 'transformation.kjb').write_text('<job data-rynew-timezone="UTC"><entries><entry data-rynew-timezone="Asia/Shanghai"/></entries></job>')
+        (self.op / 'transformation.kjb').chmod(0o600)
+        for operation in ['job', 'job-validate']:
+            plan = controller.plan(self.op, operation)
+            self.assertEqual('UTC', plan['timezone'])
+            self.assertEqual(['-Duser.timezone=UTC'], [arg for arg in plan['javaArgv'] if arg.startswith('-Duser.timezone=')])
+        (self.op / 'transformation.ktr').unlink(); (self.op / 'transformation.kjb').unlink()
+        self.assertEqual('Asia/Shanghai', controller.plan(self.op, 'capabilities')['timezone'])
+    def test_timezone_restoration_uses_frozen_identity_and_rejects_tampering(self):
+        controller, runner = self.controller()
+        (self.op / 'transformation.ktr').write_text('<transformation data-rynew-timezone="America/Los_Angeles"/>')
+        controller.launch(self.op, 'run'); record = controller._read('run-one')
+        (self.op / 'transformation.ktr').write_text('<transformation data-rynew-timezone="UTC"/>')
+        self.assertEqual('America/Los_Angeles', controller.identity_for_run('run-one')['timezone'])
+        changed = copy.deepcopy(record); changed['timezone'] = 'UTC'; controller._save(changed)
+        with self.assertRaises(RuntimeError): controller.recover('run-one')
+        controller._save(record)
+        runner.container['Config']['Cmd'] = [arg.replace('-Duser.timezone=America/Los_Angeles', '-Duser.timezone=UTC') for arg in runner.container['Config']['Cmd']]
+        with self.assertRaises(RuntimeError): controller.recover('run-one')
+    def test_legacy_utc_journal_keeps_its_original_source_identity(self):
+        controller, runner = self.controller(); record = controller.plan(self.op, 'run')
+        record['version'] = 1; original_hash = record.pop('artifactHash'); record.pop('timezone')
+        record['sourceHash'] = original_hash; record['labels'][runtime.LABEL + 'source'] = original_hash
+        record['labels'].pop(runtime.LABEL + 'timezone'); record['commandPlan'].pop('timezone')
+        record['javaArgv'] = [arg.replace('-Duser.timezone=Asia/Shanghai', '-Duser.timezone=UTC') for arg in record['javaArgv']]
+        controller._save(record, create=True)
+        identity = controller.identity_for_run('run-one')
+        self.assertEqual('UTC', identity['timezone']); self.assertEqual(original_hash, identity['sourceHash'])
     def test_cleanup_can_resume_after_acknowledged_container_removal(self):
         controller, runner = self.controller(endpoints=[{'host': '10.20.30.40', 'port': 5432}]); controller.launch(self.op, 'run')
         runner.container['State']['Running'] = False

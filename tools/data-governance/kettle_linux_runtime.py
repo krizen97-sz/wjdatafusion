@@ -20,11 +20,14 @@ import sys
 import threading
 import time
 import uuid
+import xml.etree.ElementTree as ET
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 LINUX_ASSETS = Path(__file__).resolve().parents[2] / 'data-governance/kettle-worker/linux'
 IMAGE = json.loads((LINUX_ASSETS / 'image-lock.json').read_text())
 LABEL = 'io.rynew.kettle.'
 OPERATIONS = {'run', 'validate', 'capabilities', 'job', 'job-validate'}
+DEFAULT_TIMEZONE = 'Asia/Shanghai'
 
 
 def require(condition, message):
@@ -36,6 +39,31 @@ def digest(path):
     with Path(path).open('rb') as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b''): h.update(block)
     return h.hexdigest()
+
+
+def valid_timezone(value):
+    require(isinstance(value, str) and len(value) <= 100 and
+            re.fullmatch(r'UTC|[A-Za-z][A-Za-z0-9_+-]*(?:/[A-Za-z0-9_+-]+)+', value), 'Use UTC or a complete IANA region timezone; offsets, abbreviations and extra arguments are not accepted')
+    try: ZoneInfo(value)
+    except (ZoneInfoNotFoundError, ValueError): raise RuntimeError('Timezone is absent from the reviewed host IANA database') from None
+    return value
+
+
+def operation_timezone(operation_dir, operation):
+    if operation == 'capabilities': return valid_timezone(DEFAULT_TIMEZONE)
+    expected = 'job' if operation in {'job', 'job-validate'} else 'transformation'
+    path = path_checked(operation_dir / ('transformation.kjb' if expected == 'job' else 'transformation.ktr'), directory=False)
+    require(path.stat().st_size <= 4 * 1024 * 1024, 'Operation XML exceeds the timezone inspection limit')
+    content = path.read_bytes()
+    require(b'<!DOCTYPE' not in content.upper() and b'<!ENTITY' not in content.upper(), 'Operation XML must not declare DTD/entities')
+    try: root = ET.fromstring(content.decode('utf-8'))
+    except (ET.ParseError, UnicodeDecodeError): raise RuntimeError('Cannot inspect the operation root timezone from UTF-8 XML') from None
+    require(root.tag == expected, 'Operation XML root differs from the requested native operation')
+    return valid_timezone(root.get('data-rynew-timezone', DEFAULT_TIMEZONE))
+
+
+def source_fingerprint(artifact_hash, timezone):
+    return hashlib.sha256(json.dumps({'artifacts': artifact_hash, 'timezone': timezone}, sort_keys=True).encode()).hexdigest()
 
 
 def path_checked(value, *, directory=True, exists=True):
@@ -261,7 +289,9 @@ class LinuxRuntime:
             require(not path.is_symlink() and (path.is_dir() or path.is_file()), 'Operation assets must be regular files/directories, never links or special files')
             if path.is_file(): require(path.stat().st_nlink == 1, 'Operation assets cannot alias files outside the run through hard links')
         require(not (op / '.rynew-java-ready').exists() and not (op / 'control.stop').exists(), 'Operation control files already exist')
-        classpath, source_hash = self._artifacts()
+        classpath, artifact_hash = self._artifacts()
+        timezone = operation_timezone(op, operation)
+        source_hash = source_fingerprint(artifact_hash, timezone)
         self._permissions(op)
         endpoints = cfg.endpoints if operation in {'run', 'job'} else ()
         short = hashlib.sha256((cfg.instance_id + ':' + op.name + ':' + nonce).encode()).hexdigest()[:20]
@@ -271,13 +301,13 @@ class LinuxRuntime:
         address = str(subnet.network_address + 2)
         require(not any(ipaddress.IPv4Address(host) in subnet for host, port in endpoints), 'Endpoint overlaps the per-run container subnet')
         labels = {LABEL + 'managed': 'linux-v2', LABEL + 'instance': cfg.instance_id, LABEL + 'run': op.name,
-                  LABEL + 'nonce': nonce, LABEL + 'source': source_hash}
+                  LABEL + 'nonce': nonce, LABEL + 'source': source_hash, LABEL + 'timezone': timezone}
         label_args = [part for key, value in labels.items() for part in ['--label', key + '=' + value]]
         work = '/work/' + op.name
         mounts = [(str(cfg.worker_root / 'classes'), '/opt/rynew/classes', False),
                   (str(cfg.worker_root / 'lib'), '/opt/rynew/lib', False), (str(op), work, True)]
         java = [IMAGE['java'], '-Xmx' + str(cfg.memory_mb // 2) + 'm', '-XX:+PerfDisableSharedMem', '-Djava.awt.headless=true',
-                '-Djava.net.preferIPv4Stack=true', '-Duser.timezone=UTC', '-Duser.home=' + work + '/home', '-DKETTLE_HOME=' + work + '/home',
+                '-Djava.net.preferIPv4Stack=true', '-Duser.timezone=' + timezone, '-Duser.home=' + work + '/home', '-DKETTLE_HOME=' + work + '/home',
                 '-DKETTLE_JNDI_ROOT=' + work + '/home', '-DKETTLE_PLUGIN_BASE_FOLDERS=' + work + '/home/empty-plugins',
                 '-DKETTLE_SYSTEM_HOSTNAME=isolated-kettle-worker', '-Djava.io.tmpdir=' + work + '/tmp',
                 '-Dgovernance.worker.launch.id=' + nonce, '-cp', classpath, 'KettleWorker', work, operation, preview_step, str(row_limit)]
@@ -298,8 +328,8 @@ class LinuxRuntime:
         rules = [['-d', host + '/32', '-p', 'tcp', '-m', 'tcp', '--dport', str(port), '-m', 'comment', '--comment', comment, '-j', 'RETURN'] for host, port in endpoints]
         rules += [['-m', 'comment', '--comment', comment, '-j', 'DROP']]
         jump = ['-i', bridge, '-s', address + '/32', '-m', 'comment', '--comment', comment, '-j', chain]
-        record = {'version': 1, 'runId': op.name, 'operationDir': str(op), 'operation': operation, 'nonce': nonce,
-                'sourceHash': source_hash, 'image': cfg.image, 'labels': labels, 'mounts': mounts, 'javaArgv': java,
+        record = {'version': 2, 'runId': op.name, 'operationDir': str(op), 'operation': operation, 'nonce': nonce,
+                'sourceHash': source_hash, 'artifactHash': artifact_hash, 'timezone': timezone, 'image': cfg.image, 'labels': labels, 'mounts': mounts, 'javaArgv': java,
                 'containerCreate': create, 'networkName': network if endpoints else None, 'networkId': None, 'containerId': None,
                 'subnet': str(subnet), 'containerIp': address, 'bridgeInterface': bridge, 'hostChain': chain, 'namespaceChain': chain,
                 'endpoints': list(endpoints), 'hostRules': rules if endpoints else [], 'hostJump': jump,
@@ -318,7 +348,7 @@ class LinuxRuntime:
         for binary, entries in [(cfg.iptables, rules), (cfg.ip6tables, [rules[-1]])]:
             prefix = [cfg.nsenter, '--net=/proc/self/fd/<PINNED_NETNS_FD>', '--', binary, '-w', '5']
             ns_policy += [[*prefix, '-N', chain], *[[*prefix, '-A', chain, *rule] for rule in entries], [*prefix, '-I', 'OUTPUT', '1', '-j', chain]]
-        record['commandPlan'] = {'imageInspect': self.docker('image', 'inspect', cfg.image),
+        record['commandPlan'] = {'timezone': timezone, 'imageInspect': self.docker('image', 'inspect', cfg.image),
             'networkCreate': network_create if endpoints else None, 'containerCreate': create,
             'hostFirewall': host_policy if endpoints else [], 'attachGate': self.docker('start', '--attach', '--interactive', '<CONTAINER_ID>'),
             'namespaceFirewall': ns_policy if endpoints else [], 'releaseGateFile': str(op / '.rynew-java-ready'),
@@ -344,6 +374,13 @@ class LinuxRuntime:
         require(private_read(self.config.state_root / 'owner.json') == {'instance': self.config.instance_id, 'root': str(self.config.state_root)}, 'Unknown journal owner')
         record = private_read(self.config.state_root / (run_id + '.json'))
         require(record['runId'] == run_id and record['labels'].get(LABEL + 'instance') == self.config.instance_id, 'Journal identity differs')
+        if record.get('version', 1) >= 2:
+            timezone = valid_timezone(record['timezone'])
+            require(record['sourceHash'] == source_fingerprint(record['artifactHash'], timezone) == record['labels'].get(LABEL + 'source')
+                    and record['labels'].get(LABEL + 'timezone') == timezone and record['commandPlan'].get('timezone') == timezone,
+                    'Recorded timezone/source fingerprint differs')
+            require([arg for arg in record['javaArgv'] if arg.startswith('-Duser.timezone=')] == ['-Duser.timezone=' + timezone],
+                    'Recorded JVM timezone differs')
         return record
 
     def _inspect(self, record):
@@ -352,6 +389,10 @@ class LinuxRuntime:
         require(container['Id'] == record['containerId'] and all(container['Config'].get('Labels', {}).get(k) == v for k, v in record['labels'].items()), 'Container identity/labels differ')
         require(self._same_image(container['Config']['Image'], record['image']) and container.get('Image') == IMAGE['configDigest']
                 and container['Config']['User'] == str(self.config.uid) + ':' + str(self.config.gid), 'Container image/user differs')
+        if record.get('version', 1) >= 2:
+            expected_command = record['containerCreate'][record['containerCreate'].index(record['image']) + 1:]
+            require(container['Config'].get('Entrypoint') == ['/bin/sh'] and container['Config'].get('Cmd') == expected_command,
+                    'Container command/timezone differs from its frozen launch')
         host = container['HostConfig']; require(host['ReadonlyRootfs'] and not host.get('Privileged') and 'ALL' in host.get('CapDrop', []) and not host.get('CapAdd'), 'Container isolation was changed')
         security = host.get('SecurityOpt', [])
         require(len(security) == 1 and security[0] in {'no-new-privileges', 'no-new-privileges:true'} and not host.get('PortBindings'), 'Container privilege or published ports changed')
@@ -471,7 +512,7 @@ class LinuxRuntime:
         self._live(); record = self._read(run_id)
         if record.get('containerId') and not record.get('containerRemoved'): self._inspect(record)
         return {'kind': 'docker', 'containerId': record.get('containerId'), 'sourceHash': record['sourceHash'],
-                'nonce': record['nonce'], 'containerRemoved': record.get('containerRemoved', False)}
+                'nonce': record['nonce'], 'timezone': record.get('timezone', 'UTC'), 'containerRemoved': record.get('containerRemoved', False)}
 
     def request_stop(self, run_id, *, force=False, expected_nonce=None):
         self._live(); record = self._read(run_id)
