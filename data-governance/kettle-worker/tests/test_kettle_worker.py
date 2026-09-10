@@ -177,6 +177,25 @@ class NativeTests(unittest.TestCase):
         self.worker.wait(identifier)
         self.assertEqual((Path(self.worker.runs[identifier]['directory']) / 'transformation.ktr').read_text(), xml)
 
+    def test_input_names_cannot_collide_on_macos(self):
+        for names in [('A.csv', 'a.csv'), ('Café.csv', 'Cafe\u0301.csv')]:
+            with self.assertRaises(ValueError):
+                self.worker.launch('run', fixture(self.catalog), input_files=[{'name': name, 'content': 'x'} for name in names])
+
+    def test_kafka_preview_rejects_business_group_before_preparation(self):
+        for group, auto in [('original-business-group', 'false'), ('kettle-v2-' + 'a' * 32 + '-preview', 'true')]:
+            transformation = ET.Element('transformation')
+            put(transformation, 'info/name', 'Synthetic rejected Kafka preview')
+            consumer = ET.SubElement(transformation, 'step')
+            for key, value in {'name': 'consumer', 'type': 'KafkaConsumer', 'copies': '1', 'GUI/draw': 'Y', 'KAFKA/group.id': group, 'KAFKA/auto.commit.enable': auto}.items():
+                put(consumer, key, value)
+            identifier = self.worker.launch('run', ET.tostring(transformation, encoding='unicode'), preview_step='consumer')
+            result = self.worker.wait(identifier)
+            self.assertEqual(result['state'], 'FAILED')
+            events = self.worker.runs[identifier]['events']
+            self.assertFalse(any(event['type'] == 'state' and event.get('state') == 'PREPARING' for event in events))
+            self.assertTrue(any('independent kettle-v2-' in event.get('message', '') for event in events))
+
     def test_trusted_endpoint_policy_permissions_and_scope(self):
         policy = self.worker.runtime / ('test-policy-' + str(time.time_ns()) + '.json')
         policy.write_text(json.dumps({'endpoints': [{'host': '127.0.0.1', 'port': 15432}]}))
