@@ -184,6 +184,35 @@ class DataGovernanceKettleApiTest
         { String template = DataGovernanceKettleXml.decode(entry.path("defaultXmlBase64").asText());
           assertFalse(template.contains("synthetic-default-password")); assertFalse(template.contains("data-rynew-")); }
     }
+    @Test void nativeExecutionUnsupportedJobRemainsNonExecutableDespiteLoadableMeta()
+    {
+        JsonNode result = mapper.valueToTree(service.catalog());
+        JsonNode shell = null, special = null;
+        for (JsonNode job : result.path("jobs"))
+        { if (job.path("id").asText().equals("SHELL")) shell = job; if (job.path("id").asText().equals("SPECIAL")) special = job; }
+        assertNotNull(shell); assertNotNull(special); assertTrue(shell.path("loadable").asBoolean());
+        assertFalse(shell.path("executionSupported").asBoolean()); assertFalse(shell.path("executable").asBoolean());
+        assertTrue(special.path("executable").asBoolean()); assertFalse(special.path("executionValidated").asBoolean());
+    }
+    @Test void ownerScopedHistoryReturnsNewestFirstAndRetainsFailureAndUnknownStatesWithoutPolling() throws Exception
+    {
+        String id = save(xml());
+        var first = service.submit(id, new RunInput(1L, "run", null, 20, "history-one"), 7);
+        worker.failSubmit = true;
+        var unknown = service.submit(id, new RunInput(1L, "preview", "source", 12, "history-two"), 7);
+        worker.invalidSave = true;
+        var validation = service.submit(id, new RunInput(1L, "run", null, 20, "history-three"), 7);
+        worker.preparationFailure = true;
+        var preparation = service.submit(id, new RunInput(1L, "run", null, 20, "history-four"), 7);
+        int calls = worker.calls.size(); properties.setEnabled(false);
+        var history = service.runs(id, 7);
+        assertEquals(List.of(preparation.get("id"), validation.get("id"), unknown.get("id"), first.get("id")), history.stream().map(r -> r.get("id")).toList());
+        assertEquals(List.of("PREPARATION_FAILED", "VALIDATION_FAILED", "SUBMISSION_UNKNOWN", "RUNNING"), history.stream().map(r -> r.get("state")).toList());
+        assertEquals("preview", history.get(2).get("mode")); assertEquals(12, history.get(2).get("rowLimit"));
+        assertEquals(calls, worker.calls.size()); assertThrows(ServiceException.class, () -> service.runs(id, 8));
+        for (var item : history) for (String absent : List.of("owner", "encryptedXml", "inputs", "workerSnapshot", "nodes", "files")) assertFalse(item.containsKey(absent));
+        assertFalse(mapper.writeValueAsString(history).contains("synthetic-secret-abc"));
+    }
     List<Path> filesIn(String folder)
     { try (var files = Files.list(temporary.resolve(folder))) { return files.filter(p -> p.toString().endsWith(".json")).toList(); } catch (IOException e) { throw new RuntimeException(e); } }
     static byte[] zip(Map<String,byte[]> entries) throws IOException
@@ -191,14 +220,16 @@ class DataGovernanceKettleApiTest
     static class FakeWorker extends DataGovernanceKettleClient
     {
         final ObjectMapper mapper = new ObjectMapper(); final List<String> calls = new ArrayList<>();
-        int submissions; boolean failSubmit; Runnable onPut; JsonNode lastSubmit;
+        int submissions; boolean failSubmit, invalidSave, preparationFailure; Runnable onPut; JsonNode lastSubmit;
         String initialState = "RUNNING", readState;
         FakeWorker(DataGovernanceKettleProperties properties) { super(properties); }
         @Override public JsonNode request(String method, String path, Object body)
         {
             calls.add(method + " " + path);
-            if (path.equals("/capabilities")) return mapper.valueToTree(Map.of("steps", List.of(Map.of("id", "Dummy", "className", "example.DummyMeta", "name", "Dummy", "category", "Flow", "loadable", true, "defaultXml", "<password>synthetic-default-password</password>"))));
-            if (method.equals("PUT")) { if (onPut != null) onPut.run(); return mapper.valueToTree(Map.of("validation", Map.of("valid", true))); }
+            if (path.equals("/capabilities")) return mapper.valueToTree(Map.of("steps", List.of(Map.of("id", "Dummy", "className", "example.DummyMeta", "name", "Dummy", "category", "Flow", "loadable", true, "defaultXml", "<password>synthetic-default-password</password>")),
+                "jobs", List.of(Map.of("id", "SHELL", "className", "example.JobShell", "name", "Shell", "category", "Script", "loadable", true, "executionSupported", false),
+                    Map.of("id", "SPECIAL", "className", "example.JobSpecial", "name", "Start", "category", "General", "loadable", true, "executionSupported", true))));
+            if (method.equals("PUT")) { if (preparationFailure) throw new Failure(503); if (onPut != null) onPut.run(); return mapper.valueToTree(Map.of("validation", Map.of("valid", !invalidSave))); }
             if (method.equals("POST") && path.equals("/runs"))
             {
                 submissions++; lastSubmit = mapper.valueToTree(body); if (failSubmit) throw new Failure(0);
