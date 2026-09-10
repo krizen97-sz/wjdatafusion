@@ -1,0 +1,15 @@
+{
+  "instance_id": "11111111111141118111111111111111",
+  "worker_root": "/var/lib/rynew/kettle/artifacts/verified-version",
+  "operations_root": "/var/lib/rynew/kettle/operations",
+  "state_root": "/var/lib/rynew/kettle/container-journals",
+  "uid": 10001,
+  "gid": 10001,
+  "execution_enabled": false,
+  "endpoints": [],
+  "subnet_pool": "172.30.0.0/16",
+  "memory_mb": 512,
+  "cpus": 1.0,
+  "pids_limit": 256,
+  "file_size_mb": 64
+}
