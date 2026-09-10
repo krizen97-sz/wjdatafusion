@@ -46,7 +46,7 @@ def fixture(catalog, delay=False, broken=False):
         for child in ET.fromstring('<settings>' + entries[plugin]['defaultXml'] + '</settings>'):
             step.append(child)
         if plugin == 'CsvInput':
-            for key, value in {'filename': '${WORK_DIR}/input.csv', 'encoding': 'UTF-8', 'lazy_conversion': 'N'}.items():
+            for key, value in {'filename': '${INPUT_DIR}/input.csv', 'encoding': 'UTF-8', 'lazy_conversion': 'N'}.items():
                 put(step, key, value)
             put(step, 'fields/field/name', 'name')
         elif plugin == 'ScriptValueMod':
@@ -141,6 +141,73 @@ class NativeTests(unittest.TestCase):
         events = self.worker.runs[identifier]['events']
         self.assertEqual(len([e for e in events if e['type'] == 'row' and e['node'] == 'native-script' and e['direction'] == 'written']), 3)
         self.assertEqual(next(n for n in result['nodes'] if n['node'] == 'file-output')['read'], 3)
+
+    def test_uploaded_definitions_and_sources_never_enter_output_directory(self):
+        identifier = self.worker.launch('run', fixture(self.catalog), input_files=[{'name': 'input.csv', 'content': 'name\nalice\n'}, {'name': 'private-child.ktr', 'content': '<synthetic><password>fixture-only-secret</password></synthetic>'}])
+        result = self.worker.wait(identifier)
+        self.assertEqual(result['state'], 'SUCCEEDED')
+        directory = Path(self.worker.runs[identifier]['directory'])
+        self.assertTrue((directory / 'input/input.csv').is_file())
+        self.assertTrue((directory / 'input/private-child.ktr').is_file())
+        self.assertEqual({path.name for path in (directory / 'output').iterdir()}, {'result.csv'})
+        self.assertEqual(result['inputLayout'], 'separate')
+        self.assertEqual({item['name'] for item in result['inputs']}, {'input.csv', 'private-child.ktr'})
+        self.assertTrue(all(item['role'] == 'output' for item in result['files']))
+        for name in ['input.csv', 'private-child.ktr']:
+            with self.assertRaises(FileNotFoundError):
+                self.worker.open_file(identifier, name)
+
+    def test_same_input_output_basename_preserves_source_and_is_real_output(self):
+        original = 'name\nalice\n'
+        identifier = self.worker.launch('run', fixture(self.catalog).replace('${WORK_DIR}/result', '${WORK_DIR}/input'), input_files=[{'name': 'input.csv', 'content': original}])
+        result = self.worker.wait(identifier)
+        self.assertEqual(result['state'], 'SUCCEEDED')
+        directory = Path(self.worker.runs[identifier]['directory'])
+        self.assertEqual((directory / 'input/input.csv').read_text(), original)
+        self.assertEqual(result['files'][0]['name'], 'input.csv')
+        self.assertEqual(result['files'][0]['role'], 'output')
+        self.assertNotEqual(result['files'][0]['sha256'], result['inputs'][0]['sha256'])
+        fd, _ = self.worker.open_file(identifier, 'input.csv')
+        with os.fdopen(fd) as stream:
+            self.assertEqual(stream.read(), 'name,greeting\nalice,ALICE!\n')
+
+    def test_native_default_parameter_controls_output_filename(self):
+        transformation = ET.fromstring(fixture(self.catalog).replace('${WORK_DIR}/result', '${WORK_DIR}/${file_prefix}'))
+        for key, value in {'name': 'file_prefix', 'default_value': '原生默认前缀', 'description': 'Synthetic native parameter proof'}.items():
+            put(transformation, 'info/parameters/parameter/' + key, value)
+        identifier = self.worker.launch('run', ET.tostring(transformation, encoding='unicode'), input_files=[{'name': 'input.csv', 'content': 'name\nalice\n'}])
+        result = self.worker.wait(identifier)
+        self.assertEqual(result['state'], 'SUCCEEDED')
+        self.assertEqual({file['name'] for file in result['files']}, {'原生默认前缀.csv'})
+        fd, _ = self.worker.open_file(identifier, '原生默认前缀.csv')
+        with os.fdopen(fd) as stream:
+            self.assertEqual(stream.read(), 'name,greeting\nalice,ALICE!\n')
+
+    def test_reserved_parameters_cannot_replace_input_or_output_roots(self):
+        for parameter in ['WORK_DIR', 'INPUT_DIR', 'JOB_DIR']:
+            transformation = ET.fromstring(fixture(self.catalog))
+            put(transformation, 'info/parameters/parameter/name', parameter)
+            put(transformation, 'info/parameters/parameter/default_value', '/synthetic-not-permitted')
+            result = self.worker.validate(ET.tostring(transformation, encoding='unicode'))
+            self.assertFalse(result['valid'])
+            self.assertTrue(any('Reserved execution-directory parameter' in event.get('message', '') for event in result['errors']))
+
+    def test_legacy_input_roles_are_kept_and_not_downloadable_as_outputs(self):
+        with tempfile.TemporaryDirectory(dir=self.worker.runtime) as directory_name:
+            directory = Path(directory_name)
+            (directory / 'output').mkdir()
+            (directory / 'output/source.ktr').write_text('synthetic-private-source')
+            (directory / 'output/result.csv').write_text('synthetic-output')
+            identifier = 'legacy-layout-' + str(time.time_ns())
+            self.worker.runs[identifier] = {'id': identifier, 'state': 'SUCCEEDED', 'directory': str(directory), 'process': None, 'events': [], 'inputNames': ['source.ktr']}
+            try:
+                files = self.worker.snapshot(identifier)['files']
+                self.assertEqual(next(item for item in files if item['name'] == 'source.ktr')['role'], 'input')
+                self.assertEqual(next(item for item in files if item['name'] == 'result.csv')['role'], 'output')
+                with self.assertRaises(ValueError):
+                    self.worker.open_file(identifier, 'source.ktr')
+            finally:
+                self.worker.runs.pop(identifier)
 
     def test_preview_removes_downstream_output_and_limits_samples(self):
         identifier = self.start(preview_step='native-script', row_limit=2)
@@ -269,7 +336,7 @@ class NativeTests(unittest.TestCase):
         entries = ET.SubElement(job, 'entries')
         for values in [
             {'name': 'START', 'type': 'SPECIAL', 'start': 'Y', 'dummy': 'N', 'repeat': 'N', 'parallel': 'N', 'draw': 'Y', 'nr': '0'},
-            {'name': 'Original child transformation', 'type': 'TRANS', 'specification_method': 'filename', 'filename': '${WORK_DIR}/child.ktr', 'wait_until_finished': 'Y', 'cluster': 'N', 'slave_server_name': '', 'parallel': 'N', 'draw': 'Y', 'nr': '0', 'parameters/pass_all_parameters': 'Y'},
+            {'name': 'Original child transformation', 'type': 'TRANS', 'specification_method': 'filename', 'filename': '${INPUT_DIR}/child.ktr', 'wait_until_finished': 'Y', 'cluster': 'N', 'slave_server_name': '', 'parallel': 'N', 'draw': 'Y', 'nr': '0', 'parameters/pass_all_parameters': 'Y'},
         ]:
             entry = ET.SubElement(entries, 'entry')
             for key, value in values.items():

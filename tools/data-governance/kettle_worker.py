@@ -329,6 +329,8 @@ class Worker:
             run = dict(metadata)
             run.update({'id': identifier, 'directory': str(operation), 'process': None, 'events': events, 'state': state, 'restored': True, 'replayAllowed': False, 'fingerprint': intent.get('fingerprint') if trusted and not damaged else None, 'launchNonce': intent.get('launchNonce') if trusted and not damaged else None, 'createdAt': intent.get('createdAt', operation.stat().st_mtime if operation.exists() else time.time()), 'mode': intent.get('mode', 'job' if (operation / 'transformation.kjb').exists() else 'run'), 'inputNames': intent.get('inputNames', []), 'nodes': metadata.get('nodes', []), 'finalized': bool(completed)})
             run['runtimeKind'] = intent.get('runtimeKind', metadata.get('runtimeKind', 'legacy-native'))
+            run['inputLayout'] = intent.get('inputLayout', metadata.get('inputLayout', 'legacy-mixed'))
+            run['inputs'] = intent.get('inputs', metadata.get('inputs', []))
             completed = self._reconcile_linux(run, bool(completed))
             if not completed:
                 run['state'] = RECOVERY_REQUIRED
@@ -443,17 +445,17 @@ class Worker:
         record_dir.mkdir(mode=0o700)
         created_at = time.time()
         nonce = secrets.token_hex(32)
-        intent = {'schemaVersion': 1, 'id': run_id, 'fingerprint': fingerprint, 'operation': operation, 'mode': 'preview' if preview_step else operation, 'createdAt': created_at, 'inputNames': [name for name, _ in decoded_files], 'launchNonce': nonce, 'runtimeKind': self.runtime_kind}
+        intent = {'schemaVersion': 1, 'id': run_id, 'fingerprint': fingerprint, 'operation': operation, 'mode': 'preview' if preview_step else operation, 'createdAt': created_at, 'inputNames': [name for name, _ in decoded_files], 'inputLayout': 'separate', 'inputs': [{'name': name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()} for name, data in decoded_files], 'launchNonce': nonce, 'runtimeKind': self.runtime_kind}
         # This record is outside the engine's OS file grants and is durable before Popen.
         atomic_private_json(record_dir / 'intent.json', intent)
         run = dict(intent, state='INTENT_PERSISTED', events=[], directory=str(directory), process=None, nodes=[], finalized=False, restored=False)
         with self.lock:
             self.runs[run_id] = run
         self._persist(run)
-        for folder in ['home', 'tmp', 'output']:
+        for folder in ['home', 'tmp', 'input', 'output']:
             private_dir(directory / folder)
         for name, data in decoded_files:
-            (directory / 'output' / name).write_bytes(data)
+            (directory / 'input' / name).write_bytes(data)
         if xml is not None:
             (directory / ('transformation.kjb' if operation in {'job', 'job-validate'} else 'transformation.ktr')).write_text(xml)
         cmd = None
@@ -582,7 +584,7 @@ class Worker:
             if output.is_dir() and not output.is_symlink():
                 for path in output.iterdir():
                     try:
-                        fd, info = self.open_file(run_id, path.name)
+                        fd, info = self.open_file(run_id, path.name, allow_legacy_input=True)
                     except (OSError, ValueError):
                         continue
                     with os.fdopen(fd, 'rb') as stream:
@@ -592,12 +594,16 @@ class Worker:
                             for block in iter(lambda: stream.read(65536), b''):
                                 digest.update(block)
                             self.file_hashes[cache_key] = digest.hexdigest()
-                    result['files'].append({'name': path.name, 'bytes': info.st_size, 'sha256': self.file_hashes[cache_key], 'role': 'input' if path.name in run['inputNames'] else 'output', 'partial': run['state'] != 'SUCCEEDED'})
+                    legacy_input = run.get('inputLayout') != 'separate' and path.name in run['inputNames']
+                    result['files'].append({'name': path.name, 'bytes': info.st_size, 'sha256': self.file_hashes[cache_key], 'role': 'input' if legacy_input else 'output', 'partial': run['state'] != 'SUCCEEDED'})
             return result
 
-    def open_file(self, run_id, name):
+    def open_file(self, run_id, name, allow_legacy_input=False):
         validate_filename(name)
-        directory = Path(self.runs[run_id]['directory']) / 'output'
+        run = self.runs[run_id]
+        if not allow_legacy_input and run.get('inputLayout') != 'separate' and name in run.get('inputNames', []):
+            raise ValueError('Input assets are not downloadable run output artifacts')
+        directory = Path(run['directory']) / 'output'
         dir_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
             fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=dir_fd)
