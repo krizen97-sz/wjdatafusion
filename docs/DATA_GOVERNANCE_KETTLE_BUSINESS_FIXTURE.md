@@ -1,6 +1,6 @@
 # 原 18/24 步业务图的隔离夹具
 
-当前交付是 **离线准备与校验器**，没有运行原图，没有向 PostgreSQL、Kafka、ZooKeeper 或 FTP 写入数据。全部分支计数均为待实测的期望值；不能用生成成功或单元测试替代原引擎执行证据。
+本目录包含离线准备器、产物校验器及经过单独授权的本地执行 runner。离线准备命令本身不运行原图、不联网；后续真实验收已完成两条原业务转换，违法图完整交付通过，普通图发现原 FTP 每次最多 80 份导致部分交付。结果与边界见下方“真实验收结果”。
 
 脚本只读三个原 ZIP：`851987.zip` 的 18 步普通图、`851988.zip` 的 2 项普通作业，以及 `917552.zip` 的 24 步违法图和 3 项作业。不会修改附件，也不拿可解析 ZIP 替代 `917552 (1).zip` 的未支持二进制成员。生成的 XML、消息和 SQL 必须留在 Git 外的私有新目录，目录权限 700、文件 600；已有证据不覆盖。
 
@@ -47,7 +47,7 @@
 
 状态分支须按原图区分：普通图 `push_status=1` 与默认分支均继续查询本地映射；违法图仅 `1` 继续，默认分支丢弃。两图 recognitionSign 仅 `0/1` 继续。脚本将外部卡口码、crossingId 和区域码写回消息 JSON；缺失映射时的默认值也列入夹具。
 
-违法日期脚本去掉 `+08:00`，将 `T` 换为空格，截取前 19 字符，再以斜线日期解析，与固定 `2019/12/24 10:22:25` 比较，必须 **严格晚于**。不是相对当前时间的窗口。夹具包括前一秒、同秒、后一秒和无效日期；保留原 Script Boolean→FilterRows 常量 `Y` 的实际组合，等待原引擎验证。
+违法日期脚本去掉 `+08:00`，将 `T` 换为空格，截取前 19 字符，再以斜线日期解析，与固定 `2019/12/24 10:22:25` 比较，必须 **严格晚于**。不是相对当前时间的窗口。夹具包括前一秒、同秒、后一秒和无效日期；保留原 Script Boolean→FilterRows 常量 `Y` 的实际组合；本次违法原图已证实日期边界和无效日期三条均被原规则丢弃。
 
 ## 消费初始状态与期望计数
 
@@ -66,7 +66,7 @@
 
 绑定平台 API 时，先导入对应 KTR，再用其 definition UUID 设置 TRANS 的 `data-rynew-definition-id` 与 `${INPUT_DIR}/<UUID>.ktr`；违法可在重新生成时传 `--child-definition-id`。未绑定的离线原生副本使用 `${INPUT_DIR}/illegal.ktr` 或 `ordinary.ktr`，可供 worker 元数据审阅，但不能冒充平台已经建立绑定。所有输入/子 KTR 在 INPUT_DIR，TextFileOutput 与 FTP localDirectory 只使用 WORK_DIR，绝不把输入拷回输出。
 
-原分隔符 `|$[1F]` 经过 Kettle 环境替换是十六进制 `7C1F`，输出字段顺序为 k_message、targetPicUrl_base64、platePicUrl_base64、targetPicUrl、platePicUrl；两个 base64 Constant 原本为空，夹具也不编造图片抓取。普通 splitevery=75、表头计入分片容量，每份最多 74 条数据，9998 条预期 136 份；违法 splitevery=200，每份最多 199 条，原 max_wait_time_ms=5000 可提前轮换，不能仅以一份文件为成功条件。普通 max_wait_time_ms=0。该字节分隔符和表头计数来自原工具包及既有离线原生 TextFileOutput oracle，当前整图仍待实测。
+原分隔符 `|$[1F]` 经过 Kettle 环境替换是十六进制 `7C1F`，输出字段顺序为 k_message、targetPicUrl_base64、platePicUrl_base64、targetPicUrl、platePicUrl；两个 base64 Constant 原本为空，夹具也不编造图片抓取。普通 splitevery=75、表头计入分片容量，每份最多 74 条数据，9998 条预期 136 份；违法 splitevery=200，每份最多 199 条，原 max_wait_time_ms=5000 可提前轮换，不能仅以一份文件为成功条件。普通 max_wait_time_ms=0。该字节分隔符和表头计数来自原工具包及既有离线原生 TextFileOutput oracle，本次两条原整图输出已再次证实。
 
 原 FTP 两图均 `remove=Y,rename=Y`，上传成功后本地 CSV 可能已删除。因此必须读取隔离 FTP 目标，不以 worker 下载列表为空推断未输出。普通 binary=Y；违法 binary=N，验证器允许 FTP ASCII 模式的 CRLF/LF 差异，同时记录真实文件 SHA-256。
 
@@ -96,13 +96,13 @@ python3 tools/data-governance/kettle_business_fixture.py \
 
 当前 10 项离线测试通过，包含真实三个 ZIP 的 42 步处理摘要、所有原 JsonPath 存在性、复制数/连线、五张表列匹配、原 consumer/producer 属性、INPUT_DIR/WORK_DIR 分离，以及验证器拒绝缺行、回写字节变化和混入子 KTR。人工构造的验证器测试产物会删除，不能计入整图通过证据。
 
-尚待原引擎确认：普通 type=None 字段回读、违法 Boolean/`Y` 筛选组合、原完整图所有输出与上述计数、实际分片/定时轮换、失败时 FTP 不触发。多 result 消息中违法脚本使用 `target[i]`，当前仅一项夹具未覆盖；私有 URL 替换匹配也未覆盖。脚本会直接拒绝新增非 public lookup schema、集群步骤或远程 TRANS，而不会猜测它们的隔离映射。
+本次真实原图已验证普通 type=None 字段回读、违法 Boolean/`Y` 筛选组合、完整输出分支计数和实际分片。多 result 消息中违法脚本使用 `target[i]`，当前仅一项夹具未覆盖；私有 URL 替换匹配也未覆盖。脚本会直接拒绝新增非 public lookup schema、集群步骤或远程 TRANS，而不会猜测它们的隔离映射。
 
 ## 有限本地执行 runner
 
 `run_kettle_business_fixture.py` 把准备、单次提交和只读恢复分开。`prepare` 仅连接固定 localhost 夹具端口，读取现有私有 PostgreSQL/FTP 凭据，创建唯一随机 slug 的数据库、三个单分区 topic、两个专属 offset 0 group，以及 FTP slug 子目录；遇到已有名称直接失败，不覆盖或重置。它复用既有 FTP 服务，不启动、停止或替换任何进程。原 Kafka 图使用 0.8 原插件；`KettleBusinessFixtureProbe.java` 独立使用隔离 Kafka 的官方客户端 JAR 做建 topic、发布、offset 审计和读取，不混入原 Kettle classpath。
 
-已实际完成的准备目录为 `rynew-runtime/data-governance-kettle-v2/business-live/acceptance-01`，slug 为 `business_18864de700ce`。专属数据库五表行数为 redlist 2、qiuji 2、whitelist 3、xc_cross_csd_status 3、xc_local_sync_cross 3。Kafka 两个输入末尾 offset 为 10000/200，回写 topic 为 0，两 group ZooKeeper offset 均为 0。FTP 仅创建该 slug 的 ordinary/illegal 两个目录。**此状态只证明准备成功，尚未提交原图。**
+已实际完成的准备目录为 `rynew-runtime/data-governance-kettle-v2/business-live/acceptance-01`，slug 为 `business_18864de700ce`。专属数据库五表行数为 redlist 2、qiuji 2、whitelist 3、xc_cross_csd_status 3、xc_local_sync_cross 3。Kafka 两个输入末尾 offset 为 10000/200，回写 topic 为 0，两 group ZooKeeper offset 均为 0。FTP 仅创建该 slug 的 ordinary/illegal 两个目录。该准备快照随后用于下方两条唯一原生运行，未重新发送消息或改动处理节点。
 
 ```bash
 python3 tools/data-governance/run_kettle_business_fixture.py prepare --root /private/new-acceptance-directory
@@ -121,3 +121,29 @@ python3 tools/data-governance/run_kettle_business_fixture.py resume \
 提交前核对所有夹具文件 SHA-256，先持久化 runId、jobId、冻结 job/child XML 摘要与输入指纹，再保存不可变 worker Job 定义，最后单次提交 `/runs`。未知提交状态保留 journal，后续 `run` 拒绝重投，`resume` 只 GET 已有 run。运行前后记录 Kafka offsets；终态和进程结束后通过实际 FTP RETR 读取目标所有文件，保存字节数/摘要/捕获文件，再调用产物验证器。运行证据还包括原 Meta classSource、worker 库清单摘要、实际桥接 class 文件摘要、原生日志事件、节点 metrics 与原生校验响应。源码仅提交 runner/探针/测试，不提交私有 XML、账号、消息或输出文件。
 
 runner 的四个定向测试验证未确认 broker/输入被修改时禁止提交、执行意图先于网络调用、未知提交不重放，group 已被消费/占用时阻止提交，以及非本地凭据和其他数据库名称被拒绝。这些测试不计作业务图执行通过。
+
+
+## 真实验收结果
+
+私有证据根：`/Users/krizen/Documents/Code/projects/2026projects/rynew-runtime/data-governance-kettle-v2/business-live/acceptance-01`，总报告 `acceptance.json` 状态为 **PARTIAL_DELIVERY**。所有原图、凭据、消息、完整事件和产物只保存在该私有运行目录及原 worker 自有目录，未入 Git。两个运行都已结束，没有停止现有服务或删除数据库/topic/group。
+
+| 项目 | 普通过车原 18 步＋明确新增复合作业 | 违法原 24 步＋原三项作业 |
+| --- | --- | --- |
+| runId | `5c88336d-22da-4220-ba4d-7448cc99ba6b` | `a4a60abd-a9ae-41bb-a0e4-15d0d9c7a05a` |
+| 原引擎终态 | SUCCEEDED / exitCode=0 | SUCCEEDED / exitCode=0 |
+| 原输入/分支 | 10000 → 9998 文件、2 丢弃 | 200 → 192 文件、7 丢弃、1 Kafka |
+| 原文件实际生成 | 136 份，9998 条，全量 JSON/列/场景匹配 | 1 份，192 条，全量 JSON/列/场景匹配 |
+| FTP 实际 RETR | 80 份，5854 条 | 1 份，192 条，完整通过 |
+| 留在原 run output | 56 份，4144 条，尚未上传 | 0 份 |
+| Kafka 末尾 group offset | 10000，无 consumer owners | 200，无 consumer owners |
+| 回写 topic | 尚未写入（普通图无此节点） | 末尾 offset=1，唯一 payload 字符串逐字节等于原输入 |
+
+普通图的残留不是 SQL/Script 分支漏行或文件名覆盖。原 BASIC 完成日志显示 File step `R=9998,W=9998,O=10134`，即 9998 数据行加 136 表头；136 次 rename 的目标全部唯一。FTP 仅上传 80 份后记录 `has put 80 files, break put files`，仍返回零错误和 true。原工具包 `org.pentaho.di.job.entries.ftpput.JobEntryFTPPUT.executeEx(...)` 字节码将局部最大文件数设为常量 80，到达后跳出循环并返回错误计数；原 Meta 没有对应可调 XML 字段。
+
+为核对转换结果，仅将 80 份 FTP **实际 RETR** 与 56 份 worker **未交付残留**只读复制到 `ordinary-combined-native-output`，逐文件标明来源后核对完整 136 份/9998 条。`ordinary-partial-delivery-analysis.json` 明确 `allFtpDelivered=false`。残留没有上传到 FTP 来伪装原作业完整通过，没有重跑 TRANS 或重发同批 Kafka 消息，也没有调大 splitevery、降低输入量、替换 FTP 插件或增加自动重试来凑结果。
+
+这暴露了需要平台单独处理的边界：原 FTP 的成功返回不等于整批所有文件均已交付；对该固定版本和 `remove=Y/only_new=N` 配置，应识别输出残留并提供可核查的后续交付机制，不能将重放整个源图作为恢复。该后续机制不在本次原语义验收中实现。
+
+违法原图则通过独立 FTP RETR 和 Kafka capture 的完整校验，原 Date/Boolean 筛选、qiuji/whitelist/状态开关/本地映射和两种输出分支均按原配置运行。原消费 TIMEOUT 保持 60000，约一分钟后自然结束，未人为停止或额外发送第 201 条消息。
+
+证据包括 `*-events.ndjson`、`*-latest-run.json`、`*-offsets-before/after.json`、`*-ftp-evidence.json`、`*-sourceclasses.json`、`*-native-step-metrics.json`、`original-ftp-put-limit.json` 与原 FTP class/JAR/字节码 SHA-256。当前 Job 扁平 `nodes` 为空，子转换 metrics 由原 BASIC 完成日志提取并标明来源；普通记录 17 个有实际处理日志的步骤（原图一个未走到的 Dummy 无完成计数），违法记录 24 个。不得把静态 42 节点数量改称 42 个均有非零执行。
