@@ -120,6 +120,17 @@ class NativeTests(unittest.TestCase):
         script = next(n for n in validation['nodes'] if n['name'] == 'native-script')
         self.assertEqual(next(field for field in script['fields'] if field['name'] == 'greeting')['type'], 'String')
         self.assertTrue(all({'length', 'precision', 'origin'} <= field.keys() for field in script['fields']))
+        self.assertEqual([field['name'] for field in script['inputFields']], ['name'])
+        self.assertTrue(all({'length', 'precision', 'origin'} <= field.keys() for field in script['inputFields']))
+        self.assertEqual(next(n for n in validation['nodes'] if n['name'] == 'file-input')['inputFields'], [])
+        branched = ET.fromstring(fixture(self.catalog))
+        unrelated = ET.SubElement(branched, 'step')
+        for key, value in {'name': 'unrelated-source', 'type': 'DataGrid', 'copies': '1', 'GUI/draw': 'Y', 'fields/field/name': 'unrelated', 'fields/field/type': 'String', 'fields/field/length': '-1', 'fields/field/precision': '-1'}.items():
+            put(unrelated, key, value)
+        ET.SubElement(unrelated, 'data')
+        inspected = self.worker.validate(ET.tostring(branched, encoding='unicode'))
+        actual_input = next(n for n in inspected['nodes'] if n['name'] == 'native-script')['inputFields']
+        self.assertEqual([field['name'] for field in actual_input], ['name'])
 
     def test_native_file_input_script_file_output(self):
         identifier = self.start()
@@ -156,6 +167,7 @@ class NativeTests(unittest.TestCase):
         result = self.worker.wait(identifier)
         self.assertEqual(result['state'], 'FAILED')
         self.assertGreater(result['errors'], 0)
+        self.assertTrue(any(event['type'] == 'log' and event.get('level') == 'ERROR' for event in self.worker.runs[identifier]['events']))
 
     def test_run_count_is_not_limited_by_sampling(self):
         identifier = self.worker.launch('run', fixture(self.catalog), row_limit=2, input_files=[{'name': 'input.csv', 'content': 'name\n' + '\n'.join('item' + str(i) for i in range(350)) + '\n'}])
@@ -182,19 +194,60 @@ class NativeTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.worker.launch('run', fixture(self.catalog), input_files=[{'name': name, 'content': 'x'} for name in names])
 
-    def test_kafka_preview_rejects_business_group_before_preparation(self):
-        for group, auto in [('original-business-group', 'false'), ('kettle-v2-' + 'a' * 32 + '-preview', 'true')]:
+    def test_kafka_preview_changes_only_effective_execution_copy(self):
+        for group, auto in [('original-business-group', 'false'), ('other-business-group', 'true')]:
             transformation = ET.Element('transformation')
-            put(transformation, 'info/name', 'Synthetic rejected Kafka preview')
+            put(transformation, 'info/name', 'Synthetic isolated Kafka preview metadata')
             consumer = ET.SubElement(transformation, 'step')
             for key, value in {'name': 'consumer', 'type': 'KafkaConsumer', 'copies': '1', 'GUI/draw': 'Y', 'KAFKA/group.id': group, 'KAFKA/auto.commit.enable': auto}.items():
                 put(consumer, key, value)
-            identifier = self.worker.launch('run', ET.tostring(transformation, encoding='unicode'), preview_step='consumer')
-            result = self.worker.wait(identifier)
-            self.assertEqual(result['state'], 'FAILED')
+            original = ET.tostring(transformation, encoding='unicode')
+            saved_id = 'preview-metadata-' + str(time.time_ns())
+            self.assertTrue(self.worker.save(saved_id, original)['validation']['valid'])
+            identifier = self.worker.launch('run', original, preview_step='consumer')
+            self.worker.wait(identifier)  # No endpoint/topic is configured; native startup must fail offline.
             events = self.worker.runs[identifier]['events']
-            self.assertFalse(any(event['type'] == 'state' and event.get('state') == 'PREPARING' for event in events))
-            self.assertTrue(any('independent kettle-v2-' in event.get('message', '') for event in events))
+            override = next(event for event in events if event['type'] == 'preview-override')
+            self.assertEqual(override['originalGroup'], group)
+            self.assertEqual(override['originalAutoCommit'], auto)
+            self.assertRegex(override['effectiveGroup'], r'^kettle-v2-[a-f0-9]{32}-preview$')
+            self.assertFalse(override['effectiveAutoCommit'])
+            directory = Path(self.worker.runs[identifier]['directory'])
+            self.assertEqual((directory / 'transformation.ktr').read_text(), original)
+            self.assertEqual((self.worker.store / (saved_id + '.ktr')).read_text(), original)
+            effective = ET.fromstring((directory / 'transformation.effective.ktr').read_text())
+            self.assertEqual(effective.findtext('./step/KAFKA/group.id'), override['effectiveGroup'])
+            self.assertEqual(effective.findtext('./step/KAFKA/auto.commit.enable'), 'false')
+            self.assertEqual(override['originalXmlSha'], hashlib.sha256(original.encode()).hexdigest())
+            self.assertNotEqual(override['originalXmlSha'], override['effectiveXmlSha'])
+            self.assertEqual(override['effectiveXmlSha'], hashlib.sha256((directory / 'transformation.effective.ktr').read_bytes()).hexdigest())
+            normal = self.worker.launch('run', original)
+            normal_result = self.worker.wait(normal)
+            self.assertEqual(normal_result['originalXmlSha'], normal_result['effectiveXmlSha'])
+            self.assertFalse(any(event['type'] == 'preview-override' for event in self.worker.runs[normal]['events']))
+
+    def test_original_write_to_log_basic_is_visible_and_redacted(self):
+        transformation = ET.fromstring(fixture(self.catalog))
+        logger = ET.SubElement(transformation, 'step')
+        for key, value in {'name': 'original-basic-log', 'type': 'WriteToLog', 'copies': '1', 'GUI/draw': 'Y', 'loglevel': 'log_level_basic', 'displayHeader': 'N', 'limitRows': 'Y', 'limitRowsNumber': '1', 'logmessage': 'KETTLE_BASIC_VISIBLE synthetic-log-secret', 'fields/field/name': 'greeting'}.items():
+            put(logger, key, value)
+        connection = ET.SubElement(transformation, 'connection')
+        for key, value in {'name': 'unused-secret-metadata', 'type': 'POSTGRESQL', 'access': 'Native', 'database': 'unused', 'username': 'unused', 'password': 'synthetic-log-secret'}.items():
+            put(connection, key, value)
+        for hop in transformation.findall('./order/hop'):
+            if hop.findtext('to') == 'file-output':
+                put(hop, 'to', 'original-basic-log')
+        hop = ET.SubElement(transformation.find('order'), 'hop')
+        for key, value in {'from': 'original-basic-log', 'to': 'file-output', 'enabled': 'Y'}.items():
+            put(hop, key, value)
+        identifier = self.worker.launch('run', ET.tostring(transformation, encoding='unicode'), input_files=[{'name': 'input.csv', 'content': 'name\nalice\n'}])
+        result = self.worker.wait(identifier)
+        self.assertEqual(result['state'], 'SUCCEEDED')
+        logs = [event for event in self.worker.runs[identifier]['events'] if event['type'] == 'log']
+        self.assertTrue(any(event['level'] == 'BASIC' and event['node'] == 'original-basic-log' and 'KETTLE_BASIC_VISIBLE' in event['message'] for event in logs), logs)
+        self.assertTrue(all(event.get('channel') for event in logs))
+        self.assertFalse(any('synthetic-log-secret' in event['message'] for event in logs))
+        self.assertLessEqual(len(logs), 500)
 
     def test_trusted_endpoint_policy_permissions_and_scope(self):
         policy = self.worker.runtime / ('test-policy-' + str(time.time_ns()) + '.json')
