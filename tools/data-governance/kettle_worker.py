@@ -21,6 +21,7 @@ import zipfile
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, unquote
 import xml.etree.ElementTree as ET
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 SOURCE = Path(__file__).resolve().parents[2] / 'data-governance/kettle-worker/src'
 JAVA_HOME = Path('/Library/Java/JavaVirtualMachines/jdk-17.jdk/Contents/Home')
@@ -29,6 +30,7 @@ RECOVERY_REQUIRED = 'RECOVERY_REQUIRED'
 MAX_XML = 2 * 1024 * 1024
 MAX_INPUT_FILE = 8 * 1024 * 1024
 MAX_REQUEST = 32 * 1024 * 1024
+DEFAULT_TIME_ZONE = 'Asia/Shanghai'
 
 
 def private_dir(path):
@@ -74,6 +76,17 @@ def file_digest(path):
         for block in iter(lambda: stream.read(65536), b''):
             digest.update(block)
     return digest.hexdigest()
+
+
+def execution_time_zone(xml):
+    value = DEFAULT_TIME_ZONE if xml is None else ET.fromstring(xml).attrib.get('data-rynew-timezone', DEFAULT_TIME_ZONE)
+    if not isinstance(value, str) or value != value.strip() or not (value == 'UTC' or re.fullmatch(r'[A-Za-z0-9_+-]+(?:/[A-Za-z0-9_+-]+)+', value)):
+        raise ValueError('Execution timezone must be UTC or an exact IANA region name')
+    try:
+        ZoneInfo(value)
+    except (ZoneInfoNotFoundError, ValueError):
+        raise ValueError('Unknown IANA execution timezone') from None
+    return value
 
 
 def load_linux_adapter():
@@ -272,7 +285,14 @@ class Worker:
         previous = run.get('runtimeIdentity')
         if previous and any(previous.get(key) != identity.get(key) for key in ['containerId', 'sourceHash', 'nonce']):
             raise ValueError('Container identity changed from the recorded run')
-        return {'kind': 'docker', 'containerId': identity['containerId'], 'sourceHash': identity['sourceHash'], 'nonce': identity['nonce']}
+        if run.get('executionTimeZone') and identity.get('timezone') != run['executionTimeZone']:
+            raise ValueError('Container timezone differs from the frozen execution definition')
+        if run.get('runtimePlan') and identity.get('sourceHash') != run['runtimePlan']['sourceHash']:
+            raise ValueError('Container artifact/timezone hash differs from the reviewed launch plan')
+        result = {'kind': 'docker', 'containerId': identity['containerId'], 'sourceHash': identity['sourceHash'], 'nonce': identity['nonce']}
+        if identity.get('timezone'):
+            result['timezone'] = identity['timezone']
+        return result
 
     def _reconcile_linux(self, run, completed):
         if run.get('runtimeKind') != 'linux-docker':
@@ -331,6 +351,8 @@ class Worker:
             run['runtimeKind'] = intent.get('runtimeKind', metadata.get('runtimeKind', 'legacy-native'))
             run['inputLayout'] = intent.get('inputLayout', metadata.get('inputLayout', 'legacy-mixed'))
             run['inputs'] = intent.get('inputs', metadata.get('inputs', []))
+            if 'executionTimeZone' in intent or 'executionTimeZone' in metadata:
+                run['executionTimeZone'] = intent.get('executionTimeZone', metadata.get('executionTimeZone'))
             completed = self._reconcile_linux(run, bool(completed))
             if not completed:
                 run['state'] = RECOVERY_REQUIRED
@@ -438,6 +460,7 @@ class Worker:
             raise ValueError('Worker is at its four-process concurrency limit')
         if xml is not None:
             self.validate_xml(xml, 'job' if operation in {'job', 'job-validate'} else 'transformation')
+        time_zone = execution_time_zone(xml)
         # Atomic reservations prevent two brokers from ever starting the same run ID.
         directory = self.operations / run_id
         directory.mkdir(mode=0o700)
@@ -445,7 +468,7 @@ class Worker:
         record_dir.mkdir(mode=0o700)
         created_at = time.time()
         nonce = secrets.token_hex(32)
-        intent = {'schemaVersion': 1, 'id': run_id, 'fingerprint': fingerprint, 'operation': operation, 'mode': 'preview' if preview_step else operation, 'createdAt': created_at, 'inputNames': [name for name, _ in decoded_files], 'inputLayout': 'separate', 'inputs': [{'name': name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()} for name, data in decoded_files], 'launchNonce': nonce, 'runtimeKind': self.runtime_kind}
+        intent = {'schemaVersion': 1, 'id': run_id, 'fingerprint': fingerprint, 'operation': operation, 'mode': 'preview' if preview_step else operation, 'createdAt': created_at, 'inputNames': [name for name, _ in decoded_files], 'inputLayout': 'separate', 'inputs': [{'name': name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()} for name, data in decoded_files], 'launchNonce': nonce, 'runtimeKind': self.runtime_kind, 'executionTimeZone': time_zone}
         # This record is outside the engine's OS file grants and is durable before Popen.
         atomic_private_json(record_dir / 'intent.json', intent)
         run = dict(intent, state='INTENT_PERSISTED', events=[], directory=str(directory), process=None, nodes=[], finalized=False, restored=False)
@@ -471,13 +494,18 @@ class Worker:
                     raise ValueError('FTP fixture policy requires 1-10 explicit localhost ports')
                 ftp_ports.extend(fixture_ports)
             profile.write_text(sandbox_profile(self.runtime, directory, self.java_home, ftp_ports))
-            cmd = ['/usr/bin/sandbox-exec', '-f', str(profile), str(self.java_home / 'bin/java'), '-Xmx384m', '-XX:+PerfDisableSharedMem', '-Dgovernance.worker.launch.id=' + nonce, '-Djava.awt.headless=true', '-Djava.net.preferIPv4Stack=true', '-Duser.timezone=UTC', '-DKETTLE_SYSTEM_HOSTNAME=isolated-kettle-worker', '-Duser.home=' + str(directory / 'home'), '-DKETTLE_HOME=' + str(directory / 'home'), '-DKETTLE_JNDI_ROOT=' + str(directory / 'home'), '-DKETTLE_PLUGIN_BASE_FOLDERS=' + str(directory / 'home/empty-plugins'), '-Djava.io.tmpdir=' + str(directory / 'tmp'), '-cp', self.manifest['classpath'], 'KettleWorker', str(directory), operation, preview_step, str(row_limit)]
+            cmd = ['/usr/bin/sandbox-exec', '-f', str(profile), str(self.java_home / 'bin/java'), '-Xmx384m', '-XX:+PerfDisableSharedMem', '-Dgovernance.worker.launch.id=' + nonce, '-Djava.awt.headless=true', '-Djava.net.preferIPv4Stack=true', '-Duser.timezone=' + time_zone, '-DKETTLE_SYSTEM_HOSTNAME=isolated-kettle-worker', '-Duser.home=' + str(directory / 'home'), '-DKETTLE_HOME=' + str(directory / 'home'), '-DKETTLE_JNDI_ROOT=' + str(directory / 'home'), '-DKETTLE_PLUGIN_BASE_FOLDERS=' + str(directory / 'home/empty-plugins'), '-Djava.io.tmpdir=' + str(directory / 'tmp'), '-cp', self.manifest['classpath'], 'KettleWorker', str(directory), operation, preview_step, str(row_limit)]
             run['commandSha256'] = hashlib.sha256(json.dumps(cmd).encode()).hexdigest()
         run['state'] = 'STARTING'
         self._persist(run)
         log = (directory / 'engine.log').open('w')
         try:
             if self.linux_runtime:
+                plan = self.linux_runtime.plan(directory, operation, preview_step, row_limit, launch_id=nonce)
+                if plan.get('timezone') != time_zone:
+                    raise ValueError('Linux adapter plan does not implement the frozen execution timezone')
+                run['runtimePlan'] = {'sourceHash': plan['sourceHash'], 'timezone': plan['timezone']}
+                self._persist(run)
                 process = self.linux_runtime.launch(directory, operation, preview_step, row_limit, launch_id=nonce, stderr=log)
                 run['runtimeIdentity'] = self._linux_identity(run, process.identity())
             else:
@@ -521,6 +549,8 @@ class Worker:
                             for key in ['originalXmlSha', 'effectiveXmlSha', 'previewOverrides', 'previewProjection']:
                                 if key in event:
                                     run[key] = event[key]
+                        if event['type'] == 'execution-timezone':
+                            run['effectiveTimeZone'] = event.get('executionTimeZone')
                         if event['type'] in {'state', 'terminal'}:
                             self._persist(run)
                 code = process.wait()

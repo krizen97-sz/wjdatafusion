@@ -53,10 +53,15 @@ class FakeLinuxRuntime:
     def __init__(self, config):
         self.config = config
 
+    def plan(self, operation_dir, operation, preview_step='', row_limit=20, launch_id=None):
+        filename = 'transformation.kjb' if operation in {'job', 'job-validate'} else 'transformation.ktr'
+        xml = (operation_dir / filename).read_text() if (operation_dir / filename).exists() else None
+        return {'timezone': worker_module.execution_time_zone(xml), 'sourceHash': 'a' * 64}
+
     def launch(self, operation_dir, operation, preview_step='', row_limit=20, launch_id=None, stderr=None):
         identifier = operation_dir.name
         self.calls.append(('launch', identifier, operation, preview_step, row_limit, launch_id))
-        self.journals[identifier] = {'kind': 'docker', 'containerId': hashlib.sha256(identifier.encode()).hexdigest(), 'sourceHash': 'a' * 64, 'nonce': launch_id, 'state': 'EXITED', 'running': False, 'exitCode': 0}
+        self.journals[identifier] = {'kind': 'docker', 'containerId': hashlib.sha256(identifier.encode()).hexdigest(), 'sourceHash': 'a' * 64, 'nonce': launch_id, 'state': 'EXITED', 'running': False, 'exitCode': 0, 'timezone': self.plan(operation_dir, operation)['timezone']}
         if self.launch_failure:
             self.journals[identifier]['running'] = True
             raise RuntimeError('Mock container launch acknowledgement lost')
@@ -74,7 +79,7 @@ class FakeLinuxRuntime:
     def identity_for_run(self, identifier):
         self.calls.append(('identity', identifier))
         record = self.journals[identifier]
-        return {key: record[key] for key in ['kind', 'containerId', 'sourceHash', 'nonce']}
+        return {key: record[key] for key in ['kind', 'containerId', 'sourceHash', 'nonce', 'timezone']}
 
     def status(self, identifier):
         self.calls.append(('status', identifier))
@@ -239,6 +244,13 @@ class LinuxDispatcherTests(unittest.TestCase):
         self.assertFalse(result['finalized'])
         with self.assertRaises(ValueError):
             worker.launch('run', XML, run_id=identifier)
+
+    def test_old_or_mismatched_timezone_plan_never_launches_a_container(self):
+        worker = self.worker()
+        with patch.object(FakeLinuxRuntime, 'plan', return_value={'timezone': 'UTC', 'sourceHash': 'a' * 64}):
+            identifier = worker.launch('run', XML, run_id='timezone-plan-mismatch')
+        self.assertEqual(worker.snapshot(identifier)['state'], 'RECOVERY_REQUIRED')
+        self.assertFalse(any(call[0] == 'launch' for call in FakeLinuxRuntime.calls))
 
 
 if __name__ == '__main__':
