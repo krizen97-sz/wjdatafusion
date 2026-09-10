@@ -56,7 +56,7 @@ class FakeLinuxRuntime:
     def plan(self, operation_dir, operation, preview_step='', row_limit=20, launch_id=None):
         filename = 'transformation.kjb' if operation in {'job', 'job-validate'} else 'transformation.ktr'
         xml = (operation_dir / filename).read_text() if (operation_dir / filename).exists() else None
-        return {'timezone': worker_module.execution_time_zone(xml), 'sourceHash': 'a' * 64}
+        return {'timezone': worker_module.execution_time_zone(xml), 'sourceHash': 'a' * 64, 'endpoints': list(self.config.endpoints) if operation in {'run', 'job', 'validate'} else []}
 
     def launch(self, operation_dir, operation, preview_step='', row_limit=20, launch_id=None, stderr=None):
         identifier = operation_dir.name
@@ -67,7 +67,7 @@ class FakeLinuxRuntime:
             raise RuntimeError('Mock container launch acknowledgement lost')
         if operation == 'capabilities':
             events = [{'type': 'capabilities', 'steps': [], 'jobs': [], 'engine': 'mock'}]
-        elif operation in {'validate', 'job-validate'}:
+        elif operation in {'validate', 'job-validate', 'load'}:
             events = [{'type': 'validation', 'valid': True, 'nodes': []}]
         else:
             (operation_dir / 'output/result.txt').write_text('mock-container-artifact')
@@ -244,6 +244,24 @@ class LinuxDispatcherTests(unittest.TestCase):
         self.assertFalse(result['finalized'])
         with self.assertRaises(ValueError):
             worker.launch('run', XML, run_id=identifier)
+
+    def test_field_queries_use_only_registered_endpoints_and_save_load_stays_offline(self):
+        worker = self.worker()
+        self.assertTrue(worker.validate(XML)['valid'])
+        self.assertTrue(worker.save('native-metadata-load', XML)['validation']['valid'])
+        self.assertEqual([call[2] for call in FakeLinuxRuntime.calls if call[0] == 'launch'], ['validate', 'load'])
+
+    def test_old_field_policy_or_network_granted_to_load_never_launches(self):
+        worker = self.worker()
+        plan = {'timezone': 'Asia/Shanghai', 'sourceHash': 'a' * 64, 'endpoints': []}
+        with patch.object(FakeLinuxRuntime, 'plan', return_value=plan):
+            result = worker.validate(XML)
+        self.assertFalse(result['valid'])
+        plan['endpoints'] = [('192.0.2.10', 5432)]
+        with patch.object(FakeLinuxRuntime, 'plan', return_value=plan):
+            result = worker.validate(XML, discover_fields=False)
+        self.assertFalse(result['valid'])
+        self.assertFalse(any(call[0] == 'launch' for call in FakeLinuxRuntime.calls))
 
     def test_old_or_mismatched_timezone_plan_never_launches_a_container(self):
         worker = self.worker()

@@ -78,13 +78,22 @@ def main():
             for key, value in {'name': 'label', 'rename': 'label', 'type': 'String', 'length': '-1', 'precision': '-1', 'storage_type': 'normal'}.items():
                 fixtures.put(field, key, value)
         xml = ET.tostring(transformation, encoding='unicode')
+        saved = worker.save('readonly-pg-fields-' + uuid.uuid4().hex, xml)
+        assert saved['validation']['validationScope'] == 'xml-load' and saved['validation']['fieldsRequested'] is False, 'Save must not perform implicit native field queries'
+        loaded_run = next(run for run in reversed(list(worker.runs.values())) if run['operation'] == 'load')
+        if worker.runtime_kind == 'macos-seatbelt':
+            assert 'allow network-outbound' not in (Path(loaded_run['directory']) / 'sandbox.sb').read_text(), 'Offline native load unexpectedly has network grants'
+        metadata = worker.validate(xml)
+        assert metadata.get('metadataLoaded') and metadata.get('fieldsResolved') and metadata.get('validationScope') == 'metadata-only', 'Trusted PostgreSQL field discovery did not resolve original fields'
+        source_metadata = next(node for node in metadata['nodes'] if node['name'] == 'file-input')
+        assert [field['name'] for field in source_metadata['fields']] == ['name', 'n'], 'Unexpected original PostgreSQL field metadata'
         identifier = worker.launch('run', xml)
         result = worker.wait(identifier)
     finally:
         if schema:
             cleanup = execute_sql('DROP SCHEMA IF EXISTS ' + schema + ' CASCADE')
     events = worker.runs[identifier]['events']
-    summary = {'runId': identifier, 'state': result['state'], 'errors': result.get('errors'), 'inputQueryReadOnly': True, 'endpoint': '127.0.0.1:15432', 'stepClassSource': plugin['classSource']}
+    summary = {'runId': identifier, 'state': result['state'], 'errors': result.get('errors'), 'inputQueryReadOnly': True, 'trustedNativeFieldDiscovery': True, 'offlineNativeSaveWithoutFieldQueries': True, 'endpoint': '127.0.0.1:15432', 'stepClassSource': plugin['classSource']}
     if result['state'] == 'SUCCEEDED':
         output = Path(worker.runs[identifier]['directory']) / 'output/result.csv'
         lines = output.read_text().splitlines()
