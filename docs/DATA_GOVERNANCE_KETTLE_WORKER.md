@@ -38,8 +38,8 @@ Requests and responses use JSON. Error responses are `{ "error": "..." }`, with 
 | --- | --- | --- |
 | `GET /health` | — | `{status:"UP",engine:"original-kettle",sandbox:"macos-seatbelt",protocolVersion:1}` |
 | `GET /capabilities` | — | `{type:"capabilities",engine,steps:[...],jobs:[...],networkPolicy:"deny-all",filesystemPolicy:"private-operation-directory",seq,time}` |
-| `POST /transformations/validate` | `{xml}` | `{type:"validation",valid,metadataLoaded:true,validationScope:"metadata-only",fieldsRequested:true,fieldsResolved,name,nodes:[...],fieldDiagnostics:[...],seq,time}`; failed native parsing returns `{valid:false,state,errors:[...]}` |
-| `PUT /transformations/{id}` | `{xml}` | `{id,sha256,validation:{validationScope:"xml-load",metadataLoaded:true,fieldsRequested:false,...}}`; original XML is loaded offline without field queries; invalid XML is not saved |
+| `POST /transformations/validate` | `{xml,inputFiles?}` | `{type:"validation",valid,metadataLoaded:true,validationScope:"metadata-only",fieldsRequested:true,fieldsResolved,name,nodes:[...],fieldDiagnostics:[...],seq,time}`; failed native parsing returns `{valid:false,state,errors:[...]}` |
+| `PUT /transformations/{id}` | `{xml,inputFiles?}` | `{id,sha256,validation:{validationScope:"xml-load",metadataLoaded:true,fieldsRequested:false,...}}`; original XML is loaded offline without field queries; invalid XML is not saved |
 | `POST /jobs/validate` | `{xml,inputFiles?}` | Original Job validation, with `kind:"job"`, native entries and hops |
 | `PUT /jobs/{id}` | `{xml,inputFiles?}` | `{id,sha256,validation}`; atomically saves the Job with attached child KTR files |
 | `POST /runs` | `{transformationId|jobId,runId?,mode:"run"|"preview",previewStep?,rowLimit?,inputFiles?}` | A flat run snapshot `{id,state,mode,fingerprint,createdAt,nodes,eventCount,files,...}` |
@@ -84,7 +84,7 @@ The original archive's `TransPreviewFactory.generatePreviewTransformation` was i
 
 Five additional real-native tests verify linear CSV→Script preview has exactly those two original metrics and no file, full run still writes exact output, FilterRows preview emits only matching rows, SwitchCase branch and router previews preserve case/default routing without output nodes, ordinary fan-out selects the same rows as full native execution, and an output target is rejected before preparation. Collectors are visible as actual Dummy helpers, never represented as a successful external write.
 
-The broker caps concurrent original processes at four. `--timeout` specifies an operation watchdog (1–3,600 seconds, default 120). Stop requests first invoke the original engine, then terminate an unresponsive owned process after five seconds. Timeout and forced termination are explicit states/events. No existing local service is controlled.
+The broker caps concurrent original processes at four. `--timeout` specifies an operation watchdog (1–3,600 integer seconds, default 120). The trusted value is frozen as `executionTimeoutSeconds` in each durable launch intent and snapshot, and passed to the original Job bridge through `-Dgovernance.job.timeout.seconds`; a Job no longer silently uses a separate 120-second default or clamps at 900. The broker watchdog includes native startup and remains the absolute supervisor; the Job adds the same bounded duration from its own start as a cooperative-stop fallback. XML and HTTP payloads cannot increase this setting. Changing the broker setting does not change or replay an existing run. Stop requests first invoke the original engine, then terminate an unresponsive owned process after five seconds. Timeout and forced termination are explicit states/events. No existing local service is controlled.
 
 ## Native metadata and events
 
@@ -183,7 +183,7 @@ Platform behavior is explicit:
 | Linux with `execution_enabled=false` | Can inspect/recover existing owned records; rejects new execution |
 | Linux with reviewed, enabled config | Delegates launch to `LinuxRuntime`; no `sandbox-exec` or host Java fallback |
 
-Linux configuration is a broker-owned mode-600 file. Only its `endpoints` provide network grants; macOS `--network-policy`, `--allow-endpoint` and `--ftp-test-policy` flags cannot be mixed into Linux execution. Health reports `sandbox:"linux-docker"`, the effective registered endpoints and `runtimePolicy.executionEnabled`. Capability discovery, transformation `load` used by save, and Job validation use network-none. Explicit transformation `validate` uses only the configured trusted endpoints. The broker compares every adapter plan’s endpoint set with the operation policy before launch and rejects an old or mismatched adapter.
+Linux configuration is a broker-owned mode-600 file. Only its `endpoints` provide network grants; macOS `--network-policy`, `--allow-endpoint` and `--ftp-test-policy` flags cannot be mixed into Linux execution. Health reports `sandbox:"linux-docker"`, the effective registered endpoints and `runtimePolicy.executionEnabled`. Capability discovery and transformation/Job `load` used by save use network-none. Explicit transformation/Job `validate` use only the configured trusted endpoints. The broker compares every adapter plan’s endpoint set with the operation policy before launch and rejects an old or mismatched adapter.
 
 Linux timezone support requires the matching timezone-aware adapter. Before launching any container the dispatcher checks its offline plan against the frozen XML timezone; an old UTC-only or mismatched plan is refused. After launch it verifies the container identity's timezone and artifact/timezone sourceHash against that plan. There is no arbitrary extra-argv option. The adapter owns the actual `-Duser.timezone` argument and container labels; the broker does not infer a timezone from the Linux host.
 
@@ -223,3 +223,22 @@ python3 data-governance/kettle-worker/tests/test_kettle_worker_linux_dispatch.py
 The field-diagnostic follow-up is verified in a separate proof runtime, leaving the shared integration runtime untouched: native CSV lazy replacement reports the precise conversion failure; native integer fields with format `0` retain `9007199254740993` and `9223372036854775807`; blocked PostgreSQL metadata queries report field diagnostics while offline save succeeds without those queries. Dispatcher mocks cover trusted field-query endpoints, offline save and refusal of mismatched adapter policies.
 
 The trusted PostgreSQL proof also performs native offline save, explicitly discovers `name,n` through the registered isolated PostgreSQL endpoint, then runs the original TableInput → ScriptValueMod → SelectValues → TextFileOutput chain and reads back the exact two-row result. Only a read-only VALUES query is used; no fixture table or role is modified. Evidence is kept under the separate `data-governance-kettle-field-diagnostics-v2` runtime.
+
+
+## Validation input context and timeout identity (v4.8.1)
+
+Transformation `validate` and `load` now accept the same `inputFiles` representation as `run`: safe basename plus exactly one UTF-8 `content` or Base64 `contentBase64`, at most 20 files, 8 MiB each and 16 MiB in total. Invalid shapes, duplicate normalized names, traversal and oversized input are rejected before reserving an operation. Files are staged byte-for-byte under that operation's `INPUT_DIR`; metadata validation still does not start transformation threads, and load does not grant network or request fields. Supplying samples does not imply every native plugin automatically infers columns from them: the original `getFields` contract is preserved.
+
+The validation response fields remain unchanged. The platform already sends the immutable input snapshot; the prior broker path discarded it only for transformation validation/load. This fix removes that context mismatch without making ordinary draft saves execute or contact data sources.
+
+Linux journal version 4 binds `executionTimeoutSeconds` to its source hash, recorded Java argument and command plan. Recovery verifies the original value and actual frozen container command. Versions 1–3 retain their prior hash formulas and are not assigned a fabricated timeout. Broker recovery never adopts a new current timeout for a historical run and never relaunches on uncertainty.
+
+Opt-in original-engine proof in an independently prepared macOS Seatbelt runtime (Linux dispatcher/identity is covered separately by mock tests, not this real-engine proof):
+
+```bash
+KETTLE_WORKER_RUNTIME=/absolute/independent/proof-runtime \
+KETTLE_LONG_TIMEOUT_PROOF=1 \
+python3 data-governance/kettle-worker/tests/test_kettle_operation_context.py
+```
+
+This exercises actual authenticated HTTP validation with uploaded text/binary bytes, no execution/output during metadata loading, a 123-second synthetic child transformation that must exceed the previous 120-second Job limit while respecting a 150-second budget, and an 8-second timed-out Job that remains partial. It starts/stops only its own ephemeral local HTTP broker; do not point it at a shared broker runtime.

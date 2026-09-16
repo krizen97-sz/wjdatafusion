@@ -57,7 +57,7 @@ plan/launch 明确检查容器 uid/gid 对制品的目录遍历和文件读取�
 
 有效值通过唯一的 `-Duser.timezone=<zone>` 进入原 JVM。Job 的整个 JVM 使用根 Job 时区，子 TRANS 在同一 JVM 内继承，不读取子节点的时区属性来重新启动或改写 JVM。launch 签名保持不变，也没有接受 XML 任意 argv 的接口。
 
-新 version-3 journal 记录 `timezone`、原 `artifactHash` 和包含有效时区、实际 operation、实际端点集的 `sourceHash`；commandPlan 与容器 labels 同步记录时区。读取 journal 时复算摘要并核对 JVM/operation 参数，实际容器 inspect 还核对冻结的 Entrypoint/Cmd。恢复使用原 journal 的时区及网络路径，不重新读取可变化的 XML。旧 version-1 UTC journal 与 version-2 时区 journal 分别按原摘要公式保持身份，不重写为新值。
+version-4 journal 记录 `timezone`、`executionTimeoutSeconds`、原 `artifactHash` 和包含有效时区、实际 operation、实际端点集及有效超时的 `sourceHash`；commandPlan 记录时区和超时，容器 labels 绑定 sourceHash。可信 broker 向 `plan/launch(..., timeout_seconds=...)` 传入整数 1–3600 秒预算，默认仍为 120；该参数不取自 XML。读取 journal 时复算摘要并核对唯一 JVM 超时参数与 operation，实际容器 inspect 还核对冻结的 Entrypoint/Cmd。恢复使用原 journal 的时区、预算及网络路径，不读取新的配置来覆盖历史。旧 version-1 UTC、version-2 时区及 version-3 操作/端点 journal 分别按原摘要公式保持身份，不重写或补造超时值。
 
 ## 默认断网及可信端点
 

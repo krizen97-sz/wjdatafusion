@@ -20,7 +20,7 @@
 
 `log` 来自原 `KettleLogStore`，不是模拟日志；单次操作最多输出 500 行，每行至多 8192 字符，保留级别、节点和日志 channel。XML 中的 password 值及其原解码值会在事件中替换。运行目录、原引擎标准错误和业务数据仍需按私有数据管理，不能把任意原插件日志视为天然无敏感信息。
 
-向进程标准输入发送一行 `STOP`，执行器设置原 Job 停止标志并传递给已委派的真实子 `Trans`。只有 Job 线程返回、子转换的原 `isFinished` 状态确认后，才发出 STOPPED；停止请求本身不是停止完成。内部默认 120 秒后请求停止，可用 `-Dgovernance.job.timeout.seconds` 在 1–900 秒内设置；若原连接器不响应停止，进程仍需由 broker 的绝对时限管理，不能伪造已完成事件。
+向进程标准输入发送一行 `STOP`，执行器设置原 Job 停止标志并传递给已委派的真实子 `Trans`。只有 Job 线程返回、子转换的原 `isFinished` 状态确认后，才发出 STOPPED；停止请求本身不是停止完成。有效超时由可信 broker 的 `--timeout` 统一提供（整数 1–3600 秒，默认仍为 120），冻结为 `executionTimeoutSeconds` 并通过 `-Dgovernance.job.timeout.seconds` 传入 JVM；不再另行钳制到 900 秒，也不接受 XML/浏览器传任意超时。原 Job 记录 `execution-policy` 事件并在自身开始后使用同一预算作协作停止兜底；broker 从引擎启动开始的 watchdog 是最终上限。超时标记为 TIMED_OUT，尚未完成的产物仍为 partial。若原连接器不响应停止，进程仍需由 broker 管理，不能伪造已完成事件。独立调用本类未提供属性时仍默认 120；非法属性明确拒绝而非静默回退。
 
 原包有两处必须保留的兼容边界：
 
