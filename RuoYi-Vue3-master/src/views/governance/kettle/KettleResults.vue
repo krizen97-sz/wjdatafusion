@@ -22,7 +22,7 @@
     </el-alert>
 
     <el-tabs v-model="tab" class="motion-tabs" @tab-click="tabChosen = true">
-      <el-tab-pane v-if="validation" label="检查诊断" name="validation">
+      <el-tab-pane v-if="validation" label="检查诊断" name="validation"><template #label><span class="motion-control-label"><svg-icon icon-class="form" class="motion-control-label__icon" /><span class="motion-control-label__text">检查诊断</span></span></template>
         <el-alert :title="validationStale ? '以下为历史检查诊断' : validationState.title" :description="validationStale ? '修改后的配置需要重新检查；历史诊断仅供排查参考。' : validationState.description" :type="validationStale ? 'info' : validationState.type" show-icon :closable="false" class="kettle-results__notice" />
         <el-table v-if="validationState.diagnostics.length" :data="validationState.diagnostics" size="small" :max-height="tableHeight" aria-label="原引擎字段诊断">
           <el-table-column prop="node" label="节点" min-width="140" show-overflow-tooltip />
@@ -34,7 +34,7 @@
         <el-button v-if="validation.fieldsResolved === true" link type="primary" @click="selectTab('fields')">{{ validationStale ? '查看历史字段结构' : '查看字段结构' }}</el-button>
       </el-tab-pane>
 
-      <el-tab-pane label="数据样本" name="data">
+      <el-tab-pane label="数据样本" name="data"><template #label><span class="motion-control-label"><svg-icon icon-class="list" class="motion-control-label__icon" /><span class="motion-control-label__text">数据样本</span></span></template>
         <div class="kettle-results__filters">
           <el-select class="kettle-results__node-select" :model-value="selectedNode" clearable filterable placeholder="全部已记录节点" aria-label="数据样本节点" @update:model-value="emit('select-node', $event)"><el-option v-for="name in nodeNames" :key="name" :value="name" :label="name" /></el-select>
           <span id="kettle-result-direction" class="kettle-results__meta">方向</span>
@@ -53,7 +53,7 @@
         </el-table>
       </el-tab-pane>
 
-      <el-tab-pane label="字段结构" name="fields">
+      <el-tab-pane label="字段结构" name="fields"><template #label><span class="motion-control-label"><svg-icon icon-class="list" class="motion-control-label__icon" /><span class="motion-control-label__text">字段结构</span></span></template>
         <div class="kettle-results__filters">
           <el-select class="kettle-results__node-select" :model-value="selectedNode" clearable filterable placeholder="选择字段所属节点" aria-label="字段结构节点" @update:model-value="emit('select-node', $event)"><el-option v-for="name in nodeNames" :key="name" :value="name" :label="name" /></el-select>
           <el-text type="info" size="small">{{ validation ? '字段检查返回的输出结构' : `来自${sampleDirectionLabel(direction)}样本的字段结构` }} · {{ metadata.length }} 个字段</el-text>
@@ -61,12 +61,12 @@
         <el-table :data="metadata" size="small" :max-height="tableHeight" :empty-text="validation ? '此节点尚未取得输出字段，请查看检查诊断或选择其他节点' : '尚无字段结构，请获取字段或运行节点预览'" aria-label="节点字段结构"><el-table-column prop="name" label="字段" min-width="160" show-overflow-tooltip /><el-table-column prop="type" label="类型" width="130" /><el-table-column label="长度" width="100"><template #default="{ row }">{{ fieldDimension(row.length) }}</template></el-table-column><el-table-column label="精度" width="100"><template #default="{ row }">{{ fieldDimension(row.precision) }}</template></el-table-column><el-table-column prop="origin" label="来源" min-width="180" show-overflow-tooltip /></el-table>
       </el-tab-pane>
 
-      <el-tab-pane label="步骤指标" name="metrics">
+      <el-tab-pane label="步骤指标" name="metrics"><template #label><span class="motion-control-label"><svg-icon icon-class="tree" class="motion-control-label__icon" /><span class="motion-control-label__text">步骤指标</span></span></template>
         <p class="kettle-results__help">按节点及副本显示原引擎累计计数；不同节点的计数不能相加作为业务总量。未返回的指标显示“未返回”。</p>
         <el-table :data="metricsRows" size="small" :max-height="tableHeight" :empty-text="run ? '执行服务尚未返回步骤指标' : '运行任务后，可在此查看每个节点的真实处理计数'" aria-label="原引擎步骤指标"><el-table-column prop="node" label="步骤" min-width="180" show-overflow-tooltip /><el-table-column prop="copy" label="副本" width="70" /><el-table-column prop="status" label="原引擎状态" min-width="130" /><el-table-column v-for="metric in metrics" :key="metric.key" :label="metric.label" width="90"><template #default="{ row }">{{ row[metric.key] ?? '未返回' }}</template></el-table-column></el-table>
       </el-tab-pane>
 
-      <el-tab-pane label="运行日志" name="logs">
+      <el-tab-pane label="运行日志" name="logs"><template #label><span class="motion-control-label"><svg-icon icon-class="documentation" class="motion-control-label__icon" /><span class="motion-control-label__text">运行日志</span></span></template>
         <p class="kettle-results__help">显示已接收的运行事件。点击“查看详情”阅读完整消息和节点信息。</p>
         <el-table :data="logs" size="small" :max-height="tableHeight" :empty-text="run ? '执行服务尚未返回日志；如有执行异常，请查看上方完整原因' : '预览或运行任务后，可在此查看执行日志'" aria-label="运行日志">
           <el-table-column label="时间" width="165"><template #default="{ row }">{{ formatResultTime(row.time) }}</template></el-table-column>
@@ -77,7 +77,7 @@
         </el-table>
       </el-tab-pane>
 
-      <el-tab-pane label="输出文件" name="files">
+      <el-tab-pane label="输出文件" name="files"><template #label><span class="motion-control-label"><svg-icon icon-class="documentation" class="motion-control-label__icon" /><span class="motion-control-label__text">输出文件</span></span></template>
         <p class="kettle-results__help">仅列出本次执行返回的文件；数据库或消息队列中的写入结果不会显示在此处。</p>
         <el-table :data="outputFiles" size="small" :max-height="tableHeight" :empty-text="run ? '本次执行尚未返回输出文件，请结合步骤指标和日志核对输出目标' : '运行后可在此下载生成的输出文件'" aria-label="运行输出文件"><el-table-column prop="name" label="文件" min-width="240" show-overflow-tooltip /><el-table-column prop="bytes" label="字节数" width="120" /><el-table-column label="状态" width="140"><template #default="{ row }"><el-tag :type="row.partial ? 'warning' : 'success'" size="small">{{ row.partial ? '部分输出' : '已生成' }}</el-tag></template></el-table-column><el-table-column label="操作" width="100"><template #default="{ row }"><el-button link type="primary" @click="emit('download', row)">下载</el-button></template></el-table-column></el-table>
       </el-tab-pane>

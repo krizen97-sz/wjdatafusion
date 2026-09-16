@@ -2,7 +2,7 @@
   <section v-if="draft" class="kettle-config" :class="{ 'is-bounded': bounded }">
     <header class="kettle-config__header">
       <strong :title="`${title} · ${node.pluginId}`">{{ title }}</strong>
-      <el-button v-if="!expanded" link icon="FullScreen" @click="emit('expand')">展开配置</el-button>
+      <el-space><el-button v-if="!expanded" link icon="FullScreen" @click="emit('expand')">展开配置</el-button><el-button v-if="closable" link icon="Close" aria-label="收起节点配置" @click="emit('close')" /></el-space>
     </header>
     <el-scrollbar class="kettle-config__body">
       <el-form label-position="top" :disabled="readonly" class="kettle-config__identity" @submit.prevent>
@@ -19,7 +19,7 @@
         </el-collapse>
       </el-form>
       <el-tabs v-model="activeTab" :before-leave="beforeTabLeave" class="motion-tabs kettle-config__tabs">
-        <el-tab-pane label="参数" name="settings">
+        <el-tab-pane label="参数" name="settings"><template #label><span class="motion-control-label"><svg-icon icon-class="form" class="motion-control-label__icon" /><span class="motion-control-label__text">参数</span></span></template>
           <el-form label-position="top" :disabled="readonly" @submit.prevent>
             <el-form-item v-for="field in fieldGroups.primary" :key="field.key" :label="field.label" :for="controlId(field.key)">
               <KettleValueInput :input-id="controlId(field.key)" :model-value="fieldValue(field)" :field="field" :context="inputContext" @update:model-value="writeField(field, $event)" />
@@ -38,7 +38,7 @@
             </el-collapse-item>
           </el-collapse>
         </el-tab-pane>
-        <el-tab-pane v-for="(section, index) in schema.tables || []" :key="section.path" :label="section.label" :name="`table-${index}`">
+        <el-tab-pane v-for="(section, index) in schema.tables || []" :key="section.path" :label="section.label" :name="`table-${index}`"><template #label><span class="motion-control-label"><svg-icon icon-class="list" class="motion-control-label__icon" /><span class="motion-control-label__text">{{ section.label }}</span></span></template>
           <div class="kettle-config__table-toolbar">
             <el-text type="info" size="small">{{ rows(section.path).length }} {{ section.columns.some(column => column.type === 'code') ? '个脚本' : '项配置' }}</el-text>
             <div class="kettle-config__table-actions">
@@ -67,11 +67,11 @@
             <el-table-column v-if="!readonly" label="操作" width="75" fixed="right"><template #default="{ row, $index }"><el-button link type="danger" :aria-label="`删除${section.label}第${$index + 1}行`" @click="deleteRow(row)">删除</el-button></template></el-table-column>
           </el-table>
         </el-tab-pane>
-        <el-tab-pane v-if="hasDedicatedForm" label="全部参数" name="native">
+        <el-tab-pane v-if="hasDedicatedForm" label="全部参数" name="native"><template #label><span class="motion-control-label"><svg-icon icon-class="documentation" class="motion-control-label__icon" /><span class="motion-control-label__text">全部参数</span></span></template>
           <el-text type="info" size="small" class="kettle-config__help">包含此工具的原生配置项；日常配置优先使用参数与字段页。</el-text>
           <KettleGenericConfig :element="draft" :template-xml="genericTemplate" :external-revision="revision" :readonly="readonly" :can-expand="!expanded" @change="changed" @expand="emit('expand')" />
         </el-tab-pane>
-        <el-tab-pane label="高级 XML" name="advanced">
+        <el-tab-pane label="高级 XML" name="advanced"><template #label><span class="motion-control-label"><svg-icon icon-class="documentation" class="motion-control-label__icon" /><span class="motion-control-label__text">高级 XML</span></span></template>
           <el-text type="info" size="small" class="kettle-config__help">仅在需要时编辑原生 XML；未修改的配置会保留。</el-text>
           <el-input v-model="advancedXml" :disabled="readonly" type="textarea" :rows="18" aria-label="节点原生XML配置" @input="advancedDirty = true; changed()" />
         </el-tab-pane>
@@ -85,7 +85,7 @@
         <el-button link type="danger" :disabled="readonly" @click="emit('remove')">删除节点</el-button>
       </div>
       <div class="kettle-config__actions">
-        <el-button v-if="kind !== 'job'" :disabled="!canRun" @click="emit('preview')">预览此节点</el-button>
+        <el-tooltip v-if="kind !== 'job'" :content="previewHint || '预览当前节点的实际数据'" placement="top"><span><el-button :disabled="!canRun" @click="emit('preview')">预览此节点</el-button></span></el-tooltip>
         <el-button type="primary" :disabled="readonly || !dirty" @click="apply">应用配置</el-button>
       </div>
     </footer>
@@ -98,8 +98,8 @@ import { hasDedicatedForm as dedicatedFormAvailable, nodeFieldGroups, schemaFor 
 import KettleValueInput from './KettleValueInput.vue'
 import KettleConditionEditor from './KettleConditionEditor.vue'
 import KettleGenericConfig from './KettleGenericConfig.vue'
-const props = defineProps({ node: Object, plugin: Object, title: String, kind: String, readonly: Boolean, canRun: Boolean, expanded: Boolean, bounded: Boolean, commit: Function, context: { type: Object, default: () => ({ fields: [], nodes: [], connections: [], files: [], definitions: [] }) } })
-const emit = defineEmits(['apply', 'dirty-change', 'preview', 'remove', 'expand'])
+const props = defineProps({ node: Object, plugin: Object, title: String, kind: String, readonly: Boolean, canRun: Boolean, expanded: Boolean, bounded: Boolean, closable: Boolean, previewHint: { type: String, default: '' }, commit: Function, context: { type: Object, default: () => ({ fields: [], nodes: [], connections: [], files: [], definitions: [] }) } })
+const emit = defineEmits(['apply', 'dirty-change', 'preview', 'remove', 'expand', 'close'])
 const draft = ref(), name = ref(''), dirty = ref(false), revision = ref(0), error = ref(''), activeTab = ref('settings'), advancedXml = ref(''), advancedDirty = ref(false)
 const schema = computed(() => schemaFor(props.node?.pluginId))
 const fieldGroups = computed(() => nodeFieldGroups(props.node?.pluginId))
