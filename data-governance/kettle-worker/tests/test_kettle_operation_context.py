@@ -8,6 +8,7 @@ from pathlib import Path
 import subprocess
 import time
 import unittest
+from unittest.mock import patch
 import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -115,9 +116,41 @@ class OperationContextNativeTests(unittest.TestCase):
         self.assertEqual(result['executionTimeoutSeconds'], 8)
         policy = next(event for event in worker.runs[identifier]['events'] if event['type'] == 'execution-policy')
         self.assertEqual(policy['executionTimeoutSeconds'], 8)
-        self.assertTrue(all(file['partial'] for file in result['files']))
+        self.assertTrue(result['files'], 'The timeout proof must create an actual partial output file')
+        self.assertEqual([file['name'] for file in result['files']], ['result.csv'])
+        self.assertTrue(all(file['partial'] and file['bytes'] > 0 for file in result['files']))
         self.assertEqual(sum(event['type'] == 'job-entry' and event.get('phase') == 'BEFORE' and event.get('pluginId') == 'TRANS' for event in worker.runs[identifier]['events']), 1)
-        (self.runtime / 'timeout-stop-proof.json').write_text(json.dumps({'runId': identifier, 'state': result['state'], 'executionTimeoutSeconds': 8}, indent=2))
+        output = worker.operations / identifier / 'output/result.csv'
+        partial_rows = len(output.read_text().splitlines()) - 1
+        self.assertGreater(partial_rows, 0)
+        self.assertLess(partial_rows, 30)
+        # wait() observes the in-memory terminal flag; allow its final atomic disk write to finish.
+        record_path = worker.records / identifier / 'record.json'
+        deadline = time.monotonic() + 2
+        while not json.loads(record_path.read_text()).get('finalized') and time.monotonic() < deadline:
+            time.sleep(.01)
+        self.assertTrue(json.loads(record_path.read_text())['finalized'])
+        record_before, modified_before = record_path.read_bytes(), record_path.stat().st_mtime_ns
+        events_before = (record_path.parent / 'events.ndjson').read_bytes()
+        operations_before = set(worker.operations.iterdir())
+        with patch.object(fixtures.module.subprocess, 'Popen', side_effect=AssertionError('A repeated timed-out run must not launch another process')):
+            self.assertEqual(worker.launch('job', job_xml(), run_id=identifier, input_files=inputs), identifier)
+            restored = fixtures.module.Worker(self.runtime, timeout=30)
+            recovered = restored.snapshot(identifier)
+            self.assertEqual(recovered['state'], 'TIMED_OUT')
+            self.assertTrue(recovered['restored'])
+            self.assertEqual(recovered['executionTimeoutSeconds'], 8)
+            self.assertEqual(recovered['spawnedAt'], result['spawnedAt'])
+            self.assertEqual(restored.launch('job', job_xml(), run_id=identifier, input_files=inputs), identifier)
+            self.assertEqual(restored.snapshot(identifier)['files'], result['files'])
+        self.assertEqual(set(worker.operations.iterdir()), operations_before)
+        self.assertEqual(record_path.read_bytes(), record_before)
+        self.assertEqual(record_path.stat().st_mtime_ns, modified_before)
+        self.assertEqual((record_path.parent / 'events.ndjson').read_bytes(), events_before)
+        (self.runtime / ('timeout-stop-proof-' + identifier + '.json')).write_text(json.dumps({
+            'runId': identifier, 'state': result['state'], 'executionTimeoutSeconds': 8,
+            'partialFiles': result['files'], 'partialRows': partial_rows, 'duplicateLaunchBlocked': True,
+            'recoveredState': recovered['state'], 'frozenBudgetRetained': True, 'durableEvidenceUnchanged': True}, indent=2))
 
     @unittest.skipUnless(os.environ.get('KETTLE_LONG_TIMEOUT_PROOF') == '1', 'Opt-in proof takes more than two minutes')
     def test_job_completes_after_old_120_second_limit_with_frozen_150_second_budget(self):
