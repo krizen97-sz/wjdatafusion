@@ -168,6 +168,8 @@ def sandbox_profile(runtime, operation, java_home, ftp_test_ports=()):
 
 class Worker:
     def __init__(self, runtime, timeout=120, ftp_test_policy=None, network_policy=None, allow_endpoints=(), linux_config=None):
+        if type(timeout) is not int or not 1 <= timeout <= 3600:
+            raise ValueError('Operation timeout must be an integer from 1 to 3600 seconds')
         self.runtime = Path(runtime).resolve()
         self.linux_runtime = None
         self.artifacts_root = self.runtime
@@ -287,11 +289,15 @@ class Worker:
             raise ValueError('Container identity changed from the recorded run')
         if run.get('executionTimeZone') and identity.get('timezone') != run['executionTimeZone']:
             raise ValueError('Container timezone differs from the frozen execution definition')
+        if 'executionTimeoutSeconds' in run and identity.get('executionTimeoutSeconds') != run['executionTimeoutSeconds']:
+            raise ValueError('Container timeout differs from the frozen broker intent')
         if run.get('runtimePlan') and identity.get('sourceHash') != run['runtimePlan']['sourceHash']:
             raise ValueError('Container artifact/timezone hash differs from the reviewed launch plan')
         result = {'kind': 'docker', 'containerId': identity['containerId'], 'sourceHash': identity['sourceHash'], 'nonce': identity['nonce']}
         if identity.get('timezone'):
             result['timezone'] = identity['timezone']
+        if 'executionTimeoutSeconds' in identity:
+            result['executionTimeoutSeconds'] = identity['executionTimeoutSeconds']
         return result
 
     def _reconcile_linux(self, run, completed):
@@ -353,6 +359,8 @@ class Worker:
             run['inputs'] = intent.get('inputs', metadata.get('inputs', []))
             if 'executionTimeZone' in intent or 'executionTimeZone' in metadata:
                 run['executionTimeZone'] = intent.get('executionTimeZone', metadata.get('executionTimeZone'))
+            if 'executionTimeoutSeconds' in intent:
+                run['executionTimeoutSeconds'] = intent['executionTimeoutSeconds']
             completed = self._reconcile_linux(run, bool(completed))
             if not completed:
                 run['state'] = RECOVERY_REQUIRED
@@ -424,11 +432,15 @@ class Worker:
         run_id = run_id or uuid.uuid4().hex
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', run_id):
             raise ValueError('Invalid run id')
-        input_files = input_files or []
+        input_files = [] if input_files is None else input_files
+        if not isinstance(input_files, list):
+            raise ValueError('inputFiles must be a list of file objects')
         if len(input_files) > 20:
             raise ValueError('At most 20 input files are accepted')
         decoded_files = []
         for item in input_files:
+            if not isinstance(item, dict) or 'name' not in item:
+                raise ValueError('Each input file must be an object with a name')
             validate_filename(item['name'])
             if ('content' in item) == ('contentBase64' in item):
                 raise ValueError('Provide exactly one of content or contentBase64')
@@ -468,7 +480,7 @@ class Worker:
         record_dir.mkdir(mode=0o700)
         created_at = time.time()
         nonce = secrets.token_hex(32)
-        intent = {'schemaVersion': 1, 'id': run_id, 'fingerprint': fingerprint, 'operation': operation, 'mode': 'preview' if preview_step else operation, 'createdAt': created_at, 'inputNames': [name for name, _ in decoded_files], 'inputLayout': 'separate', 'inputs': [{'name': name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()} for name, data in decoded_files], 'launchNonce': nonce, 'runtimeKind': self.runtime_kind, 'executionTimeZone': time_zone}
+        intent = {'schemaVersion': 1, 'id': run_id, 'fingerprint': fingerprint, 'operation': operation, 'mode': 'preview' if preview_step else operation, 'createdAt': created_at, 'inputNames': [name for name, _ in decoded_files], 'inputLayout': 'separate', 'inputs': [{'name': name, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()} for name, data in decoded_files], 'launchNonce': nonce, 'runtimeKind': self.runtime_kind, 'executionTimeZone': time_zone, 'executionTimeoutSeconds': self.timeout}
         # This record is outside the engine's OS file grants and is durable before Popen.
         atomic_private_json(record_dir / 'intent.json', intent)
         run = dict(intent, state='INTENT_PERSISTED', events=[], directory=str(directory), process=None, nodes=[], finalized=False, restored=False)
@@ -494,21 +506,23 @@ class Worker:
                     raise ValueError('FTP fixture policy requires 1-10 explicit localhost ports')
                 ftp_ports.extend(fixture_ports)
             profile.write_text(sandbox_profile(self.runtime, directory, self.java_home, ftp_ports))
-            cmd = ['/usr/bin/sandbox-exec', '-f', str(profile), str(self.java_home / 'bin/java'), '-Xmx384m', '-XX:+PerfDisableSharedMem', '-Dgovernance.worker.launch.id=' + nonce, '-Djava.awt.headless=true', '-Djava.net.preferIPv4Stack=true', '-Duser.timezone=' + time_zone, '-DKETTLE_SYSTEM_HOSTNAME=isolated-kettle-worker', '-Duser.home=' + str(directory / 'home'), '-DKETTLE_HOME=' + str(directory / 'home'), '-DKETTLE_JNDI_ROOT=' + str(directory / 'home'), '-DKETTLE_PLUGIN_BASE_FOLDERS=' + str(directory / 'home/empty-plugins'), '-Djava.io.tmpdir=' + str(directory / 'tmp'), '-cp', self.manifest['classpath'], 'KettleWorker', str(directory), operation, preview_step, str(row_limit)]
+            cmd = ['/usr/bin/sandbox-exec', '-f', str(profile), str(self.java_home / 'bin/java'), '-Xmx384m', '-XX:+PerfDisableSharedMem', '-Dgovernance.worker.launch.id=' + nonce, '-Dgovernance.job.timeout.seconds=' + str(run['executionTimeoutSeconds']), '-Djava.awt.headless=true', '-Djava.net.preferIPv4Stack=true', '-Duser.timezone=' + time_zone, '-DKETTLE_SYSTEM_HOSTNAME=isolated-kettle-worker', '-Duser.home=' + str(directory / 'home'), '-DKETTLE_HOME=' + str(directory / 'home'), '-DKETTLE_JNDI_ROOT=' + str(directory / 'home'), '-DKETTLE_PLUGIN_BASE_FOLDERS=' + str(directory / 'home/empty-plugins'), '-Djava.io.tmpdir=' + str(directory / 'tmp'), '-cp', self.manifest['classpath'], 'KettleWorker', str(directory), operation, preview_step, str(row_limit)]
             run['commandSha256'] = hashlib.sha256(json.dumps(cmd).encode()).hexdigest()
         run['state'] = 'STARTING'
         self._persist(run)
         log = (directory / 'engine.log').open('w')
         try:
             if self.linux_runtime:
-                plan = self.linux_runtime.plan(directory, operation, preview_step, row_limit, launch_id=nonce)
+                plan = self.linux_runtime.plan(directory, operation, preview_step, row_limit, launch_id=nonce, timeout_seconds=run['executionTimeoutSeconds'])
+                if plan.get('executionTimeoutSeconds') != run['executionTimeoutSeconds']:
+                    raise ValueError('Linux adapter plan does not implement the frozen operation timeout')
                 if plan.get('timezone') != time_zone:
                     raise ValueError('Linux adapter plan does not implement the frozen execution timezone')
                 if {tuple(endpoint) for endpoint in plan.get('endpoints', [])} != (set(self.linux_runtime.config.endpoints) if operation in {'run', 'job', 'validate', 'job-validate'} else set()):
                     raise ValueError('Linux adapter operation does not match the trusted endpoint policy')
-                run['runtimePlan'] = {'sourceHash': plan['sourceHash'], 'timezone': plan['timezone']}
+                run['runtimePlan'] = {'sourceHash': plan['sourceHash'], 'timezone': plan['timezone'], 'executionTimeoutSeconds': plan['executionTimeoutSeconds']}
                 self._persist(run)
-                process = self.linux_runtime.launch(directory, operation, preview_step, row_limit, launch_id=nonce, stderr=log)
+                process = self.linux_runtime.launch(directory, operation, preview_step, row_limit, launch_id=nonce, timeout_seconds=run['executionTimeoutSeconds'], stderr=log)
                 run['runtimeIdentity'] = self._linux_identity(run, process.identity())
             else:
                 process = subprocess.Popen(cmd, cwd=directory, env={'PATH': '/usr/bin:/bin', 'HOME': str(directory / 'home'), 'LANG': 'en_US.UTF-8', 'KETTLE_HOME': str(directory / 'home')}, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log, text=True, bufsize=1, start_new_session=True)
@@ -588,7 +602,7 @@ class Worker:
         threading.Thread(target=collect, daemon=True).start()
         def watchdog():
             try:
-                process.wait(timeout=self.timeout)
+                process.wait(timeout=run['executionTimeoutSeconds'])
             except subprocess.TimeoutExpired:
                 run['timeoutRequested'] = True
                 self.stop(run_id)
@@ -708,8 +722,8 @@ class Worker:
         finally:
             os.close(directory)
 
-    def validate(self, xml, discover_fields=True):
-        result = self.wait(self.launch('validate' if discover_fields else 'load', xml))
+    def validate(self, xml, discover_fields=True, input_files=None):
+        result = self.wait(self.launch('validate' if discover_fields else 'load', xml, input_files=input_files))
         event = next((e for e in self.runs[result['id']]['events'] if e['type'] == 'validation'), None)
         return event or {'valid': False, 'state': result['state'], 'errors': [e for e in self.runs[result['id']]['events'] if e['type'] == 'terminal']}
 
@@ -726,10 +740,10 @@ class Worker:
                 raise RuntimeError('Original engine discovery failed; inspect private engine.log')
         return self.catalog
 
-    def save(self, identifier, xml):
+    def save(self, identifier, xml, input_files=None):
         if not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', identifier):
             raise ValueError('Invalid transformation id')
-        validation = self.validate(xml, discover_fields=False)
+        validation = self.validate(xml, discover_fields=False, input_files=input_files)
         if not validation.get('metadataLoaded', validation.get('valid')):
             return validation
         digest = hashlib.sha256(xml.encode()).hexdigest()
@@ -779,9 +793,9 @@ def serve(worker, port):
                 elif self.command == 'GET' and parts == ['capabilities']:
                     result = worker.capabilities()
                 elif self.command == 'POST' and parts == ['transformations', 'validate']:
-                    result = worker.validate(body['xml'])
+                    result = worker.validate(body['xml'], input_files=body.get('inputFiles'))
                 elif self.command == 'PUT' and len(parts) == 2 and parts[0] == 'transformations':
-                    result = worker.save(parts[1], body['xml'])
+                    result = worker.save(parts[1], body['xml'], input_files=body.get('inputFiles'))
                 elif self.command == 'POST' and parts == ['jobs', 'validate']:
                     result = worker.validate_job(body['xml'], body.get('inputFiles'))
                 elif self.command == 'PUT' and len(parts) == 2 and parts[0] == 'jobs':

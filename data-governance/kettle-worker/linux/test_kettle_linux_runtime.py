@@ -452,6 +452,9 @@ class LinuxTests(unittest.TestCase):
     def test_legacy_utc_journal_keeps_its_original_source_identity(self):
         controller, runner = self.controller(); record = controller.plan(self.op, 'run')
         record['version'] = 1; original_hash = record.pop('artifactHash'); record.pop('timezone')
+        record.pop('executionTimeoutSeconds'); record['commandPlan'].pop('executionTimeoutSeconds')
+        record['javaArgv'] = [arg for arg in record['javaArgv'] if not arg.startswith('-Dgovernance.job.timeout.seconds=')]
+        record['containerCreate'] = [arg for arg in record['containerCreate'] if not arg.startswith('-Dgovernance.job.timeout.seconds=')]
         record['sourceHash'] = original_hash; record['labels'][runtime.LABEL + 'source'] = original_hash
         record['labels'].pop(runtime.LABEL + 'timezone'); record['commandPlan'].pop('timezone')
         record['javaArgv'] = [arg.replace('-Duser.timezone=Asia/Shanghai', '-Duser.timezone=UTC') for arg in record['javaArgv']]
@@ -470,11 +473,63 @@ class LinuxTests(unittest.TestCase):
     def test_version_two_timezone_records_restore_using_original_hash_formula(self):
         controller, _ = self.controller(); record = controller.plan(self.op, 'run')
         record['version'] = 2
+        record.pop('executionTimeoutSeconds'); record['commandPlan'].pop('executionTimeoutSeconds')
+        record['javaArgv'] = [arg for arg in record['javaArgv'] if not arg.startswith('-Dgovernance.job.timeout.seconds=')]
+        record['containerCreate'] = [arg for arg in record['containerCreate'] if not arg.startswith('-Dgovernance.job.timeout.seconds=')]
         original = runtime.source_fingerprint(record['artifactHash'], record['timezone'])
         record['sourceHash'] = original; record['labels'][runtime.LABEL + 'source'] = original
         controller._save(record, create=True)
         identity = controller.identity_for_run('run-one')
         self.assertEqual(original, identity['sourceHash']); self.assertEqual('Asia/Shanghai', identity['timezone'])
+    def test_timeout_budget_changes_source_identity_and_is_not_read_from_xml(self):
+        controller, runner = self.controller()
+        (self.op / 'transformation.ktr').write_text('<transformation data-rynew-timeout="3600"><timeout>3600</timeout></transformation>')
+        default = controller.plan(self.op, 'run')
+        custom = controller.plan(self.op, 'run', timeout_seconds=900)
+        self.assertEqual(default['executionTimeoutSeconds'], 120)
+        self.assertEqual(custom['executionTimeoutSeconds'], 900)
+        self.assertEqual(custom['commandPlan']['executionTimeoutSeconds'], 900)
+        self.assertIn('-Dgovernance.job.timeout.seconds=900', custom['javaArgv'])
+        self.assertNotEqual(default['sourceHash'], custom['sourceHash'])
+        self.assertEqual(default['artifactHash'], custom['artifactHash'])
+        for bad in [0, -1, 3601, True, 1.5, '900', None]:
+            with self.subTest(timeout=bad), self.assertRaisesRegex(RuntimeError, 'timeout'):
+                controller.plan(self.op, 'run', timeout_seconds=bad)
+        self.assertEqual(runner.calls, [])
+
+    def test_timeout_restoration_keeps_frozen_budget_and_rejects_journal_or_command_tampering(self):
+        controller, runner = self.controller()
+        controller.launch(self.op, 'run', timeout_seconds=900)
+        record = controller._read('run-one')
+        self.assertEqual(record['version'], 4)
+        self.assertEqual(controller.identity_for_run('run-one')['executionTimeoutSeconds'], 900)
+        changed = copy.deepcopy(record)
+        changed['executionTimeoutSeconds'] = 3600
+        controller._save(changed)
+        with self.assertRaisesRegex(RuntimeError, 'timeout|budget'):
+            controller.recover('run-one')
+        controller._save(record)
+        runner.container['Config']['Cmd'] = [arg.replace('-Dgovernance.job.timeout.seconds=900', '-Dgovernance.job.timeout.seconds=3600') for arg in runner.container['Config']['Cmd']]
+        with self.assertRaises(RuntimeError):
+            controller.recover('run-one')
+
+    def test_version_three_records_keep_old_source_identity_without_invented_timeout(self):
+        controller, _ = self.controller()
+        record = controller.plan(self.op, 'run', timeout_seconds=900)
+        record['version'] = 3
+        record.pop('executionTimeoutSeconds')
+        record['commandPlan'].pop('executionTimeoutSeconds')
+        original = runtime.source_fingerprint(record['artifactHash'], record['timezone'], record['operation'], record['endpoints'])
+        record['sourceHash'] = original
+        record['labels'][runtime.LABEL + 'source'] = original
+        record['javaArgv'] = [arg for arg in record['javaArgv'] if not arg.startswith('-Dgovernance.job.timeout.seconds=')]
+        record['containerCreate'] = [arg for arg in record['containerCreate'] if not arg.startswith('-Dgovernance.job.timeout.seconds=')]
+        controller._save(record, create=True)
+        identity = controller.identity_for_run('run-one')
+        self.assertEqual(identity['sourceHash'], original)
+        self.assertNotIn('executionTimeoutSeconds', identity)
+        self.assertEqual(controller._read('run-one')['version'], 3)
+
     def test_cleanup_can_resume_after_acknowledged_container_removal(self):
         controller, runner = self.controller(endpoints=[{'host': '10.20.30.40', 'port': 5432}]); controller.launch(self.op, 'run')
         runner.container['State']['Running'] = False

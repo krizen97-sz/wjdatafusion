@@ -254,7 +254,8 @@ public final class NativeJobExecutor {
             } catch (Exception ignored) { }
         }, "native-job-control");
         controller.setDaemon(true);
-        long timeout = Math.max(1, Math.min(900, Long.getLong("governance.job.timeout.seconds", 120)));
+        long timeout = timeoutSeconds();
+        KettleWorker.event("execution-policy", Map.of("executionTimeoutSeconds", timeout, "timeoutAuthority", "broker-watchdog"));
         long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(timeout);
         try {
             KettleWorker.event("state", Map.of("state", "PREPARING", "entries", entries));
@@ -275,7 +276,7 @@ public final class NativeJobExecutor {
             Result result = job.getResult();
             long errors = Math.max(observedErrors.get(), Math.max(job.getErrors(), result == null ? 1 : result.getNrErrors()));
             boolean failed = errors > 0 || uncaughtFailure.get() || !childrenFinished || result == null || !result.getResult();
-            String state = timedOut.get() || !childrenFinished ? "FAILED" : requestedStop.get() ? "STOPPED" : failed ? "FAILED" : "SUCCEEDED";
+            String state = timedOut.get() ? "TIMED_OUT" : !childrenFinished ? "FAILED" : requestedStop.get() ? "STOPPED" : failed ? "FAILED" : "SUCCEEDED";
             KettleWorker.event("terminal", Map.of("state", state, "errors", errors,
                 "resultBoolean", result != null && result.getResult(), "jobFinished", job.isFinished(),
                 "childrenFinished", childrenFinished, "timedOut", timedOut.get(),
@@ -287,6 +288,14 @@ public final class NativeJobExecutor {
             ftpBatches.clear();
             KettleLogStore.getAppender().removeLoggingEventListener(logging);
         }
+    }
+
+    static long timeoutSeconds() {
+        String configured = System.getProperty("governance.job.timeout.seconds", "120");
+        if (!configured.matches("[0-9]{1,4}")) throw new IllegalArgumentException("Operation timeout must be an integer from 1 to 3600 seconds");
+        long timeout = Long.parseLong(configured);
+        if (timeout < 1 || timeout > 3600) throw new IllegalArgumentException("Operation timeout must be an integer from 1 to 3600 seconds");
+        return timeout;
     }
 
     private static void registerEntries() throws Exception {

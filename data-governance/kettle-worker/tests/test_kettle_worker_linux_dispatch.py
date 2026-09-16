@@ -1,4 +1,5 @@
 """Dispatcher contract tests only. No Docker, iptables, nsenter or original engine is run."""
+import base64
 import hashlib
 import importlib.util
 import io
@@ -6,6 +7,10 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+import threading
+import urllib.error
+import urllib.request
+from http.server import ThreadingHTTPServer
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -53,21 +58,21 @@ class FakeLinuxRuntime:
     def __init__(self, config):
         self.config = config
 
-    def plan(self, operation_dir, operation, preview_step='', row_limit=20, launch_id=None):
-        filename = 'transformation.kjb' if operation in {'job', 'job-validate'} else 'transformation.ktr'
+    def plan(self, operation_dir, operation, preview_step='', row_limit=20, launch_id=None, *, timeout_seconds=120):
+        filename = 'transformation.kjb' if operation in {'job', 'job-validate', 'job-load'} else 'transformation.ktr'
         xml = (operation_dir / filename).read_text() if (operation_dir / filename).exists() else None
-        return {'timezone': worker_module.execution_time_zone(xml), 'sourceHash': 'a' * 64, 'endpoints': list(self.config.endpoints) if operation in {'run', 'job', 'validate'} else []}
+        return {'timezone': worker_module.execution_time_zone(xml), 'sourceHash': 'a' * 64, 'executionTimeoutSeconds': timeout_seconds, 'endpoints': list(self.config.endpoints) if operation in {'run', 'job', 'validate', 'job-validate'} else []}
 
-    def launch(self, operation_dir, operation, preview_step='', row_limit=20, launch_id=None, stderr=None):
+    def launch(self, operation_dir, operation, preview_step='', row_limit=20, launch_id=None, stderr=None, *, timeout_seconds=120):
         identifier = operation_dir.name
         self.calls.append(('launch', identifier, operation, preview_step, row_limit, launch_id))
-        self.journals[identifier] = {'kind': 'docker', 'containerId': hashlib.sha256(identifier.encode()).hexdigest(), 'sourceHash': 'a' * 64, 'nonce': launch_id, 'state': 'EXITED', 'running': False, 'exitCode': 0, 'timezone': self.plan(operation_dir, operation)['timezone']}
+        self.journals[identifier] = {'kind': 'docker', 'containerId': hashlib.sha256(identifier.encode()).hexdigest(), 'sourceHash': 'a' * 64, 'nonce': launch_id, 'state': 'EXITED', 'running': False, 'exitCode': 0, 'timezone': self.plan(operation_dir, operation)['timezone'], 'executionTimeoutSeconds': timeout_seconds}
         if self.launch_failure:
             self.journals[identifier]['running'] = True
             raise RuntimeError('Mock container launch acknowledgement lost')
         if operation == 'capabilities':
             events = [{'type': 'capabilities', 'steps': [], 'jobs': [], 'engine': 'mock'}]
-        elif operation in {'validate', 'job-validate', 'load'}:
+        elif operation in {'validate', 'job-validate', 'load', 'job-load'}:
             events = [{'type': 'validation', 'valid': True, 'nodes': []}]
         else:
             (operation_dir / 'output/result.txt').write_text('mock-container-artifact')
@@ -79,7 +84,7 @@ class FakeLinuxRuntime:
     def identity_for_run(self, identifier):
         self.calls.append(('identity', identifier))
         record = self.journals[identifier]
-        return {key: record[key] for key in ['kind', 'containerId', 'sourceHash', 'nonce', 'timezone']}
+        return {key: record[key] for key in ['kind', 'containerId', 'sourceHash', 'nonce', 'timezone', 'executionTimeoutSeconds'] if key in record}
 
     def status(self, identifier):
         self.calls.append(('status', identifier))
@@ -128,8 +133,8 @@ class LinuxDispatcherTests(unittest.TestCase):
     def save_config(self):
         worker_module.atomic_private_json(self.configuration, self.value)
 
-    def worker(self):
-        return worker_module.Worker(self.broker, linux_config=self.configuration)
+    def worker(self, timeout=120):
+        return worker_module.Worker(self.broker, timeout=timeout, linux_config=self.configuration)
 
     def run_complete(self):
         worker = self.worker()
@@ -253,7 +258,7 @@ class LinuxDispatcherTests(unittest.TestCase):
 
     def test_old_field_policy_or_network_granted_to_load_never_launches(self):
         worker = self.worker()
-        plan = {'timezone': 'Asia/Shanghai', 'sourceHash': 'a' * 64, 'endpoints': []}
+        plan = {'timezone': 'Asia/Shanghai', 'sourceHash': 'a' * 64, 'executionTimeoutSeconds': 120, 'endpoints': []}
         with patch.object(FakeLinuxRuntime, 'plan', return_value=plan):
             result = worker.validate(XML)
         self.assertFalse(result['valid'])
@@ -262,6 +267,101 @@ class LinuxDispatcherTests(unittest.TestCase):
             result = worker.validate(XML, discover_fields=False)
         self.assertFalse(result['valid'])
         self.assertFalse(any(call[0] == 'launch' for call in FakeLinuxRuntime.calls))
+
+    def test_nondefault_timeout_is_frozen_and_recovered_without_current_config_override(self):
+        worker = self.worker(timeout=900)
+        identifier = worker.launch('run', XML, run_id='frozen-timeout')
+        self.assertEqual(worker.wait(identifier)['executionTimeoutSeconds'], 900)
+        self.assertEqual(FakeLinuxRuntime.journals[identifier]['executionTimeoutSeconds'], 900)
+        before = sum(call[0] == 'launch' for call in FakeLinuxRuntime.calls)
+        restored = self.worker(timeout=30)
+        self.assertEqual(restored.snapshot(identifier)['executionTimeoutSeconds'], 900)
+        self.assertEqual(restored.snapshot(identifier)['state'], 'SUCCEEDED')
+        self.assertEqual(restored.launch('run', XML, run_id=identifier), identifier)
+        self.assertEqual(sum(call[0] == 'launch' for call in FakeLinuxRuntime.calls), before)
+
+    def test_changed_timeout_identity_cannot_be_adopted_or_stopped(self):
+        _, identifier, _ = self.run_complete()
+        FakeLinuxRuntime.journals[identifier]['executionTimeoutSeconds'] = 3600
+        restored = self.worker()
+        self.assertEqual(restored.snapshot(identifier)['state'], 'RECOVERY_REQUIRED')
+        with self.assertRaisesRegex(ValueError, 'timeout'):
+            restored.stop(identifier)
+        self.assertFalse(any(call[0] == 'stop' for call in FakeLinuxRuntime.calls))
+
+    def test_legacy_run_without_timeout_metadata_remains_readonly_recoverable(self):
+        worker, identifier, _ = self.run_complete()
+        for filename in ['intent.json', 'record.json']:
+            path = worker.records / identifier / filename
+            value = json.loads(path.read_text())
+            value.pop('executionTimeoutSeconds')
+            if 'runtimeIdentity' in value:
+                value['runtimeIdentity'].pop('executionTimeoutSeconds', None)
+            worker_module.atomic_private_json(path, value)
+        FakeLinuxRuntime.journals[identifier].pop('executionTimeoutSeconds')
+        restored = self.worker(timeout=900)
+        self.assertEqual(restored.snapshot(identifier)['state'], 'SUCCEEDED')
+        self.assertNotIn('executionTimeoutSeconds', restored.snapshot(identifier))
+        self.assertEqual(sum(call[0] == 'launch' for call in FakeLinuxRuntime.calls), 1)
+
+    def test_invalid_trusted_timeout_rejected_before_runtime_initialization(self):
+        for value in [0, 3601, -1, True, 1.5, '900', None]:
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'timeout'):
+                self.worker(timeout=value)
+        self.assertEqual(FakeLinuxRuntime.calls, [])
+
+    def test_http_validation_stages_exact_files_and_load_remains_offline(self):
+        worker = self.worker()
+        servers = []
+        def create_server(address, handler):
+            server = ThreadingHTTPServer(address, handler)
+            server.daemon_threads = True
+            servers.append(server)
+            return server
+        with patch.object(worker_module, 'ThreadingHTTPServer', side_effect=create_server):
+            thread = threading.Thread(target=worker_module.serve, args=(worker, 0), daemon=True)
+            thread.start()
+            import time
+            deadline = time.monotonic() + 3
+            while not servers and time.monotonic() < deadline:
+                time.sleep(.005)
+            self.assertTrue(servers, 'Owned test HTTP server did not start')
+            server = servers[0]
+            url = 'http://127.0.0.1:' + str(server.server_port)
+            def request(path, method, payload):
+                req = urllib.request.Request(url + path, json.dumps(payload).encode(),
+                    {'Authorization': 'Bearer ' + worker.token, 'Content-Type': 'application/json'}, method=method)
+                with urllib.request.urlopen(req, timeout=3) as response:
+                    return json.load(response)
+            try:
+                sample = b'\x00\xfffixture-input\r\n'
+                files = [{'name': '上传样本.bin', 'contentBase64': base64.b64encode(sample).decode()}]
+                result = request('/transformations/validate', 'POST', {'xml': XML, 'inputFiles': files})
+                self.assertTrue(result['valid'])
+                validation = next(run for run in worker.runs.values() if run['operation'] == 'validate')
+                directory = Path(validation['directory'])
+                self.assertEqual((directory / 'input/上传样本.bin').read_bytes(), sample)
+                self.assertEqual(validation['inputs'][0]['sha256'], hashlib.sha256(sample).hexdigest())
+                self.assertEqual(list((directory / 'output').iterdir()), [])
+                self.assertEqual(validation['runtimePlan']['executionTimeoutSeconds'], 120)
+                result = request('/transformations/offline-load', 'PUT', {'xml': XML, 'inputFiles': files})
+                self.assertTrue(result['validation']['valid'])
+                loaded = next(run for run in worker.runs.values() if run['operation'] == 'load')
+                self.assertEqual((Path(loaded['directory']) / 'input/上传样本.bin').read_bytes(), sample)
+                self.assertEqual(worker.linux_runtime.plan(Path(loaded['directory']), 'load')['endpoints'], [])
+                count = len(worker.runs)
+                invalid = [False, {}, 'bad', ['bad'], [{}], [{'name': '../outside', 'content': 'x'}],
+                    [{'name': 'bad', 'contentBase64': '!'}], files + files,
+                    [{'name': 'too-big', 'content': 'x' * (worker_module.MAX_INPUT_FILE + 1)}]]
+                for value in invalid:
+                    with self.subTest(input_type=type(value).__name__), self.assertRaises(urllib.error.HTTPError) as caught:
+                        request('/transformations/validate', 'POST', {'xml': XML, 'inputFiles': value})
+                    self.assertEqual(caught.exception.code, 400)
+                self.assertEqual(len(worker.runs), count, 'Rejected files must not reserve or launch operations')
+            finally:
+                server.shutdown()
+                thread.join(timeout=3)
+                server.server_close()
 
     def test_old_or_mismatched_timezone_plan_never_launches_a_container(self):
         worker = self.worker()

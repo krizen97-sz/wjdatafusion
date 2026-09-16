@@ -63,10 +63,17 @@ def operation_timezone(operation_dir, operation):
     return valid_timezone(root.get('data-rynew-timezone', DEFAULT_TIMEZONE))
 
 
-def source_fingerprint(artifact_hash, timezone, operation=None, endpoints=()):
+def valid_timeout(value):
+    require(type(value) is int and 1 <= value <= 3600, 'Operation timeout must be an integer from 1 to 3600 seconds')
+    return value
+
+
+def source_fingerprint(artifact_hash, timezone, operation=None, endpoints=(), timeout_seconds=None):
     identity = {'artifacts': artifact_hash, 'timezone': timezone}
     if operation is not None:
         identity.update(operation=operation, endpoints=sorted([list(endpoint) for endpoint in endpoints]))
+    if timeout_seconds is not None:
+        identity['executionTimeoutSeconds'] = valid_timeout(timeout_seconds)
     return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
 
 
@@ -282,7 +289,8 @@ class LinuxRuntime:
         evidence['gate.sh'] = digest(LINUX_ASSETS / 'gate.sh'); evidence['image'] = self.config.image
         return ':'.join(parts), hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
 
-    def plan(self, operation_dir, operation, preview_step='', row_limit=20, launch_id=None):
+    def plan(self, operation_dir, operation, preview_step='', row_limit=20, launch_id=None, *, timeout_seconds=120):
+        timeout_seconds = valid_timeout(timeout_seconds)
         cfg = self.config; op = path_checked(operation_dir)
         require(op.parent == cfg.operations_root and re.fullmatch(r'[A-Za-z0-9_-]{1,80}', op.name), 'Operation must be a direct owned run directory')
         require(not any(op == p or op in p.parents or p in op.parents for p in [cfg.worker_root, cfg.state_root]), 'Operation cannot overlap artifacts or controller journals')
@@ -296,7 +304,7 @@ class LinuxRuntime:
         classpath, artifact_hash = self._artifacts()
         timezone = operation_timezone(op, operation)
         endpoints = cfg.endpoints if operation in NETWORK_OPERATIONS else ()
-        source_hash = source_fingerprint(artifact_hash, timezone, operation, endpoints)
+        source_hash = source_fingerprint(artifact_hash, timezone, operation, endpoints, timeout_seconds)
         self._permissions(op)
         short = hashlib.sha256((cfg.instance_id + ':' + op.name + ':' + nonce).encode()).hexdigest()[:20]
         network = 'ryk-' + short; chain = 'RYK_' + short; bridge = 'rk-' + short[:12]
@@ -314,7 +322,7 @@ class LinuxRuntime:
                 '-Djava.net.preferIPv4Stack=true', '-Duser.timezone=' + timezone, '-Duser.home=' + work + '/home', '-DKETTLE_HOME=' + work + '/home',
                 '-DKETTLE_JNDI_ROOT=' + work + '/home', '-DKETTLE_PLUGIN_BASE_FOLDERS=' + work + '/home/empty-plugins',
                 '-DKETTLE_SYSTEM_HOSTNAME=isolated-kettle-worker', '-Djava.io.tmpdir=' + work + '/tmp',
-                '-Dgovernance.worker.launch.id=' + nonce, '-cp', classpath, 'KettleWorker', work, operation, preview_step, str(row_limit)]
+                '-Dgovernance.worker.launch.id=' + nonce, '-Dgovernance.job.timeout.seconds=' + str(timeout_seconds), '-cp', classpath, 'KettleWorker', work, operation, preview_step, str(row_limit)]
         create = self.docker('create', '--pull=never', '--platform', cfg.platform, '--name', 'ryk-' + short,
             '--interactive', '--read-only', '--user', str(cfg.uid) + ':' + str(cfg.gid), '--cap-drop=ALL',
             '--security-opt=no-new-privileges:true', '--restart=no', '--ipc=private', '--pids-limit', str(cfg.pids_limit),
@@ -332,7 +340,7 @@ class LinuxRuntime:
         rules = [['-d', host + '/32', '-p', 'tcp', '-m', 'tcp', '--dport', str(port), '-m', 'comment', '--comment', comment, '-j', 'RETURN'] for host, port in endpoints]
         rules += [['-m', 'comment', '--comment', comment, '-j', 'DROP']]
         jump = ['-i', bridge, '-s', address + '/32', '-m', 'comment', '--comment', comment, '-j', chain]
-        record = {'version': 3, 'runId': op.name, 'operationDir': str(op), 'operation': operation, 'nonce': nonce,
+        record = {'version': 4, 'executionTimeoutSeconds': timeout_seconds, 'runId': op.name, 'operationDir': str(op), 'operation': operation, 'nonce': nonce,
                 'sourceHash': source_hash, 'artifactHash': artifact_hash, 'timezone': timezone, 'image': cfg.image, 'labels': labels, 'mounts': mounts, 'javaArgv': java,
                 'containerCreate': create, 'networkName': network if endpoints else None, 'networkId': None, 'containerId': None,
                 'subnet': str(subnet), 'containerIp': address, 'bridgeInterface': bridge, 'hostChain': chain, 'namespaceChain': chain,
@@ -352,7 +360,7 @@ class LinuxRuntime:
         for binary, entries in [(cfg.iptables, rules), (cfg.ip6tables, [rules[-1]])]:
             prefix = [cfg.nsenter, '--net=/proc/self/fd/<PINNED_NETNS_FD>', '--', binary, '-w', '5']
             ns_policy += [[*prefix, '-N', chain], *[[*prefix, '-A', chain, *rule] for rule in entries], [*prefix, '-I', 'OUTPUT', '1', '-j', chain]]
-        record['commandPlan'] = {'timezone': timezone, 'imageInspect': self.docker('image', 'inspect', cfg.image),
+        record['commandPlan'] = {'timezone': timezone, 'executionTimeoutSeconds': timeout_seconds, 'imageInspect': self.docker('image', 'inspect', cfg.image),
             'networkCreate': network_create if endpoints else None, 'containerCreate': create,
             'hostFirewall': host_policy if endpoints else [], 'attachGate': self.docker('start', '--attach', '--interactive', '<CONTAINER_ID>'),
             'namespaceFirewall': ns_policy if endpoints else [], 'releaseGateFile': str(op / '.rynew-java-ready'),
@@ -378,6 +386,7 @@ class LinuxRuntime:
         require(private_read(self.config.state_root / 'owner.json') == {'instance': self.config.instance_id, 'root': str(self.config.state_root)}, 'Unknown journal owner')
         record = private_read(self.config.state_root / (run_id + '.json'))
         require(record['runId'] == run_id and record['labels'].get(LABEL + 'instance') == self.config.instance_id, 'Journal identity differs')
+        require(record.get('version', 1) in {1, 2, 3, 4}, 'Unsupported container journal version')
         if record.get('version', 1) >= 2:
             timezone = valid_timezone(record['timezone'])
             if record['version'] >= 3:
@@ -385,7 +394,13 @@ class LinuxRuntime:
                         'Recorded load/catalog operation must stay offline')
                 require(record['javaArgv'][-3] == record['operation'] and record['containerCreate'][-len(record['javaArgv']):] == record['javaArgv'],
                         'Recorded native operation/command differs')
-            source_hash = source_fingerprint(record['artifactHash'], timezone, record['operation'], record['endpoints']) if record['version'] >= 3 else source_fingerprint(record['artifactHash'], timezone)
+            timeout = None
+            if record['version'] >= 4:
+                timeout = valid_timeout(record['executionTimeoutSeconds'])
+                require(record['commandPlan'].get('executionTimeoutSeconds') == timeout
+                        and [arg for arg in record['javaArgv'] if arg.startswith('-Dgovernance.job.timeout.seconds=')] == ['-Dgovernance.job.timeout.seconds=' + str(timeout)],
+                        'Recorded JVM timeout differs from the frozen operation budget')
+            source_hash = source_fingerprint(record['artifactHash'], timezone, record['operation'], record['endpoints'], timeout) if record['version'] >= 3 else source_fingerprint(record['artifactHash'], timezone)
             require(record['sourceHash'] == source_hash == record['labels'].get(LABEL + 'source')
                     and record['labels'].get(LABEL + 'timezone') == timezone and record['commandPlan'].get('timezone') == timezone,
                     'Recorded timezone/source fingerprint differs')
@@ -436,8 +451,8 @@ class LinuxRuntime:
         repo, checksum = value.split('@', 1)
         return repo in {'eclipse-temurin', 'library/eclipse-temurin', 'docker.io/eclipse-temurin', 'docker.io/library/eclipse-temurin'} and checksum == expected.split('@', 1)[1]
 
-    def launch(self, operation_dir, operation, preview_step='', row_limit=20, launch_id=None, *, stderr=None):
-        self._live(execute=True); record = self.plan(operation_dir, operation, preview_step, row_limit, launch_id)
+    def launch(self, operation_dir, operation, preview_step='', row_limit=20, launch_id=None, *, stderr=None, timeout_seconds=120):
+        self._live(execute=True); record = self.plan(operation_dir, operation, preview_step, row_limit, launch_id, timeout_seconds=timeout_seconds)
         require(not (self.config.state_root / (record['runId'] + '.json')).exists(), 'Existing run requires reconciliation; never recreate it')
         self._save(record, create=True)
         attached = None
@@ -521,8 +536,11 @@ class LinuxRuntime:
     def identity_for_run(self, run_id):
         self._live(); record = self._read(run_id)
         if record.get('containerId') and not record.get('containerRemoved'): self._inspect(record)
-        return {'kind': 'docker', 'containerId': record.get('containerId'), 'sourceHash': record['sourceHash'],
-                'nonce': record['nonce'], 'timezone': record.get('timezone', 'UTC'), 'containerRemoved': record.get('containerRemoved', False)}
+        identity = {'kind': 'docker', 'containerId': record.get('containerId'), 'sourceHash': record['sourceHash'],
+                    'nonce': record['nonce'], 'timezone': record.get('timezone', 'UTC'), 'containerRemoved': record.get('containerRemoved', False)}
+        if record.get('version', 1) >= 4:
+            identity['executionTimeoutSeconds'] = record['executionTimeoutSeconds']
+        return identity
 
     def request_stop(self, run_id, *, force=False, expected_nonce=None):
         self._live(); record = self._read(run_id)
