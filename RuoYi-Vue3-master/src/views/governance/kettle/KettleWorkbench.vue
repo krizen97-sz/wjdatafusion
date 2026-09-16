@@ -367,16 +367,16 @@ defineExpose({ canLeave: leaveDraft })
 .kettle-canvas-status { display: flex; justify-content: space-between; align-items: center; gap: var(--el-font-size-small); padding: var(--el-font-size-small) var(--el-font-size-base); }
 .kettle-edge-config h3 { margin-top: 0; font-size: var(--el-font-size-base); }
 @media (min-width: 1101px) {
-  .kettle-body { height: max(620px, calc(100dvh - 240px)); grid-template-rows: minmax(0, 1fr); }
+  .kettle-body { height: calc(100vh - 240px); height: calc(100dvh - 240px); min-height: 420px; grid-template-rows: minmax(0, 1fr); }
   .kettle-main, .kettle-inspector, .kettle-library { min-height: 0; }
   .kettle-main { overflow: hidden; }
   .kettle-canvas { min-height: 0; }
   .kettle-canvas > * { min-height: 0; }
   .kettle-canvas-toolbar, .kettle-canvas-status { flex-shrink: 0; }
-  .kettle-library__scroll { height: calc(100dvh - 360px); min-height: 0; }
-  .kettle-library__tools { height: calc(100dvh - 450px); }
+  .kettle-library__scroll { height: calc(100vh - 360px); height: calc(100dvh - 360px); min-height: 0; }
+  .kettle-library__tools { height: calc(100vh - 450px); height: calc(100dvh - 450px); }
   .kettle-inspector__scroll { height: 100%; }
-  .kettle-main > .kettle-results { flex: 0 0 320px; min-height: 0; max-height: 320px; overflow: auto; }
+  .kettle-main > .kettle-results { flex: 0 1 32vh; flex-basis: 32dvh; min-height: 200px; max-height: 320px; overflow: auto; }
 }
 @media (max-width: 1400px) { .kettle-body { grid-template-columns: 180px minmax(0, 1fr) 320px; } }
 @media (max-width: 1100px) { .kettle-body { grid-template-columns: 170px minmax(0, 1fr); } .kettle-inspector { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--el-border-color); } .kettle-inspector__scroll { height: auto; max-height: 650px; } }
