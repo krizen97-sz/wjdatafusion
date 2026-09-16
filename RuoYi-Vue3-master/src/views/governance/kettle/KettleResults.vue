@@ -4,6 +4,17 @@
     <el-alert v-if="run && stale" :title="`以下结果来自任务 V${run.revision}，当前画布修改尚未运行`" type="warning" :closable="false" class="mb16" />
     <el-alert v-if="run?.error || run?.message" :title="run.error || run.message" type="error" :closable="false" class="mb16" />
     <el-tabs v-model="tab" class="motion-tabs">
+      <el-tab-pane v-if="validation" label="校验诊断" name="validation">
+        <el-alert :title="validationState.title" :description="validationState.description" :type="validationState.type" show-icon :closable="false" class="mb16" />
+        <el-table v-if="validationState.diagnostics.length" :data="validationState.diagnostics" size="small" max-height="240" aria-label="原引擎字段诊断">
+          <el-table-column prop="node" label="节点" min-width="150" show-overflow-tooltip />
+          <el-table-column prop="directionLabel" label="位置" width="100" />
+          <el-table-column prop="errorClass" label="错误类型" min-width="170" show-overflow-tooltip />
+          <el-table-column prop="message" label="原因" min-width="260" show-overflow-tooltip />
+          <el-table-column label="操作" width="100" fixed="right"><template #default="{ row }"><el-button link type="primary" :disabled="!row.node" @click="emit('select-node', row.node)">定位节点</el-button></template></el-table-column>
+        </el-table>
+        <el-button v-if="validationState.type === 'success' && validation.fieldsResolved === true" link type="primary" @click="tab = 'fields'">查看字段结构</el-button>
+      </el-tab-pane>
       <el-tab-pane label="数据预览" name="data"><template #label><span class="motion-control-label"><svg-icon icon-class="list" class="motion-control-label__icon" /><span class="motion-control-label__text">数据预览</span></span></template>
         <el-space wrap class="mb16">
           <el-select class="kettle-results__node-select" :model-value="selectedNode" clearable placeholder="选择预览节点" aria-label="预览节点" @update:model-value="emit('select-node', $event)"><el-option v-for="name in nodeNames" :key="name" :value="name" :label="name" /></el-select>
@@ -19,7 +30,10 @@
           </el-table-column>
         </el-table>
       </el-tab-pane>
-      <el-tab-pane label="字段结构" name="fields"><template #label><span class="motion-control-label"><svg-icon icon-class="list" class="motion-control-label__icon" /><span class="motion-control-label__text">字段结构</span></span></template><el-table :data="metadata" size="small" max-height="340" empty-text="选择节点并获取字段或运行预览"><el-table-column prop="name" label="字段" min-width="160" /><el-table-column prop="type" label="类型" width="130" /><el-table-column prop="length" label="长度" width="100" /><el-table-column prop="precision" label="精度" width="100" /><el-table-column prop="origin" label="来源" min-width="180" /></el-table></el-tab-pane>
+      <el-tab-pane label="字段结构" name="fields"><template #label><span class="motion-control-label"><svg-icon icon-class="list" class="motion-control-label__icon" /><span class="motion-control-label__text">字段结构</span></span></template>
+        <el-select class="kettle-results__node-select mb16" :model-value="selectedNode" clearable placeholder="选择字段所属节点" aria-label="字段结构节点" @update:model-value="emit('select-node', $event)"><el-option v-for="name in nodeNames" :key="name" :value="name" :label="name" /></el-select>
+        <el-table :data="metadata" size="small" max-height="340" empty-text="选择节点并获取字段或运行预览"><el-table-column prop="name" label="字段" min-width="160" /><el-table-column prop="type" label="类型" width="130" /><el-table-column prop="length" label="长度" width="100" /><el-table-column prop="precision" label="精度" width="100" /><el-table-column prop="origin" label="来源" min-width="180" /></el-table>
+      </el-tab-pane>
       <el-tab-pane label="步骤指标" name="metrics"><template #label><span class="motion-control-label"><svg-icon icon-class="tree" class="motion-control-label__icon" /><span class="motion-control-label__text">步骤指标</span></span></template><el-table :data="metricsRows" size="small" max-height="340" empty-text="暂无执行指标"><el-table-column prop="node" label="步骤" min-width="180" /><el-table-column prop="copy" label="副本" width="70" /><el-table-column prop="status" label="原引擎状态" min-width="130" /><el-table-column v-for="metric in metrics" :key="metric.key" :prop="metric.key" :label="metric.label" width="90" /></el-table></el-tab-pane>
       <el-tab-pane label="运行日志" name="logs"><template #label><span class="motion-control-label"><svg-icon icon-class="documentation" class="motion-control-label__icon" /><span class="motion-control-label__text">运行日志</span></span></template><el-table :data="logs" size="small" max-height="340" empty-text="暂无日志"><el-table-column label="时间" width="145"><template #default="{ row }">{{ new Date(row.time).toLocaleTimeString() }}</template></el-table-column><el-table-column label="步骤" min-width="130"><template #default="{ row }">{{ row.node || row.entry || '任务' }}</template></el-table-column><el-table-column label="事件" width="130"><template #default="{ row }">{{ eventLabel(row.type) }}</template></el-table-column><el-table-column label="内容" min-width="450"><template #default="{ row }">{{ logText(row) }}</template></el-table-column></el-table></el-tab-pane>
       <el-tab-pane label="输出文件" name="files"><template #label><span class="motion-control-label"><svg-icon icon-class="documentation" class="motion-control-label__icon" /><span class="motion-control-label__text">输出文件</span></span></template><el-table :data="outputFiles" size="small" max-height="340" empty-text="任务目录没有输出文件"><el-table-column prop="name" label="文件" min-width="240" /><el-table-column prop="bytes" label="字节数" width="120" /><el-table-column label="状态" width="140"><template #default="{ row }"><el-tag :type="row.partial ? 'warning' : 'success'">{{ row.partial ? '部分输出' : '已生成' }}</el-tag></template></el-table-column><el-table-column label="操作" width="100"><template #default="{ row }"><el-button link type="primary" @click="emit('download', row)">下载</el-button></template></el-table-column></el-table></el-tab-pane>
@@ -27,15 +41,19 @@
   </section>
 </template>
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { jobNodeStates, nodeRows, rowColumns, runStatus } from './runRules'
-const props = defineProps({ run: Object, stale: Boolean, events: { type: Array, default: () => [] }, selectedNode: String, schema: { type: Array, default: () => [] } })
+import { validationFeedback } from './workbenchRules'
+const props = defineProps({ run: Object, stale: Boolean, events: { type: Array, default: () => [] }, selectedNode: String, schema: { type: Array, default: () => [] }, validation: Object, validationKind: String })
 const emit = defineEmits(['select-node', 'download', 'close'])
 const tab = ref('data'), direction = ref('written')
+const validationState = computed(() => validationFeedback(props.validation, props.validationKind))
+watch(() => props.validation, value => { if (value) tab.value = 'validation'; else if (tab.value === 'validation') tab.value = 'data' }, { immediate: true })
+watch(() => props.run?.id, () => { tab.value = 'data' })
 const rows = computed(() => nodeRows(props.events, props.selectedNode, direction.value))
 const columns = computed(() => rowColumns(rows.value))
-const metadata = computed(() => props.schema.length ? props.schema : columns.value)
-const nodeNames = computed(() => [...new Set([...props.events.map(event => event.node), ...(props.run?.nodes || []).map(node => node.node)].filter(Boolean))])
+const metadata = computed(() => props.validation || props.schema.length ? props.schema : columns.value)
+const nodeNames = computed(() => [...new Set([...props.events.map(event => event.node), ...(props.run?.nodes || []).map(node => node.node), ...(props.validation?.nodes || []).map(node => node.name)].filter(Boolean))])
 const metricsRows = computed(() => props.run?.kind === 'job' ? jobNodeStates(props.events, props.run.state) : props.run?.nodes || [])
 const fieldIssue = (row, name) => row.fieldErrors?.find(field => field.name === name)
 const logs = computed(() => props.events.filter(event => !['row', 'metrics'].includes(event.type)))

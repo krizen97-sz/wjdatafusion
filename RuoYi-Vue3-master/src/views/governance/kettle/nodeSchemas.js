@@ -19,6 +19,8 @@ export const nodeSchemas = {
   ScriptValueMod: { group: '处理', fields: [yes('compatible', '兼容模式'), f('optimizationLevel', '脚本优化级别')], tables: [scriptTable, table('fields/field', '脚本输出字段', [...basicField.filter(item => item.key !== 'format'), f('rename', '重命名'), yes('replace', '替换原字段')], { type: 'String', length: '-1', precision: '-1', replace: 'N' })] },
   DBLookup: { group: '处理', fields: [connection, f('lookup/schema', 'Schema'), f('lookup/table', '查询表'), yes('cache', '启用缓存'), f('cache_size', '缓存行数'), yes('cache_load_all', '预加载全部查询数据'), f('lookup/orderby', '排序字段'), yes('lookup/fail_on_multiple', '多行命中时报错'), yes('lookup/eat_row_on_failure', '未命中时丢弃该行')], tables: [table('lookup/key', '查找条件', [field('name', '输入字段'), f('condition', '比较', 'select', ['=', '<>', '<', '<=', '>', '>=', 'LIKE', 'BETWEEN', 'IS NULL', 'IS NOT NULL']), f('field', '数据库字段'), field('name2', '第二输入字段')], { condition: '=' }), table('lookup/value', '返回字段', [f('name', '数据库字段'), f('rename', '输出字段名'), f('default', '未命中默认值'), types], { type: 'String' })] },
   SelectValues: { group: '处理', fields: [yes('fields/select_unspecified', '保留未指定字段')], tables: [table('fields/field', '选择与重命名', [field('name', '输入字段'), f('rename', '输出字段'), f('length', '长度'), f('precision', '精度')]), table('fields/remove', '删除字段', [field('name', '字段')]), table('fields/meta', '类型转换', [field('name', '输入字段'), f('rename', '输出字段'), types, f('length', '长度'), f('precision', '精度'), f('conversion_mask', '转换格式'), f('date_format_timezone', '时区'), f('date_format_locale', '语言区域'), f('encoding', '编码'), f('decimal_symbol', '小数点'), f('grouping_symbol', '分组符'), f('date_format_lenient', '宽松日期解析', 'truefalse'), f('lenient_string_to_number', '宽松数字解析', 'truefalse')], { type: 'String', length: '-1', precision: '-1' })] },
+  // Keys and added-row defaults match SortRowsMeta.allocate(1) in the supplied native engine.
+  SortRows: { group: '处理', initialTab: 'table-0', fields: [yes('unique_rows', '仅保留排序键唯一的行'), f('directory', '临时文件目录'), f('prefix', '临时文件前缀'), f('sort_size', '内存排序行数'), f('free_memory', '最低空闲内存比例'), yes('compress', '压缩临时文件'), f('compress_variable', '压缩控制变量')], tables: [table('fields/field', '排序字段', [field('name', '字段'), f('ascending', '排序方式', 'select', [{ value: 'Y', label: '升序' }, { value: 'N', label: '降序' }]), yes('case_sensitive', '区分大小写'), yes('presorted', '此字段已排序')], { name: '', ascending: 'N', case_sensitive: 'N', presorted: 'N' })] },
   SwitchCase: { group: '处理', fields: [field('fieldname', '分支字段'), yes('use_contains', '使用包含匹配'), f('case_value_type', '比较值类型', 'select', valueTypes), f('case_value_format', '比较值格式'), f('default_target_step', '默认目标步骤', 'node')], tables: [table('cases/case', '分支条件', [f('value', '匹配值'), f('target_step', '目标步骤', 'node')])] },
   FilterRows: { group: '处理', condition: true, fields: [f('send_true_to', '条件为真时发送到', 'node'), f('send_false_to', '条件为假时发送到', 'node')] },
   Constant: { group: '处理', fields: [], tables: [table('fields/field', '新增常量', [...basicField, f('nullif', '常量值'), yes('set_empty_string', '使用空字符串')], { type: 'String', length: '-1', precision: '-1', set_empty_string: 'N' })] },
@@ -33,6 +35,24 @@ export const nodeSchemas = {
   FTP_PUT: { group: '作业', fields: [f('servername', 'FTP服务器'), f('serverport', '端口'), f('username', '账号'), f('password', '密码', 'password'), f('localDirectory', '本地目录'), f('wildcard', '文件名匹配规则'), f('remoteDirectory', '远程目录'), f('timeout', '超时'), yes('binary', '二进制传输'), yes('active', '主动模式'), yes('only_new', '只发送新文件'), yes('rename', '使用临时文件名'), f('renameSuffix', '临时文件后缀'), yes('remove', '成功后删除本地文件'), f('control_encoding', '控制连接编码'), f('proxy_host', '代理服务器'), f('proxy_port', '代理端口'), f('proxy_username', '代理账号'), f('proxy_password', '代理密码', 'password')] }
 }
 export function schemaFor(pluginId) { return nodeSchemas[pluginId] || { group: '其他', fields: [], tables: [] } }
+export function hasDedicatedForm(pluginId) { const schema = schemaFor(pluginId); return Boolean(schema.fields?.length || schema.tables?.length || schema.condition) }
+
+// Presentation only: fields retain their native keys, values and XML write path.
+const advancedFieldKeys = {
+  CsvInput: ['buffer_size', 'lazy_conversion', 'newline_possible', 'rownum_field', 'include_filename'],
+  TextFileInput: ['file/filemask', 'nr_headerlines', 'noempty'],
+  TableInput: ['lookup', 'execute_each_row', 'lazy_conversion_active'],
+  KafkaConsumer: ['KEY_FIELD', 'KAFKA/zookeeper.connection.timeout.ms'],
+  KafkaProducer: ['KAFKA/serializer.class'],
+  TextFileOutput: ['create_parent_folder', 'enclosure_forced', 'footer', 'file/split', 'file/haspartno', 'file/add_date', 'file/add_time', 'file/SpecifyFormat', 'file/date_time_format', 'fileNameInField', 'fileNameField'],
+  TableOutput: ['commit', 'use_batch', 'return_keys', 'return_field'],
+  FTP_PUT: ['timeout', 'control_encoding', 'proxy_host', 'proxy_port', 'proxy_username', 'proxy_password'],
+  SortRows: ['directory', 'prefix', 'sort_size', 'free_memory', 'compress', 'compress_variable']
+}
+export function nodeFieldGroups(pluginId) {
+  const fields = schemaFor(pluginId).fields || [], advanced = new Set(advancedFieldKeys[pluginId] || [])
+  return { primary: fields.filter(item => !advanced.has(item.key)), advanced: fields.filter(item => advanced.has(item.key)) }
+}
 export function presentationFor(node, catalog = []) {
   const matches = item => item.id === node.pluginId || item.aliases?.includes(node.pluginId)
   const plugin = catalog.find(item => matches(item) && item.loadable) || catalog.find(matches)

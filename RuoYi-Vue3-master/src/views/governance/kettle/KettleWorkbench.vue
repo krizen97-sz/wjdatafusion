@@ -28,14 +28,20 @@
           </el-tab-pane>
           <el-tab-pane label="工具" name="tools"><template #label><span class="motion-control-label"><svg-icon icon-class="tree" class="motion-control-label__icon" /><span class="motion-control-label__text">工具</span></span></template>
             <el-input v-model="toolSearch" clearable placeholder="搜索输入、处理、输出工具" aria-label="搜索Kettle工具" prefix-icon="Search" />
-            <el-scrollbar class="kettle-library__scroll">
+            <el-select v-model="toolScope" aria-label="工具显示范围" class="kettle-library__scope mt8"><el-option value="common" label="常用工具" /><el-option value="available" label="全部可用" /><el-option value="catalog" label="完整目录" /></el-select>
+            <el-text v-if="toolSearch.trim() && toolScope === 'common'" type="info" size="small">搜索范围已扩展至全部可用工具</el-text>
+            <el-scrollbar class="kettle-library__scroll kettle-library__tools">
               <el-collapse v-model="expandedGroups">
                 <el-collapse-item v-for="group in toolGroups" :key="group.name" :name="group.name" :title="`${group.name} · ${group.items.length}`">
-                  <el-button v-for="plugin in group.items" :key="pluginKey(plugin)" class="kettle-tool" :draggable="Boolean(canEdit && plugin.executable && definition && !busy)" :disabled="!canEdit || !plugin.executable || !definition || busy" :title="plugin.loadable ? plugin.executable ? (plugin.label || plugin.name) : `${plugin.label || plugin.name}：尚未开放执行` : `${plugin.label || plugin.name}：原插件依赖未就绪`" @dragstart="dragPlugin($event, plugin)" @click="insertPlugin(plugin)"><el-icon><component :is="presentation({ pluginId: plugin.id }).icon" /></el-icon><span>{{ plugin.label || plugin.name || plugin.id }}</span></el-button>
+                  <div v-for="plugin in group.items" :key="pluginKey(plugin)" class="kettle-tool-entry">
+                    <el-button class="kettle-tool" :draggable="Boolean(canEdit && plugin.executable && definition && !busy)" :disabled="!canEdit || !plugin.executable || !definition || busy" :title="plugin.label || plugin.name || plugin.id" @dragstart="dragPlugin($event, plugin)" @click="insertPlugin(plugin)"><el-icon><component :is="presentation({ pluginId: plugin.id }).icon" /></el-icon><span>{{ plugin.label || plugin.name || plugin.id }}</span></el-button>
+                    <el-tooltip :content="capability(plugin).detail" placement="right"><el-tag :type="capability(plugin).type" size="small" effect="plain" tabindex="0">{{ capability(plugin).label }}</el-tag></el-tooltip>
+                  </div>
                 </el-collapse-item>
               </el-collapse>
+              <el-empty v-if="!toolGroups.length" :description="toolScope === 'catalog' ? '没有匹配的工具' : '当前范围没有可用工具'" :image-size="48"><el-button v-if="toolScope !== 'catalog'" link type="primary" @click="toolScope = 'catalog'">查看完整目录</el-button></el-empty>
             </el-scrollbar>
-            <el-text type="info" size="small">工具来自磁盘原包；灰色项缺少依赖或尚未开放执行。</el-text>
+            <el-text type="info" size="small">可用表示已开放执行；具体业务仍需预览和运行验证。</el-text>
           </el-tab-pane>
         </el-tabs>
       </aside>
@@ -46,7 +52,7 @@
           <el-empty v-else description="选择一个任务，开始编排实际输入、处理和输出"><el-button type="primary" @click="openNew('transformation')">新建转换</el-button></el-empty>
         </div>
         <footer class="kettle-canvas-status"><el-text type="info" size="small">{{ graph.nodes.length }} 个节点 · {{ graph.connections.length }} 条连接</el-text><el-button link :icon="resultsOpen ? 'ArrowDown' : 'ArrowUp'" @click="resultsOpen = !resultsOpen">预览、指标与日志</el-button></footer>
-        <KettleResults v-if="resultsOpen" :run="run" :stale="dirty || configDirty || run?.revision !== definition?.revision" :events="events" :selected-node="previewNodeName" :schema="selectedFields" @select-node="choosePreviewNode" @download="downloadOutput" @close="resultsOpen = false" />
+        <KettleResults v-if="resultsOpen" :run="run" :stale="dirty || configDirty || run?.revision !== definition?.revision" :events="events" :selected-node="previewNodeName" :schema="selectedFields" :validation="validation" :validation-kind="graph.kind" @select-node="choosePreviewNode" @download="downloadOutput" @close="resultsOpen = false" />
       </main>
       <aside class="kettle-inspector" aria-label="原插件节点配置">
         <el-scrollbar class="kettle-inspector__scroll">
@@ -95,8 +101,9 @@ import KettleResults from './KettleResults.vue'
 import KettleSchedules from './KettleSchedules.vue'
 import KettleValueInput from './KettleValueInput.vue'
 import { addNode, appendRow, at, connect, direct, elementId, emptyDocument, fromBase64, graphFromXml, parseXml, rowsAt, removeConnection as removeGraphConnection, removeNode, renameNode, syncBranchConnections, setPosition, setText, textAt, toBase64, xmlText } from './xmlModel'
-import { connectionSchema, presentationFor, schemaFor } from './nodeSchemas'
+import { connectionSchema, presentationFor } from './nodeSchemas'
 import { jobNodeStates, mergeEvents, runActive, runFinishing, runNeedsReview, runStatus } from './runRules'
+import { groupTools, toolCapability, validationFeedback } from './workbenchRules'
 import { arrangeNodes, NODE_HEIGHT, NODE_WIDTH, POSITION_SCALE } from '../graphRules'
 import { errorMessage } from '../workspaceRules'
 const { proxy } = getCurrentInstance()
@@ -105,6 +112,7 @@ const canRun = computed(() => proxy.$auth.hasPermi('governance:flow:test'))
 const definitions = ref([]), definition = ref(null), document = ref(null), version = ref(0), editorGeneration = ref(0)
 const catalog = ref({ steps: [], jobs: [] }), status = ref({}), loading = ref(false), saving = ref(false), starting = ref(false), stopping = ref(false), validating = ref(false), error = ref('')
 const dirty = ref(false), configDirty = ref(false), leftTab = ref('tasks'), taskSearch = ref(''), toolSearch = ref(''), selectedNodeId = ref(''), selectedEdgeId = ref(''), nodeEditor = ref(), diagram = ref()
+const toolScope = ref('common')
 const expandedGroups = ref(['输入', '处理', '输出', '作业']), files = ref([]), assetsOpen = ref(false), connectionsOpen = ref(false), connectionDraft = ref(null), connectionId = ref(''), connectionVersion = ref(0)
 const run = ref(null), events = ref([]), resultsOpen = ref(false), previewNodeName = ref(''), validation = ref(null), newOpen = ref(false), newKind = ref('transformation'), newName = ref('')
 const taskSettingsOpen = ref(false), taskDraft = ref(null), taskName = ref(''), taskTimeZone = ref('Asia/Shanghai'), taskDraftVersion = ref(0)
@@ -128,17 +136,8 @@ const selectedPlugin = computed(() => { const matches = item => item.id === sele
 const selectedEdge = computed(() => graph.value.connections.find(edge => edge.id === selectedEdgeId.value))
 const entries = computed(() => graph.value.kind === 'job' ? catalog.value.jobs || [] : catalog.value.steps || [])
 const filteredDefinitions = computed(() => definitions.value.filter(item => item.name.includes(taskSearch.value.trim())))
-const toolGroups = computed(() => {
-  const groups = new Map()
-  for (const plugin of entries.value) {
-    if (toolSearch.value && !`${plugin.id} ${plugin.name} ${plugin.label}`.toLowerCase().includes(toolSearch.value.toLowerCase())) continue
-    let group = schemaFor(plugin.id).group
-    if (group === '其他') { const category = String(plugin.categoryLabel || plugin.category || ''); group = graph.value.kind === 'job' ? '作业' : /Input|输入/i.test(category) ? '输入' : /Output|输出/i.test(category) ? '输出' : '处理' }
-    if (!groups.has(group)) groups.set(group, [])
-    groups.get(group).push(plugin)
-  }
-  return ['输入', '处理', '输出', '作业', '其他工具'].filter(name => groups.has(name)).map(name => ({ name, items: groups.get(name) }))
-})
+const toolGroups = computed(() => groupTools(entries.value, { scope: toolScope.value, search: toolSearch.value, kind: graph.value.kind }))
+const capability = plugin => toolCapability(plugin, catalog.value.workerAvailable !== false)
 const pluginKey = plugin => plugin.catalogKey || `${plugin.kind}:${plugin.id}:${plugin.className}`
 const presentation = node => presentationFor(node, [...catalog.value.steps || [], ...catalog.value.jobs || []])
 const nodeSummary = node => node.pluginId === 'CsvInput' ? textAt(node.element, 'filename').split('/').pop() || '选择实际输入文件' : node.pluginId === 'TableInput' ? textAt(node.element, 'connection') || '选择数据库连接' : presentation(node).label
@@ -269,8 +268,14 @@ function deleteEdge() { if (selectedEdge.value) { removeGraphConnection(document
 function setEdgeEnabled(value) { setText(selectedEdge.value.element, 'enabled', value ? 'Y' : 'N'); changed() }
 function setEdgeCondition(value) { setText(selectedEdge.value.element, 'unconditional', value === 'unconditional' ? 'Y' : 'N'); setText(selectedEdge.value.element, 'evaluation', value === 'failure' ? 'N' : 'Y'); changed() }
 async function validate() {
-  if (!canRun.value || !await save()) return; validating.value = true; error.value = ''
-  try { validation.value = (await api.validateKettleDefinition(definition.value.id)).data; resultsOpen.value = true; if (validation.value.valid === false) error.value = validation.value.error || '原引擎检查未通过，请核对节点配置'; else proxy.$modal.msgSuccess('已取得原引擎字段结构，可继续预览或运行') }
+  if (!canRun.value || !await save()) return; validating.value = true; error.value = ''; validation.value = null
+  try {
+    validation.value = (await api.validateKettleDefinition(definition.value.id)).data; resultsOpen.value = true
+    const feedback = validationFeedback(validation.value, graph.value.kind)
+    if (feedback.type === 'success') proxy.$modal.msgSuccess(feedback.title)
+    else if (feedback.type === 'error') proxy.$modal.msgError(feedback.title)
+    else proxy.$modal.msgWarning(feedback.title)
+  }
   catch (cause) { error.value = errorMessage(cause, '字段获取或校验失败') } finally { validating.value = false }
 }
 function readPending(id) { try { return JSON.parse(localStorage.getItem(`kettle:pending:${id}`) || 'null') } catch { return { blocked: true } } }
@@ -347,6 +352,8 @@ defineExpose({ canLeave: leaveDraft })
 .kettle-library { border-right: 1px solid var(--el-border-color); }
 .kettle-inspector { border-left: 1px solid var(--el-border-color); }
 .kettle-library__scroll { height: min(65vh, 800px); margin-top: var(--el-font-size-base); }
+.kettle-library__scope { width: 100%; }
+.kettle-tool-entry { margin-bottom: var(--el-font-size-base); }
 .kettle-inspector__scroll { height: min(78vh, 1000px); }
 .kettle-library h3 { font-size: var(--el-font-size-small); font-weight: 500; color: var(--app-muted); margin: var(--el-font-size-base) 0; }
 .kettle-task.el-button, .kettle-tool.el-button { display: flex; justify-content: flex-start; width: 100%; margin: 0 0 var(--el-font-size-extra-small); }
@@ -359,7 +366,18 @@ defineExpose({ canLeave: leaveDraft })
 .kettle-canvas > * { width: 100%; }
 .kettle-canvas-status { display: flex; justify-content: space-between; align-items: center; gap: var(--el-font-size-small); padding: var(--el-font-size-small) var(--el-font-size-base); }
 .kettle-edge-config h3 { margin-top: 0; font-size: var(--el-font-size-base); }
-@media (min-width: 1101px) { .kettle-body { height: max(620px, calc(100dvh - 240px)); } .kettle-main { overflow: hidden; } .kettle-canvas { min-height: 220px; } .kettle-library__scroll { height: calc(100dvh - 360px); min-height: 460px; } .kettle-inspector__scroll { height: 100%; } .kettle-main > .kettle-results { flex: 0 0 320px; max-height: 320px; overflow: auto; } }
+@media (min-width: 1101px) {
+  .kettle-body { height: max(620px, calc(100dvh - 240px)); grid-template-rows: minmax(0, 1fr); }
+  .kettle-main, .kettle-inspector, .kettle-library { min-height: 0; }
+  .kettle-main { overflow: hidden; }
+  .kettle-canvas { min-height: 0; }
+  .kettle-canvas > * { min-height: 0; }
+  .kettle-canvas-toolbar, .kettle-canvas-status { flex-shrink: 0; }
+  .kettle-library__scroll { height: calc(100dvh - 360px); min-height: 0; }
+  .kettle-library__tools { height: calc(100dvh - 450px); }
+  .kettle-inspector__scroll { height: 100%; }
+  .kettle-main > .kettle-results { flex: 0 0 320px; min-height: 0; max-height: 320px; overflow: auto; }
+}
 @media (max-width: 1400px) { .kettle-body { grid-template-columns: 180px minmax(0, 1fr) 320px; } }
 @media (max-width: 1100px) { .kettle-body { grid-template-columns: 170px minmax(0, 1fr); } .kettle-inspector { grid-column: 1 / -1; border-left: 0; border-top: 1px solid var(--el-border-color); } .kettle-inspector__scroll { height: auto; max-height: 650px; } }
 @media (max-width: 640px) { .kettle-body { grid-template-columns: minmax(0, 1fr); } .kettle-library { border-right: 0; border-bottom: 1px solid var(--el-border-color); } .kettle-library__scroll { height: 210px; } .kettle-canvas { min-height: 440px; } }

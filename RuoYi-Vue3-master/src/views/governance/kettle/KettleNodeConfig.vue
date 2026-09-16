@@ -8,9 +8,18 @@
     <el-tabs v-model="activeTab" :before-leave="beforeTabLeave" class="motion-tabs">
       <el-tab-pane label="参数" name="settings"><template #label><span class="motion-control-label"><svg-icon icon-class="form" class="motion-control-label__icon" /><span class="motion-control-label__text">参数</span></span></template>
         <el-form label-position="top" :disabled="readonly">
-          <el-form-item v-for="field in schema.fields || []" :key="field.key" :label="field.label"><KettleValueInput :model-value="fieldValue(field)" :field="field" :context="context" @update:model-value="writeField(field, $event)" /></el-form-item>
-          <el-form-item v-if="kind !== 'job'" label="并行副本数"><el-input :model-value="read('copies') || '1'" @update:model-value="write('copies', $event)" /></el-form-item>
+          <el-form-item v-for="field in fieldGroups.primary" :key="field.key" :label="field.label"><KettleValueInput :model-value="fieldValue(field)" :field="field" :context="context" @update:model-value="writeField(field, $event)" /></el-form-item>
+          <el-form-item v-if="kind !== 'job' && !fieldGroups.advanced.length" label="并行副本数"><el-input :model-value="read('copies') || '1'" @update:model-value="write('copies', $event)" /></el-form-item>
         </el-form>
+        <el-collapse v-if="fieldGroups.advanced.length" v-model="expandedSettings">
+          <el-collapse-item name="advanced" :title="`高级设置 · ${fieldGroups.advanced.length} 项${kind !== 'job' ? '与并行副本' : ''}`">
+            <el-text type="info" size="small">保留已有配置；仅在需要时调整。</el-text>
+            <el-form label-position="top" :disabled="readonly" class="mt16">
+              <el-form-item v-for="field in fieldGroups.advanced" :key="field.key" :label="field.label"><KettleValueInput :model-value="fieldValue(field)" :field="field" :context="context" @update:model-value="writeField(field, $event)" /></el-form-item>
+              <el-form-item v-if="kind !== 'job'" label="并行副本数"><el-input :model-value="read('copies') || '1'" @update:model-value="write('copies', $event)" /></el-form-item>
+            </el-form>
+          </el-collapse-item>
+        </el-collapse>
         <KettleConditionEditor v-if="schema.condition" :element="condition" root :readonly="readonly" :fields="context.fields" :revision="revision" @change="changed" />
         <KettleGenericConfig v-if="!hasDedicatedForm" :element="draft" :template-xml="genericTemplate" :external-revision="revision" :readonly="readonly" @change="changed" />
       </el-tab-pane>
@@ -42,7 +51,7 @@
 <script setup>
 import { computed, markRaw, ref, watch } from 'vue'
 import { appendRow, at, ensure, fromBase64, rowsAt, setText, textAt, xmlText } from './xmlModel'
-import { schemaFor } from './nodeSchemas'
+import { hasDedicatedForm as dedicatedFormAvailable, nodeFieldGroups, schemaFor } from './nodeSchemas'
 import KettleValueInput from './KettleValueInput.vue'
 import KettleConditionEditor from './KettleConditionEditor.vue'
 import KettleGenericConfig from './KettleGenericConfig.vue'
@@ -50,10 +59,12 @@ const props = defineProps({ node: Object, plugin: Object, title: String, kind: S
 const emit = defineEmits(['apply', 'dirty-change', 'preview', 'remove', 'expand'])
 const draft = ref(), name = ref(''), dirty = ref(false), revision = ref(0), error = ref(''), activeTab = ref('settings'), advancedXml = ref(''), advancedDirty = ref(false)
 const schema = computed(() => schemaFor(props.node?.pluginId))
+const fieldGroups = computed(() => nodeFieldGroups(props.node?.pluginId))
+const expandedSettings = ref([])
 const genericTemplate = computed(() => fromBase64(props.plugin?.configurationTemplateXmlBase64 || props.plugin?.defaultXmlBase64 || ''))
-const hasDedicatedForm = computed(() => Boolean(schema.value.fields?.length || schema.value.tables?.length || schema.value.condition))
+const hasDedicatedForm = computed(() => dedicatedFormAvailable(props.node?.pluginId))
 const condition = computed(() => draft.value ? markRaw(ensure(draft.value, 'compare/condition')) : null)
-watch(() => props.node?.id, () => { draft.value = props.node ? markRaw(props.node.element.cloneNode(true)) : null; name.value = props.node?.name || ''; dirty.value = false; advancedDirty.value = false; activeTab.value = 'settings'; error.value = ''; revision.value++; advancedXml.value = draft.value ? xmlText(draft.value) : ''; emit('dirty-change', false) }, { immediate: true })
+watch(() => props.node?.id, () => { draft.value = props.node ? markRaw(props.node.element.cloneNode(true)) : null; name.value = props.node?.name || ''; dirty.value = false; advancedDirty.value = false; activeTab.value = schema.value.initialTab || 'settings'; expandedSettings.value = []; error.value = ''; revision.value++; advancedXml.value = draft.value ? xmlText(draft.value) : ''; emit('dirty-change', false) }, { immediate: true })
 watch(activeTab, value => { if (value === 'advanced' && !advancedDirty.value) advancedXml.value = xmlText(draft.value) })
 const read = path => { revision.value; return textAt(draft.value, path) }
 const fieldValue = field => { revision.value; return field.type === 'presence' ? at(draft.value, field.key) ? 'Y' : 'N' : read(field.key) }
