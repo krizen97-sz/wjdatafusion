@@ -1,5 +1,43 @@
 export const FILE_MANAGEMENT_PERMISSION = 'document:file:manage'
 
+export const DEFAULT_MAX_UPLOAD_SIZE = 100 * 1024 ** 2
+export const UPLOAD_LIMIT_OPTIONS = [
+  { value: 100, label: '100 MB' },
+  { value: 0, label: '无限制' }
+]
+
+export function normalizeUploadLimit(value) {
+  if (value === 0 || value === '0') return 0
+  const limit = Number(value)
+  return Number.isSafeInteger(limit) && limit > 0 ? limit : DEFAULT_MAX_UPLOAD_SIZE
+}
+
+export function formatUploadLimit(value) {
+  const limit = normalizeUploadLimit(value)
+  return limit === 0 ? '无限制' : formatFileSize(limit)
+}
+
+export function validateUploadSelection(file, maxUploadSize, remainingSize = null) {
+  const extension = String(file?.name || '').split('.').pop().toLowerCase()
+  if (!['doc', 'docx', 'xls', 'xlsx', 'pdf', 'zip', 'rar'].includes(extension)) return '仅支持 DOC、DOCX、XLS、XLSX、PDF、ZIP 和 RAR 文件'
+  const size = Number(file?.size)
+  if (!Number.isSafeInteger(size) || size <= 0) return '所选文件为空或大小无效，请重新选择'
+  const limit = normalizeUploadLimit(maxUploadSize)
+  if (limit > 0 && size > limit) return `文件大小超过当前 ${formatFileSize(limit)} 单文件上限`
+  if (remainingSize != null && Number.isFinite(Number(remainingSize)) && size > Math.max(0, Number(remainingSize))) {
+    return `可用空间不足，当前剩余 ${formatFileSize(Math.max(0, Number(remainingSize)))}，本次文件需要 ${formatFileSize(size)}`
+  }
+  return ''
+}
+
+export function documentUploadError(error) {
+  if (typeof error?.response?.data?.msg === 'string') return error.response.data.msg
+  if (Number(error?.response?.status) === 413) {
+    return '上传请求被服务器大小限制拦截（413），请联系管理员检查上传入口配置；当前文件尚未上传成功'
+  }
+  return error?.message || (typeof error === 'string' ? error : '文件校验或上传失败，请重试')
+}
+
 export const DEFAULT_FOLDER_COLOR = '#4F7CCF'
 
 export const FOLDER_COLOR_OPTIONS = [

@@ -39,9 +39,11 @@
             <small>MB</small>
           </label>
           <label class="storage-limit-field">
-            <span class="sr-only">{{ row.nickName || row.userName }} 单文件上传上限（MB）</span>
-            <el-input-number v-model="row.maxUploadMb" :min="1" :max="100" :step="10" controls-position="right" :disabled="row.adminUser" />
-            <small>MB</small>
+            <span class="sr-only">{{ row.nickName || row.userName }} 单文件上传上限</span>
+            <el-select v-model="row.maxUploadMb" :aria-label="`${row.nickName || row.userName} 单文件上传上限`" :disabled="row.adminUser || loading.userId === row.userId">
+              <el-option v-if="![0, 100].includes(row.maxUploadMb)" :value="row.maxUploadMb" :label="`${row.maxUploadMb} MB（原配置）`" disabled />
+              <el-option v-for="option in UPLOAD_LIMIT_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
+            </el-select>
           </label>
           <el-button type="primary" plain :disabled="row.adminUser" :loading="loading.userId === row.userId" @click="saveRow(row)">{{ row.adminUser ? '无需配置' : '保存' }}</el-button>
         </div>
@@ -49,7 +51,7 @@
       </div>
 
       <p class="storage-policy-note">
-        单个文件上传上限最高为 100MB；可用空间不能低于用户当前已使用容量。回收站中的文件仍占用空间。
+        单文件上限可按用户设置为 100 MB 或无限制；无限制仍受该用户剩余空间及文件安全校验约束。可用空间不能低于已使用容量，回收站文件仍占用空间。
       </p>
     </div>
   </el-drawer>
@@ -59,7 +61,7 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { listDocumentStorageUsers, updateDocumentStoragePolicy } from '@/api/document/workspace.js'
-import { formatFileSize, initials } from '../workspace/documentWorkspaceRules.js'
+import { UPLOAD_LIMIT_OPTIONS, formatFileSize, initials, normalizeUploadLimit } from '../workspace/documentWorkspaceRules.js'
 
 defineProps({ modelValue: { type: Boolean, default: false } })
 const emit = defineEmits(['update:modelValue', 'updated'])
@@ -76,7 +78,7 @@ function normalizeRow(row) {
   return {
     ...row,
     quotaMb: toMegabytes(row.quotaSize),
-    maxUploadMb: Math.min(100, toMegabytes(row.maxUploadSize))
+    maxUploadMb: normalizeUploadLimit(row.maxUploadSize) / 1024 ** 2
   }
 }
 
@@ -107,6 +109,10 @@ function progressStatus(row) {
 
 async function saveRow(row) {
   if (loading.userId) return
+  if (![0, 100].includes(Number(row.maxUploadMb))) {
+    ElMessage.warning('请选择新的单文件上限：100 MB 或无限制')
+    return
+  }
   loading.userId = row.userId
   try {
     const response = await updateDocumentStoragePolicy(row.userId, {

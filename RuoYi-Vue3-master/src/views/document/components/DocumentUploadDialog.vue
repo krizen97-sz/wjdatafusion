@@ -36,7 +36,8 @@
           <span>拖到此处，或点击选择文件</span>
         </div>
         <template #tip>
-          <div class="upload-tip">支持 DOC、DOCX、XLS、XLSX、PDF、ZIP、RAR，当前单文件上限 {{ maximumLabel }}</div>
+          <div class="upload-tip">支持 DOC、DOCX、XLS、XLSX、PDF、ZIP、RAR，当前单文件上限 {{ maximumLabel }}；剩余空间 {{ formatFileSize(remainingSize) }}</div>
+          <div v-if="officeFile" class="upload-tip">Word/Excel 安全处理上限 {{ formatFileSize(maxOfficeUploadSize) }}，在线编辑保存上限 {{ formatFileSize(maxEditorSaveSize) }}。</div>
         </template>
       </el-upload>
 
@@ -51,8 +52,9 @@
 
       <div v-if="validating" class="validation-state is-validating" role="status">
         <span class="platform-loading-mark is-small" aria-hidden="true"></span>
-        <div><strong>文件校验中</strong><span>{{ validationProgress }}</span></div>
+        <div><strong>{{ uploadPercent < 100 ? '文件上传中' : '文件校验中' }}</strong><span>{{ uploadPercent < 100 ? `已传输 ${uploadPercent}%，请保持页面打开` : validationProgress }}</span></div>
       </div>
+      <el-progress v-if="validating" :percentage="uploadPercent" :show-text="false" />
       <div v-else-if="errorMessage" class="validation-state is-error" role="alert">
         <el-icon><CircleCloseFilled /></el-icon>
         <div><strong>校验失败</strong><span>{{ errorMessage }}</span></div>
@@ -65,7 +67,7 @@
     <template #footer>
       <el-button :disabled="validating" @click="closeDialog">取消</el-button>
       <el-button v-motion-ripple class="motion-execute-action" type="primary" :loading="validating" :disabled="!selectedFile || !folderId" @click="submitUpload">
-        {{ validating ? '文件校验中' : '开始上传' }}
+        {{ validating ? (uploadPercent < 100 ? '文件上传中' : '文件校验中') : '开始上传' }}
       </el-button>
     </template>
   </el-dialog>
@@ -74,29 +76,33 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { uploadDocument } from '@/api/document/workspace.js'
-import { formatFileSize, isSpreadsheetFile } from '../workspace/documentWorkspaceRules.js'
+import { DEFAULT_MAX_UPLOAD_SIZE, documentUploadError, formatFileSize, formatUploadLimit, isSpreadsheetFile, validateUploadSelection } from '../workspace/documentWorkspaceRules.js'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
   folderId: { type: Number, default: 0 },
   folderName: { type: String, default: '请选择目录' },
-  maxUploadSize: { type: Number, default: 100 * 1024 * 1024 }
+  maxUploadSize: { type: Number, default: DEFAULT_MAX_UPLOAD_SIZE },
+  remainingSize: { type: Number, default: 0 },
+  maxOfficeUploadSize: { type: Number, default: DEFAULT_MAX_UPLOAD_SIZE },
+  maxEditorSaveSize: { type: Number, default: DEFAULT_MAX_UPLOAD_SIZE }
 })
 const emit = defineEmits(['update:modelValue', 'uploaded'])
 
 const uploadRef = ref(null)
 const selectedFile = ref(null)
 const validating = ref(false)
+const uploadPercent = ref(0)
 const errorMessage = ref('')
 const fileType = computed(() => String(selectedFile.value?.name || '').split('.').pop().toLowerCase())
 const spreadsheetFile = computed(() => isSpreadsheetFile(fileType.value))
 const pdfFile = computed(() => fileType.value === 'pdf')
 const archiveFile = computed(() => ['zip', 'rar'].includes(fileType.value))
+const officeFile = computed(() => ['doc', 'docx', 'xls', 'xlsx'].includes(fileType.value))
 const fileMarkLabel = computed(() => archiveFile.value
   ? fileType.value.slice(0, 1).toUpperCase()
   : (pdfFile.value ? 'P' : (spreadsheetFile.value ? 'X' : 'W')))
-const maximumBytes = computed(() => Math.min(100 * 1024 * 1024, Math.max(1, Number(props.maxUploadSize || 0))))
-const maximumLabel = computed(() => formatFileSize(maximumBytes.value))
+const maximumLabel = computed(() => formatUploadLimit(props.maxUploadSize))
 const validationDescription = computed(() => archiveFile.value
   ? '上传前将校验压缩包真实格式；仅用于文件管理与传输'
   : (pdfFile.value
@@ -135,10 +141,11 @@ function handleExceed(files) {
 }
 
 function validateSelection(file) {
-  const extension = String(file.name || '').split('.').pop().toLowerCase()
-  if (!['doc', 'docx', 'xls', 'xlsx', 'pdf', 'zip', 'rar'].includes(extension)) return '仅支持 DOC、DOCX、XLS、XLSX、PDF、ZIP 和 RAR 文件'
-  if (!file.size) return '所选文件为空，请重新选择'
-  if (file.size > maximumBytes.value) return `文件大小超过当前 ${maximumLabel.value} 限制`
+  const failure = validateUploadSelection(file, props.maxUploadSize, props.remainingSize)
+  if (failure) return failure
+  if (/\.(docx?|xlsx?)$/i.test(file.name) && file.size > props.maxOfficeUploadSize) {
+    return `Word/Excel 文件超过 ${formatFileSize(props.maxOfficeUploadSize)} 安全处理上限；如仅需传输，可打包为 ZIP 或 RAR 后上传`
+  }
   return ''
 }
 
@@ -148,14 +155,18 @@ async function submitUpload() {
     errorMessage.value = '根目录不能挂载文件，请先新建并选择一个目录'
     return
   }
-  errorMessage.value = ''
+  errorMessage.value = validateSelection(selectedFile.value)
+  if (errorMessage.value) return
+  uploadPercent.value = 0
   validating.value = true
   try {
-    const response = await uploadDocument(selectedFile.value, props.folderId)
+    const response = await uploadDocument(selectedFile.value, props.folderId, (event) => {
+      if (event.total > 0) uploadPercent.value = Math.min(100, Math.floor(event.loaded * 100 / event.total))
+    })
     emit('uploaded', { ...(response.data || {}), folderId: Number(props.folderId) })
     emit('update:modelValue', false)
   } catch (error) {
-    errorMessage.value = error?.message || '文件校验或上传失败，请检查文件后重试'
+    errorMessage.value = documentUploadError(error)
   } finally {
     validating.value = false
   }
@@ -169,6 +180,7 @@ function clearFile() {
 
 function reset() {
   validating.value = false
+  uploadPercent.value = 0
   selectedFile.value = null
   errorMessage.value = ''
   uploadRef.value?.clearFiles()

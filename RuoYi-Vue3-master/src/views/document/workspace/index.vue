@@ -334,6 +334,9 @@
       :folder-id="uploadFolderId"
       :folder-name="uploadFolderName"
       :max-upload-size="workspaceSummary.maxUploadSize"
+      :remaining-size="workspaceSummary.remainingSize"
+      :max-office-upload-size="workspaceSummary.maxOfficeUploadSize"
+      :max-editor-save-size="workspaceSummary.maxEditorSaveSize"
       @uploaded="uploadCompleted"
     />
     <DocumentStorageDrawer v-model="storageDrawerOpen" @updated="loadFolders" />
@@ -348,7 +351,7 @@
         <el-progress :percentage="storagePercentage" :stroke-width="8" :status="storageStatus" />
         <dl class="storage-detail-grid">
           <div><dt>剩余容量</dt><dd>{{ formatFileSize(workspaceSummary.remainingSize) }}</dd></div>
-          <div><dt>单文件上传上限</dt><dd>{{ formatFileSize(workspaceSummary.maxUploadSize) }}</dd></div>
+          <div><dt>单文件上传上限</dt><dd>{{ formatUploadLimit(workspaceSummary.maxUploadSize) }}</dd></div>
           <div><dt>当前文件</dt><dd>{{ workspaceSummary.fileCount }} 个</dd></div>
           <div><dt>当前文件大小</dt><dd>{{ formatStorageMegabytes(workspaceSummary.totalSize) }}</dd></div>
         </dl>
@@ -446,12 +449,14 @@ import {
   buildFolderTree,
   collaboratorNames,
   formatFileSize,
+  formatUploadLimit,
   formatStorageMegabytes,
   initials,
   isArchiveFile,
   isPdfFile,
   documentDropCapability,
   normalizeFolderColor,
+  normalizeUploadLimit,
   reorderSiblingFolderIds,
   resolveDocumentFolderPath
 } from './documentWorkspaceRules.js'
@@ -469,6 +474,8 @@ const workspaceSummary = ref({
   quotaSize: 100 * 1024 ** 2,
   remainingSize: 100 * 1024 ** 2,
   maxUploadSize: 100 * 1024 ** 2,
+  maxOfficeUploadSize: 100 * 1024 ** 2,
+  maxEditorSaveSize: 100 * 1024 ** 2,
   usagePercent: 0
 })
 const shareOpen = ref(false)
@@ -611,7 +618,9 @@ async function loadFolders() {
       usedSize: Number(summaryResponse.data?.usedSize || 0),
       quotaSize: Number(summaryResponse.data?.quotaSize || 0),
       remainingSize: Number(summaryResponse.data?.remainingSize || 0),
-      maxUploadSize: Number(summaryResponse.data?.maxUploadSize || 0),
+      maxUploadSize: normalizeUploadLimit(summaryResponse.data?.maxUploadSize),
+      maxOfficeUploadSize: Number(summaryResponse.data?.maxOfficeUploadSize || 100 * 1024 ** 2),
+      maxEditorSaveSize: Number(summaryResponse.data?.maxEditorSaveSize || 100 * 1024 ** 2),
       usagePercent: Number(summaryResponse.data?.usagePercent || 0)
     }
   } finally {
@@ -905,7 +914,7 @@ function recordLabel(document) {
 }
 
 function downloadDocument(document) {
-  proxy.download(`/document/workspace/documents/${document.documentId}/download`, {}, document.title)
+  proxy.download(`/document/workspace/documents/${document.documentId}/download`, {}, document.title, { timeout: 0 })
 }
 
 function openShare(document) {
