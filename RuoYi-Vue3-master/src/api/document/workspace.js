@@ -55,10 +55,10 @@ export function createDocument(data) {
 }
 
 export function copyDocument(documentId) {
-  return request({ url: `/document/workspace/documents/${documentId}/copy`, method: 'post' })
+  return request({ url: `/document/workspace/documents/${documentId}/copy`, method: 'post', timeout: 0 })
 }
 
-export function uploadDocument(file, folderId) {
+export function uploadDocument(file, folderId, onUploadProgress) {
   const data = new FormData()
   data.append('file', file)
   data.append('folderId', Number(folderId))
@@ -67,7 +67,8 @@ export function uploadDocument(file, folderId) {
     method: 'post',
     data,
     headers: { 'Content-Type': 'multipart/form-data', repeatSubmit: false },
-    timeout: 120000
+    timeout: 0,
+    onUploadProgress
   })
 }
 

@@ -252,7 +252,8 @@ test('upload dialog exposes validation status, Office/PDF validation and archive
   assert.match(source, /上传后只读预览/)
   assert.match(source, /仅用于文件管理与传输/)
   assert.match(source, /maxUploadSize/)
-  assert.match(source, /uploadDocument\(selectedFile\.value, props\.folderId\)/)
+  assert.match(source, /uploadDocument\(selectedFile\.value, props\.folderId,/)
+  assert.match(source, /event\.loaded/)
 })
 
 test('workspace keeps quota details on demand beside the root folder', () => {
@@ -287,15 +288,16 @@ test('workspace removes the cross-column command bar and keeps actions in the do
   assert.doesNotMatch(source, /class="workspace-header"/)
 })
 
-test('storage drawer manages only document users and enforces the 100MB file ceiling', () => {
+test('storage drawer manages individual document-user upload policies', () => {
   const source = readFileSync(new URL('../components/DocumentStorageDrawer.vue', import.meta.url), 'utf8')
   assert.match(source, /仅统计已获得文档管理权限的用户/)
   assert.match(source, /listDocumentStorageUsers/)
   assert.match(source, /updateDocumentStoragePolicy/)
-  assert.match(source, /:max="100"/)
+  assert.match(source, /UPLOAD_LIMIT_OPTIONS/)
+  assert.match(source, /<el-select v-model="row.maxUploadMb"/)
   assert.match(source, /row\.adminUser/)
   assert.match(source, /总权限/)
-  assert.match(source, /回收站中的文件仍占用空间/)
+  assert.match(source, /回收站文件仍占用空间/)
 })
 
 test('archive shares are download-only and never expose editor permissions', () => {
