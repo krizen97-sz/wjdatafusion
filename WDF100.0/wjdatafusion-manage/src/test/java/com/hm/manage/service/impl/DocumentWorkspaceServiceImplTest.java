@@ -20,8 +20,10 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
 
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +32,9 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -37,6 +42,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.web.multipart.MultipartFile;
 import com.hm.common.core.domain.entity.SysDept;
 import com.hm.common.core.domain.entity.SysRole;
 import com.hm.common.core.domain.entity.SysUser;
@@ -557,6 +563,7 @@ class DocumentWorkspaceServiceImplTest
         DocumentWorkspaceMapper mapper = mock(DocumentWorkspaceMapper.class);
         DocumentWorkspaceServiceImpl service = new DocumentWorkspaceServiceImpl();
         ReflectionTestUtils.setField(service, "mapper", mapper);
+        ReflectionTestUtils.setField(service, "documentProperties", new DocumentManagementProperties());
         setCurrentUser(7L, "owner", "文档所有者");
 
         DocFolder rootFolder = ownedFolder(10L, 0L, 7L, "项目资料", 1L, 100L);
@@ -582,6 +589,8 @@ class DocumentWorkspaceServiceImplTest
         assertEquals(600L, result.getTotalSize());
         assertEquals(600L, result.getUsedSize());
         assertEquals(100L * 1024L * 1024L, result.getQuotaSize());
+        assertEquals(100L * 1024L * 1024L, result.getMaxOfficeUploadSize());
+        assertEquals(100L * 1024L * 1024L, result.getMaxEditorSaveSize());
     }
 
     @Test
@@ -862,7 +871,7 @@ class DocumentWorkspaceServiceImplTest
 
         assertTrue(exception.getMessage().contains("可用空间不足"));
         verify(mapper, never()).insertDocument(any(DocDocument.class));
-        verify(storage).deleteQuietly(temporary);
+        verify(storage, never()).copyUploadToTemp(same(upload), anyLong());
     }
 
     @Test
@@ -905,8 +914,9 @@ class DocumentWorkspaceServiceImplTest
         assertEquals("ADMIN", result.get(0).getAccessPermission());
     }
 
-    @Test
-    void adminShouldUpdateQuotaOnlyForDocumentWorkspaceUsers()
+    @ParameterizedTest
+    @ValueSource(longs = { 0L, 100L })
+    void adminShouldUpdateQuotaOnlyForDocumentWorkspaceUsers(long maxUploadMb)
     {
         DocumentWorkspaceMapper mapper = mock(DocumentWorkspaceMapper.class);
         DocumentWorkspaceServiceImpl service = new DocumentWorkspaceServiceImpl();
@@ -923,22 +933,243 @@ class DocumentWorkspaceServiceImplTest
         user.setUsedSize(20L * megabyte);
         user.setFileCount(2L);
         user.setQuotaSize(500L * megabyte);
-        user.setMaxUploadSize(50L * megabyte);
+        user.setMaxUploadSize(maxUploadMb * megabyte);
         when(mapper.countDocumentWorkspaceAccess(2L)).thenReturn(1);
         when(mapper.selectQuotaForUpdate(2L)).thenReturn(quota);
         when(mapper.selectOwnedStorageBytes(2L)).thenReturn(20L * megabyte);
-        when(mapper.updateQuota(2L, 500L * megabyte, 50L * megabyte, "admin")).thenReturn(1);
+        when(mapper.updateQuota(2L, 500L * megabyte, maxUploadMb * megabyte, "admin")).thenReturn(1);
         when(mapper.selectDocumentStorageUsers()).thenReturn(List.of(user));
         DocQuotaUpdateBo input = new DocQuotaUpdateBo();
         input.setQuotaMb(500L);
-        input.setMaxUploadMb(50L);
+        input.setMaxUploadMb(maxUploadMb);
 
         DocUserStorageVo result = service.updateDocumentStoragePolicy(2L, input);
 
         assertEquals(20L * megabyte, result.getUsedSize());
         assertEquals(500L * megabyte, result.getQuotaSize());
-        assertEquals(50L * megabyte, result.getMaxUploadSize());
+        assertEquals(maxUploadMb * megabyte, result.getMaxUploadSize());
         assertEquals(4D, result.getUsagePercent());
+        verify(mapper).updateQuota(2L, 500L * megabyte, maxUploadMb * megabyte, "admin");
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = { -1L, 1L, 50L, 99L, 101L, Long.MAX_VALUE })
+    void adminShouldRejectUnsupportedSingleFilePolicies(long maxUploadMb)
+    {
+        DocumentWorkspaceMapper mapper = mock(DocumentWorkspaceMapper.class);
+        DocumentWorkspaceServiceImpl service = new DocumentWorkspaceServiceImpl();
+        ReflectionTestUtils.setField(service, "mapper", mapper);
+        setAdminCurrentUser(1L, "admin", "管理员");
+        when(mapper.countDocumentWorkspaceAccess(2L)).thenReturn(1);
+        DocQuotaUpdateBo input = new DocQuotaUpdateBo();
+        input.setQuotaMb(500L);
+        input.setMaxUploadMb(maxUploadMb);
+
+        ServiceException error = assertThrows(ServiceException.class,
+            () -> service.updateDocumentStoragePolicy(2L, input));
+
+        assertTrue(error.getMessage().contains("仅支持100MB或无限制"));
+        verify(mapper, never()).updateQuota(anyLong(), anyLong(), anyLong(), anyString());
+    }
+
+    @Test
+    void ordinaryUserCannotGrantUnlimitedUploadsToSelfOrOthers()
+    {
+        DocumentWorkspaceMapper mapper = mock(DocumentWorkspaceMapper.class);
+        DocumentWorkspaceServiceImpl service = new DocumentWorkspaceServiceImpl();
+        ReflectionTestUtils.setField(service, "mapper", mapper);
+        setCurrentUser(7L, "owner", "普通用户");
+        DocQuotaUpdateBo input = new DocQuotaUpdateBo();
+        input.setQuotaMb(500L);
+        input.setMaxUploadMb(0L);
+
+        for (long target : List.of(7L, 9L))
+        {
+            ServiceException error = assertThrows(ServiceException.class,
+                () -> service.updateDocumentStoragePolicy(target, input));
+            assertTrue(error.getMessage().contains("仅 admin"));
+        }
+        verify(mapper, never()).updateQuota(anyLong(), anyLong(), anyLong(), anyString());
+    }
+
+    @ParameterizedTest
+    @CsvSource({ "0,0", "52428800,52428800", "-1,104857600", "104857600,104857600" })
+    void summaryAndAdminListingShouldPreserveUnlimitedAndLegacyLimits(long configured, long expected)
+    {
+        DocumentWorkspaceMapper mapper = mock(DocumentWorkspaceMapper.class);
+        DocumentWorkspaceServiceImpl service = new DocumentWorkspaceServiceImpl();
+        ReflectionTestUtils.setField(service, "mapper", mapper);
+        ReflectionTestUtils.setField(service, "documentProperties", new DocumentManagementProperties());
+        DocUserQuota quota = new DocUserQuota();
+        quota.setQuotaBytes(500L * 1024L * 1024L);
+        quota.setMaxUploadBytes(configured);
+        when(mapper.selectQuota(7L)).thenReturn(quota);
+        setCurrentUser(7L, "owner", "普通用户");
+
+        assertEquals(expected, service.getWorkspaceSummary().getMaxUploadSize());
+
+        DocUserStorageVo user = new DocUserStorageVo();
+        user.setUserId(7L);
+        user.setMaxUploadSize(configured);
+        when(mapper.selectDocumentStorageUsers()).thenReturn(List.of(user));
+        setAdminCurrentUser(1L, "admin", "管理员");
+        assertEquals(expected, service.listDocumentStorageUsers().get(0).getMaxUploadSize());
+    }
+
+    @ParameterizedTest
+    @CsvSource({ "0,101", "104857600,100", "52428800,50" })
+    void uploadsShouldUseTheOwnerPolicyAndBoundTemporaryCopiesByRemainingSpace(long maximum, long sizeMb)
+        throws Exception
+    {
+        long megabyte = 1024L * 1024L;
+        long fileSize = sizeMb * megabyte;
+        DocumentWorkspaceMapper mapper = mock(DocumentWorkspaceMapper.class);
+        DocumentStorageService storage = mock(DocumentStorageService.class);
+        DocumentWorkspaceServiceImpl service = new DocumentWorkspaceServiceImpl();
+        ReflectionTestUtils.setField(service, "mapper", mapper);
+        ReflectionTestUtils.setField(service, "storageService", storage);
+        setCurrentUser(7L, "owner", "普通用户");
+        DocUserQuota quota = new DocUserQuota();
+        quota.setQuotaBytes(200L * megabyte);
+        quota.setMaxUploadBytes(maximum);
+        when(mapper.selectQuotaForUpdate(7L)).thenReturn(quota);
+        when(mapper.selectOwnedStorageBytes(7L)).thenReturn(50L * megabyte);
+        when(mapper.selectFolderById(12L)).thenReturn(ownedFolder(12L, 0L, 7L, "压缩资料", 0L, 0L));
+        MultipartFile upload = mock(MultipartFile.class);
+        when(upload.getOriginalFilename()).thenReturn("大型资料.rar");
+        when(upload.getSize()).thenReturn(fileSize);
+        Path sparse = sparseFile("large-upload.rar", fileSize);
+        long effectiveLimit = maximum == 0L ? 150L * megabyte : maximum;
+        when(storage.copyUploadToTemp(upload, effectiveLimit)).thenReturn(sparse);
+        when(storage.validateUploadedArchiveFile(sparse, "rar"))
+            .thenReturn(new DocumentStorageService.UploadValidationResult(List.of()));
+        when(storage.checksum(sparse)).thenReturn("abcdef1234567890");
+        when(mapper.insertDocument(any(DocDocument.class))).thenAnswer(invocation -> {
+            invocation.<DocDocument>getArgument(0).setDocumentId(55L);
+            return 1;
+        });
+        when(storage.resolve("documents/55/v1-abcdef123456.rar")).thenReturn(sparse);
+
+        DocDocument document = (DocDocument) service.uploadDocument(upload, 12L).get("document");
+
+        assertEquals(fileSize, document.getFileSize());
+        assertEquals(7L, document.getOwnerId());
+        verify(storage).copyUploadToTemp(upload, effectiveLimit);
+        verify(mapper, never()).selectQuotaForUpdate(9L);
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = { 100L, 50L })
+    void limitedUserShouldRejectEvenOneByteAboveTheirOwnLimitBeforeCopying(long maximumMb) throws Exception
+    {
+        DocumentWorkspaceMapper mapper = mock(DocumentWorkspaceMapper.class);
+        DocumentStorageService storage = mock(DocumentStorageService.class);
+        DocumentWorkspaceServiceImpl service = new DocumentWorkspaceServiceImpl();
+        ReflectionTestUtils.setField(service, "mapper", mapper);
+        ReflectionTestUtils.setField(service, "storageService", storage);
+        setCurrentUser(7L, "owner", "普通用户");
+        DocUserQuota quota = new DocUserQuota();
+        quota.setQuotaBytes(500L * 1024L * 1024L);
+        quota.setMaxUploadBytes(maximumMb * 1024L * 1024L);
+        when(mapper.selectQuotaForUpdate(7L)).thenReturn(quota);
+        when(mapper.selectFolderById(12L)).thenReturn(ownedFolder(12L, 0L, 7L, "压缩资料", 0L, 0L));
+        MultipartFile upload = mock(MultipartFile.class);
+        when(upload.getOriginalFilename()).thenReturn("大型资料.zip");
+        when(upload.getSize()).thenReturn(maximumMb * 1024L * 1024L + 1L);
+
+        ServiceException error = assertThrows(ServiceException.class, () -> service.uploadDocument(upload, 12L));
+
+        assertTrue(error.getMessage().contains(maximumMb + "MB上传上限"));
+        verify(storage, never()).copyUploadToTemp(same(upload), anyLong());
+        verify(mapper, never()).insertDocument(any(DocDocument.class));
+    }
+
+    @Test
+    void unlimitedUploadShouldStillRejectInsufficientStorageBeforeCopying() throws Exception
+    {
+        DocumentWorkspaceMapper mapper = mock(DocumentWorkspaceMapper.class);
+        DocumentStorageService storage = mock(DocumentStorageService.class);
+        DocumentWorkspaceServiceImpl service = new DocumentWorkspaceServiceImpl();
+        ReflectionTestUtils.setField(service, "mapper", mapper);
+        ReflectionTestUtils.setField(service, "storageService", storage);
+        setCurrentUser(7L, "owner", "普通用户");
+        DocUserQuota quota = new DocUserQuota();
+        quota.setQuotaBytes(200L * 1024L * 1024L);
+        quota.setMaxUploadBytes(0L);
+        when(mapper.selectQuotaForUpdate(7L)).thenReturn(quota);
+        when(mapper.selectOwnedStorageBytes(7L)).thenReturn(100L * 1024L * 1024L);
+        when(mapper.selectFolderById(12L)).thenReturn(ownedFolder(12L, 0L, 7L, "压缩资料", 0L, 0L));
+        MultipartFile upload = mock(MultipartFile.class);
+        when(upload.getOriginalFilename()).thenReturn("大型资料.rar");
+        when(upload.getSize()).thenReturn(101L * 1024L * 1024L);
+
+        ServiceException error = assertThrows(ServiceException.class, () -> service.uploadDocument(upload, 12L));
+
+        assertTrue(error.getMessage().contains("可用空间不足"));
+        verify(storage, never()).copyUploadToTemp(same(upload), anyLong());
+        verify(mapper, never()).insertDocument(any(DocDocument.class));
+    }
+
+    @Test
+    void unlimitedPolicyShouldNotGrantAccessToAnotherUsersFolder() throws Exception
+    {
+        DocumentWorkspaceMapper mapper = mock(DocumentWorkspaceMapper.class);
+        DocumentStorageService storage = mock(DocumentStorageService.class);
+        DocumentWorkspaceServiceImpl service = new DocumentWorkspaceServiceImpl();
+        ReflectionTestUtils.setField(service, "mapper", mapper);
+        ReflectionTestUtils.setField(service, "storageService", storage);
+        setCurrentUser(7L, "owner", "普通用户");
+        when(mapper.selectFolderById(12L)).thenReturn(ownedFolder(12L, 0L, 9L, "其他用户资料", 0L, 0L));
+        MultipartFile upload = mock(MultipartFile.class);
+        when(upload.getOriginalFilename()).thenReturn("大型资料.rar");
+        when(upload.getSize()).thenReturn(101L * 1024L * 1024L);
+
+        ServiceException error = assertThrows(ServiceException.class, () -> service.uploadDocument(upload, 12L));
+
+        assertTrue(error.getMessage().contains("无权访问"));
+        verify(mapper, never()).selectQuotaForUpdate(anyLong());
+        verify(storage, never()).copyUploadToTemp(same(upload), anyLong());
+    }
+
+    @Test
+    void actualUploadedBytesMustStillFitTotalStorageWhenTheDeclaredLengthIsSmaller() throws Exception
+    {
+        DocumentWorkspaceMapper mapper = mock(DocumentWorkspaceMapper.class);
+        DocumentStorageService storage = mock(DocumentStorageService.class);
+        DocumentWorkspaceServiceImpl service = new DocumentWorkspaceServiceImpl();
+        ReflectionTestUtils.setField(service, "mapper", mapper);
+        ReflectionTestUtils.setField(service, "storageService", storage);
+        setCurrentUser(7L, "owner", "普通用户");
+        DocUserQuota quota = new DocUserQuota();
+        quota.setQuotaBytes(10L);
+        quota.setMaxUploadBytes(0L);
+        when(mapper.selectQuotaForUpdate(7L)).thenReturn(quota);
+        when(mapper.selectOwnedStorageBytes(7L)).thenReturn(8L);
+        when(mapper.selectFolderById(12L)).thenReturn(ownedFolder(12L, 0L, 7L, "压缩资料", 0L, 0L));
+        MultipartFile upload = mock(MultipartFile.class);
+        when(upload.getOriginalFilename()).thenReturn("资料.rar");
+        when(upload.getSize()).thenReturn(1L);
+        Path oversized = Files.writeString(tempDir.resolve("oversized.tmp"), "1234");
+        when(storage.copyUploadToTemp(upload, 2L)).thenReturn(oversized);
+        when(storage.validateUploadedArchiveFile(oversized, "rar"))
+            .thenReturn(new DocumentStorageService.UploadValidationResult(List.of()));
+
+        ServiceException error = assertThrows(ServiceException.class, () -> service.uploadDocument(upload, 12L));
+
+        assertTrue(error.getMessage().contains("可用空间不足"));
+        verify(mapper, never()).insertDocument(any(DocDocument.class));
+        verify(storage).deleteQuietly(oversized);
+    }
+
+    private Path sparseFile(String name, long size) throws Exception
+    {
+        Path target = tempDir.resolve(name);
+        try (var channel = Files.newByteChannel(target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE))
+        {
+            channel.position(size - 1L);
+            channel.write(ByteBuffer.wrap(new byte[] { 0 }));
+        }
+        return target;
     }
 
     @Test

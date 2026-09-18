@@ -156,6 +156,8 @@ public class DocumentWorkspaceServiceImpl implements IDocumentWorkspaceService
         summary.setQuotaSize(quota.getQuotaBytes());
         summary.setRemainingSize(Math.max(0L, quota.getQuotaBytes() - usedSize));
         summary.setMaxUploadSize(quota.getMaxUploadBytes());
+        summary.setMaxOfficeUploadSize(documentProperties.getMaxFileSize());
+        summary.setMaxEditorSaveSize(Math.min(HARD_MAX_UPLOAD_BYTES, documentProperties.getMaxFileSize()));
         summary.setUsagePercent(usagePercent(usedSize, quota.getQuotaBytes()));
         summary.setDocumentAdmin(isDocumentAdmin());
         return summary;
@@ -193,9 +195,9 @@ public class DocumentWorkspaceServiceImpl implements IDocumentWorkspaceService
         {
             throw new ServiceException("可用空间必须在1MB到102400MB之间");
         }
-        if (maxUploadMb < 1L || maxUploadMb > 100L)
+        if (maxUploadMb != 0L && maxUploadMb != 100L)
         {
-            throw new ServiceException("单个文件上传上限必须在1MB到100MB之间");
+            throw new ServiceException("单个文件上传上限仅支持100MB或无限制（0）");
         }
         long quotaBytes = quotaMb * BYTES_PER_MEGABYTE;
         long maxUploadBytes = maxUploadMb * BYTES_PER_MEGABYTE;
@@ -480,7 +482,7 @@ public class DocumentWorkspaceServiceImpl implements IDocumentWorkspaceService
         try
         {
             long sourceSize = Files.size(sourceFile);
-            ensureHardFileLimit(sourceSize);
+            ensureSingleFileLimit(quota, sourceSize);
             ensureQuotaCapacity(quota, usedSize, sourceSize);
             String checksum = StringUtils.defaultIfBlank(source.getChecksum(), storageService.checksum(sourceFile));
             DocDocument copy = new DocDocument();
@@ -536,7 +538,11 @@ public class DocumentWorkspaceServiceImpl implements IDocumentWorkspaceService
         String username = SecurityUtils.getUsername();
         DocUserQuota quota = lockQuota(ownerId);
         long usedSize = valueOrZero(mapper.selectOwnedStorageBytes(ownerId));
-        long uploadLimit = Math.min(HARD_MAX_UPLOAD_BYTES, quota.getMaxUploadBytes());
+        ensureSingleFileLimit(quota, upload.getSize());
+        ensureQuotaCapacity(quota, usedSize, upload.getSize());
+        long remainingBytes = Math.max(0L, quota.getQuotaBytes() - Math.max(0L, usedSize));
+        long uploadLimit = quota.getMaxUploadBytes() == 0L ? remainingBytes
+            : Math.min(quota.getMaxUploadBytes(), remainingBytes);
         Path temporary = null;
         Path stored = null;
         try
@@ -547,7 +553,7 @@ public class DocumentWorkspaceServiceImpl implements IDocumentWorkspaceService
                 : (isPdfType(fileType) ? storageService.validateUploadedPdfFile(temporary)
                     : storageService.validateUploadedOfficeFile(temporary, fileType));
             long uploadedSize = Files.size(temporary);
-            ensureHardFileLimit(uploadedSize);
+            ensureSingleFileLimit(quota, uploadedSize);
             ensureQuotaCapacity(quota, usedSize, uploadedSize);
             String checksum = storageService.checksum(temporary);
 
@@ -1233,7 +1239,7 @@ public class DocumentWorkspaceServiceImpl implements IDocumentWorkspaceService
         {
             normalized.setQuotaBytes(DEFAULT_QUOTA_BYTES);
         }
-        if (normalized.getMaxUploadBytes() == null || normalized.getMaxUploadBytes() < 1L)
+        if (normalized.getMaxUploadBytes() == null || normalized.getMaxUploadBytes() < 0L)
         {
             normalized.setMaxUploadBytes(DEFAULT_MAX_UPLOAD_BYTES);
         }
@@ -1262,13 +1268,22 @@ public class DocumentWorkspaceServiceImpl implements IDocumentWorkspaceService
         }
     }
 
+    private void ensureSingleFileLimit(DocUserQuota quota, long fileSize)
+    {
+        long maximumBytes = quota.getMaxUploadBytes();
+        if (maximumBytes > 0L && fileSize > maximumBytes)
+        {
+            throw new ServiceException("单个文件大小超过当前账号的" + readableMegabytes(maximumBytes) + "MB上传上限");
+        }
+    }
+
     private void normalizeStorageUser(DocUserStorageVo user)
     {
         user.setFileCount(valueOrZero(user.getFileCount()));
         user.setUsedSize(valueOrZero(user.getUsedSize()));
         user.setQuotaSize(user.getQuotaSize() == null || user.getQuotaSize() < 1L
             ? DEFAULT_QUOTA_BYTES : user.getQuotaSize());
-        user.setMaxUploadSize(user.getMaxUploadSize() == null || user.getMaxUploadSize() < 1L
+        user.setMaxUploadSize(user.getMaxUploadSize() == null || user.getMaxUploadSize() < 0L
             ? DEFAULT_MAX_UPLOAD_BYTES : Math.min(HARD_MAX_UPLOAD_BYTES, user.getMaxUploadSize()));
         user.setUsagePercent(usagePercent(user.getUsedSize(), user.getQuotaSize()));
     }

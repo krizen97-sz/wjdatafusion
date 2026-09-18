@@ -108,10 +108,12 @@ public class DocumentStorageService
         {
             throw new ServiceException("请选择需要上传的文件");
         }
-        long effectiveMaximum = Math.min(properties.getMaxFileSize(), maximumBytes);
+        // The caller supplies the owner's effective limit, including remaining
+        // storage. The editor/parser safety limit is not an archive transfer quota.
+        long effectiveMaximum = maximumBytes;
         if (effectiveMaximum <= 0L)
         {
-            throw new ServiceException("当前账号未配置可用的单文件上传额度");
+            throw new ServiceException("当前账号可用空间不足");
         }
         if (upload.getSize() > effectiveMaximum)
         {
@@ -228,7 +230,7 @@ public class DocumentStorageService
         {
             throw new ServiceException("仅支持 ZIP 和 RAR 压缩包");
         }
-        byte[] signature = readSignatureAfterSizeValidation(file, "上传文件");
+        byte[] signature = readSignatureAfterSizeValidation(file, "上传文件", 0L);
         if ("rar".equals(normalizedType))
         {
             if (!isRarSignature(signature))
@@ -251,7 +253,7 @@ public class DocumentStorageService
      */
     public UploadValidationResult validateUploadedPdfFile(Path file) throws IOException
     {
-        byte[] signature = readSignatureAfterSizeValidation(file, "上传文件");
+        byte[] signature = readSignatureAfterSizeValidation(file, "上传文件", 0L);
         if (!matchesSignature(signature, PDF_SIGNATURE))
         {
             throw formatMismatch("pdf");
@@ -427,11 +429,16 @@ public class DocumentStorageService
 
     private byte[] readSignatureAfterSizeValidation(Path file, String subject) throws IOException
     {
-        ensureFileSize(file, subject);
+        return readSignatureAfterSizeValidation(file, subject, properties.getMaxFileSize());
+    }
+
+    private byte[] readSignatureAfterSizeValidation(Path file, String subject, long maximumBytes) throws IOException
+    {
+        ensureFileSize(file, subject, maximumBytes);
         return readSignature(file);
     }
 
-    private void ensureFileSize(Path file, String subject) throws IOException
+    private void ensureFileSize(Path file, String subject, long maximumBytes) throws IOException
     {
         if (!Files.isRegularFile(file))
         {
@@ -442,9 +449,9 @@ public class DocumentStorageService
         {
             throw new ServiceException(subject + "为空");
         }
-        if (size > properties.getMaxFileSize())
+        if (maximumBytes > 0L && size > maximumBytes)
         {
-            throw new ServiceException(subject + "大小超过" + readableMegabytes(properties.getMaxFileSize()) + "MB限制");
+            throw new ServiceException(subject + "大小超过文档安全解析上限" + readableMegabytes(maximumBytes) + "MB");
         }
     }
 

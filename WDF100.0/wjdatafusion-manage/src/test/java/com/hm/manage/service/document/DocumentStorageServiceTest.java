@@ -3,23 +3,33 @@ package com.hm.manage.service.document;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
+import java.io.ByteArrayInputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.Enumeration;
 import java.util.List;
+import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
 import org.apache.poi.hssf.usermodel.HSSFWorkbook;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.common.PDStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.multipart.MultipartFile;
 import com.hm.common.exception.ServiceException;
 import com.hm.manage.config.DocumentManagementProperties;
 
@@ -237,6 +247,119 @@ class DocumentStorageServiceTest
             () -> service.copyUploadToTemp(upload, 5L));
 
         assertTrue(exception.getMessage().contains("限制"));
+    }
+
+    @Test
+    void shouldValidateArchivesLargerThanTheOfficeSafetyLimitWithoutLoadingTheirBodies() throws Exception
+    {
+        Path rar = tempDirectory.resolve("large.rar");
+        try (var channel = Files.newByteChannel(rar, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE))
+        {
+            channel.write(ByteBuffer.wrap(new byte[] { 0x52, 0x61, 0x72, 0x21, 0x1A, 0x07, 0x00, 0x01 }));
+            channel.position(101L * 1024L * 1024L - 1L);
+            channel.write(ByteBuffer.wrap(new byte[] { 0 }));
+        }
+
+        assertTrue(service.validateUploadedArchiveFile(rar, "rar").warnings().isEmpty());
+        assertThrows(ServiceException.class, () -> service.validateUploadedArchiveFile(rar, "zip"));
+        ServiceException officeSafety = assertThrows(ServiceException.class,
+            () -> service.validateUploadedOfficeFile(rar, "docx"));
+        assertTrue(officeSafety.getMessage().contains("文档安全解析上限100MB"));
+        ServiceException callbackSafety = assertThrows(ServiceException.class,
+            () -> service.validateEditorOfficeFile(rar, "docx"));
+        assertTrue(callbackSafety.getMessage().contains("文档安全解析上限100MB"));
+    }
+
+    @Test
+    void shouldStreamUsingTheSuppliedQuotaWithoutReapplyingTheEditorFileLimit() throws Exception
+    {
+        long largeDeclaredSize = 101L * 1024L * 1024L;
+        MultipartFile upload = mock(MultipartFile.class);
+        when(upload.getSize()).thenReturn(largeDeclaredSize);
+        when(upload.getInputStream()).thenReturn(new ByteArrayInputStream("payload".getBytes(StandardCharsets.UTF_8)));
+
+        Path temporary = service.copyUploadToTemp(upload, 150L * 1024L * 1024L);
+
+        assertEquals("payload", Files.readString(temporary));
+        verify(upload, never()).getBytes();
+    }
+
+    @Test
+    void pdfAndZipUploadsShouldNotInheritTheOfficeParsingSizeLimit() throws Exception
+    {
+        DocumentManagementProperties properties = new DocumentManagementProperties();
+        properties.setStorageRoot(tempDirectory.toString());
+        properties.setMaxFileSize(1024L * 1024L);
+        ReflectionTestUtils.setField(service, "properties", properties);
+        byte[] buffer = " ".repeat(8192).getBytes(StandardCharsets.US_ASCII);
+        Path pdf = tempDirectory.resolve("large-preview.pdf");
+        try (PDDocument document = new PDDocument())
+        {
+            PDPage page = new PDPage();
+            document.addPage(page);
+            PDStream content = new PDStream(document);
+            try (var output = content.createOutputStream())
+            {
+                for (int i = 0; i < 256; i++)
+                {
+                    output.write(buffer);
+                }
+            }
+            page.setContents(content);
+            document.save(pdf.toFile());
+        }
+        Path zip = tempDirectory.resolve("large-transfer.zip");
+        CRC32 crc = new CRC32();
+        for (int i = 0; i < 256; i++)
+        {
+            crc.update(buffer);
+        }
+        try (ZipOutputStream output = new ZipOutputStream(Files.newOutputStream(zip)))
+        {
+            ZipEntry entry = new ZipEntry("资料.txt");
+            entry.setMethod(ZipEntry.STORED);
+            entry.setSize(256L * buffer.length);
+            entry.setCrc(crc.getValue());
+            output.putNextEntry(entry);
+            for (int i = 0; i < 256; i++)
+            {
+                output.write(buffer);
+            }
+            output.closeEntry();
+        }
+
+        assertTrue(Files.size(pdf) > properties.getMaxFileSize());
+        assertTrue(Files.size(zip) > properties.getMaxFileSize());
+        assertTrue(service.validateUploadedPdfFile(pdf).warnings().isEmpty());
+        assertTrue(service.validateUploadedArchiveFile(zip, "zip").warnings().isEmpty());
+    }
+
+    @Test
+    void shouldRejectUnderreportedBodiesDuringStreamingAndDeleteThePartialCopy() throws Exception
+    {
+        MultipartFile upload = mock(MultipartFile.class);
+        when(upload.getSize()).thenReturn(1L);
+        when(upload.getInputStream()).thenReturn(new ByteArrayInputStream("123456".getBytes(StandardCharsets.UTF_8)));
+
+        assertThrows(ServiceException.class, () -> service.copyUploadToTemp(upload, 5L));
+
+        try (var temporaryFiles = Files.list(tempDirectory.resolve(".tmp")))
+        {
+            assertEquals(0L, temporaryFiles.count());
+        }
+        verify(upload, never()).getBytes();
+    }
+
+    @Test
+    void exhaustedStorageShouldNotBeInterpretedAsAnUnlimitedTemporaryCopy() throws Exception
+    {
+        MultipartFile upload = mock(MultipartFile.class);
+        when(upload.getSize()).thenReturn(1L);
+
+        ServiceException error = assertThrows(ServiceException.class, () -> service.copyUploadToTemp(upload, 0L));
+
+        assertTrue(error.getMessage().contains("可用空间不足"));
+        verify(upload, never()).getInputStream();
     }
 
     private static ZipContent entry(String name, String value)
