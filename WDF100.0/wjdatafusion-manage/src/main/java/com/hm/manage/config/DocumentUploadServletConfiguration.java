@@ -1,12 +1,16 @@
 package com.hm.manage.config;
 
 import jakarta.servlet.MultipartConfigElement;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.boot.security.autoconfigure.web.servlet.SecurityFilterProperties;
 import org.springframework.boot.servlet.autoconfigure.MultipartProperties;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.boot.web.servlet.ServletRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.DispatcherServlet;
+import com.hm.manage.service.IDocumentWorkspaceService;
 
 /**
  * Isolates document uploads from the application-wide multipart size limits.
@@ -16,6 +20,20 @@ import org.springframework.web.servlet.DispatcherServlet;
 public class DocumentUploadServletConfiguration
 {
     public static final String UPLOAD_PATH = "/document/workspace/documents/upload";
+
+    @Bean
+    public FilterRegistrationBean<DocumentUploadAdmissionFilter> documentUploadAdmissionFilterRegistration(
+        ObjectProvider<IDocumentWorkspaceService> workspaceService, SecurityFilterProperties securityFilterProperties)
+    {
+        FilterRegistrationBean<DocumentUploadAdmissionFilter> registration = new FilterRegistrationBean<>(
+            new DocumentUploadAdmissionFilter(workspaceService));
+        registration.setName("documentUploadAdmissionFilter");
+        registration.addUrlPatterns(UPLOAD_PATH);
+        // Authentication must populate LoginUser before admission; multipart parsing
+        // must remain inside DispatcherServlet, after this filter has admitted it.
+        registration.setOrder(Math.addExact(securityFilterProperties.getOrder(), 1));
+        return registration;
+    }
 
     @Bean
     public ServletRegistrationBean<DispatcherServlet> documentUploadServletRegistration(
