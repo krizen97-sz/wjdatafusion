@@ -9,6 +9,7 @@ public class DocUserQuota
 {
     private Long userId;
     private Long quotaBytes;
+    /** Zero means no individual-file quota. Legacy positive limits remain valid on read. */
     private Long maxUploadBytes;
     private String createBy;
     private Date createTime;

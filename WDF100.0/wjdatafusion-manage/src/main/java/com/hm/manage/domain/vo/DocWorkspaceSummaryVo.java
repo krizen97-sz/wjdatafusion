@@ -9,6 +9,8 @@ public class DocWorkspaceSummaryVo
     private Long quotaSize;
     private Long remainingSize;
     private Long maxUploadSize;
+    private Long maxOfficeUploadSize;
+    private Long maxEditorSaveSize;
     private Double usagePercent;
     private Boolean documentAdmin;
 
@@ -26,6 +28,10 @@ public class DocWorkspaceSummaryVo
     public void setRemainingSize(Long remainingSize) { this.remainingSize = remainingSize; }
     public Long getMaxUploadSize() { return maxUploadSize; }
     public void setMaxUploadSize(Long maxUploadSize) { this.maxUploadSize = maxUploadSize; }
+    public Long getMaxOfficeUploadSize() { return maxOfficeUploadSize; }
+    public void setMaxOfficeUploadSize(Long maxOfficeUploadSize) { this.maxOfficeUploadSize = maxOfficeUploadSize; }
+    public Long getMaxEditorSaveSize() { return maxEditorSaveSize; }
+    public void setMaxEditorSaveSize(Long maxEditorSaveSize) { this.maxEditorSaveSize = maxEditorSaveSize; }
     public Double getUsagePercent() { return usagePercent; }
     public void setUsagePercent(Double usagePercent) { this.usagePercent = usagePercent; }
     public Boolean getDocumentAdmin() { return documentAdmin; }
