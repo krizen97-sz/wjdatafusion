@@ -3,6 +3,9 @@ package com.hm.manage.service.document;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -22,6 +25,7 @@ import java.util.zip.ZipException;
 import java.util.zip.ZipFile;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
+import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.IOUtils;
 import org.apache.pdfbox.pdmodel.PDDocument;
@@ -38,6 +42,8 @@ import org.apache.poi.poifs.filesystem.Entry;
 import org.apache.poi.poifs.filesystem.POIFSFileSystem;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.multipart.MultipartFile;
@@ -51,6 +57,7 @@ import com.hm.manage.config.DocumentManagementProperties;
 @Component
 public class DocumentStorageService
 {
+    private static final Logger log = LoggerFactory.getLogger(DocumentStorageService.class);
     private static final String DEFAULT_DOCUMENT_LANGUAGE = "zh-CN";
     private static final Set<String> SUPPORTED_FILE_TYPES = Set.of("doc", "docx", "xls", "xlsx");
     private static final Set<String> OPEN_XML_FILE_TYPES = Set.of("docx", "xlsx");
@@ -496,29 +503,70 @@ public class DocumentStorageService
     private void validateTransferZip(Path file) throws IOException
     {
         Set<String> entryNames = new LinkedHashSet<>();
-        try (ZipFile zipFile = new ZipFile(file.toFile()))
+        try
         {
-            Enumeration<? extends ZipEntry> entries = zipFile.entries();
-            int entryCount = 0;
-            while (entries.hasMoreElements())
+            long expectedEntries = TransferZipStructure.validate(file, properties.getMaxArchiveEntries());
+            // Windows ZIP tools commonly omit the UTF-8 flag and use GBK.
+            // Commons honors explicit UTF-8/Unicode metadata and can enumerate
+            // encrypted members without trying to decrypt or extract them. Its
+            // base encoding is ZIP's CP437, which maps all unflagged bytes;
+            // decodeTransferEntryName then handles Windows GBK explicitly.
+            try (var zipFile = new org.apache.commons.compress.archivers.zip.ZipFile(file.toFile(), "IBM437", true))
             {
-                ZipEntry entry = entries.nextElement();
-                entryCount++;
-                if (entryCount > properties.getMaxArchiveEntries())
+                Enumeration<ZipArchiveEntry> entries = zipFile.getEntries();
+                int entryCount = 0;
+                while (entries.hasMoreElements())
                 {
-                    throw new ServiceException("压缩包内部条目超过" + properties.getMaxArchiveEntries() + "个，已拒绝上传");
+                    ZipArchiveEntry entry = entries.nextElement();
+                    if (++entryCount > properties.getMaxArchiveEntries())
+                    {
+                        throw new ServiceException("压缩包内部条目超过" + properties.getMaxArchiveEntries() + "个，已拒绝上传");
+                    }
+                    // Check both raw and Unicode-extra names: a harmless Unicode
+                    // alias must not conceal an unsafe legacy name from tools
+                    // which ignore that extra field.
+                    String rawName = normalizeArchiveEntry(decodeTransferEntryName(entry));
+                    String entryName = entry.getNameSource() == ZipArchiveEntry.NameSource.UNICODE_EXTRA_FIELD
+                        ? normalizeArchiveEntry(entry.getName()) : rawName;
+                    if (!entryNames.add(entryName))
+                    {
+                        throw new ServiceException("压缩包内部存在重复条目：" + entryName);
+                    }
                 }
-                String entryName = normalizeArchiveEntry(entry.getName());
-                if (!entryNames.add(entryName))
+                if (entryCount != expectedEntries)
                 {
-                    throw new ServiceException("压缩包内部存在重复条目：" + entryName);
+                    throw new ZipException("ZIP parsed member count differs from end record");
                 }
             }
         }
-        catch (ZipException exception)
+        catch (IOException | IllegalArgumentException exception)
         {
-            throw new ServiceException("ZIP 压缩结构已损坏或与扩展名不一致")
-                .setDetailMessage(exception.getMessage());
+            String reason = String.valueOf(exception.getMessage()).replace(file.toString(), "[upload-temp]")
+                .replace('\r', ' ').replace('\n', ' ');
+            log.warn("ZIP transfer metadata rejected: type={}, reason={}", exception.getClass().getSimpleName(),
+                reason.substring(0, Math.min(reason.length(), 300)));
+            throw new ServiceException("ZIP 压缩结构已损坏或与扩展名不一致，请确认压缩包完整且不是缺少分卷的压缩文件");
+        }
+    }
+
+    private String decodeTransferEntryName(ZipArchiveEntry entry) throws CharacterCodingException
+    {
+        if (entry.getGeneralPurposeBit().usesUTF8ForNames())
+        {
+            // A declared UTF-8 name must actually be valid UTF-8; do not reinterpret
+            // corrupted metadata as another encoding just because parsing failed.
+            return StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(entry.getRawName())).toString();
+        }
+        try
+        {
+            return Charset.forName("GBK").newDecoder().decode(ByteBuffer.wrap(entry.getRawName())).toString();
+        }
+        catch (CharacterCodingException exception)
+        {
+            // Unflagged legacy ZIP names have no charset declaration. CP437 is
+            // ZIP's original single-byte encoding; this only decodes a name,
+            // after the complete structural validation has already succeeded.
+            return Charset.forName("IBM437").decode(ByteBuffer.wrap(entry.getRawName())).toString();
         }
     }
 
