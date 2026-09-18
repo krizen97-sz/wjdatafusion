@@ -1,0 +1,39 @@
+# 仅为可选新增配置片段，不能覆盖现场完整application.yml。
+# 所有路径需核对当前真实目录；既有加密密钥必须继续使用，不随升级重新生成。
+support:
+  credential:
+    key: ${SUPPORT_AES_KEY}
+
+data-governance:
+  storage-dir: /var/lib/rynew/governance
+  connection-allowed-endpoints: []
+  ftp-allowed-endpoints: []
+  nifi:
+    base-url: ""
+    root-group-id: ""
+    credentials-file: ""
+    token-file: ""
+    ca-cert-file: ""
+
+data-governance-kettle:
+  enabled: false
+  worker-url: http://127.0.0.1:19162
+  worker-token-file: /var/lib/rynew/kettle/broker/.broker-token
+  storage-dir: /var/lib/rynew/governance-kettle
+  catalog-file: /var/lib/rynew/kettle/catalog/catalog.json
+
+data-governance-kafka:
+  enabled: false
+  storage-dir: /var/lib/rynew/governance-kafka
+  allowed-brokers: []
+
+# 文档上传使用专用Servlet，不修改全局spring.servlet.multipart配置。
+# 沿用已有document-management配置。当前application.yml显式支持：
+# DOCUMENT_STORAGE_ROOT                 现有文档持久目录
+# DOCUMENT_MAX_FILE_SIZE                Office安全处理上限（不是个人单文件额度）
+# DOCUMENT_ONLYOFFICE_ENABLED           现有编辑器开关
+# DOCUMENT_ONLYOFFICE_SERVER_URL        浏览器编辑器地址
+# DOCUMENT_PLATFORM_BASE_URL            编辑器访问平台的内部地址
+# DOCUMENT_ONLYOFFICE_JWT_SECRET        必须沿用现场原JWT密钥
+# DOCUMENT_ONLYOFFICE_TRUSTED_HOSTS      精确回调下载主机白名单
+# 不要将令牌、数据库口令、原密钥或真实连接写入此模板并分发。
