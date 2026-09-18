@@ -4,8 +4,12 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.zip.CRC32;
 import java.util.zip.ZipException;
 import com.hm.common.exception.ServiceException;
 
@@ -22,7 +26,7 @@ final class TransferZipStructure
     {
     }
 
-    static long validate(Path file, int maximumEntries) throws IOException
+    static List<Entry> validate(Path file, int maximumEntries) throws IOException
     {
         try (RandomAccessFile input = new RandomAccessFile(file.toFile(), "r"))
         {
@@ -31,6 +35,7 @@ final class TransferZipStructure
             {
                 throw new ServiceException("压缩包内部条目超过" + maximumEntries + "个，已拒绝上传");
             }
+            List<Entry> metadata = new ArrayList<>((int) directory.entries());
             long cursor = directory.offset();
             for (long index = 0; index < directory.entries(); index++)
             {
@@ -54,7 +59,7 @@ final class TransferZipStructure
                     ByteBuffer zip64 = zip64Field(extra);
                     if (uncompressed == UINT_MAX)
                     {
-                        readZip64Value(zip64);
+                        uncompressed = readZip64Value(zip64);
                     }
                     if (compressed == UINT_MAX)
                     {
@@ -77,6 +82,34 @@ final class TransferZipStructure
                 long dataOffset = localOffset + 30L + localNameLength + localExtraLength;
                 require(dataOffset <= directory.offset() && compressed <= directory.offset() - dataOffset,
                     "ZIP member exceeds available archive data");
+                byte[] localExtra = read(input, localOffset + 30L + localNameLength,
+                    localExtraLength, directory.offset()).array();
+                String centralUnicodeName = unicodePath(extra, name);
+                String localUnicodeName = unicodePath(localExtra, name);
+                require(centralUnicodeName == null || localUnicodeName == null
+                    || centralUnicodeName.equals(localUnicodeName), "Local and central Unicode file names differ");
+                metadata.add(new Entry(centralUnicodeName != null ? centralUnicodeName : localUnicodeName));
+                if ((unsignedShort(local, 6) & 8) == 0)
+                {
+                    long localUncompressed = unsignedInt(local, 22);
+                    long localCompressed = unsignedInt(local, 18);
+                    if (localUncompressed == UINT_MAX || localCompressed == UINT_MAX)
+                    {
+                        // APPNOTE 4.5.3 requires BOTH sizes in the local ZIP64
+                        // extra field, unlike conditional central-directory fields.
+                        ByteBuffer localZip64 = zip64Field(localExtra);
+                        long zip64Uncompressed = readZip64Value(localZip64);
+                        long zip64Compressed = readZip64Value(localZip64);
+                        require((localUncompressed == UINT_MAX || localUncompressed == zip64Uncompressed)
+                            && (localCompressed == UINT_MAX || localCompressed == zip64Compressed),
+                            "Local ZIP and ZIP64 file sizes differ");
+                        localUncompressed = zip64Uncompressed;
+                        localCompressed = zip64Compressed;
+                    }
+                    require(localUncompressed == uncompressed && localCompressed == compressed
+                        && unsignedInt(local, 14) == unsignedInt(central, 16),
+                        "Local and central file sizes or CRC values differ");
+                }
                 cursor += 46L + nameLength + extraLength + commentLength;
             }
             // A central-directory digital signature is optional and does not
@@ -88,7 +121,7 @@ final class TransferZipStructure
                     && cursor + 6L + unsignedShort(signature, 4) == directory.end(),
                     "Central directory length or member count is inconsistent");
             }
-            return directory.entries();
+            return List.copyOf(metadata);
         }
     }
 
@@ -134,6 +167,10 @@ final class TransferZipStructure
             require(zip64Entries >= 0 && zip64.getLong(24) == zip64Entries,
                 "Invalid ZIP64 member count");
             require(entries == 65535 || entries == zip64Entries, "ZIP and ZIP64 member counts differ");
+            require(directorySize == UINT_MAX || directorySize == zip64.getLong(40),
+                "ZIP and ZIP64 central directory sizes differ");
+            require(directoryOffset == UINT_MAX || directoryOffset == zip64.getLong(48),
+                "ZIP and ZIP64 central directory offsets differ");
             entries = zip64Entries;
             directorySize = zip64.getLong(40);
             directoryOffset = zip64.getLong(48);
@@ -165,6 +202,32 @@ final class TransferZipStructure
             fields.position(fields.position() + length);
         }
         throw new ZipException("Missing ZIP64 member metadata");
+    }
+
+    private static String unicodePath(byte[] extra, byte[] rawName) throws IOException
+    {
+        CRC32 checksum = new CRC32();
+        checksum.update(rawName);
+        ByteBuffer fields = ByteBuffer.wrap(extra).order(ByteOrder.LITTLE_ENDIAN);
+        String unicodeName = null;
+        while (fields.remaining() >= 4)
+        {
+            int tag = Short.toUnsignedInt(fields.getShort());
+            int length = Short.toUnsignedInt(fields.getShort());
+            require(length <= fields.remaining(), "Truncated ZIP extra field");
+            int end = fields.position() + length;
+            if (tag == 0x7075 && length >= 5 && fields.get(fields.position()) == 1
+                && unsignedInt(fields, fields.position() + 1) == checksum.getValue())
+            {
+                ByteBuffer name = fields.duplicate();
+                name.position(fields.position() + 5).limit(end);
+                String decoded = StandardCharsets.UTF_8.newDecoder().decode(name).toString();
+                require(unicodeName == null || unicodeName.equals(decoded), "Conflicting Unicode file names");
+                unicodeName = decoded;
+            }
+            fields.position(end);
+        }
+        return unicodeName;
     }
 
     private static long readZip64Value(ByteBuffer value) throws ZipException
@@ -204,6 +267,10 @@ final class TransferZipStructure
     }
 
     private record Directory(long entries, long offset, long end)
+    {
+    }
+
+    record Entry(String unicodeName)
     {
     }
 }
