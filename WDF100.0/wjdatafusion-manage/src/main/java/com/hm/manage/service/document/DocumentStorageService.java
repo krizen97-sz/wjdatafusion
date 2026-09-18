@@ -505,7 +505,8 @@ public class DocumentStorageService
         Set<String> entryNames = new LinkedHashSet<>();
         try
         {
-            long expectedEntries = TransferZipStructure.validate(file, properties.getMaxArchiveEntries());
+            List<TransferZipStructure.Entry> metadata =
+                TransferZipStructure.validate(file, properties.getMaxArchiveEntries());
             // Windows ZIP tools commonly omit the UTF-8 flag and use GBK.
             // Commons honors explicit UTF-8/Unicode metadata and can enumerate
             // encrypted members without trying to decrypt or extract them. Its
@@ -522,18 +523,32 @@ public class DocumentStorageService
                     {
                         throw new ServiceException("压缩包内部条目超过" + properties.getMaxArchiveEntries() + "个，已拒绝上传");
                     }
+                    if (entryCount > metadata.size())
+                    {
+                        throw new ZipException("ZIP parsed member count differs from end record");
+                    }
                     // Check both raw and Unicode-extra names: a harmless Unicode
                     // alias must not conceal an unsafe legacy name from tools
                     // which ignore that extra field.
                     String rawName = normalizeArchiveEntry(decodeTransferEntryName(entry));
                     String entryName = entry.getNameSource() == ZipArchiveEntry.NameSource.UNICODE_EXTRA_FIELD
                         ? normalizeArchiveEntry(entry.getName()) : rawName;
-                    if (!entryNames.add(entryName))
+                    Set<String> currentNames = new LinkedHashSet<>(List.of(rawName, entryName));
+                    String declaredUnicodeName = metadata.get(entryCount - 1).unicodeName();
+                    if (declaredUnicodeName != null)
+                    {
+                        currentNames.add(normalizeArchiveEntry(declaredUnicodeName));
+                    }
+                    if (currentNames.stream().anyMatch(entryNames::contains))
                     {
                         throw new ServiceException("压缩包内部存在重复条目：" + entryName);
                     }
+                    // Different readers may prefer the legacy name or Unicode
+                    // alias. Neither may collide with either name of an earlier
+                    // member; identical names within this same member are fine.
+                    entryNames.addAll(currentNames);
                 }
-                if (entryCount != expectedEntries)
+                if (entryCount != metadata.size())
                 {
                     throw new ZipException("ZIP parsed member count differs from end record");
                 }

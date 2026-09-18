@@ -129,6 +129,105 @@ class DocumentTransferZipCompatibilityTest
     }
 
     @Test
+    void shouldRejectRawUnicodeAndCrossAliasCollisionsAcrossMembers() throws Exception
+    {
+        for (String[][] entries : new String[][][] {
+            { { "duplicate.txt", "alias-0.txt" }, { "duplicate.txt", "alias-1.txt" } },
+            { { "raw-0.txt", "alias.txt" }, { "raw-1.txt", "alias.txt" } },
+            { { "raw-0.txt", "raw-1.txt" }, { "raw-1.txt", "alias-1.txt" } },
+            { { "raw-0.txt", "alias-0.txt" }, { "raw-1.txt", "raw-0.txt" } }
+        })
+        {
+            Path archive = writeAliasedArchive(entries);
+            assertTrue(assertThrows(ServiceException.class,
+                () -> service.validateUploadedArchiveFile(archive, "zip")).getMessage().contains("重复条目"));
+        }
+        assertAcceptedUnchanged(writeAliasedArchive(new String[][] { { "same.txt", "same.txt" } }));
+    }
+
+    @Test
+    void shouldValidateBothLocalAndCentralUnicodeAliasesIncludingStaleLocalExtraFields() throws Exception
+    {
+        byte[] original = Files.readAllBytes(writeAliasedArchive(new String[][] { { "raw.txt", "alias-0.txt" } }));
+        int localExtra = unicodeExtraOffset(original, false);
+        int centralExtra = unicodeExtraOffset(original, true);
+        byte[] unsafeName = "../hack.txt".getBytes(StandardCharsets.UTF_8);
+        for (int extra : new int[] { localExtra, centralExtra })
+        {
+            byte[] unsafe = original.clone();
+            System.arraycopy(unsafeName, 0, unsafe, extra + 9, unsafeName.length);
+            assertRejected(unsafe);
+        }
+        // A local extra field with a stale raw-name checksum must not shadow a
+        // valid, unsafe central-directory Unicode name.
+        byte[] staleLocal = original.clone();
+        staleLocal[localExtra + 5] ^= 1;
+        System.arraycopy(unsafeName, 0, staleLocal, centralExtra + 9, unsafeName.length);
+        assertRejected(staleLocal);
+        byte[] malformedUtf8 = original.clone();
+        malformedUtf8[centralExtra + 9] = (byte) 0xff;
+        assertRejected(malformedUtf8);
+
+        // Per the ZIP specification, a Unicode field with an invalid checksum
+        // is ignored. The underlying raw name remains safe and unique.
+        byte[] ignoredAliases = original.clone();
+        for (int extra : new int[] { localExtra, centralExtra })
+        {
+            ignoredAliases[extra + 5] ^= 1;
+            System.arraycopy(unsafeName, 0, ignoredAliases, extra + 9, unsafeName.length);
+        }
+        assertAcceptedUnchanged(Files.write(temporary.resolve("ignored-aliases.zip"), ignoredAliases));
+    }
+
+    @Test
+    void shouldRejectContradictoryZipAndZip64DirectoryFields() throws Exception
+    {
+        byte[] original = Files.readAllBytes(writeArchive("zip64-directory.zip", "UTF-8", false,
+            Zip64Mode.Always, "safe.txt"));
+        int end = findSignature(original, 0x06054b50);
+        int zip64 = findSignature(original, 0x06064b50);
+        for (int[] offsets : new int[][] { { 12, 40 }, { 16, 48 } })
+        {
+            byte[] contradiction = original.clone();
+            ByteBuffer data = ByteBuffer.wrap(contradiction).order(ByteOrder.LITTLE_ENDIAN);
+            data.putInt(end + offsets[0], (int) data.getLong(zip64 + offsets[1]) + 1);
+            assertRejected(contradiction);
+        }
+    }
+
+    @Test
+    void shouldRejectContradictoryLocalSizesAndCrcWithAndWithoutZip64() throws Exception
+    {
+        byte[] normal = Files.readAllBytes(writeArchive("local-sizes.zip", "UTF-8", false,
+            Zip64Mode.AsNeeded, "safe.txt"));
+        for (int offset : new int[] { 14, 18, 22 })
+        {
+            byte[] contradiction = normal.clone();
+            ByteBuffer data = ByteBuffer.wrap(contradiction).order(ByteOrder.LITTLE_ENDIAN);
+            data.putInt(offset, data.getInt(offset) + 1);
+            assertRejected(contradiction);
+        }
+        byte[] zip64 = Files.readAllBytes(writeArchive("local-sizes-zip64.zip", "UTF-8", false,
+            Zip64Mode.Always, "safe.txt"));
+        int zip64Extra = 30 + Short.toUnsignedInt(ByteBuffer.wrap(zip64).order(ByteOrder.LITTLE_ENDIAN).getShort(26));
+        for (int relative : new int[] { 4, 12 })
+        {
+            byte[] contradiction = zip64.clone();
+            ByteBuffer data = ByteBuffer.wrap(contradiction).order(ByteOrder.LITTLE_ENDIAN);
+            data.putLong(zip64Extra + relative, data.getLong(zip64Extra + relative) + 1);
+            assertRejected(contradiction);
+        }
+        Path descriptor = temporary.resolve("descriptor.zip");
+        try (ZipOutputStream output = new ZipOutputStream(Files.newOutputStream(descriptor)))
+        {
+            output.putNextEntry(new java.util.zip.ZipEntry("safe.txt"));
+            output.write("valid streamed member with zero local sizes".getBytes(StandardCharsets.UTF_8));
+            output.closeEntry();
+        }
+        assertAcceptedUnchanged(descriptor);
+    }
+
+    @Test
     void shouldRejectTruncatedArchivesAndCorruptedCentralOrLocalMetadata() throws Exception
     {
         Path source = writeArchive("source.zip", "GBK", false, Zip64Mode.AsNeeded, "资料.txt");
@@ -218,6 +317,42 @@ class DocumentTransferZipCompatibilityTest
         byte[] original = Files.readAllBytes(archive);
         assertTrue(service.validateUploadedArchiveFile(archive, "zip").warnings().isEmpty());
         assertArrayEquals(original, Files.readAllBytes(archive));
+    }
+
+    private Path writeAliasedArchive(String[][] entries) throws Exception
+    {
+        Path archive = temporary.resolve("aliases.zip");
+        try (ZipArchiveOutputStream output = new ZipArchiveOutputStream(archive.toFile()))
+        {
+            output.setEncoding("GBK");
+            for (String[] names : entries)
+            {
+                ZipArchiveEntry entry = new ZipArchiveEntry(names[0]);
+                entry.addExtraField(new UnicodePathExtraField(names[1], names[0].getBytes(StandardCharsets.US_ASCII)));
+                output.putArchiveEntry(entry);
+                output.write("test data".getBytes(StandardCharsets.US_ASCII));
+                output.closeArchiveEntry();
+            }
+        }
+        return archive;
+    }
+
+    private int unicodeExtraOffset(byte[] content, boolean central)
+    {
+        ByteBuffer data = ByteBuffer.wrap(content).order(ByteOrder.LITTLE_ENDIAN);
+        int header = central ? findSignature(content, 0x02014b50) : 0;
+        int cursor = header + (central ? 46 : 30)
+            + Short.toUnsignedInt(data.getShort(header + (central ? 28 : 26)));
+        int end = cursor + Short.toUnsignedInt(data.getShort(header + (central ? 30 : 28)));
+        while (cursor + 4 <= end)
+        {
+            if (Short.toUnsignedInt(data.getShort(cursor)) == 0x7075)
+            {
+                return cursor;
+            }
+            cursor += 4 + Short.toUnsignedInt(data.getShort(cursor + 2));
+        }
+        throw new AssertionError("Fixture Unicode extra field missing");
     }
 
     private void assertRejected(byte[] content) throws Exception
