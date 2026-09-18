@@ -1,5 +1,21 @@
 export const releaseNotes = [
   {
+    version: 'v4.8.4',
+    submitTime: '2026-09-18 10:12:00',
+    level: 'patch', levelLabel: '修订版本', tagType: 'success',
+    title: '中文与加密 ZIP 上传兼容修复',
+    summary: '修复合法中文编码及加密 ZIP 被误判为损坏，并提供按现场上游生成配置的离线413排查工具。',
+    changes: [
+      '用于文件管理和传输的 ZIP 支持中文传统编码、Unicode文件名及加密条目元数据；不解压或预览包内文件。',
+      '校验 ZIP/ZIP64 目录、条目数量、本地头与数据范围，保留越界路径和重复条目拦截，Office校验策略保持独立。',
+      'ZIP拒绝日志区分结构损坏和不支持的容器布局，避免仅保留笼统错误而丢失诊断原因。',
+      '离线413工具按现场原proxy_pass生成精确上传location，不硬编码外网测试服务器地址；保留个人额度与总空间校验。'
+    ],
+    scope: ['文档管理', 'ZIP兼容', '上传校验', '离线部署'],
+    database: '无需数据库升级，不重置任何用户额度；离线环境需按实际入口应用代理配置并验证。',
+    scripts: []
+  },
+  {
     version: 'v4.8.3',
     submitTime: '2026-09-18 08:48:00',
     level: 'patch', levelLabel: '修订版本', tagType: 'success',
