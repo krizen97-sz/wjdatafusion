@@ -11,7 +11,7 @@
     <header class="room3d-header">
       <div class="room3d-heading">
         <h2>现场设备统一管控图</h2>
-        <p>{{ siteName || '当前现场' }} · 设备档案、平台归属、机房位置与网络上联统一编辑</p>
+        <p>{{ siteName || '当前现场' }} · {{ devices.length }} 台设备 · {{ devices.filter(item => !isDevicePlaced(item)).length }} 台未上架</p>
       </div>
       <div class="room3d-controls">
         <span class="room3d-live-status" :class="{ 'has-error': liveSyncError }">
@@ -27,20 +27,8 @@
         </el-select>
         <el-button icon="List" @click="openDeviceDrawer">设备清单</el-button>
         <el-button icon="Setting" @click="openInspectorDrawer">配置信息</el-button>
-        <el-dropdown
-          v-hasPermi="['support:equipment:add', 'support:hardwareAsset:add', 'support:server:add']"
-          trigger="click"
-          @command="handleCreateCommand"
-        >
-          <el-button type="primary" icon="Plus">新增设备</el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="hardware" icon="SetUp" aria-label="新增硬件设备">新增硬件设备</el-dropdown-item>
-              <el-dropdown-item command="server" icon="Monitor" aria-label="新增服务器">新增服务器</el-dropdown-item>
-              <el-dropdown-item command="batch" icon="Files" aria-label="批量录入设备">批量录入设备</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
+        <el-button v-if="canCreateEquipment" type="primary" icon="Plus" @click="requestCreate">新增设备</el-button>
+        <el-button v-hasPermi="['support:equipment:add', 'support:server:add']" icon="Files" @click="handleCreateCommand('batch')">批量录入服务器</el-button>
         <el-button
           icon="Plus"
           v-hasPermi="['support:equipment:add', 'support:equipment:edit', 'support:hardwareAsset:add', 'support:hardwareAsset:edit']"
@@ -157,6 +145,13 @@
                 <el-option label="未上架" value="UNPLACED" />
               </el-select>
             </el-form-item>
+            <el-form-item label="待完善">
+              <el-select v-model="attentionFilter" aria-label="设备待完善条件">
+                <el-option label="全部设备" value="ALL" />
+                <el-option label="未归属平台" value="UNBOUND" />
+                <el-option label="未配置上联" value="NO_UPLINK" />
+              </el-select>
+            </el-form-item>
             <el-form-item>
               <el-button type="primary" icon="Search" @click="handleDeviceQuery">搜索</el-button>
               <el-button icon="Refresh" @click="resetDeviceQuery">重置</el-button>
@@ -168,6 +163,8 @@
               当前页 {{ pagedDevices.length }} 台<span v-if="selectedDeviceKeys.length">，已选 {{ selectedDeviceKeys.length }} 台</span>
             </el-text>
             <el-space>
+              <el-button v-if="canCreateEquipment" type="primary" size="small" icon="Plus" @click="requestCreate">新增设备</el-button>
+              <el-button v-if="canExportEquipment" size="small" icon="Download" @click="handleDataCommand('export-devices')">导出设备</el-button>
               <el-button size="small" :disabled="!selectedDeviceKeys.length" @click="clearDeviceSelection">取消选择</el-button>
               <el-button
                 size="small"
@@ -209,11 +206,19 @@
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="60" align="center" fixed="right">
+            <el-table-column label="操作" width="174" align="center" fixed="right">
               <template #default="{ row }">
-                <el-button link type="primary" @click="locateDeviceFromDrawer(row)">定位</el-button>
+                <el-button link type="primary" @click="locateDeviceFromDrawer(row)">详情</el-button>
+                <el-button v-if="canManageDevice(row)" link type="primary" icon="Edit" @click="emit('edit-device', row)">编辑</el-button>
+                <el-button v-if="canPlaceEquipment" link type="primary" @click="openPlacementForm(row)">位置</el-button>
               </template>
             </el-table-column>
+            <template #empty>
+              <el-empty :description="devices.length ? '没有符合筛选条件的设备' : '当前现场尚未录入设备'" :image-size="60">
+                <el-button v-if="devices.length" icon="Refresh" @click="resetDeviceQuery">重置筛选</el-button>
+                <el-button v-if="canCreateEquipment" type="primary" icon="Plus" @click="requestCreate">新增设备</el-button>
+              </el-empty>
+            </template>
           </el-table>
 
           <Pagination
@@ -256,10 +261,16 @@
           <el-result icon="warning" title="当前浏览器无法显示三维场景" :sub-title="renderError" />
         </div>
         <div v-else-if="selectedRoom && !currentRoomCabinets.length" class="room3d-empty-overlay">
-          <el-empty description="当前机房还没有机柜，请先新增机柜" :image-size="88" />
+          <el-empty description="当前机房尚未配置机柜" :image-size="88">
+            <el-button v-if="canPlaceEquipment" type="primary" icon="Box" @click="openCabinetForm()">新增机柜</el-button>
+            <el-button icon="List" @click="openDeviceDrawer">查看设备清单</el-button>
+          </el-empty>
         </div>
         <div v-else-if="!selectedRoom" class="room3d-empty-overlay">
-          <el-empty description="请选择机房" :image-size="88" />
+          <el-empty description="当前现场尚未配置机房" :image-size="88">
+            <el-button v-if="canPlaceEquipment" type="primary" icon="Plus" @click="openRoomForm()">新增机房</el-button>
+            <el-button icon="List" @click="openDeviceDrawer">查看设备清单</el-button>
+          </el-empty>
         </div>
 
         <div class="room3d-legend" aria-label="设备与链路图例">
@@ -292,7 +303,8 @@
               <h3>{{ selectedDevice.assetName || '未命名设备' }}</h3>
             </div>
             <div class="room3d-inspector-actions">
-              <el-button v-if="canManageEquipment" link type="primary" @click="emit('edit-device', selectedDevice)">编辑档案</el-button>
+              <el-button v-if="canManageDevice(selectedDevice)" link type="primary" @click="emit('edit-device', selectedDevice)">编辑档案</el-button>
+              <el-button v-if="canPlaceEquipment" link type="primary" @click="openPlacementForm(selectedDevice)">安装位置</el-button>
               <el-dropdown v-if="canManageEquipment || canDeleteEquipment || canViewPassword" trigger="click" @command="handleSelectedDeviceCommand">
                 <el-button link type="primary" icon="MoreFilled" title="更多设备操作" aria-label="更多设备操作" />
                 <template #dropdown>
@@ -487,6 +499,8 @@
     <el-dialog
       v-model="roomFormOpen"
       :title="roomForm.roomId ? '编辑机房地板' : '新增机房地板'"
+      :before-close="cancelPlacementProvision"
+      :close-on-click-modal="false"
       width="560px"
       append-to-body
       destroy-on-close
@@ -515,7 +529,7 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="roomFormOpen = false">取消</el-button>
+        <el-button :disabled="spaceSaving" @click="cancelPlacementProvision(() => roomFormOpen = false)">取消</el-button>
         <el-button type="primary" :loading="spaceSaving" @click="submitRoom">保存</el-button>
       </template>
     </el-dialog>
@@ -523,6 +537,8 @@
     <el-dialog
       v-model="cabinetFormOpen"
       :title="cabinetForm.cabinetId ? '编辑机柜' : '新增机柜'"
+      :before-close="cancelPlacementProvision"
+      :close-on-click-modal="false"
       width="620px"
       append-to-body
       destroy-on-close
@@ -557,7 +573,7 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="cabinetFormOpen = false">取消</el-button>
+        <el-button :disabled="spaceSaving" @click="cancelPlacementProvision(() => cabinetFormOpen = false)">取消</el-button>
         <el-button type="primary" :loading="spaceSaving" @click="submitCabinet">保存</el-button>
       </template>
     </el-dialog>
@@ -752,16 +768,19 @@ import {
   resolveCabinetLayout,
   summarizeOutgoingPorts
 } from './equipmentRoom3d.helpers.js'
+import { getDeviceIntakeGaps } from './equipmentIntake.rules'
 
 const props = defineProps({
   siteId: { type: [Number, String], required: true },
   siteName: { type: String, default: '' },
   initialDeviceKey: { type: String, default: '' },
-  initialPlatformId: { type: [Number, String], default: null }
+  initialPlatformId: { type: [Number, String], default: null },
+  initialDirectoryOpen: { type: Boolean, default: false }
 })
 
 const emit = defineEmits([
   'close',
+  'create-device',
   'edit-device',
   'add-device',
   'add-server',
@@ -788,13 +807,14 @@ const selectedCabinetId = ref(null)
 const selectedDeviceKey = ref('')
 const showLinks = ref(true)
 const workspaceMode = ref('view')
-const deviceDrawerOpen = ref(false)
+const deviceDrawerOpen = ref(props.initialDirectoryOpen)
 const inspectorDrawerOpen = ref(false)
 const deviceTableRef = ref(null)
 const deviceScope = ref(props.initialPlatformId ? 'PLATFORM' : 'SITE')
 const deviceKeyword = ref('')
 const assetTypeFilter = ref('ALL')
 const placementFilter = ref('ALL')
+const attentionFilter = ref('ALL')
 const devicePage = reactive({ pageNum: 1, pageSize: 10 })
 const selectedDeviceKeys = ref([])
 const batchDeleting = ref(false)
@@ -818,6 +838,7 @@ const placementSaving = ref(false)
 const importing = ref(false)
 const importFile = ref(null)
 const placementDeviceKey = ref('')
+const pendingPlacementDeviceKey = ref('')
 const placementSelectionAnchor = ref(null)
 const roomForm = reactive(createEmptyRoomForm())
 const cabinetForm = reactive(createEmptyCabinetForm())
@@ -900,6 +921,11 @@ const canDeleteEquipment = computed(() => Boolean(proxy?.$auth?.hasPermi([
   'support:equipment:remove', 'support:hardwareAsset:remove', 'support:server:remove'
 ])))
 const canViewPassword = computed(() => Boolean(proxy?.$auth?.hasPermi(['support:credential:viewPlain'])))
+const canCreateEquipment = computed(() => proxy.$auth.hasPermi(['support:equipment:add', 'support:server:add', 'support:hardwareAsset:add']))
+const canPlaceEquipment = computed(() => proxy.$auth.hasPermi(['support:equipment:edit', 'support:hardwareAsset:edit']))
+function canManageDevice(device) {
+  return proxy.$auth.hasPermi(['support:equipment:edit', device.sourceType === 'SERVER' ? 'support:server:edit' : 'support:hardwareAsset:edit'])
+}
 const canImportTopology = computed(() => Boolean(
   proxy?.$auth?.hasPermi(['support:equipment:edit']) ||
   proxy?.$auth?.hasPermiAnd([
@@ -1024,7 +1050,7 @@ watch(() => props.initialDeviceKey, () => {
 watch(() => props.initialPlatformId, (value) => {
   if (!value && deviceScope.value === 'PLATFORM') deviceScope.value = 'SITE'
 })
-watch([deviceKeyword, deviceScope, assetTypeFilter, placementFilter], () => {
+watch([deviceKeyword, deviceScope, assetTypeFilter, placementFilter, attentionFilter], () => {
   devicePage.pageNum = 1
   clearDeviceSelection()
   if (selectedDevice.value && !matchesDeviceFilters(selectedDevice.value)) {
@@ -1051,7 +1077,19 @@ async function loadPlatforms() {
   }
 }
 
+let topologyLoadPromise = null
 async function loadTopology(options = {}) {
+  if (topologyLoadPromise) {
+    await topologyLoadPromise
+    if (!options.fresh) return
+  }
+  if (!topologyLoadPromise) {
+    topologyLoadPromise = performTopologyLoad(options).finally(() => { topologyLoadPromise = null })
+  }
+  return topologyLoadPromise
+}
+
+async function performTopologyLoad(options = {}) {
   if (!props.siteId) return
   const silent = options.silent === true
   if (loading.value || syncing.value) return
@@ -1628,6 +1666,7 @@ function flattenPlatformTree(nodes, parentName = '') {
 }
 
 function matchesDeviceFilters(device) {
+  if (attentionFilter.value !== 'ALL' && !getDeviceIntakeGaps(device, links.value).includes(attentionFilter.value)) return false
   if (assetTypeFilter.value !== 'ALL' && device.assetType !== assetTypeFilter.value) return false
   if (placementFilter.value === 'PLACED' && !isDevicePlaced(device)) return false
   if (placementFilter.value === 'UNPLACED' && isDevicePlaced(device)) return false
@@ -1670,6 +1709,7 @@ function resetDeviceQuery() {
   deviceKeyword.value = ''
   assetTypeFilter.value = 'ALL'
   placementFilter.value = 'ALL'
+  attentionFilter.value = 'ALL'
   handleDeviceQuery()
 }
 
@@ -1735,6 +1775,24 @@ function handleCreateCommand(command) {
   if (command === 'hardware') emit('add-device', { platformId: activeScopePlatformId.value })
   if (command === 'server') emit('add-server', { platformId: activeScopePlatformId.value })
   if (command === 'batch') emit('batch-create', { platformId: activeScopePlatformId.value })
+}
+
+function requestCreate() {
+  emit('create-device', { platformId: activeScopePlatformId.value })
+}
+
+async function revealDevice(reference, placement = false) {
+  deviceScope.value = 'SITE'
+  resetDeviceQuery()
+  await loadTopology({ fresh: true })
+  const device = devices.value.find((item) => item.deviceKey === getDeviceKey(reference.sourceType, reference.sourceId))
+  if (!device) {
+    openDeviceDrawer()
+    return
+  }
+  await selectDevice(device)
+  openInspectorDrawer()
+  if (placement && canPlaceEquipment.value) openPlacementForm(device)
 }
 
 async function handleSelectedDeviceCommand(command) {
@@ -1839,7 +1897,14 @@ function openRoomForm(room = null) {
   nextTick(() => roomFormRef.value?.clearValidate())
 }
 
+function cancelPlacementProvision(done) {
+  if (spaceSaving.value) return
+  pendingPlacementDeviceKey.value = ''
+  done()
+}
+
 async function submitRoom() {
+  if (spaceSaving.value) return
   if (!await roomFormRef.value?.validate().catch(() => false)) return
   spaceSaving.value = true
   const previousId = roomForm.roomId
@@ -1850,6 +1915,10 @@ async function submitRoom() {
     roomFormOpen.value = false
     await loadTopology()
     selectedRoomId.value = previousId || rooms.value.find((room) => room.roomName === roomName)?.roomId || selectedRoomId.value
+    if (pendingPlacementDeviceKey.value && selectedRoomId.value) {
+      await nextTick()
+      openCabinetForm()
+    }
     proxy.$modal.msgSuccess(previousId ? '机房地板已更新' : '机房地板已新增')
     emit('changed')
   } finally {
@@ -1888,6 +1957,7 @@ function openCabinetForm(cabinet = null) {
 }
 
 async function submitCabinet() {
+  if (spaceSaving.value) return
   if (!await cabinetFormRef.value?.validate().catch(() => false)) return
   spaceSaving.value = true
   const previousId = cabinetForm.cabinetId
@@ -1903,6 +1973,9 @@ async function submitCabinet() {
     if (saved) {
       selectedCabinetId.value = saved.cabinetId
       focusCabinet(saved.cabinetId)
+      const pending = devices.value.find((item) => item.deviceKey === pendingPlacementDeviceKey.value)
+      pendingPlacementDeviceKey.value = ''
+      if (pending) openPlacementForm({ ...pending, roomId: saved.roomId, cabinetId: saved.cabinetId })
     }
     proxy.$modal.msgSuccess(previousId ? '机柜配置已更新' : '机柜已新增，可切换到调整模式拖动摆放')
     emit('changed')
@@ -1921,8 +1994,10 @@ async function removeCabinet(cabinet) {
 }
 
 function openPlacementForm(device) {
+  if (!device) return
   if (!rooms.value.length) {
-    proxy.$modal.msgWarning('请先新增机房和机柜')
+    pendingPlacementDeviceKey.value = device.deviceKey
+    proxy.$modal.msg('设备已登记，请先配置机房和机柜')
     openRoomForm()
     return
   }
@@ -1930,6 +2005,12 @@ function openPlacementForm(device) {
   placementSelectionAnchor.value = null
   const roomId = device.roomId || selectedRoomId.value || rooms.value[0]?.roomId || null
   const roomCabinets = cabinets.value.filter((cabinet) => Number(cabinet.roomId) === Number(roomId))
+  if (!roomCabinets.length) {
+    pendingPlacementDeviceKey.value = device.deviceKey
+    selectedRoomId.value = roomId
+    openCabinetForm()
+    return
+  }
   const cabinetId = device.cabinetId || roomCabinets[0]?.cabinetId || null
   Object.assign(placementForm, createEmptyPlacementForm(), {
     siteId: Number(props.siteId),
@@ -2305,7 +2386,7 @@ function disposeScene() {
   labelRenderer = null
 }
 
-defineExpose({ refresh: loadTopology })
+defineExpose({ refresh: () => loadTopology({ fresh: true }), revealDevice })
 </script>
 
 <style scoped>

@@ -18,6 +18,7 @@ import com.hm.common.enums.BusinessType;
 import com.hm.common.utils.poi.ExcelUtil;
 import com.hm.manage.domain.SupportEquipmentAsset;
 import com.hm.manage.domain.bo.SupportEquipmentBatchBo;
+import com.hm.manage.domain.bo.SupportEquipmentCreateBo;
 import com.hm.manage.domain.bo.SupportEquipmentPlatformBindingBo;
 import com.hm.manage.service.ISupportChangeLogService;
 import com.hm.manage.service.ISupportEquipmentService;
@@ -31,6 +32,14 @@ public class SupportEquipmentController extends BaseController
 
     @Autowired
     private ISupportChangeLogService changeLogService;
+
+    @PreAuthorize("@ss.hasPermi('support:equipment:add') or (#command.server != null and @ss.hasPermi('support:server:add')) or (#command.hardware != null and @ss.hasPermi('support:hardwareAsset:add'))")
+    @Log(title = "设备统一录入", businessType = BusinessType.INSERT, isSaveRequestData = false)
+    @PostMapping
+    public AjaxResult create(@RequestBody SupportEquipmentCreateBo command)
+    {
+        return success(equipmentService.createEquipment(command));
+    }
 
     @PreAuthorize("@ss.hasPermi('support:equipment:query')")
     @GetMapping("/list")

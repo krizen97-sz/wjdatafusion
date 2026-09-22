@@ -19,12 +19,14 @@ import com.hm.manage.domain.SupportHardwareAsset;
 import com.hm.manage.domain.SupportPlatform;
 import com.hm.manage.domain.SupportServer;
 import com.hm.manage.domain.bo.SupportEquipmentBatchBo;
+import com.hm.manage.domain.bo.SupportEquipmentCreateBo;
 import com.hm.manage.domain.bo.SupportEquipmentDeviceRefBo;
 import com.hm.manage.domain.bo.SupportEquipmentPlatformBindingBo;
 import com.hm.manage.domain.vo.SupportEquipmentPlatformBindingVo;
 import com.hm.manage.mapper.SupportEquipmentBindingMapper;
 import com.hm.manage.mapper.SupportHardwareAssetMapper;
 import com.hm.manage.mapper.SupportServerMapper;
+import com.hm.manage.mapper.SupportSiteMapper;
 import com.hm.manage.service.ISupportEquipmentService;
 import com.hm.manage.service.ISupportHardwareAssetService;
 import com.hm.manage.service.ISupportPlatformService;
@@ -57,6 +59,98 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
 
     @Autowired
     private ISupportPlatformService platformService;
+
+    @Autowired
+    private SupportSiteMapper siteMapper;
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public SupportEquipmentDeviceRefBo createEquipment(SupportEquipmentCreateBo command)
+    {
+        if (command == null || command.getSiteId() == null ||
+            (command.getServer() == null) == (command.getHardware() == null))
+        {
+            throw new ServiceException("请选择现场和一种设备类型");
+        }
+        boolean serverType = command.getServer() != null;
+        if (siteMapper.selectSupportSiteBySiteId(command.getSiteId()) == null)
+        {
+            throw new ServiceException("现场不存在");
+        }
+        if (command.getPlatformId() != null)
+        {
+            SupportPlatform platform = platformService.selectSupportPlatformByPlatformId(command.getPlatformId());
+            requireSameSite(command.getSiteId(), platform == null ? null : platform.getSiteId());
+            if (serverType && !"SUB".equals(platform.getPlatformLevel()))
+            {
+                throw new ServiceException("服务器只能归属子平台，请选择具体子平台");
+            }
+        }
+        SupportEquipmentDeviceRefBo result = new SupportEquipmentDeviceRefBo();
+        // Create fresh domain objects so IDs, ciphertext and placement cannot be supplied by the caller.
+        if (serverType)
+        {
+            SupportServer input = command.getServer();
+            SupportServer server = new SupportServer();
+            server.setSiteId(command.getSiteId());
+            server.setServerName(input.getServerName());
+            server.setServerAddress(input.getServerAddress());
+            server.setSshPort(input.getSshPort());
+            server.setOsType(input.getOsType());
+            server.setHikPassword(input.getHikPassword());
+            server.setRootPassword(input.getRootPassword());
+            server.setOtherUsername(input.getOtherUsername());
+            server.setOtherPassword(input.getOtherPassword());
+            server.setStatus(input.getStatus());
+            server.setRemark(input.getRemark());
+            if (serverService.insertSupportServer(server) < 1 || server.getServerId() == null)
+            {
+                throw new ServiceException("服务器录入失败");
+            }
+            if (command.getPlatformId() != null)
+            {
+                if (platformService.bindServer(command.getPlatformId(), server.getServerId()) < 1)
+                {
+                    throw new ServiceException("服务器平台归属保存失败");
+                }
+            }
+            result.setSourceType(SOURCE_SERVER);
+            result.setSourceId(server.getServerId());
+        }
+        else
+        {
+            SupportHardwareAsset input = command.getHardware();
+            if (!java.util.Arrays.asList("SWITCH", "DECODER", "TERMINAL", "GATEWAY").contains(input.getAssetType()))
+            {
+                throw new ServiceException("不支持的设备类型");
+            }
+            SupportHardwareAsset asset = new SupportHardwareAsset();
+            asset.setSiteId(command.getSiteId());
+            asset.setPlatformId(command.getPlatformId());
+            asset.setAssetName(input.getAssetName());
+            asset.setAssetType(input.getAssetType());
+            asset.setNetworkEnv(input.getNetworkEnv());
+            asset.setIpAddress(input.getIpAddress());
+            asset.setManageIp(input.getManageIp());
+            asset.setManufacturer(input.getManufacturer());
+            asset.setAssetModel(input.getAssetModel());
+            asset.setSerialNo(input.getSerialNo());
+            asset.setMacAddress(input.getMacAddress());
+            asset.setOwnerOrg(input.getOwnerOrg());
+            asset.setOwnerContact(input.getOwnerContact());
+            asset.setLoginUsername(input.getLoginUsername());
+            asset.setLoginPassword(input.getLoginPassword());
+            asset.setStatus(input.getStatus());
+            asset.setRemark(input.getRemark());
+            if (hardwareAssetService.insertSupportHardwareAsset(asset) < 1 || asset.getAssetId() == null)
+            {
+                throw new ServiceException("设备录入失败");
+            }
+            result.setSourceType(SOURCE_HARDWARE);
+            result.setSourceId(asset.getAssetId());
+        }
+        return result;
+    }
 
     @Override
     public List<SupportEquipmentAsset> selectEquipmentAssetList(SupportEquipmentAsset query)

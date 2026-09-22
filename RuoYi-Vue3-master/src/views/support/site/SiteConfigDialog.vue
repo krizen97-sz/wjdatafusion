@@ -46,6 +46,8 @@
             </div>
           </div>
           <div class="fusion-workbench__actions">
+            <el-button icon="Plus" v-hasPermi="['support:equipment:add', 'support:server:add', 'support:hardwareAsset:add']" @click="openEquipmentIntake({ platformId: null })">新增设备</el-button>
+            <el-button icon="Monitor" v-hasPermi="['support:equipment:query']" @click="openSiteEquipmentDirectory">设备管理</el-button>
             <el-input
               v-model="platformQuery.platformName"
               class="fusion-workbench__search"
@@ -1624,6 +1626,8 @@
         :site-name="props.site.siteName"
         :initial-device-key="equipmentRoom3dInitialDeviceKey"
         :initial-platform-id="equipmentRoom3dInitialPlatformId"
+        :initial-directory-open="equipmentDirectoryRequested"
+        @create-device="openEquipmentIntake"
         @close="closeEquipmentRoom3d"
         @edit-device="handleEquipmentRoom3dEditDevice"
         @add-device="handleEquipmentRoom3dAddDevice"
@@ -1712,6 +1716,9 @@
         <el-button type="primary" :loading="dialogSaving.credential" @click="submitServerCredentialForm">保存</el-button>
       </template>
     </el-dialog>
+
+    <EquipmentIntakeDialog ref="equipmentIntakeRef" :site="props.site" :platforms="platformList"
+      :network-options="support_network_env" :devices="equipmentRows" @saved="handleEquipmentCreated" />
 
     <el-dialog v-model="equipmentAddTypeOpen" title="选择新增设备类型" width="760px" append-to-body class="equipment-type-dialog">
       <div class="equipment-type-grid">
@@ -2962,6 +2969,7 @@ import equipmentTerminalImage from '@/assets/equipment/terminal.svg'
 import equipmentSwitchImage from '@/assets/equipment/switch.svg'
 import equipmentGatewayImage from '@/assets/equipment/gateway.svg'
 import EquipmentRoom3DWorkspace from './components/EquipmentRoom3DWorkspace.vue'
+import EquipmentIntakeDialog from './components/EquipmentIntakeDialog.vue'
 
 const CANVAS_LAYOUT_STORAGE_KEY = 'support-site-canvas-layout'
 const SITE_MESSAGE_PREVIEW_SIZE = 8
@@ -2985,6 +2993,9 @@ const emit = defineEmits(['update:visible'])
 const { proxy } = getCurrentInstance()
 const { support_network_env, support_contact_role, support_hardware_type } = proxy.useDict('support_network_env', 'support_contact_role', 'support_hardware_type')
 const canViewPlain = computed(() => !!proxy?.$auth?.hasPermi(['support:credential:viewPlain']))
+const equipmentIntakeRef = ref()
+const equipmentLoadedSiteId = ref(null)
+const equipmentDirectoryRequested = ref(false)
 const canListMessage = computed(() => !!proxy?.$auth?.hasPermi(['support:message:list']))
 const canAddMessage = computed(() => !!proxy?.$auth?.hasPermi(['support:message:add']))
 
@@ -4163,6 +4174,7 @@ async function loadAll() {
 
 async function loadWorkbench() {
   if (!props.site?.siteId) return
+  const loadingSiteId = props.site.siteId
   platformLoading.value = true
   serverLoading.value = true
   hardwareAssetLoading.value = true
@@ -4173,6 +4185,7 @@ async function loadWorkbench() {
     applyWorkbenchData(res.data || {})
     await loadHardwareAssets()
     await loadChangeLogs()
+    if (props.site.siteId === loadingSiteId) equipmentLoadedSiteId.value = loadingSiteId
   } finally {
     platformLoading.value = false
     serverLoading.value = false
@@ -4974,6 +4987,21 @@ async function applyFocusRequest(request = props.focusRequest) {
   if (request.nonce && request.nonce === lastAppliedFocusNonce.value) return
 
   let handled = false
+
+  if (request.type === 'equipment' || request.type === 'equipment-create') {
+    if (Number(equipmentLoadedSiteId.value) !== Number(props.site?.siteId)) return
+    if (request.type === 'equipment-create') {
+      if (!await openEquipmentIntake({ platformId: null })) return
+    }
+    else {
+      openSiteEquipmentDirectory()
+      if (request.serverId) {
+        await nextTick()
+        await equipmentRoom3dRef.value?.revealDevice({ sourceType: 'SERVER', sourceId: request.serverId })
+      }
+    }
+    handled = true
+  }
 
   if (request.type === 'platform') {
     const target = platformList.value.find((item) => item.platformId === request.platformId)
@@ -6910,6 +6938,7 @@ function openEquipmentRoom3d(deviceKey = '', platformId = hardwareAssetDialogPla
 }
 
 function closeEquipmentRoom3d() {
+  equipmentDirectoryRequested.value = false
   equipmentRoom3dOpen.value = false
   equipmentRoom3dInitialDeviceKey.value = ''
   equipmentRoom3dInitialPlatformId.value = null
@@ -6948,7 +6977,9 @@ function handleEquipmentRoom3dEditDevice(device) {
 }
 
 function syncEquipmentWorkspacePlatform(context = {}) {
-  const platformId = context?.platformId || equipmentRoom3dInitialPlatformId.value
+  const platformId = Object.prototype.hasOwnProperty.call(context, 'platformId')
+    ? context.platformId
+    : equipmentRoom3dInitialPlatformId.value
   hardwareAssetDialogPlatformId.value = platformId || null
   if (!platformId) return null
   const platform = platformList.value.find((item) => Number(item.platformId) === Number(platformId)) || null
@@ -6960,13 +6991,11 @@ function syncEquipmentWorkspacePlatform(context = {}) {
 }
 
 function handleEquipmentRoom3dAddDevice(context) {
-  syncEquipmentWorkspacePlatform(context)
-  handleHardwareAssetAdd()
+  openEquipmentIntake({ ...context, assetType: 'SWITCH' })
 }
 
 function handleEquipmentRoom3dAddServer(context) {
-  syncEquipmentWorkspacePlatform(context)
-  handleServerAdd()
+  openEquipmentIntake({ ...context, assetType: 'SERVER' })
 }
 
 async function handleEquipmentRoom3dBatchCreate(context) {
@@ -7094,7 +7123,37 @@ function handleHardwareAssetAdd() {
 }
 
 function handleEquipmentAdd() {
-  equipmentAddTypeOpen.value = true
+  openEquipmentIntake({ platformId: hardwareAssetDialogPlatformId.value })
+}
+
+async function openEquipmentIntake(context = {}) {
+  syncEquipmentWorkspacePlatform(context)
+  await nextTick()
+  if (!equipmentIntakeRef.value) return false
+  equipmentIntakeRef.value.open(context)
+  return true
+}
+
+function openSiteEquipmentDirectory() {
+  hardwareAssetDialogPlatformId.value = null
+  equipmentDirectoryRequested.value = true
+  openEquipmentRoom3d('', null)
+}
+
+async function handleEquipmentCreated(device) {
+  try {
+    await loadAll()
+    if (device.nextAction === 'continue') {
+      await equipmentRoom3dRef.value?.refresh?.()
+      return
+    }
+    equipmentDirectoryRequested.value = false
+    openEquipmentRoom3d('', null)
+    await nextTick()
+    await equipmentRoom3dRef.value?.revealDevice(device, device.nextAction === 'placement')
+  } catch {
+    proxy.$modal.msgWarning('设备已保存，工作区刷新失败，请重新打开设备管理查看')
+  }
 }
 
 function handleEquipmentTypeSelect(type) {

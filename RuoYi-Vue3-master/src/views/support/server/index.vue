@@ -17,6 +17,7 @@
     </el-form>
 
     <el-row :gutter="10" class="mb8 support-table-toolbar">
+      <el-col :span="1.5"><el-button type="primary" icon="Plus" @click="openSiteSelector" v-hasPermi="['support:server:add', 'support:equipment:add']">新增设备</el-button></el-col>
       <el-col v-if="false" :span="1.5"><el-button type="primary" plain icon="Plus" @click="handleAdd" v-hasPermi="['support:server:add']">新增</el-button></el-col>
       <el-col v-if="false" :span="1.5"><el-button type="success" plain icon="Edit" :disabled="single" @click="handleUpdate" v-hasPermi="['support:server:edit']">修改</el-button></el-col>
       <el-col v-if="false" :span="1.5"><el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete" v-hasPermi="['support:server:remove']">删除</el-button></el-col>
@@ -39,7 +40,7 @@
         <template #default="scope">
           <div class="support-table-action">
             <el-button link type="primary" @click="handleViewPlain(scope.row)" v-hasPermi="['support:credential:viewPlain']">查看明文</el-button>
-            <span class="readonly-tip">维护请进入现场配置画布</span>
+            <el-button link type="primary" icon="Monitor" v-hasPermi="['support:equipment:query']" @click="openDeviceWorkspace(scope.row)">设备管理</el-button>
           </div>
         </template>
       </el-table-column>
@@ -52,6 +53,21 @@
       v-model:limit="queryParams.pageSize"
       @pagination="getList"
     />
+
+    <el-dialog v-model="siteSelectorOpen" title="选择设备所属现场" width="500px" append-to-body>
+      <el-form label-position="top" @submit.prevent="openCreateWorkspace">
+        <el-form-item label="所属现场" required>
+          <el-select v-model="intakeSiteId" filterable :loading="sitesLoading" placeholder="请选择现场" style="width: 100%">
+            <el-option v-for="site in intakeSites" :key="site.siteId" :value="site.siteId" :label="site.siteName" />
+          </el-select>
+        </el-form-item>
+        <el-alert v-if="siteLoadError" type="error" :closable="false" :title="siteLoadError" />
+      </el-form>
+      <template #footer>
+        <el-button @click="siteSelectorOpen = false">取消</el-button>
+        <el-button type="primary" :disabled="!intakeSiteId" @click="openCreateWorkspace">继续录入</el-button>
+      </template>
+    </el-dialog>
 
     <el-dialog v-model="open" :aria-label="title" width="780px" append-to-body class="support-editor-dialog support-editor-dialog--server">
       <template #header="{ titleId, titleClass }">
@@ -136,8 +152,50 @@
 
 <script setup name="SupportServer">
 import { listServer, getServer, addServer, updateServer, delServer, viewServerPlain } from '@/api/support/server'
+import { listSite } from '@/api/support/site'
 
 const { proxy } = getCurrentInstance()
+const router = useRouter()
+const siteSelectorOpen = ref(false)
+const intakeSites = ref([])
+const intakeSiteId = ref(null)
+const sitesLoading = ref(false)
+const siteLoadError = ref('')
+
+async function openSiteSelector() {
+  siteSelectorOpen.value = true
+  intakeSiteId.value = null
+  sitesLoading.value = true
+  siteLoadError.value = ''
+  try {
+    // Fetch every page so the selector cannot silently hide sites after the first page.
+    const sites = []
+    let pageNum = 1
+    let total = 0
+    do {
+      const result = await listSite({ pageNum, pageSize: 100 })
+      const rows = result.rows || []
+      sites.push(...rows)
+      total = Number(result.total || 0)
+      if (!rows.length) break
+      pageNum++
+    } while (sites.length < total)
+    intakeSites.value = sites
+    if (sites.length === 1) intakeSiteId.value = sites[0].siteId
+  } catch {
+    siteLoadError.value = '现场列表加载失败，请关闭后重试'
+  } finally {
+    sitesLoading.value = false
+  }
+}
+function openCreateWorkspace() {
+  if (!intakeSiteId.value) return
+  siteSelectorOpen.value = false
+  router.push({ path: '/support/site', query: { siteId: intakeSiteId.value, openConfig: '1', equipment: 'create' } })
+}
+function openDeviceWorkspace(server) {
+  router.push({ path: '/support/site', query: { siteId: server.siteId, serverId: server.serverId, openConfig: '1', equipment: 'manage' } })
+}
 const loading = ref(false)
 const serverSubmitLoading = ref(false)
 const showSearch = ref(true)
