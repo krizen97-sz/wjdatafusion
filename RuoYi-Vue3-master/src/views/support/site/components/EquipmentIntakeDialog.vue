@@ -22,7 +22,7 @@
           <template #label><span class="motion-control-label"><svg-icon icon-class="upload" class="motion-control-label__icon" /><span class="motion-control-label__text">模板导入</span></span></template>
         </el-tab-pane>
       </el-tabs>
-      <div class="intake-grid">
+      <div class="intake-grid" :class="{ 'intake-grid--single': isServer && intakeMode === 'import' }">
         <el-form-item v-if="isSingle" label="设备名称" prop="assetName">
           <el-input v-model="form.assetName" maxlength="100" :placeholder="isServer ? '例如：应用服务器01' : '例如：核心交换机01'" clearable />
         </el-form-item>
@@ -62,11 +62,17 @@
         </el-form-item>
       </template>
       <div v-if="isServer && intakeMode === 'import'" class="intake-import">
-        <el-button icon="Download" :disabled="saving" @click="downloadTemplate">下载 XLSX 模板</el-button>
-        <el-upload ref="uploadRef" accept=".xlsx" :auto-upload="false" :limit="1" :disabled="saving"
+        <div class="intake-import-toolbar">
+          <el-text type="info">XLSX · 最大 5 MB · 最多 512 台</el-text>
+          <el-button icon="Download" :disabled="saving" @click="downloadTemplate">下载模板</el-button>
+        </div>
+        <el-upload ref="uploadRef" drag accept=".xlsx" :auto-upload="false" :limit="1" :disabled="saving || !form.platformId"
+          :show-file-list="false" :aria-busy="saving"
           :on-change="selectImportFile" :on-remove="clearImportFile" :on-exceed="replaceImportFile">
-          <el-button icon="Upload" :disabled="saving">选择 XLSX 文件</el-button>
+          <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+          <div class="el-upload__text">{{ saving ? '正在校验模板' : importFile ? importFile.name : '选择 XLSX 模板文件' }}</div>
         </el-upload>
+        <el-alert v-if="importFile && !saving && !error" type="success" :closable="false" show-icon title="文件已选择，校验清单尚未保存" />
       </div>
       <el-alert v-if="duplicate && isSingle" type="warning" :closable="false" show-icon :title="duplicate" />
       <el-collapse v-if="isSingle || intakeMode === 'batch'" v-model="expanded">
@@ -102,23 +108,25 @@
     </el-form>
     <template #footer>
       <el-button :disabled="saving" @click="visible = false">取消</el-button>
-      <el-button type="primary" icon="Check" :loading="saving" :disabled="!availableTypes.length" @click="submit">{{ isSingle ? '保存设备' : '预览确认清单' }}</el-button>
+      <el-button v-if="intakeMode !== 'import' || importFile" type="primary" icon="Check" :loading="saving"
+        :disabled="!availableTypes.length" @click="submit">{{ isSingle ? '保存设备' : '校验并预览' }}</el-button>
     </template>
   </el-dialog>
+  <ServerIntakeReviewDialog ref="reviewRef" @saved="handleBatchSaved" />
 </template>
 
 <script setup>
-import { createEquipment } from '@/api/support/equipment'
+import { createEquipment, previewEquipmentServers, previewEquipmentServerFile } from '@/api/support/equipment'
 import { equipmentIntakeTypes, resolveIntakePlatform, buildEquipmentCreatePayload, DEFAULT_NEW_SERVER_SSH_PORT } from './equipmentIntake.rules'
+import ServerIntakeReviewDialog from './ServerIntakeReviewDialog.vue'
 
 const props = defineProps({
   site: { type: Object, required: true },
   platforms: { type: Array, default: () => [] },
   networkOptions: { type: Array, default: () => [] },
-  devices: { type: Array, default: () => [] },
-  previewServers: { type: Function, required: true }
+  devices: { type: Array, default: () => [] }
 })
-const emit = defineEmits(['saved'])
+const emit = defineEmits(['saved', 'batch-saved'])
 const { proxy } = getCurrentInstance()
 const visible = ref(false)
 const saving = ref(false)
@@ -130,6 +138,7 @@ const error = ref('')
 const intakeMode = ref('single')
 const uploadRef = ref()
 const importFile = ref(null)
+const reviewRef = ref()
 const isServer = computed(() => form.assetType === 'SERVER')
 const isSingle = computed(() => !isServer.value || intakeMode.value === 'single')
 const canPlace = computed(() => proxy.$auth.hasPermi(['support:equipment:edit', 'support:hardwareAsset:edit']))
@@ -182,7 +191,7 @@ function changeMode() {
 function clearImportFile() {
   importFile.value = null
 }
-function selectImportFile(file) {
+async function selectImportFile(file) {
   error.value = ''
   if (!file.raw?.name.toLowerCase().endsWith('.xlsx')) {
     importFile.value = null
@@ -190,14 +199,25 @@ function selectImportFile(file) {
     error.value = '仅支持 XLSX 模板文件'
     return
   }
+  if (file.raw.size > 5 * 1024 * 1024) {
+    importFile.value = null
+    uploadRef.value?.clearFiles()
+    error.value = '模板文件不能超过5 MB'
+    return
+  }
   importFile.value = file.raw
+  await submit()
 }
 function replaceImportFile(files) {
   uploadRef.value?.clearFiles()
   if (files[0]) uploadRef.value?.handleStart(files[0])
 }
 function downloadTemplate() {
-  proxy.download('/support/server/importTemplate', {}, `服务器导入模板_${Date.now()}.xlsx`)
+  proxy.download('/support/equipment/servers/template', {}, `服务器导入模板_${Date.now()}.xlsx`)
+}
+function handleBatchSaved(result) {
+  visible.value = false
+  emit('batch-saved', { ...result, platformId: form.platformId })
 }
 function reset(context = {}) {
   const type = availableTypes.value.some((item) => item.value === context.assetType) ? context.assetType : availableTypes.value[0]?.value
@@ -226,8 +246,15 @@ async function submit() {
   try {
     if (!isSingle.value) {
       if (intakeMode.value === 'import' && !importFile.value) throw new Error('请选择 XLSX 模板文件')
-      await props.previewServers({ mode: intakeMode.value, form: { ...form }, file: importFile.value })
-      visible.value = false
+      const context = { siteId: props.site.siteId, platformId: form.platformId,
+        platformName: platformLabel(selectablePlatforms.value.find(item => item.platformId === form.platformId) || {}),
+        sourceName: intakeMode.value === 'import' ? importFile.value.name : '批量IP录入' }
+      const response = intakeMode.value === 'import'
+        ? await previewEquipmentServerFile(context.siteId, context.platformId, importFile.value)
+        : await previewEquipmentServers({ siteId: context.siteId, platformId: context.platformId, addressText: form.addressText, namePrefix: form.namePrefix, reuseExisting: false,
+          defaults: { sshPort: String(form.sshPort), osType: form.osType, hikPassword: form.hikPassword,
+            rootPassword: form.rootPassword, otherUsername: form.loginUsername, otherPassword: form.loginPassword, status: form.status } })
+      reviewRef.value.open(context, response.data)
       return
     }
     const response = await createEquipment(buildEquipmentCreatePayload(props.site.siteId, form))
@@ -249,8 +276,12 @@ defineExpose({ open })
 :global(.equipment-intake-dialog) { max-width: calc(100vw - 32px); }
 .intake-context { margin-bottom: 16px; }
 .intake-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; }
+.intake-grid--single { grid-template-columns: minmax(0, 1fr); }
 .intake-grid .el-select, .intake-grid .el-input-number { width: 100%; }
 .intake-next-action { margin-top: 16px; margin-bottom: 0; }
-.intake-import { display: grid; gap: 16px; justify-items: start; margin-bottom: 16px; }
+.intake-import { display: grid; gap: 16px; margin-bottom: 16px; }
+.intake-import-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.intake-import :deep(.el-upload) { width: 100%; }
+.intake-import :deep(.el-upload__text) { overflow-wrap: anywhere; }
 @media (max-width: 700px) { .intake-grid { grid-template-columns: minmax(0, 1fr); } }
 </style>

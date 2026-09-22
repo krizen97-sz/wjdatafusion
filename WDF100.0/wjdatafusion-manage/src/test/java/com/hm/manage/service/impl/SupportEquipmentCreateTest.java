@@ -38,7 +38,8 @@ class SupportEquipmentCreateTest
         ReflectionTestUtils.setField(service, "hardwareAssetService", hardware);
         ReflectionTestUtils.setField(service, "platformService", platforms);
         ReflectionTestUtils.setField(service, "siteMapper", sites);
-        when(sites.selectSupportSiteBySiteId(1L)).thenReturn(new SupportSite());
+        when(sites.selectSiteIdForUpdate(anyLong())).thenReturn(null);
+        when(sites.selectSiteIdForUpdate(1L)).thenReturn(1L);
         when(servers.insertSupportServer(any())).thenAnswer(invocation -> {
             SupportServer server = invocation.getArgument(0);
             server.setServerId(10L);
@@ -126,6 +127,26 @@ class SupportEquipmentCreateTest
         var tx = SupportEquipmentServiceImpl.class.getMethod("createEquipment", SupportEquipmentCreateBo.class)
             .getAnnotation(org.springframework.transaction.annotation.Transactional.class);
         assertArrayEquals(new Class<?>[] { Exception.class }, tx.rollbackFor());
+    }
+
+    @Test
+    void deletionSharesTheSiteLockWithIntake()
+    {
+        var device = new com.hm.manage.domain.bo.SupportEquipmentDeviceRefBo();
+        device.setSourceType("SERVER");
+        device.setSourceId(10L);
+        var command = new com.hm.manage.domain.bo.SupportEquipmentBatchBo();
+        command.setSiteId(1L);
+        command.setDevices(java.util.List.of(device));
+        var original = new SupportServer();
+        original.setSiteId(1L);
+        original.setServerId(10L);
+        when(servers.selectSupportServerByServerId(10L)).thenReturn(original);
+        service.deleteEquipmentAssets(command);
+        var order = inOrder(sites, servers);
+        order.verify(sites).selectSiteIdForUpdate(1L);
+        order.verify(servers).selectSupportServerByServerId(10L);
+        order.verify(servers).deleteSupportServerByServerIds(any());
     }
 
     @Test

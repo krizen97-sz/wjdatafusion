@@ -28,7 +28,7 @@
         <el-button icon="List" @click="openDeviceDrawer">设备清单</el-button>
         <el-button icon="Setting" @click="openInspectorDrawer">配置信息</el-button>
         <el-button v-if="canCreateEquipment" type="primary" icon="Plus" @click="requestCreate">新增设备</el-button>
-        <el-button v-hasPermi="['support:equipment:add', 'support:server:add']" icon="Files" @click="handleCreateCommand('batch')">批量录入服务器</el-button>
+        <el-button v-hasPermi="['support:equipment:add', 'support:server:add']" icon="Files" @click="emit('batch-create', { platformId: activeScopePlatformId })">批量录入服务器</el-button>
         <el-button
           icon="Plus"
           v-hasPermi="['support:equipment:add', 'support:equipment:edit', 'support:hardwareAsset:add', 'support:hardwareAsset:edit']"
@@ -162,7 +162,7 @@
             <el-text type="info" size="small">
               当前页 {{ pagedDevices.length }} 台<span v-if="selectedDeviceKeys.length">，已选 {{ selectedDeviceKeys.length }} 台</span>
             </el-text>
-            <el-space>
+            <el-space wrap>
               <el-button v-if="canCreateEquipment" type="primary" size="small" icon="Plus" @click="requestCreate">新增设备</el-button>
               <el-button v-if="canExportEquipment" size="small" icon="Download" @click="handleDataCommand('export-devices')">导出设备</el-button>
               <el-button size="small" :disabled="!selectedDeviceKeys.length" @click="clearDeviceSelection">取消选择</el-button>
@@ -189,7 +189,7 @@
             empty-text="没有符合条件的设备"
             @selection-change="handleDeviceSelectionChange"
           >
-            <el-table-column type="selection" width="48" align="center" />
+            <el-table-column type="selection" width="48" align="center" :selectable="canDeleteDevice" />
             <el-table-column label="设备名称" prop="assetName" min-width="140" show-overflow-tooltip />
             <el-table-column label="类型" prop="assetTypeLabel" width="76" show-overflow-tooltip />
             <el-table-column label="IP地址" min-width="112" show-overflow-tooltip>
@@ -309,11 +309,11 @@
                 <el-button link type="primary" icon="MoreFilled" title="更多设备操作" aria-label="更多设备操作" />
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item v-if="canManageEquipment" command="placement" icon="Location">配置机房位置</el-dropdown-item>
+                    <el-dropdown-item v-if="canPlaceEquipment" command="placement" icon="Location">配置机房位置</el-dropdown-item>
                     <el-dropdown-item v-if="selectedDevice.credentialCapable && canManageEquipment" command="credentials" icon="Key">管理服务器凭据</el-dropdown-item>
-                    <el-dropdown-item v-if="selectedDevice.credentialCapable && canViewPassword" command="password" icon="View">显示密码</el-dropdown-item>
-                    <el-dropdown-item v-if="isDevicePlaced(selectedDevice) && canManageEquipment" command="clear-placement" divided icon="Remove">清空机房位置</el-dropdown-item>
-                    <el-dropdown-item v-if="canDeleteEquipment" command="delete" divided icon="Delete">删除设备</el-dropdown-item>
+                    <el-dropdown-item v-if="canViewPassword" command="password" icon="View">显示密码</el-dropdown-item>
+                    <el-dropdown-item v-if="isDevicePlaced(selectedDevice) && canPlaceEquipment" command="clear-placement" divided icon="Remove">清空机房位置</el-dropdown-item>
+                    <el-dropdown-item v-if="canDeleteDevice(selectedDevice)" command="delete" divided icon="Delete">删除设备</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -738,8 +738,6 @@ import {
   addEquipmentCabinet,
   addEquipmentLink,
   addEquipmentRoom,
-  bindEquipmentPlatform,
-  deleteEquipmentBatch,
   delEquipmentCabinet,
   delEquipmentLink,
   delEquipmentRoom,
@@ -749,9 +747,9 @@ import {
   updateEquipmentCabinetLayout,
   updateEquipmentDevicePlacement,
   updateEquipmentLink,
-  updateEquipmentRoom,
-  unbindEquipmentPlatform
+  updateEquipmentRoom
 } from '@/api/support/equipmentLocation'
+import { bindEquipmentPlatform, deleteEquipmentBatch, unbindEquipmentPlatform } from '@/api/support/equipment'
 import { listPlatformTree } from '@/api/support/platform'
 import {
   CABINET_DEPTH,
@@ -763,6 +761,7 @@ import {
   getDeviceKey,
   getDeviceLinks,
   getDeviceRackTransform,
+  getVisibleLabelIds,
   isDevicePlaced,
   normalizeRoomSize,
   resolveCabinetLayout,
@@ -782,8 +781,6 @@ const emit = defineEmits([
   'close',
   'create-device',
   'edit-device',
-  'add-device',
-  'add-server',
   'batch-create',
   'manage-credentials',
   'view-password',
@@ -913,7 +910,7 @@ const selectedCabinetDevices = computed(() => selectedCabinet.value
   : [])
 const selectedDeviceLinks = computed(() => selectedDevice.value ? getDeviceLinks(selectedDevice.value, links.value) : [])
 const canExportTopology = computed(() => Boolean(proxy?.$auth?.hasPermi(['support:hardwareAsset:export', 'support:equipment:export'])))
-const canExportEquipment = computed(() => Boolean(proxy?.$auth?.hasPermi(['support:equipment:export', 'support:hardwareAsset:export'])))
+const canExportEquipment = computed(() => Boolean(proxy?.$auth?.hasPermi(['support:equipment:export', 'support:hardwareAsset:export', 'support:server:export'])))
 const canManageEquipment = computed(() => Boolean(proxy?.$auth?.hasPermi([
   'support:equipment:edit', 'support:hardwareAsset:edit', 'support:server:edit'
 ])))
@@ -925,6 +922,9 @@ const canCreateEquipment = computed(() => proxy.$auth.hasPermi(['support:equipme
 const canPlaceEquipment = computed(() => proxy.$auth.hasPermi(['support:equipment:edit', 'support:hardwareAsset:edit']))
 function canManageDevice(device) {
   return proxy.$auth.hasPermi(['support:equipment:edit', device.sourceType === 'SERVER' ? 'support:server:edit' : 'support:hardwareAsset:edit'])
+}
+function canDeleteDevice(device) {
+  return proxy.$auth.hasPermi(['support:equipment:remove', device.sourceType === 'SERVER' ? 'support:server:remove' : 'support:hardwareAsset:remove'])
 }
 const canImportTopology = computed(() => Boolean(
   proxy?.$auth?.hasPermi(['support:equipment:edit']) ||
@@ -1315,6 +1315,7 @@ function createCabinet(cabinet, index, room) {
 
   const label = document.createElement('div')
   label.className = 'room3d-cabinet-label'
+  label.dataset.priority = Number(selectedCabinetId.value) === Number(cabinet.cabinetId) ? '1' : '0'
   label.innerHTML = `<strong>${escapeHtml(cabinet.cabinetNo || '未编号')}</strong><span>${cabinetDevices.length}台 · ${getCabinetUsedU(cabinet)}/${cabinet.uCapacity || 45}U</span>`
   const labelObject = new CSS2DObject(label)
   labelObject.position.set(0, CABINET_HEIGHT + 0.38, 0)
@@ -1345,7 +1346,8 @@ function createRackDevice(group, cabinet, device) {
   if (Number(selectedCabinetId.value) === Number(cabinet.cabinetId)) {
     const label = document.createElement('div')
     label.className = 'room3d-device-label'
-    label.style.display = 'none'
+    label.dataset.priority = selected ? '3' : '2'
+    label.style.visibility = 'hidden'
     label.innerHTML = `<strong>${escapeHtml(device.assetName || '未命名设备')}</strong><span>${escapeHtml(formatU(device))}</span>`
     const labelObject = new CSS2DObject(label)
     labelObject.position.set(CABINET_WIDTH / 2 + 0.18, transform.y, CABINET_DEPTH / 2 + 0.08)
@@ -1400,6 +1402,7 @@ function createLinks() {
   })
 }
 
+let labelLayoutTime = 0
 function animate(time = 0) {
   animationFrame = requestAnimationFrame(animate)
   if (!scene || !camera || !renderer || !labelRenderer) return
@@ -1408,7 +1411,7 @@ function animate(time = 0) {
   if (shouldShowDeviceLabels !== deviceLabelsVisible) {
     deviceLabelsVisible = shouldShowDeviceLabels
     deviceLabelElements.forEach((element) => {
-      element.style.display = shouldShowDeviceLabels ? 'inline-flex' : 'none'
+      element.style.visibility = shouldShowDeviceLabels ? 'visible' : 'hidden'
     })
   }
   if (!reducedMotion) {
@@ -1417,6 +1420,14 @@ function animate(time = 0) {
   }
   renderer.render(scene, camera)
   labelRenderer.render(scene, camera)
+  if (time - labelLayoutTime >= 100) {
+    labelLayoutTime = time
+    const elements = [...labelRenderer.domElement.querySelectorAll('.room3d-cabinet-label, .room3d-device-label')]
+    const labels = elements.map((element, id) => ({ id, rect: element.getBoundingClientRect(), priority: Number(element.dataset.priority || 0) }))
+      .filter(label => shouldShowDeviceLabels || !elements[label.id].classList.contains('room3d-device-label'))
+    const visible = getVisibleLabelIds(labels)
+    elements.forEach((element, id) => { element.style.visibility = visible.has(id) ? 'visible' : 'hidden' })
+  }
 }
 
 function resizeScene() {
@@ -1747,7 +1758,7 @@ async function removeSelectedDevice() {
 }
 
 async function removeDevices(targets) {
-  if (!canDeleteEquipment.value) {
+  if (!targets.every(canDeleteDevice)) {
     proxy.$modal.msgWarning('当前账号没有设备删除权限')
     return
   }
@@ -1771,11 +1782,6 @@ async function removeDevices(targets) {
   }
 }
 
-function handleCreateCommand(command) {
-  if (command === 'hardware') emit('add-device', { platformId: activeScopePlatformId.value })
-  if (command === 'server') emit('add-server', { platformId: activeScopePlatformId.value })
-  if (command === 'batch') emit('batch-create', { platformId: activeScopePlatformId.value })
-}
 
 function requestCreate() {
   emit('create-device', { platformId: activeScopePlatformId.value })
@@ -2386,7 +2392,11 @@ function disposeScene() {
   labelRenderer = null
 }
 
-defineExpose({ refresh: () => loadTopology({ fresh: true }), revealDevice })
+defineExpose({
+  refresh: () => loadTopology({ fresh: true }),
+  revealDevice,
+  showDirectory: () => { resetDeviceQuery(); openDeviceDrawer() }
+})
 </script>
 
 <style scoped>

@@ -138,3 +138,15 @@ function snap(value, step) {
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
 }
+export function getVisibleLabelIds(labels, gap = 4) {
+  const accepted = []
+  const sorted = [...labels].sort((a, b) => (b.priority || 0) - (a.priority || 0))
+  for (const label of sorted) {
+    const rect = label.rect
+    if (!rect || rect.width <= 0 || rect.height <= 0) continue
+    const overlaps = accepted.some(other => rect.left < other.rect.right + gap && rect.right + gap > other.rect.left
+      && rect.top < other.rect.bottom + gap && rect.bottom + gap > other.rect.top)
+    if (!overlaps) accepted.push(label)
+  }
+  return new Set(accepted.map(label => label.id))
+}

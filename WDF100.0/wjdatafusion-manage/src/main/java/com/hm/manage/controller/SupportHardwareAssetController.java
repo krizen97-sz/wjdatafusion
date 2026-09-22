@@ -1,24 +1,19 @@
 package com.hm.manage.controller;
 
 import java.util.List;
-import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import com.hm.common.annotation.Log;
 import com.hm.common.core.controller.BaseController;
 import com.hm.common.core.domain.AjaxResult;
 import com.hm.common.core.page.TableDataInfo;
 import com.hm.common.enums.BusinessType;
-import com.hm.common.utils.poi.ExcelUtil;
 import com.hm.manage.domain.SupportHardwareAsset;
 import com.hm.manage.service.ISupportChangeLogService;
 import com.hm.manage.service.ISupportHardwareAssetService;
@@ -43,16 +38,6 @@ public class SupportHardwareAssetController extends BaseController
         return getDataTable(list);
     }
 
-    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:export,support:equipment:export')")
-    @Log(title = "硬件资产管理", businessType = BusinessType.EXPORT)
-    @PostMapping("/export")
-    public void export(HttpServletResponse response, SupportHardwareAsset asset)
-    {
-        List<SupportHardwareAsset> list = hardwareAssetService.selectSupportHardwareAssetList(asset);
-        ExcelUtil<SupportHardwareAsset> util = new ExcelUtil<>(SupportHardwareAsset.class);
-        util.exportExcel(response, list, "硬件资产数据");
-    }
-
     @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:query,support:equipment:query')")
     @GetMapping(value = "/{assetId}")
     public AjaxResult getInfo(@PathVariable("assetId") Long assetId)
@@ -71,41 +56,13 @@ public class SupportHardwareAssetController extends BaseController
         return success().put("plain", hardwareAssetService.getHardwareAssetPasswordPlain(assetId));
     }
 
-    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:add,support:equipment:add')")
-    @Log(title = "硬件资产管理", businessType = BusinessType.INSERT)
-    @PostMapping
-    public AjaxResult add(@RequestBody SupportHardwareAsset asset)
-    {
-        return toAjax(hardwareAssetService.insertSupportHardwareAsset(asset));
-    }
-
     @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:edit,support:equipment:edit')")
-    @Log(title = "硬件资产管理", businessType = BusinessType.UPDATE)
+    @Log(title = "硬件资产管理", businessType = BusinessType.UPDATE, isSaveRequestData = false)
     @PutMapping
     public AjaxResult edit(@RequestBody SupportHardwareAsset asset)
     {
         return toAjax(hardwareAssetService.updateSupportHardwareAsset(asset));
     }
 
-    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:remove,support:equipment:remove')")
-    @Log(title = "硬件资产管理", businessType = BusinessType.DELETE)
-    @DeleteMapping("/{assetIds}")
-    public AjaxResult remove(@PathVariable Long[] assetIds)
-    {
-        return toAjax(hardwareAssetService.deleteSupportHardwareAssetByAssetIds(assetIds));
-    }
 
-    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:edit,support:equipment:edit')")
-    @PostMapping("/bindPlatform")
-    public AjaxResult bindPlatform(@RequestParam Long assetId, @RequestParam Long platformId)
-    {
-        return toAjax(hardwareAssetService.bindPlatform(assetId, platformId));
-    }
-
-    @PreAuthorize("@ss.hasAnyPermi('support:hardwareAsset:edit,support:equipment:edit')")
-    @DeleteMapping("/unbindPlatform")
-    public AjaxResult unbindPlatform(@RequestParam Long assetId, @RequestParam Long platformId)
-    {
-        return toAjax(hardwareAssetService.unbindPlatform(assetId, platformId));
-    }
 }

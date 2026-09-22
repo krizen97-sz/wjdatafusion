@@ -6,6 +6,7 @@ import com.hm.common.core.domain.BaseEntity;
 
 public class SupportServer extends BaseEntity
 {
+    public static final int DEFAULT_SSH_PORT = 55555;
     private static final long serialVersionUID = 1L;
 
     private Long serverId;

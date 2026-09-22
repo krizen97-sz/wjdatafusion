@@ -9,6 +9,8 @@ public interface SupportSiteMapper
 {
     SupportSite selectSupportSiteBySiteId(Long siteId);
 
+    Long selectSiteIdForUpdate(Long siteId);
+
     List<SupportSite> selectSupportSiteList(SupportSite site);
 
     List<SupportSiteDashboardSiteVo> selectDashboardSites(@Param("operators") List<String> operators);

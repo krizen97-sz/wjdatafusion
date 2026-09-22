@@ -14,7 +14,7 @@ test('device controls stay at equipment level and server entry provides all thre
   assert.doesNotMatch(config.slice(0, toolbarEnd), />新增设备<|>设备管理</)
   for (const label of ['单台新增', '批量新增', '模板导入']) assert.ok(intake.includes(`label="${label}"`))
   assert.ok(intake.includes('accept=".xlsx"'))
-  assert.ok(intake.includes('previewServers'))
+  assert.ok(intake.includes('previewEquipmentServers'))
   assert.equal(DEFAULT_NEW_SERVER_SSH_PORT, 55555)
   assert.ok(intake.includes('sshPort: DEFAULT_NEW_SERVER_SSH_PORT'))
 })

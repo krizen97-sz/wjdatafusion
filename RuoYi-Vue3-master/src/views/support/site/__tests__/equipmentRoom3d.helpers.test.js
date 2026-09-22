@@ -5,12 +5,29 @@ import {
   countCabinetCollisions,
   findCabinetCollision,
   getDeviceKey,
+  getVisibleLabelIds,
   getDeviceLinks,
   getDeviceRackTransform,
   isDevicePlaced,
   resolveCabinetLayout,
   summarizeOutgoingPorts
 } from '../components/equipmentRoom3d.helpers.js'
+
+const label = (id, left, priority = 0) => ({ id, priority, rect: { left, right: left + 80, top: 0, bottom: 40, width: 80, height: 40 } })
+
+test('overlapping canvas labels keep the selected device readable', () => {
+  assert.deepEqual([...getVisibleLabelIds([label('cabinet', 0), label('selected-device', 30, 3)])], ['selected-device'])
+})
+
+test('separated canvas labels remain visible with a consistent gap', () => {
+  assert.deepEqual([...getVisibleLabelIds([label('a', 0), label('b', 84)])], ['a', 'b'])
+})
+
+test('hidden labels do not displace visible labels or mutate input order', () => {
+  const labels = [label('a', 0), { ...label('hidden', 0, 9), rect: { width: 0, height: 0 } }]
+  assert.deepEqual([...getVisibleLabelIds(labels)], ['a'])
+  assert.equal(labels[0].id, 'a')
+})
 
 test('legacy cabinets receive stable in-room fallback coordinates', () => {
   const first = resolveCabinetLayout({}, 0, { roomWidth: 6, roomDepth: 4 })

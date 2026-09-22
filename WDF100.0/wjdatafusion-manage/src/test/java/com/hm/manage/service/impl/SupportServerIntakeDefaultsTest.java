@@ -2,17 +2,13 @@ package com.hm.manage.service.impl;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import org.apache.poi.ss.usermodel.WorkbookFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.MockHttpServletResponse;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 import com.hm.common.exception.ServiceException;
 import com.hm.manage.domain.SupportServer;
 import com.hm.manage.mapper.SupportServerMapper;
+import com.hm.manage.mapper.SupportSiteMapper;
 
 class SupportServerIntakeDefaultsTest
 {
@@ -24,6 +20,9 @@ class SupportServerIntakeDefaultsTest
     {
         mapper = mock(SupportServerMapper.class);
         ReflectionTestUtils.setField(service, "serverMapper", mapper);
+        SupportSiteMapper sites = mock(SupportSiteMapper.class);
+        when(sites.selectSiteIdForUpdate(1L)).thenReturn(1L);
+        ReflectionTestUtils.setField(service, "siteMapper", sites);
     }
 
     private SupportServer server(Integer port)
@@ -34,13 +33,6 @@ class SupportServerIntakeDefaultsTest
         server.setServerAddress("198.18.0.1");
         server.setSshPort(port);
         return server;
-    }
-
-    private byte[] template() throws Exception
-    {
-        MockHttpServletResponse response = new MockHttpServletResponse();
-        service.exportImportTemplate(response);
-        return response.getContentAsByteArray();
     }
 
     @Test
@@ -68,41 +60,6 @@ class SupportServerIntakeDefaultsTest
         update.setSshPort(null);
         service.updateSupportServer(update);
         assertEquals(22, update.getSshPort());
-    }
-
-    @Test
-    void downloadedTemplateCanBeParsedWithoutTreatingInstructionsAsServer() throws Exception
-    {
-        byte[] bytes = template();
-        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes)))
-        {
-            assertEquals(55555, workbook.getSheetAt(0).getRow(1).getCell(2).getNumericCellValue());
-            assertEquals(1, workbook.getSheetAt(0).getLastRowNum());
-            assertNotNull(workbook.getSheet("填写说明"));
-        }
-        var rows = service.parseImportFile(new MockMultipartFile("file", "template.xlsx",
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", bytes));
-        assertEquals(1, rows.size());
-        assertEquals(55555, rows.get(0).getSshPort());
-    }
-
-    @Test
-    void importBlankPortDefaultsButExplicitPortIsKept() throws Exception
-    {
-        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(template()));
-             var output = new ByteArrayOutputStream())
-        {
-            var row = workbook.getSheetAt(0).getRow(1);
-            row.getCell(2).setBlank();
-            workbook.write(output);
-            assertEquals(55555, service.parseImportFile(new MockMultipartFile("file", "blank.xlsx", null,
-                output.toByteArray())).get(0).getSshPort());
-            output.reset();
-            row.getCell(2).setCellValue(22);
-            workbook.write(output);
-            assertEquals(22, service.parseImportFile(new MockMultipartFile("file", "explicit.xlsx", null,
-                output.toByteArray())).get(0).getSshPort());
-        }
     }
 
     @Test

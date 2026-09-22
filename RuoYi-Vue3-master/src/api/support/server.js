@@ -8,20 +8,8 @@ export function getServer(serverId) {
   return request({ url: '/support/server/' + serverId, method: 'get' })
 }
 
-export function addServer(data) {
-  return request({ url: '/support/server', method: 'post', data })
-}
-
 export function updateServer(data) {
   return request({ url: '/support/server', method: 'put', data })
-}
-
-export function delServer(serverId) {
-  return request({ url: '/support/server/' + serverId, method: 'delete' })
-}
-
-export function viewServerPlain(serverId) {
-  return request({ url: '/support/server/plain/' + serverId, method: 'get' })
 }
 
 export function listServerCredentials(serverId) {
@@ -46,18 +34,4 @@ export function viewServerCredentialPlain(credentialId) {
 
 export function listServerCredentialPlainSummaries(serverIds) {
   return request({ url: '/support/server/credential/plainSummary', method: 'post', data: serverIds })
-}
-
-export function previewServerImport(file) {
-  const data = new FormData()
-  data.append('file', file)
-  return request({
-    url: '/support/server/importPreview',
-    method: 'post',
-    data,
-    headers: {
-      'Content-Type': 'multipart/form-data',
-      repeatSubmit: false
-    }
-  })
 }

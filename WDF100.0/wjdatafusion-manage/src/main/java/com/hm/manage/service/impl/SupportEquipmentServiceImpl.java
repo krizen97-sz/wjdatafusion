@@ -73,7 +73,7 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
             throw new ServiceException("请选择现场和一种设备类型");
         }
         boolean serverType = command.getServer() != null;
-        if (siteMapper.selectSupportSiteBySiteId(command.getSiteId()) == null)
+        if (siteMapper.selectSiteIdForUpdate(command.getSiteId()) == null)
         {
             throw new ServiceException("现场不存在");
         }
@@ -202,6 +202,10 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
             uniqueRefs.put(sourceType + ":" + ref.getSourceId(), ref);
         }
 
+        if (siteMapper.selectSiteIdForUpdate(command.getSiteId()) == null)
+        {
+            throw new ServiceException("现场不存在");
+        }
         List<Long> serverIds = new ArrayList<>();
         List<Long> hardwareIds = new ArrayList<>();
         for (SupportEquipmentDeviceRefBo ref : uniqueRefs.values())

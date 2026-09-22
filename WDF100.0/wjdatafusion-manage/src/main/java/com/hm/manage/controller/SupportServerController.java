@@ -3,7 +3,6 @@ package com.hm.manage.controller;
 import java.util.List;
 import java.util.Map;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.web.multipart.MultipartFile;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -55,20 +54,6 @@ public class SupportServerController extends BaseController
         util.exportExcel(response, list, "服务器数据");
     }
 
-    @PreAuthorize("@ss.hasAnyPermi('support:server:add,support:equipment:add')")
-    @PostMapping("/importTemplate")
-    public void importTemplate(HttpServletResponse response) throws Exception
-    {
-        serverService.exportImportTemplate(response);
-    }
-
-    @PreAuthorize("@ss.hasAnyPermi('support:server:add,support:equipment:add')")
-    @PostMapping("/importPreview")
-    public AjaxResult importPreview(MultipartFile file) throws Exception
-    {
-        return success(serverService.parseImportFile(file));
-    }
-
     @PreAuthorize("@ss.hasAnyPermi('support:server:query,support:equipment:query')")
     @GetMapping(value = "/{serverId}")
     public AjaxResult getInfo(@PathVariable("serverId") Long serverId)
@@ -78,38 +63,12 @@ public class SupportServerController extends BaseController
         return success(server);
     }
 
-    @PreAuthorize("@ss.hasAnyPermi('support:server:add,support:equipment:add')")
-    @Log(title = "服务器管理", businessType = BusinessType.INSERT)
-    @PostMapping
-    public AjaxResult add(@RequestBody SupportServer server)
-    {
-        return toAjax(serverService.insertSupportServer(server));
-    }
-
     @PreAuthorize("@ss.hasAnyPermi('support:server:edit,support:equipment:edit')")
-    @Log(title = "服务器管理", businessType = BusinessType.UPDATE)
+    @Log(title = "服务器管理", businessType = BusinessType.UPDATE, isSaveRequestData = false)
     @PutMapping
     public AjaxResult edit(@RequestBody SupportServer server)
     {
         return toAjax(serverService.updateSupportServer(server));
-    }
-
-    @PreAuthorize("@ss.hasAnyPermi('support:server:remove,support:equipment:remove')")
-    @Log(title = "服务器管理", businessType = BusinessType.DELETE)
-    @DeleteMapping("/{serverIds}")
-    public AjaxResult remove(@PathVariable Long[] serverIds)
-    {
-        return toAjax(serverService.deleteSupportServerByServerIds(serverIds));
-    }
-
-    @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
-    @Log(title = "查看服务器密码明文", businessType = BusinessType.GRANT)
-    @GetMapping("/plain/{serverId}")
-    public AjaxResult viewPlain(@PathVariable Long serverId)
-    {
-        SupportServer server = serverService.selectSupportServerByServerId(serverId);
-        changeLogService.recordQuery(server == null ? null : server.getSiteId(), "SERVER", serverId, server == null ? null : server.getServerName(), "查看服务器密码明文");
-        return success().put("plain", serverService.getServerPasswordPlain(serverId));
     }
 
     @PreAuthorize("@ss.hasAnyPermi('support:server:query,support:equipment:query')")
@@ -120,7 +79,7 @@ public class SupportServerController extends BaseController
     }
 
     @PreAuthorize("@ss.hasAnyPermi('support:server:add,support:equipment:edit')")
-    @Log(title = "服务器凭据档案", businessType = BusinessType.INSERT)
+    @Log(title = "服务器凭据档案", businessType = BusinessType.INSERT, isSaveRequestData = false)
     @PostMapping("/credential")
     public AjaxResult addCredential(@RequestBody SupportServerCredential credential)
     {
@@ -128,7 +87,7 @@ public class SupportServerController extends BaseController
     }
 
     @PreAuthorize("@ss.hasAnyPermi('support:server:edit,support:equipment:edit')")
-    @Log(title = "服务器凭据档案", businessType = BusinessType.UPDATE)
+    @Log(title = "服务器凭据档案", businessType = BusinessType.UPDATE, isSaveRequestData = false)
     @PutMapping("/credential")
     public AjaxResult editCredential(@RequestBody SupportServerCredential credential)
     {
@@ -144,7 +103,7 @@ public class SupportServerController extends BaseController
     }
 
     @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
-    @Log(title = "查看服务器凭据明文", businessType = BusinessType.GRANT)
+    @Log(title = "查看服务器凭据明文", businessType = BusinessType.GRANT, isSaveResponseData = false)
     @GetMapping("/credential/plain/{credentialId}")
     public AjaxResult viewCredentialPlain(@PathVariable Long credentialId)
     {
@@ -152,7 +111,7 @@ public class SupportServerController extends BaseController
     }
 
     @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
-    @Log(title = "批量查看服务器凭据明文", businessType = BusinessType.GRANT)
+    @Log(title = "批量查看服务器凭据明文", businessType = BusinessType.GRANT, isSaveResponseData = false)
     @PostMapping("/credential/plainSummary")
     public AjaxResult credentialPlainSummary(@RequestBody Long[] serverIds)
     {
