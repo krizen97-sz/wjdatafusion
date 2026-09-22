@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 const workspaceSource = readFileSync(new URL('../index.vue', import.meta.url), 'utf8')
+const recordTableSource = readFileSync(new URL('../components/InspectionRecordTable.vue', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../../../../api/support/autoInspection/index.js', import.meta.url), 'utf8')
 const backendRoot = '../../../../../../WDF100.0/wjdatafusion-manage/src/main/java/com/hm/manage/domain/'
 const templateStepSource = readFileSync(new URL(`${backendRoot}SupportAutoInspectionTemplateStep.java`, import.meta.url), 'utf8')
@@ -23,7 +24,7 @@ test('automatic inspection keeps the mature business workspace', () => {
     'dashboardDrawerOpen',
     'operationGuideOpen',
     'server-tree-box',
-    'target-step-groups',
+    'InspectionRecordResults',
     'InspectionFlowCanvas',
     'handlePreviewStepTarget'
   ]
@@ -86,8 +87,8 @@ test('etl-inspired workflow additions remain compatible with existing templates'
 })
 
 test('overview and configuration keep one clear presentation path', () => {
-  assert.ok(workspaceSource.includes('recordTableRows'))
-  assert.ok(workspaceSource.includes('recordSpanMethod'))
+  assert.ok(recordTableSource.includes('buildInspectionRecordTableRows'))
+  assert.ok(recordTableSource.includes(':span-method="spanMethod"'))
   assert.ok(workspaceSource.includes('type="circle"'))
   assert.ok(workspaceSource.includes('templateTreeOptions'))
   assert.ok(workspaceSource.includes('planTreeOptions'))

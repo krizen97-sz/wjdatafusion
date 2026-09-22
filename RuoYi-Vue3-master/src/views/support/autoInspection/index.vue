@@ -16,7 +16,7 @@
         </header>
 
         <div class="record-view-stage">
-        <el-drawer v-model="recordArchiveDrawerOpen" title="全部执行记录" size="1280px" append-to-body class="record-archive-drawer">
+        <el-drawer v-model="recordArchiveDrawerOpen" title="全部执行记录" size="min(1440px, calc(100vw - 32px))" append-to-body class="record-archive-drawer">
         <section class="dashboard-brief" :class="`dashboard-brief--${dashboardWeekSummary.status || '3'}`">
           <div class="dashboard-brief__status">
             <span class="status-dot" :class="`status-dot--${dashboardWeekSummary.status || '3'}`"></span>
@@ -116,72 +116,12 @@
           <el-button type="primary" plain icon="Document" @click="openReportExportDialog" v-hasPermi="['support:autoInspection:export']">导出周/月报</el-button>
         </div>
 
-        <el-table
-          v-loading="recordLoading"
-          :data="recordTableRows"
-          :span-method="recordSpanMethod"
-          :row-class-name="recordRowClassName"
-          class="auto-table record-table record-table--daily"
-          empty-text="暂无巡检记录"
-        >
-          <el-table-column label="归属日期" width="132" align="center" fixed="left">
-            <template #default="scope">
-              <div class="record-date-cell">
-                <strong>{{ scope.row.ownershipDateLabel }}</strong>
-                <span>{{ scope.row.ownershipDateKey || '-' }} {{ scope.row.ownershipWeekday }}</span>
-                <em>共 {{ scope.row.ownershipRecordCount }} 条 · 异常 {{ scope.row.ownershipAbnormalCount }}</em>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="时间" width="72" align="center">
-            <template #default="scope"><strong class="record-clock">{{ formatInspectionClock(scope.row.inspectionTime) }}</strong></template>
-          </el-table-column>
-          <el-table-column label="结果" width="70" align="center">
-            <template #default="scope"><el-tag class="soft-status-tag" size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
-          </el-table-column>
-          <el-table-column label="来源" width="72" align="center">
-            <template #default="scope"><el-tag size="small" :type="scope.row.sourceType === 'MANUAL' ? 'success' : 'info'">{{ scope.row.sourceType === 'MANUAL' ? '手动' : '自动' }}</el-tag></template>
-          </el-table-column>
-          <el-table-column label="模板" min-width="180" show-overflow-tooltip>
-            <template #default="scope">
-              <div class="record-name-cell">
-                <strong>{{ scope.row.templateName || '未命名模板' }}</strong>
-                <el-tag v-if="getTemplateLabelName(scope.row.templateId)" size="small" effect="plain">{{ getTemplateLabelName(scope.row.templateId) }}</el-tag>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="执行计划" min-width="150" show-overflow-tooltip>
-            <template #default="scope">
-              <div class="record-name-cell">
-                <strong>{{ scope.row.planName || '手动执行' }}</strong>
-                <el-tag v-if="getPlanLabelName(scope.row.planId)" size="small" type="info" effect="plain">{{ getPlanLabelName(scope.row.planId) }}</el-tag>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="结果摘要" min-width="240">
-            <template #default="scope">
-              <div class="record-result-summary" :class="{ 'has-abnormal': scope.row.resultStatus === '2' }">
-                <strong>{{ scope.row.abnormalSummary || scope.row.summary || '本次巡检未填写摘要' }}</strong>
-                <span v-if="scope.row.abnormalSummary && scope.row.summary && scope.row.abnormalSummary !== scope.row.summary">{{ scope.row.summary }}</span>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="步骤 / 目标 / 异常" width="150" align="center">
-            <template #default="scope">
-              <div class="record-count-cell">
-                <span>{{ scope.row.enabledStepCount || 0 }}</span>
-                <span>{{ scope.row.targetCount || 0 }}</span>
-                <span :class="{ 'has-abnormal': Number(scope.row.abnormalCount || 0) > 0 }">{{ scope.row.abnormalCount || 0 }}</span>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="140" fixed="right" align="center">
-            <template #default="scope">
-              <el-button link type="primary" icon="View" @click="handleRecordDetail(scope.row)" v-hasPermi="['support:autoInspection:query']">详情</el-button>
-              <el-button link type="success" icon="Document" @click="exportWord(scope.row)" v-hasPermi="['support:autoInspection:export']">Word</el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <InspectionRecordTable :rows="recordList" :loading="recordLoading" :template-label="getTemplateLabelName" :plan-label="getPlanLabelName">
+          <template #actions="{ row }">
+            <el-button link type="primary" icon="View" @click="handleRecordDetail(row)" v-hasPermi="['support:autoInspection:query']">详情</el-button>
+            <el-button link type="primary" icon="Document" @click="exportWord(row)" v-hasPermi="['support:autoInspection:export']">Word</el-button>
+          </template>
+        </InspectionRecordTable>
 
         <pagination v-show="recordTotal > 0" :total="recordTotal" v-model:page="recordQuery.pageNum" v-model:limit="recordQuery.pageSize" @pagination="getRecordList" />
         </el-drawer>
@@ -1999,99 +1939,21 @@
       </template>
     </el-dialog>
 
-    <el-drawer v-model="detailOpen" size="78%" append-to-body class="detail-drawer inspection-detail-drawer">
-      <template #header="{ titleId, titleClass }"><div :id="titleId" :class="titleClass" class="dialog-title"><span>巡检详情</span><strong>{{ detail.inspectionTime || '-' }}</strong></div></template>
-      <div class="inspection-detail-hero">
-        <div>
-          <span>自动化巡检报告</span>
-          <h3>{{ detail.templateName || '未命名模板' }}</h3>
-          <p>{{ detail.summary || '暂无摘要' }}</p>
-        </div>
-        <el-tag :type="resultTagType(detail.resultStatus)" size="large">{{ formatResult(detail.resultStatus) }}</el-tag>
-      </div>
-      <div class="detail-kpi-grid">
-        <span><strong>{{ detail.steps?.length || 0 }}</strong><em>步骤数</em></span>
-        <span><strong>{{ detail.targetResults?.length || 0 }}</strong><em>目标数</em></span>
-        <span><strong>{{ detailTargetStats.abnormal }}</strong><em>异常目标</em></span>
-        <span><strong>{{ detail.planName || '手动执行' }}</strong><em>计划</em></span>
-      </div>
-      <section class="detail-section">
-        <header>
-          <div>
-            <strong>步骤结果</strong>
-            <span>按模板步骤顺序展示每个检测动作的判定结果。</span>
-          </div>
-        </header>
-        <el-table :data="detail.steps || []" class="auto-table detail-step-table">
-          <el-table-column type="index" label="序号" width="70" align="center" />
-          <el-table-column label="步骤" prop="stepName" min-width="160" show-overflow-tooltip />
-          <el-table-column label="工具" prop="toolName" min-width="150" show-overflow-tooltip />
-          <el-table-column label="结果" width="90" align="center">
-            <template #default="scope"><el-tag class="soft-status-tag" size="small" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag></template>
-          </el-table-column>
-          <el-table-column label="实际值" width="120" align="center">
-            <template #default="scope">{{ formatActualValue(scope.row) }}</template>
-          </el-table-column>
-          <el-table-column label="判定规则" width="210" align="center">
-            <template #default="scope">{{ formatStepThreshold(scope.row) }}</template>
-          </el-table-column>
-          <el-table-column label="摘要" min-width="280" show-overflow-tooltip>
-            <template #default="scope">{{ formatStepResultSummary(scope.row) }}</template>
-          </el-table-column>
-        </el-table>
-      </section>
-      <section class="detail-section target-detail-section">
-        <header>
-          <div>
-            <strong>目标明细</strong>
-            <span>展示每个目标的调用对象、实际返回、异常原因和所属步骤。</span>
-          </div>
-        </header>
-        <el-empty v-if="!detailTargetGroups.length" description="暂无目标明细" :image-size="90" />
-        <div v-else class="target-step-groups">
-          <section v-for="(group, groupIndex) in detailTargetGroups" :key="group.key" class="target-step-group">
-            <header class="target-step-group__head">
-              <span class="target-step-index">步骤 {{ groupIndex + 1 }}</span>
-              <div>
-                <strong>{{ group.stepName }}</strong>
-                <em>{{ group.toolName || '未标注工具' }}</em>
-              </div>
-              <div class="target-step-summary">
-                <span><label>子项</label><strong>{{ group.targets.length }}</strong></span>
-                <span><label>异常</label><strong>{{ group.abnormalCount }}</strong></span>
-                <el-tag class="soft-status-tag" size="small" :type="resultTagType(group.resultStatus)">{{ formatResult(group.resultStatus) }}</el-tag>
-              </div>
-            </header>
-            <div class="target-step-items">
-              <article v-for="(target, index) in group.targets" :key="`${group.key}-${target.targetId || index}`" class="target-result-card">
-                <header>
-                  <span class="target-result-index">{{ index + 1 }}</span>
-                  <div>
-                    <strong>{{ target.targetName || '未命名子项' }}</strong>
-                    <em>检查子项 · {{ getTargetTypeLabel(target.targetType) }}</em>
-                  </div>
-                  <el-tag class="soft-status-tag" size="small" :type="resultTagType(target.resultStatus)">{{ formatResult(target.resultStatus) }}</el-tag>
-                </header>
-                <div class="target-result-meta">
-                  <span><label>实际值</label><strong>{{ formatActualValue(target) }}</strong></span>
-                  <span><label>目标类型</label><strong>{{ getTargetTypeLabel(target.targetType) }}</strong></span>
-                </div>
-                <div class="target-call-box">
-                  <label>调用信息</label>
-                  <p>{{ formatTargetResultDetail(target) }}</p>
-                </div>
-                <div v-if="target.errorMessage" class="target-error-box">
-                  <label>异常原因</label>
-                  <p>{{ target.errorMessage }}</p>
-                </div>
-              </article>
-            </div>
-          </section>
-        </div>
-      </section>
+    <el-drawer v-model="detailOpen" size="min(1440px, calc(100vw - 32px))" append-to-body class="inspection-detail-drawer">
+      <template #header="{ titleId, titleClass }">
+        <div :id="titleId" :class="titleClass" class="dialog-title"><span>执行记录详情</span><strong>{{ detail.inspectionTime || '-' }}</strong></div>
+      </template>
+      <el-descriptions :column="2" border class="record-detail-meta">
+        <el-descriptions-item label="巡检模板">{{ detail.templateName || '未命名模板' }}</el-descriptions-item>
+        <el-descriptions-item label="执行计划">{{ detail.planName || '手动执行' }}</el-descriptions-item>
+        <el-descriptions-item label="执行结果"><el-tag size="small" effect="plain" :type="resultTagType(detail.resultStatus)">{{ formatResult(detail.resultStatus) }}</el-tag></el-descriptions-item>
+        <el-descriptions-item label="耗时">{{ detail.durationMs == null ? '-' : `${detail.durationMs}ms` }}</el-descriptions-item>
+        <el-descriptions-item label="结果摘要" :span="2">{{ detail.abnormalSummary || detail.summary || '暂无摘要' }}</el-descriptions-item>
+      </el-descriptions>
+      <InspectionRecordResults :record="detail" :formatters="recordResultFormatters" />
     </el-drawer>
 
-    <el-drawer v-model="healthSampleDrawerOpen" size="1280px" append-to-body class="health-sample-drawer">
+    <el-drawer v-model="healthSampleDrawerOpen" size="min(1440px, calc(100vw - 32px))" append-to-body class="health-sample-drawer">
       <template #header="{ titleId, titleClass }">
         <div :id="titleId" :class="titleClass" class="dialog-title">
           <span>每日健康执行明细</span>
@@ -2124,120 +1986,20 @@
           </template>
         </el-segmented>
       </div>
-      <el-table
-        v-loading="healthSampleLoading"
-        :data="healthSampleRows"
-        row-key="recordId"
-        :expand-row-keys="healthSampleExpandedKeys"
-        class="auto-table health-sample-table"
+      <InspectionRecordTable
+        :rows="healthSampleRows"
+        :loading="healthSampleLoading"
+        :template-label="getTemplateLabelName"
+        :plan-label="getPlanLabelName"
+        expandable
+        :expanded-keys="healthSampleExpandedKeys"
         empty-text="当天暂无检测结果"
         @expand-change="handleHealthSampleExpand"
       >
-        <el-table-column type="expand" width="46">
-          <template #default="scope">
-            <div class="health-sample-detail">
-              <section v-for="(group, groupIndex) in getRecordResultGroups(scope.row)" :key="group.key" class="health-sample-step">
-                <header>
-                  <span>{{ groupIndex + 1 }}</span>
-                  <div><strong>{{ group.stepName }}</strong><em>{{ group.toolName || '巡检步骤' }}</em></div>
-                  <small>子项 {{ group.targets.length }} · 异常 {{ getAbnormalTargetCount(group.targets) }}</small>
-                </header>
-                <el-table :data="group.targets" size="small" class="health-target-table" empty-text="当前步骤暂无目标结果">
-                  <el-table-column label="检测子项" min-width="160" show-overflow-tooltip>
-                    <template #default="targetScope">
-                      <div class="health-target-name">
-                        <strong>{{ targetScope.row.targetName || `检测子项 ${targetScope.$index + 1}` }}</strong>
-                        <span v-if="targetScope.row.baselineFlag === 'Y'">基线已建立</span>
-                      </div>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="判定数据" min-width="320">
-                    <template #default="targetScope">
-                      <div class="health-target-values">
-                        <el-tooltip :content="formatMetricValue(targetScope.row.actualValue, targetScope.row.actualUnit)" placement="top" :show-after="300">
-                          <span><label>本次</label><strong>{{ formatMetricValue(targetScope.row.actualValue, targetScope.row.actualUnit) }}</strong></span>
-                        </el-tooltip>
-                        <el-tooltip :content="formatMetricValue(targetScope.row.previousValue, targetScope.row.actualUnit)" placement="top" :show-after="300">
-                          <span><label>上次</label><strong>{{ formatMetricValue(targetScope.row.previousValue, targetScope.row.actualUnit) }}</strong></span>
-                        </el-tooltip>
-                        <el-tooltip :content="formatChangeValue(targetScope.row.changeValue, targetScope.row.actualUnit)" placement="top" :show-after="300">
-                          <span><label>变化</label><strong>{{ formatChangeValue(targetScope.row.changeValue, targetScope.row.actualUnit) }}</strong></span>
-                        </el-tooltip>
-                      </div>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="判定规则" min-width="260" show-overflow-tooltip>
-                    <template #default="targetScope">
-                      <div class="health-target-rule">
-                        <span>{{ formatEvaluationMode(targetScope.row) }}</span>
-                        <strong>{{ targetScope.row.evaluationRule || formatStepThreshold(group) }}</strong>
-                        <small v-if="targetScope.row.evaluationMode === EVALUATION_MODE_PREVIOUS">{{ formatComparisonWindow(targetScope.row) }}</small>
-                      </div>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="调用结果" min-width="340">
-                    <template #default="targetScope">
-                      <el-popover placement="left" :width="520" trigger="hover" :show-after="250" :hide-after="80">
-                        <template #reference>
-                          <div class="health-target-result">
-                            <span class="health-target-result__preview">{{ targetScope.row.resultDetail || '本次未记录调用明细' }}</span>
-                            <strong v-if="targetScope.row.errorMessage" class="health-target-result__error">{{ targetScope.row.errorMessage }}</strong>
-                          </div>
-                        </template>
-                        <div class="health-call-detail">
-                          <header>
-                            <div>
-                              <span>调用结果</span>
-                              <strong>{{ targetScope.row.targetName || `检测子项 ${targetScope.$index + 1}` }}</strong>
-                            </div>
-                            <el-tag class="soft-status-tag" size="small" effect="plain" :type="resultTagType(targetScope.row.resultStatus)">{{ formatResult(targetScope.row.resultStatus) }}</el-tag>
-                          </header>
-                          <el-scrollbar max-height="260px">
-                            <section>
-                              <label>调用信息</label>
-                              <p>{{ targetScope.row.resultDetail || '本次未记录调用明细' }}</p>
-                            </section>
-                            <section v-if="targetScope.row.errorMessage" class="is-error">
-                              <label>异常原因</label>
-                              <p>{{ targetScope.row.errorMessage }}</p>
-                            </section>
-                          </el-scrollbar>
-                        </div>
-                      </el-popover>
-                    </template>
-                  </el-table-column>
-                  <el-table-column label="状态" width="84" align="center">
-                    <template #default="targetScope">
-                      <el-tag class="soft-status-tag" size="small" effect="plain" :type="resultTagType(targetScope.row.resultStatus)">{{ formatResult(targetScope.row.resultStatus) }}</el-tag>
-                    </template>
-                  </el-table-column>
-                </el-table>
-              </section>
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column label="执行时间" prop="inspectionTime" width="160" />
-        <el-table-column label="计划" prop="planName" min-width="130" show-overflow-tooltip>
-          <template #default="scope">{{ scope.row.planName || '未命名计划' }}</template>
-        </el-table-column>
-        <el-table-column label="模板" prop="templateName" min-width="140" show-overflow-tooltip>
-          <template #default="scope">{{ scope.row.templateName || '未命名模板' }}</template>
-        </el-table-column>
-        <el-table-column label="结果摘要" min-width="220" show-overflow-tooltip>
-          <template #default="scope">{{ scope.row.abnormalSummary || scope.row.summary || '本次检测已完成' }}</template>
-        </el-table-column>
-        <el-table-column label="步骤 / 目标" width="100" align="center">
-          <template #default="scope">{{ scope.row.enabledStepCount || 0 }} / {{ scope.row.targetCount || 0 }}</template>
-        </el-table-column>
-        <el-table-column label="耗时" width="82" align="center">
-          <template #default="scope">{{ scope.row.durationMs ? `${scope.row.durationMs}ms` : '-' }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="82" align="center">
-          <template #default="scope">
-            <el-tag class="soft-status-tag" size="small" effect="plain" :type="resultTagType(scope.row.resultStatus)">{{ formatResult(scope.row.resultStatus) }}</el-tag>
-          </template>
-        </el-table-column>
-      </el-table>
+        <template #expand="{ row }">
+          <InspectionRecordResults :record="row" :formatters="recordResultFormatters" />
+        </template>
+      </InspectionRecordTable>
       <pagination v-show="healthSampleTotal > 0" :total="healthSampleTotal" v-model:page="healthSampleQuery.pageNum" v-model:limit="healthSampleQuery.pageSize" @pagination="getHealthSamples" />
     </el-drawer>
   </div>
@@ -2259,6 +2021,8 @@ import {
   VideoPlay
 } from '@element-plus/icons-vue'
 import InspectionFlowCanvas from './components/InspectionFlowCanvas.vue'
+import InspectionRecordTable from './components/InspectionRecordTable.vue'
+import InspectionRecordResults from './components/InspectionRecordResults.vue'
 import ContinuousHealthPanel from './components/ContinuousHealthPanel.vue'
 import { groupDailyHealthRows } from './continuousHealthPresentation'
 import { hydrateDatabaseTarget, normalizeDatabaseTargetConfig } from './databaseTargetConfig'
@@ -2270,11 +2034,9 @@ import {
   normalizeComparisonScope
 } from './comparisonScopeConfig'
 import {
-  buildInspectionRecordTableRows,
   buildLabelTreeOptions,
   buildWeekResultDistribution,
-  collectLabelNames,
-  formatInspectionClock
+  collectLabelNames
 } from './overviewPresentation'
 import {
   getInspectionToolContractIssue,
@@ -3009,7 +2771,6 @@ const dashboardCalendarOffset = computed(() => {
 const dashboardToolStats = computed(() => dashboardData.value?.toolStats || [])
 const dashboardAbnormalTargets = computed(() => dashboardData.value?.latestAbnormalTargets || [])
 const dashboardRecentRecords = computed(() => dashboardData.value?.recentRecords || [])
-const recordTableRows = computed(() => buildInspectionRecordTableRows(recordList.value))
 const dashboardWeekResultItems = computed(() => buildWeekResultDistribution(dashboardWeekSummary.value))
 const dashboardWeekSuccessPercent = computed(() => Math.max(0, Math.min(100, parsePercent(dashboardWeekSummary.value.successRate))))
 const dashboardResultPieData = computed(() => {
@@ -3046,63 +2807,6 @@ const reportExportPreview = computed(() => {
     desc: '导出所选自然周的一个 Word 周报，包含本周所有巡检内容和签字确认区。'
   }
 })
-const detailTargetStats = computed(() => {
-  const rows = detail.value?.targetResults || []
-  return {
-    abnormal: rows.filter((row) => row.resultStatus === '2').length
-  }
-})
-const detailTargetGroups = computed(() => {
-  const steps = detail.value?.steps || []
-  const targets = detail.value?.targetResults || []
-  if (!targets.length) return []
-
-  const groups = []
-  const groupMap = new Map()
-  const registerGroup = (key, step = {}) => {
-    const safeKey = String(key || `step-${groups.length + 1}`)
-    if (groupMap.has(safeKey)) return groupMap.get(safeKey)
-    const group = {
-      key: safeKey,
-      stepName: step.stepName || '未归属步骤',
-      toolName: step.toolName || '',
-      resultStatus: step.resultStatus || '3',
-      sortOrder: Number(step.sortOrder || groups.length + 1),
-      targets: []
-    }
-    groups.push(group)
-    groupMap.set(safeKey, group)
-    return group
-  }
-
-  steps
-    .slice()
-    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
-    .forEach((step, index) => {
-      registerGroup(getStepResultGroupKey(step, index), step)
-    })
-
-  targets.forEach((target, index) => {
-    const key = getTargetResultGroupKey(target)
-    const group = groupMap.get(key) || registerGroup(key || `unmatched-${index}`, {
-      stepName: target.stepName || '未归属步骤',
-      toolName: target.toolName || '',
-      resultStatus: target.resultStatus || '3',
-      sortOrder: groups.length + 1
-    })
-    group.targets.push(target)
-    if (target.resultStatus === '2') group.resultStatus = '2'
-    else if (target.resultStatus === '4' && group.resultStatus !== '2') group.resultStatus = '4'
-  })
-
-  return groups
-    .filter((group) => group.targets.length)
-    .map((group) => ({
-      ...group,
-      abnormalCount: group.targets.filter((target) => target.resultStatus === '2').length
-    }))
-})
-
 watch(() => [route.query.tab, route.query.configTab, route.path], ([tab, subTab, path]) => {
   const nextActive = resolveRouteTab(tab, path)
   const nextConfig = resolveConfigTab(tab, subTab, path)
@@ -3735,10 +3439,6 @@ function handleHealthSampleExpand(row, expandedRows = []) {
   healthSampleExpandedKeys.value = expanded ? [row.recordId] : []
 }
 
-function getAbnormalTargetCount(targets = []) {
-  return targets.filter((target) => target.resultStatus === '2').length
-}
-
 function resolveMonthDateRange(month) {
   const matched = String(month || '').match(/^(\d{4})-(\d{2})$/)
   const year = matched ? Number(matched[1]) : new Date().getFullYear()
@@ -3941,14 +3641,6 @@ function formatCalendarDayResult(day) {
   return '正常'
 }
 
-function recordSpanMethod({ row, columnIndex }) {
-  if (columnIndex !== 0) return [1, 1]
-  return row.ownershipRowspan > 0 ? [row.ownershipRowspan, 1] : [0, 0]
-}
-
-function recordRowClassName({ row }) {
-  return row.resultStatus === '2' ? 'record-table-row--abnormal' : ''
-}
 
 function getTemplateLabelName(templateId) {
   return templateId == null ? '' : (templateLabelMap.value.get(Number(templateId)) || '')
@@ -6446,53 +6138,6 @@ function formatTrendDate(value) {
   return text.length >= 10 ? text.slice(5, 10) : text
 }
 
-function getStepResultGroupKey(step, index = 0) {
-  if (step?.stepResultId) return `step-result-${step.stepResultId}`
-  if (step?.stepId) return `step-${step.stepId}`
-  if (step?.stepName) return `step-name-${step.stepName}`
-  return `step-index-${index}`
-}
-
-function getTargetResultGroupKey(target) {
-  if (target?.stepResultId) return `step-result-${target.stepResultId}`
-  if (target?.stepId) return `step-${target.stepId}`
-  if (target?.stepName) return `step-name-${target.stepName}`
-  return ''
-}
-
-function getRecordResultGroups(record = {}) {
-  const steps = Array.isArray(record.steps) ? record.steps : []
-  const targets = Array.isArray(record.targetResults) ? record.targetResults : []
-  const groups = []
-  const groupMap = new Map()
-  steps
-    .slice()
-    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
-    .forEach((step, index) => {
-      const key = getStepResultGroupKey(step, index)
-      const group = { ...step, key, targets: [] }
-      groups.push(group)
-      groupMap.set(key, group)
-    })
-  targets.forEach((target, index) => {
-    const key = getTargetResultGroupKey(target)
-    let group = groupMap.get(key)
-    if (!group) {
-      group = {
-        key: key || `unassigned-${index}`,
-        stepName: target.stepName || '未归属步骤',
-        toolName: target.toolName || '',
-        resultStatus: target.resultStatus || '3',
-        targets: []
-      }
-      groups.push(group)
-      groupMap.set(group.key, group)
-    }
-    group.targets.push(target)
-  })
-  return groups.filter((group) => group.targets.length)
-}
-
 function formatEvaluationMode(row) {
   if (row?.baselineFlag === 'Y') return row?.comparisonScope === COMPARISON_SCOPE_CONTINUOUS ? '首次建立基线' : '新周期基线'
   if (row?.toolCode === TOOL_HTTP_API_TEST) return '按返回条件判断'
@@ -6510,6 +6155,16 @@ function formatComparisonWindow(row) {
       : '连续累计'
   if (!row?.windowKey || scope === COMPARISON_SCOPE_CONTINUOUS) return scopeLabel
   return `${scopeLabel} · ${String(row.windowKey).replace(/^(DAY|HOUR):/, '')}`
+}
+
+const recordResultFormatters = {
+  actual: formatActualValue,
+  metric: formatMetricValue,
+  change: formatChangeValue,
+  mode: formatEvaluationMode,
+  threshold: formatStepThreshold,
+  window: formatComparisonWindow,
+  detail: formatTargetResultDetail
 }
 
 function formatMetricValue(value, unit = '') {
@@ -6610,6 +6265,13 @@ function resultTagType(value) {
 </script>
 
 <style scoped lang="scss">
+.record-detail-meta {
+  margin-bottom: 20px;
+  :deep(.el-descriptions__table) { table-layout: fixed; }
+  :deep(.el-descriptions__label) { width: 100px; }
+  :deep(.el-descriptions__content) { overflow-wrap: anywhere; }
+}
+
 .auto-page {
   background: var(--surface-muted);
 }
@@ -7064,331 +6726,7 @@ function resultTagType(value) {
   min-width: 98px;
 }
 
-.health-sample-table {
-  min-height: 240px;
-}
 
-.health-sample-table :deep(.el-table__expanded-cell) {
-  padding: 0 16px 16px 46px;
-  background: var(--surface-muted);
-}
-
-.health-sample-detail {
-  padding-top: 2px;
-}
-
-.health-sample-step {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--surface-border);
-}
-
-.health-sample-step > header {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-}
-
-.health-sample-step > header > span {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.health-sample-step > header > div {
-  display: grid;
-  gap: 1px;
-}
-
-.health-sample-step > header strong,
-.health-target-name strong {
-  color: var(--app-heading);
-  font-size: 13px;
-}
-
-.health-sample-step > header em {
-  color: var(--app-muted);
-  font-size: 11px;
-  font-style: normal;
-}
-
-.health-sample-step > header small {
-  color: var(--app-muted);
-  font-size: 11px;
-  font-weight: 400;
-}
-
-.health-target-table {
-  width: 100%;
-}
-
-.health-target-table :deep(th.el-table__cell) {
-  background: var(--surface-strong);
-}
-
-.health-target-name,
-.health-target-rule,
-.health-target-result {
-  display: grid;
-  gap: 3px;
-  min-width: 0;
-}
-
-.health-target-name span,
-.health-target-rule span {
-  color: var(--app-muted);
-  font-size: 10px;
-}
-
-.health-target-rule strong {
-  overflow: hidden;
-  color: var(--app-text);
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.health-target-rule small {
-  overflow: hidden;
-  color: var(--app-muted);
-  font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.health-target-values {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 5px;
-}
-
-.health-target-values span {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  min-width: 0;
-  padding: 4px 6px;
-  border-radius: 4px;
-  background: var(--surface-subtle);
-  color: var(--app-text);
-  font-size: 11px;
-}
-
-.health-target-values label {
-  flex: 0 0 30px;
-  color: var(--app-muted);
-  font-size: 10px;
-}
-
-.health-target-values strong {
-  overflow: hidden;
-  min-width: 0;
-  color: var(--app-heading);
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.health-target-result {
-  padding: 4px 6px;
-  border-radius: 4px;
-  cursor: help;
-  transition: background-color 0.16s ease;
-}
-
-.health-target-result:hover {
-  background: var(--surface-subtle);
-}
-
-.health-target-result__preview {
-  display: -webkit-box;
-  overflow: hidden;
-  color: var(--app-muted);
-  font-size: 11px;
-  line-height: 1.55;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
-.health-target-result__error {
-  display: block;
-  overflow: hidden;
-  color: var(--el-color-danger);
-  font-size: 11px;
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.health-call-detail {
-  display: grid;
-  gap: 12px;
-}
-
-.health-call-detail > header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--surface-border);
-}
-
-.health-call-detail > header > div {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-}
-
-.health-call-detail > header span,
-.health-call-detail section label {
-  color: var(--app-muted);
-  font-size: 11px;
-}
-
-.health-call-detail > header strong {
-  overflow: hidden;
-  color: var(--app-heading);
-  font-size: 14px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.health-call-detail section {
-  display: grid;
-  gap: 6px;
-  padding: 8px 2px;
-}
-
-.health-call-detail section + section {
-  border-top: 1px solid var(--surface-border);
-}
-
-.health-call-detail section p {
-  margin: 0;
-  color: var(--app-text);
-  font-size: 12px;
-  line-height: 1.7;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
-.health-call-detail section.is-error p {
-  color: var(--el-color-danger);
-}
-
-.record-table--daily {
-  :deep(.el-table__cell) {
-    padding: 8px 0;
-  }
-
-  :deep(.record-table-row--abnormal > td.el-table__cell) {
-    background: var(--el-color-danger-light-9);
-  }
-}
-
-.record-date-cell {
-  display: grid;
-  gap: 2px;
-  justify-items: center;
-  line-height: 1.3;
-
-  strong {
-    color: var(--app-heading);
-    font-size: 15px;
-  }
-
-  span,
-  em {
-    color: var(--app-muted);
-    font-size: 10px;
-    font-style: normal;
-  }
-
-  em {
-    margin-top: 3px;
-    color: var(--app-text);
-  }
-}
-
-.record-clock {
-  color: var(--app-heading);
-  font-size: 14px;
-}
-
-.record-name-cell {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-
-  strong {
-    overflow: hidden;
-    color: var(--app-heading);
-    font-size: 13px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .el-tag {
-    flex: 0 0 auto;
-  }
-}
-
-.record-result-summary {
-  display: grid;
-  gap: 2px;
-  min-width: 0;
-
-  strong,
-  span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  strong {
-    color: var(--app-heading);
-    font-size: 13px;
-  }
-
-  span {
-    color: var(--app-muted);
-    font-size: 11px;
-  }
-
-  &.has-abnormal strong {
-    color: var(--el-color-danger);
-  }
-}
-
-.record-count-cell {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
-
-  span {
-    padding: 3px 5px;
-    border-radius: 4px;
-    background: var(--surface-subtle);
-    color: var(--app-muted);
-    font-size: 11px;
-  }
-
-  .has-abnormal {
-    background: var(--el-color-danger-light-9);
-    color: var(--el-color-danger);
-  }
-}
 
 .dashboard-status {
   display: grid;
@@ -10628,294 +9966,6 @@ function resultTagType(value) {
   }
 }
 
-.inspection-detail-hero {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 18px 20px;
-  border: 1px solid var(--el-color-primary-light-9);
-  border-radius: 10px;
-  background: var(--surface-strong);
-  margin-bottom: 12px;
-
-  span {
-    color: var(--app-muted);
-    font-size: 12px;
-    font-weight: 600;
-  }
-
-  h3 {
-    margin: 6px 0;
-    color: var(--app-heading);
-    font-size: 22px;
-  }
-
-  p {
-    margin: 0;
-    color: var(--app-muted);
-    line-height: 1.5;
-  }
-}
-
-.detail-kpi-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
-
-  span {
-    display: grid;
-    gap: 4px;
-    min-height: 68px;
-    padding: 12px;
-    border: 1px solid var(--surface-border);
-    border-radius: 8px;
-    background: var(--surface-strong);
-  }
-
-  strong {
-    overflow: hidden;
-    color: var(--app-heading);
-    font-size: 18px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  em {
-    color: var(--app-muted);
-    font-size: 12px;
-    font-style: normal;
-  }
-}
-
-.detail-section {
-  padding: 14px;
-  border: 1px solid var(--surface-border);
-  border-radius: 10px;
-  background: var(--surface-strong);
-  margin-bottom: 12px;
-
-  > header {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 12px;
-
-    div {
-      display: grid;
-      gap: 4px;
-    }
-
-    strong {
-      color: var(--app-heading);
-      font-size: 16px;
-    }
-
-    span {
-      color: var(--app-muted);
-      font-size: 12px;
-    }
-  }
-}
-
-.target-result-grid,
-.target-step-items {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.target-step-groups {
-  display: grid;
-  gap: 14px;
-}
-
-.target-step-group {
-  overflow: hidden;
-  border: 1px solid var(--surface-border);
-  border-radius: 10px;
-  background: var(--surface-strong);
-}
-
-.target-step-group__head {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--surface-muted);
-  background: var(--surface-muted);
-
-  > div:nth-child(2) {
-    display: grid;
-    gap: 3px;
-    min-width: 0;
-  }
-
-  strong,
-  em {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  strong {
-    color: var(--app-heading);
-    font-size: 16px;
-  }
-
-  em {
-    color: var(--app-muted);
-    font-size: 12px;
-    font-style: normal;
-  }
-}
-
-.target-step-index {
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: var(--surface-subtle);
-  color: var(--el-color-primary);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.target-step-summary {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-
-  span {
-    display: grid;
-    min-width: 48px;
-    padding: 5px 8px;
-    border: 1px solid var(--surface-border);
-    border-radius: 7px;
-    background: var(--surface-strong);
-    text-align: center;
-  }
-
-  label {
-    color: var(--app-muted);
-    font-size: 12px;
-  }
-
-  strong {
-    color: var(--app-heading);
-    font-size: 14px;
-  }
-}
-
-.target-step-items {
-  padding: 14px;
-}
-
-.target-result-card {
-  display: grid;
-  gap: 12px;
-  min-width: 0;
-  padding: 14px;
-  border: 1px solid var(--surface-border);
-  border-radius: 8px;
-  background: var(--surface-muted);
-
-  header {
-    display: grid;
-    grid-template-columns: 34px minmax(0, 1fr) auto;
-    gap: 10px;
-    align-items: center;
-
-    div {
-      display: grid;
-      gap: 3px;
-      min-width: 0;
-    }
-
-    strong,
-    em {
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-
-    strong {
-      color: var(--app-heading);
-      font-size: 15px;
-    }
-
-    em {
-      color: var(--app-muted);
-      font-size: 12px;
-      font-style: normal;
-    }
-  }
-}
-
-.target-result-index {
-  width: 30px;
-  height: 30px;
-  line-height: 30px;
-  border-radius: 50%;
-  background: var(--surface-subtle);
-  color: var(--el-color-primary);
-  text-align: center;
-  font-weight: 700;
-}
-
-.target-result-meta {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-
-  span {
-    display: grid;
-    gap: 4px;
-    padding: 10px;
-    border-radius: 7px;
-    background: var(--surface-strong);
-  }
-
-  label {
-    color: var(--app-muted);
-    font-size: 12px;
-  }
-
-  strong {
-    color: var(--app-heading);
-  }
-}
-
-.target-call-box,
-.target-error-box {
-  display: grid;
-  gap: 6px;
-  padding: 10px 12px;
-  border-radius: 7px;
-  background: var(--surface-strong);
-
-  label {
-    color: var(--app-muted);
-    font-size: 12px;
-    font-weight: 600;
-  }
-
-  p {
-    margin: 0;
-    color: var(--app-heading);
-    line-height: 1.6;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-}
-
-.target-error-box {
-  background: var(--el-color-danger-light-9);
-
-  p {
-    color: var(--el-color-danger);
-  }
-}
 
 .soft-status-tag {
   border-radius: 999px;
@@ -11025,20 +10075,8 @@ function resultTagType(value) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .record-insight-strip,
-  .detail-kpi-grid,
-  .target-result-grid,
-  .target-step-items {
+  .record-insight-strip {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .target-step-group__head {
-    grid-template-columns: 1fr;
-    align-items: start;
-  }
-
-  .target-step-summary {
-    flex-wrap: wrap;
   }
 
   .tree-transfer {

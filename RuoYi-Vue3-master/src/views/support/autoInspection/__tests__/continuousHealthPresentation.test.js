@@ -9,6 +9,8 @@ import {
 } from '../continuousHealthPresentation.js'
 
 const workspaceSource = readFileSync(new URL('../index.vue', import.meta.url), 'utf8')
+const recordTableSource = readFileSync(new URL('../components/InspectionRecordTable.vue', import.meta.url), 'utf8')
+const recordResultsSource = readFileSync(new URL('../components/InspectionRecordResults.vue', import.meta.url), 'utf8')
 const panelSource = readFileSync(new URL('../components/ContinuousHealthPanel.vue', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../../../../api/support/autoInspection/index.js', import.meta.url), 'utf8')
 
@@ -110,17 +112,17 @@ test('workspace exposes plan mode, daily health and activity tools', () => {
   assert.ok(panelSource.includes('border-left: 1px solid var(--surface-border-strong)'))
   assert.ok(!panelSource.includes('continuous-health-metrics'))
   assert.ok(!panelSource.includes('scopeRankChartRef'))
-  assert.ok(workspaceSource.includes('type="expand"'))
-  assert.ok(workspaceSource.includes(':expand-row-keys="healthSampleExpandedKeys"'))
+  assert.ok(recordTableSource.includes('type="expand"'))
+  assert.ok(workspaceSource.includes(':expanded-keys="healthSampleExpandedKeys"'))
   assert.ok(workspaceSource.includes('handleHealthSampleExpand'))
   assert.ok(workspaceSource.includes('planId: planId ?? dailyHealthPlanId.value'))
   assert.ok(!workspaceSource.includes('<article v-for="sample in healthSampleRows"'))
-  assert.ok(workspaceSource.includes('targetScope.row.previousValue'))
-  assert.ok(workspaceSource.includes('targetScope.row.changeValue'))
-  assert.ok(workspaceSource.includes('grid-template-columns: minmax(0, 1fr);'))
-  assert.ok(!workspaceSource.includes('health-target-result__action'))
-  assert.ok(workspaceSource.includes('<el-popover placement="left" :width="520" trigger="hover" :show-after="250" :hide-after="80">'))
-  assert.ok(workspaceSource.includes('<el-scrollbar max-height="260px">'))
+  assert.ok(recordResultsSource.includes('row.previousValue'))
+  assert.ok(recordResultsSource.includes('row.changeValue'))
+  assert.ok(recordResultsSource.includes('grid-template-columns: 32px minmax(0, 1fr)'))
+  assert.ok(!recordResultsSource.includes('health-target-result__action'))
+  assert.ok(recordResultsSource.includes('<el-popover placement="left" :width="520" trigger="hover" :show-after="250" :hide-after="80">'))
+  assert.ok(recordResultsSource.includes('<el-scrollbar max-height="320px">'))
   assert.ok(!workspaceSource.includes('进入关注</span>'))
   assert.ok(!workspaceSource.includes('确认异常</span>'))
   assert.ok(!workspaceSource.includes('恢复确认</span>'))
@@ -128,7 +130,7 @@ test('workspace exposes plan mode, daily health and activity tools', () => {
 
 test('unexecuted state is distinct from a healthy comparison baseline', () => {
   assert.equal(healthStatusLabel('3'), '尚未执行')
-  assert.ok(workspaceSource.includes('基线已建立'))
+  assert.ok(recordResultsSource.includes('基线已建立'))
   assert.ok(workspaceSource.includes('新周期首次取值建立基线并按正常计入'))
   assert.ok(workspaceSource.includes('每天重新累计'))
   assert.ok(workspaceSource.includes('comparisonScopeOptions'))
