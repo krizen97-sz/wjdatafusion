@@ -105,7 +105,7 @@ function timeLabel(value) {
   :deep(.el-table__cell) { padding: 10px 0; }
   :deep(.record-date-column) { vertical-align: top; }
   :deep(.record-row--abnormal > td) { background: var(--el-color-danger-light-9); }
-  :deep(.el-table__expanded-cell) { padding: 12px; background: var(--surface-muted); }
+  :deep(.el-table__expanded-cell) { padding: 0 12px 12px; background: var(--surface-muted); }
   :deep(th.el-table__cell) { background: var(--surface-strong); color: var(--app-heading); }
 }
 .record-date-cell { display: grid; gap: 2px; line-height: 1.5; }

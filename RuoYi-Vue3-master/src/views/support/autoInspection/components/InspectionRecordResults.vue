@@ -10,7 +10,7 @@
       <el-table v-if="group.targets.length" :data="group.targets" class="inspection-target-table" size="small">
         <el-table-column label="检查子项" min-width="220">
           <template #default="{ row, $index }">
-            <div class="target-name"><span>{{ groupIndex + 1 }}.{{ $index + 1 }}</span><strong>{{ row.targetName || `检查子项 ${$index + 1}` }}</strong></div>
+            <div class="target-name"><strong>{{ row.targetName || `检查子项 ${$index + 1}` }}</strong></div>
             <span v-if="row.baselineFlag === 'Y'" class="target-baseline">基线已建立</span>
           </template>
         </el-table-column>
@@ -67,34 +67,55 @@ const groups = computed(() => getRecordResultGroups(props.record))
 </script>
 
 <style scoped lang="scss">
-.inspection-record-results { min-width: 0; width: 100%; color: var(--app-text); }
-.result-step + .result-step { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--surface-border); }
-.result-step__head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-.result-step__index { flex: 0 0 28px; text-align: center; color: var(--app-muted); font-variant-numeric: tabular-nums; }
+.inspection-record-results { min-width: 0; width: 100%; padding: 2px 12px 12px; background: var(--surface-muted); color: var(--app-text); }
+.result-step { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--surface-border); }
+.result-step__head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.result-step__index {
+  display: grid;
+  flex: 0 0 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  font-size: var(--el-font-size-extra-small);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
 .result-step__name { display: grid; flex: 1; min-width: 0; gap: 2px; }
 .result-step__name strong { color: var(--app-heading); overflow-wrap: anywhere; }
 .result-step__name span, .result-step__count, .target-baseline { color: var(--app-muted); font-size: var(--el-font-size-extra-small); }
 .result-step__count { flex: 0 0 auto; }
 .inspection-target-table {
+  --el-table-bg-color: var(--surface-bg);
+  --el-table-tr-bg-color: var(--surface-bg);
+  --el-table-header-bg-color: var(--surface-strong);
   width: 100%;
   :deep(th.el-table__cell) { background: var(--surface-strong); color: var(--app-heading); }
   :deep(.el-table__cell) { padding: 10px 0; vertical-align: top; }
   :deep(.cell) { white-space: normal; overflow-wrap: anywhere; }
 }
-.target-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-.target-name span { flex: 0 0 auto; color: var(--app-muted); }
+.target-name { display: grid; min-width: 0; }
 .target-name strong { min-width: 0; font-weight: 500; color: var(--app-heading); white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
-.target-values { display: grid; gap: 6px; margin: 0; }
-.target-values > div { display: grid; grid-template-columns: 32px minmax(0, 1fr); align-items: baseline; gap: 8px; }
+.target-values { display: grid; gap: 5px; margin: 0; }
+.target-values > div {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 5px;
+  padding: 4px 6px;
+  border-radius: var(--el-border-radius-base);
+  background: var(--surface-subtle);
+}
 .target-values dt { color: var(--app-muted); }
 .target-values dd { margin: 0; color: var(--app-heading); overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .target-rule { display: grid; gap: 4px; }
 .target-rule span, .target-rule small { color: var(--app-muted); }
 .target-rule strong { font-weight: 500; white-space: normal; overflow-wrap: anywhere; }
-.target-call { cursor: help; min-width: 0; }
-.target-call:hover { background: var(--surface-hover); }
+.target-call { cursor: help; min-width: 0; padding: 4px 6px; border-radius: var(--el-border-radius-base); }
+.target-call:hover { background: var(--surface-subtle); }
 .target-call:focus-visible { outline: 2px solid var(--el-color-primary); }
-.target-call__preview, .target-call > .target-call__error { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.target-call__preview, .target-call > .target-call__error { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .target-call__error { color: var(--el-color-danger); font-weight: 500; }
 .target-call-detail { color: var(--app-text); }
 .target-call-detail strong, .target-call-detail p { overflow-wrap: anywhere; white-space: pre-wrap; }

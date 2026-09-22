@@ -1,6 +1,18 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { getRecordResultGroups, resultLabel, resultTone } from '../recordResultPresentation.js'
+
+test('expanded results retain the original theme surfaces and readable target widths', () => {
+  const source = readFileSync(new URL('../components/InspectionRecordResults.vue', import.meta.url), 'utf8')
+  assert.match(source, /\.inspection-record-results[^\n]*background: var\(--surface-muted\)/)
+  assert.match(source, /\.result-step__index\s*\{[^}]*background: var\(--el-color-primary-light-9\)/)
+  assert.match(source, /\.target-values > div\s*\{[^}]*background: var\(--surface-subtle\)/)
+  assert.ok(source.includes('--el-table-tr-bg-color: var(--surface-bg)'))
+  assert.ok(source.includes('label="检查子项" min-width="220"'))
+  assert.match(source, /\.target-name strong[^\n]*white-space: normal; overflow-wrap: anywhere/)
+  assert.ok(!source.includes('{{ groupIndex + 1 }}.{{ $index + 1 }}'))
+})
 
 test('groups results by stable step identity, not duplicate tool or step names', () => {
   const record = {
