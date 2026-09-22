@@ -1,3 +1,5 @@
+export const DEFAULT_NEW_SERVER_SSH_PORT = 55555
+
 export const equipmentIntakeTypes = [
   { value: 'SERVER', label: '服务器' },
   { value: 'SWITCH', label: '交换机' },

@@ -89,11 +89,9 @@
           <dict-tag :options="sys_normal_disable" :value="scope.row.status" />
         </template>
       </el-table-column>
-      <el-table-column label="操作" align="center" class-name="small-padding fixed-width" width="420">
+      <el-table-column label="操作" align="center" class-name="small-padding fixed-width" width="260">
         <template #default="scope">
           <div class="support-table-action">
-            <el-button link type="primary" icon="Plus" v-hasPermi="['support:equipment:add', 'support:server:add', 'support:hardwareAsset:add']" @click="handleConfig(scope.row, { type: 'equipment-create' })">新增设备</el-button>
-            <el-button link type="primary" icon="Monitor" v-hasPermi="['support:equipment:query']" @click="handleConfig(scope.row, { type: 'equipment' })">设备管理</el-button>
             <el-button link type="primary" icon="Setting" @click="handleConfig(scope.row)">配置信息</el-button>
             <el-button link type="primary" icon="Edit" @click="handleUpdate(scope.row)" v-hasPermi="['support:site:edit']">修改</el-button>
             <el-button link type="danger" icon="Delete" @click="handleDelete(scope.row)" v-hasPermi="['support:site:remove']">删除</el-button>

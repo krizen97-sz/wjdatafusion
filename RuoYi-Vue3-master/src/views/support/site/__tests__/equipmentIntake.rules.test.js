@@ -1,6 +1,23 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { DEFAULT_NEW_SERVER_SSH_PORT } from '../components/equipmentIntake.rules.js'
 import { resolveIntakePlatform, buildEquipmentCreatePayload, getDeviceIntakeGaps } from '../components/equipmentIntake.rules.js'
+
+test('device controls stay at equipment level and server entry provides all three intake modes', () => {
+  const site = readFileSync(new URL('../index.vue', import.meta.url), 'utf8')
+  const config = readFileSync(new URL('../SiteConfigDialog.vue', import.meta.url), 'utf8')
+  const intake = readFileSync(new URL('../components/EquipmentIntakeDialog.vue', import.meta.url), 'utf8')
+  assert.doesNotMatch(site.split('<script')[0], />新增设备<|>设备管理</)
+  const toolbarEnd = config.indexOf('</header>')
+  assert.ok(toolbarEnd > 0)
+  assert.doesNotMatch(config.slice(0, toolbarEnd), />新增设备<|>设备管理</)
+  for (const label of ['单台新增', '批量新增', '模板导入']) assert.ok(intake.includes(`label="${label}"`))
+  assert.ok(intake.includes('accept=".xlsx"'))
+  assert.ok(intake.includes('previewServers'))
+  assert.equal(DEFAULT_NEW_SERVER_SSH_PORT, 55555)
+  assert.ok(intake.includes('sshPort: DEFAULT_NEW_SERVER_SSH_PORT'))
+})
 
 test('site-wide intake never inherits a stale platform and servers require a child platform', () => {
   const platforms = [{ platformId: 1, platformLevel: 'MAIN' }, { platformId: 2, platformLevel: 'SUB' }]

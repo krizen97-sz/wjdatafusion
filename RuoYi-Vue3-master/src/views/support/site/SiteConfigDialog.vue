@@ -46,8 +46,6 @@
             </div>
           </div>
           <div class="fusion-workbench__actions">
-            <el-button icon="Plus" v-hasPermi="['support:equipment:add', 'support:server:add', 'support:hardwareAsset:add']" @click="openEquipmentIntake({ platformId: null })">新增设备</el-button>
-            <el-button icon="Monitor" v-hasPermi="['support:equipment:query']" @click="openSiteEquipmentDirectory">设备管理</el-button>
             <el-input
               v-model="platformQuery.platformName"
               class="fusion-workbench__search"
@@ -1718,7 +1716,8 @@
     </el-dialog>
 
     <EquipmentIntakeDialog ref="equipmentIntakeRef" :site="props.site" :platforms="platformList"
-      :network-options="support_network_env" :devices="equipmentRows" @saved="handleEquipmentCreated" />
+      :network-options="support_network_env" :devices="equipmentRows"
+      :preview-servers="previewEquipmentServers" @saved="handleEquipmentCreated" />
 
     <el-dialog v-model="equipmentAddTypeOpen" title="选择新增设备类型" width="760px" append-to-body class="equipment-type-dialog">
       <div class="equipment-type-grid">
@@ -2956,6 +2955,7 @@ import { addSiteMessage, latestSiteMessage, listSiteMessage } from '@/api/suppor
 import { addPlatform, bindContact, bindServer, delPlatform, getPlatform, listPlatform, listPlatformContacts, listPlatformServers, unbindContact, updatePlatform } from '@/api/support/platform'
 import { addServer, addServerCredential, delServer, delServerCredential, getServer, listServer, listServerCredentialPlainSummaries, listServerCredentials, previewServerImport, updateServer, updateServerCredential, viewServerCredentialPlain } from '@/api/support/server'
 import { addHardwareAsset, delHardwareAsset, getHardwareAsset, listHardwareAsset, updateHardwareAsset, viewHardwareAssetPlain } from '@/api/support/hardwareAsset'
+import { DEFAULT_NEW_SERVER_SSH_PORT } from './components/equipmentIntake.rules'
 import { addOrg, delOrg, getOrg, listOrg, updateOrg } from '@/api/support/org'
 import { addContact, delContact, getContact, listContact, updateContact } from '@/api/support/contact'
 import { addEndpoint, delEndpoint, getEndpoint, listEndpoint, updateEndpoint, viewEndpointPlain } from '@/api/support/endpoint'
@@ -5326,8 +5326,8 @@ function normalizeServerAddress(address) {
 }
 
 function normalizeSshPort(port) {
-  const value = Number(port || 22)
-  return Number.isInteger(value) && value >= 1 && value <= 65535 ? value : 22
+  const value = Number(port || DEFAULT_NEW_SERVER_SSH_PORT)
+  return Number.isInteger(value) && value >= 1 && value <= 65535 ? value : DEFAULT_NEW_SERVER_SSH_PORT
 }
 
 function validateSshPort(port) {
@@ -5938,7 +5938,7 @@ function createServerQuickForm() {
   return {
     serverName: null,
     serverAddress: null,
-    sshPort: 22,
+    sshPort: DEFAULT_NEW_SERVER_SSH_PORT,
     osType: null,
     equipmentRoom: null,
     cabinetNo: null,
@@ -5956,7 +5956,7 @@ function createServerBatchForm() {
   return {
     addressText: '',
     namePrefix: '服务器',
-    sshPort: 22,
+    sshPort: DEFAULT_NEW_SERVER_SSH_PORT,
     osType: null,
     hikPassword: null,
     rootPassword: null,
@@ -6017,7 +6017,14 @@ async function submitServerImport() {
       proxy.$modal.msgWarning('导入文件中没有可解析的服务器数据')
       return
     }
-    const drafts = rows.map((row) => {
+    const drafts = buildImportedServerDrafts(rows)
+    serverImportDialogOpen.value = false
+    await openServerBatchConfirm(drafts, serverImportTargetPlatformId.value)
+  })
+}
+
+function buildImportedServerDrafts(rows) {
+  return rows.map((row) => {
       const rawUsername = String(row.osUsername || '').trim()
       const normalizedUsername = normalizeFixedServerUsername(rawUsername)
       const fixedUsername = [SERVER_FIXED_LOGIN_HIK, SERVER_FIXED_LOGIN_ROOT].includes(normalizedUsername) ? normalizedUsername : ''
@@ -6033,10 +6040,27 @@ async function submitServerImport() {
         otherPassword: rawUsername && !fixedUsername ? row.osPassword || null : null,
         status: normalizeServerStatus(row.status)
       }
-    })
-    serverImportDialogOpen.value = false
-    await openServerBatchConfirm(drafts, serverImportTargetPlatformId.value)
   })
+}
+
+async function previewEquipmentServers({ mode, form, file }) {
+  const platform = platformList.value.find((item) => Number(item.platformId) === Number(form.platformId) && item.platformLevel === 'SUB')
+  if (!platform) throw new Error('请选择当前现场的目标子平台')
+  let drafts
+  if (mode === 'import') {
+    const response = await previewServerImport(file)
+    drafts = buildImportedServerDrafts(response.data || [])
+  } else {
+    const addresses = parseServerAddressText(form.addressText)
+    if (!validateSshPort(form.sshPort)) throw new Error('SSH端口范围必须在1-65535之间')
+    drafts = addresses.map((address) => buildServerDraft(address, {
+      ...form, otherUsername: form.loginUsername, otherPassword: form.loginPassword
+    }))
+  }
+  if (!drafts.length) throw new Error('没有可添加的服务器，请检查录入内容')
+  selectedPlatformId.value = platform.platformId
+  await loadSelectedPlatformContext()
+  await openServerBatchConfirm(drafts, platform.platformId)
 }
 
 function normalizeServerStatus(value) {
@@ -6074,6 +6098,7 @@ async function openServerBatchConfirm(drafts, platformId) {
     const existingServers = await loadServerSnapshotForDuplicateCheck()
     serverBatchExistingMap.value = buildServerAddressMap(existingServers)
     serverBatchConfirmPlatformId.value = platformId
+    serverBatchReuseExisting.value = false
     serverBatchConfirmRows.value = drafts.map((draft, index) => createServerBatchConfirmRow(draft, index))
     refreshServerBatchConfirmRows()
     serverBatchConfirmOpen.value = true
@@ -6103,7 +6128,7 @@ function createServerBatchConfirmRow(draft, index) {
     batchId: `${Date.now()}-${index}-${draft.serverAddress}`,
     serverName: draft.serverName,
     serverAddress: draft.serverAddress,
-    sshPort: draft.sshPort || 22,
+    sshPort: draft.sshPort ?? DEFAULT_NEW_SERVER_SSH_PORT,
     osType: draft.osType,
     hikPassword: draft.hikPassword,
     rootPassword: draft.rootPassword,
@@ -6418,6 +6443,7 @@ async function createAndBindServers(drafts, platformId, options = {}) {
     await loadServers()
     await loadPlatforms()
     rebuildTopologyTree()
+    await equipmentRoom3dRef.value?.refresh?.()
     const stats = { total: drafts.length, createdCount, reusedCount, boundCount }
     proxy.$modal.msgSuccess(
       typeof options.successMessage === 'function'
@@ -6643,7 +6669,7 @@ function resetServerForm() {
     siteId: props.site.siteId,
     serverName: null,
     serverAddress: null,
-    sshPort: 22,
+    sshPort: DEFAULT_NEW_SERVER_SSH_PORT,
     osType: null,
     hikPassword: null,
     rootPassword: null,
@@ -6998,13 +7024,8 @@ function handleEquipmentRoom3dAddServer(context) {
   openEquipmentIntake({ ...context, assetType: 'SERVER' })
 }
 
-async function handleEquipmentRoom3dBatchCreate(context) {
-  const platform = syncEquipmentWorkspacePlatform(context) || selectedPlatform.value || platformList.value.find((item) => item.platformLevel === 'MAIN')
-  if (!platform) {
-    proxy.$modal.msgWarning('请先新增主平台，再进行批量录入')
-    return
-  }
-  await openServerManagerFromHardwareDialog(platform)
+function handleEquipmentRoom3dBatchCreate(context) {
+  openEquipmentIntake({ ...context, assetType: 'SERVER', mode: 'batch' })
 }
 
 function handleEquipmentRoom3dCredentials(device) {

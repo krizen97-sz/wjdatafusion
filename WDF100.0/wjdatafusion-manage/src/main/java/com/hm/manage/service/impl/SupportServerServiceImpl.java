@@ -42,7 +42,7 @@ import com.hm.manage.service.support.CredentialCryptoService;
 @Service
 public class SupportServerServiceImpl implements ISupportServerService
 {
-    private static final int DEFAULT_SSH_PORT = 22;
+    private static final int DEFAULT_SSH_PORT = 55555;
     private static final int MIN_PORT = 1;
     private static final int MAX_PORT = 65535;
     private static final String IMPORT_SHEET_NAME = "服务器导入模板";
@@ -118,6 +118,10 @@ public class SupportServerServiceImpl implements ISupportServerService
         if (original == null)
         {
             throw new ServiceException("服务器不存在");
+        }
+        if (server.getSshPort() == null)
+        {
+            server.setSshPort(original.getSshPort() == null ? 22 : original.getSshPort());
         }
         validateAndNormalizeServer(server, true);
         encryptPassword(server);
@@ -315,14 +319,16 @@ public class SupportServerServiceImpl implements ISupportServerService
             Row exampleRow = sheet.createRow(1);
             exampleRow.createCell(0).setCellValue("应用服务器A");
             exampleRow.createCell(1).setCellValue("10.10.10.21");
-            exampleRow.createCell(2).setCellValue(22);
+            exampleRow.createCell(2).setCellValue(DEFAULT_SSH_PORT);
             exampleRow.createCell(3).setCellValue("CentOS");
             exampleRow.createCell(4).setCellValue("root");
             exampleRow.createCell(5).setCellValue("明文密码");
             exampleRow.createCell(6).setCellValue("正常");
 
-            Row tipRow = sheet.createRow(2);
-            tipRow.createCell(0).setCellValue("填写说明：请保持表头不变；SSH端口为空时默认22；运行状态可填写正常/停用或0/1；系统密码按明文读取。");
+            Sheet instructions = workbook.createSheet("填写说明");
+            instructions.setColumnWidth(0, 24000);
+            Row tipRow = instructions.createRow(0);
+            tipRow.createCell(0).setCellValue("填写说明：请保持表头不变；SSH端口为空时默认55555；运行状态可填写正常/停用或0/1；系统密码按明文读取。");
             workbook.write(response.getOutputStream());
         }
     }
@@ -335,7 +341,7 @@ public class SupportServerServiceImpl implements ISupportServerService
             throw new ServiceException("请选择需要导入的服务器xlsx文件");
         }
         String filename = StringUtils.defaultString(file.getOriginalFilename());
-        if (!StringUtils.endsWithIgnoreCase(filename, ".xlsx"))
+        if (!filename.toLowerCase(java.util.Locale.ROOT).endsWith(".xlsx"))
         {
             throw new ServiceException("服务器批量导入仅支持xlsx格式，请先下载模板并按模板填写");
         }

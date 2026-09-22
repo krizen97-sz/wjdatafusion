@@ -255,7 +255,7 @@ function reset() {
     siteId: null,
     serverName: null,
     serverAddress: null,
-    sshPort: 22,
+    sshPort: 55555,
     osType: null,
     osUsername: null,
     osPassword: null,
