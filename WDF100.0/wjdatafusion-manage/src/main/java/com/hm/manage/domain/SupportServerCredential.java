@@ -19,6 +19,9 @@ public class SupportServerCredential extends BaseEntity
     private String purpose;
     private String isDefault;
     private String status;
+    private Boolean legacyRegistration = false;
+    public Boolean getLegacyRegistration() { return legacyRegistration; }
+    public void setLegacyRegistration(Boolean value) { legacyRegistration = value; }
 
     public Long getCredentialId()
     {

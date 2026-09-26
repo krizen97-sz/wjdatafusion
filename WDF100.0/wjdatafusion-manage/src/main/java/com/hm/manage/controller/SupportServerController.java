@@ -78,28 +78,39 @@ public class SupportServerController extends BaseController
         return success(serverService.selectServerCredentialList(serverId));
     }
 
-    @PreAuthorize("@ss.hasAnyPermi('support:server:add,support:equipment:edit')")
-    @Log(title = "服务器凭据档案", businessType = BusinessType.INSERT, isSaveRequestData = false)
+    @PreAuthorize("@ss.hasAnyPermi('support:server:add,support:equipment:edit') or (#credential.legacyRegistration == true and @ss.hasPermi('support:server:edit'))")
+    @Log(title = "服务器账号", businessType = BusinessType.INSERT, isSaveRequestData = false)
     @PostMapping("/credential")
     public AjaxResult addCredential(@RequestBody SupportServerCredential credential)
     {
+        credential.setCreateBy(getUsername());
+        credential.setUpdateBy(getUsername());
         return toAjax(serverService.insertServerCredential(credential));
     }
 
     @PreAuthorize("@ss.hasAnyPermi('support:server:edit,support:equipment:edit')")
-    @Log(title = "服务器凭据档案", businessType = BusinessType.UPDATE, isSaveRequestData = false)
+    @Log(title = "服务器账号", businessType = BusinessType.UPDATE, isSaveRequestData = false)
     @PutMapping("/credential")
     public AjaxResult editCredential(@RequestBody SupportServerCredential credential)
     {
+        credential.setUpdateBy(getUsername());
         return toAjax(serverService.updateServerCredential(credential));
     }
 
     @PreAuthorize("@ss.hasAnyPermi('support:server:remove,support:equipment:edit')")
-    @Log(title = "服务器凭据档案", businessType = BusinessType.DELETE)
+    @Log(title = "服务器账号", businessType = BusinessType.DELETE)
     @DeleteMapping("/credential/{credentialId}")
     public AjaxResult removeCredential(@PathVariable Long credentialId)
     {
         return toAjax(serverService.deleteServerCredentialById(credentialId));
+    }
+
+    @PreAuthorize("@ss.hasAnyPermi('support:server:remove,support:equipment:edit')")
+    @Log(title = "服务器登录账号", businessType = BusinessType.DELETE)
+    @DeleteMapping("/credential/legacy/{serverId}")
+    public AjaxResult removeLegacyCredential(@PathVariable Long serverId, @org.springframework.web.bind.annotation.RequestParam String username)
+    {
+        return toAjax(serverService.deleteLegacyServerCredential(serverId, username));
     }
 
     @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")

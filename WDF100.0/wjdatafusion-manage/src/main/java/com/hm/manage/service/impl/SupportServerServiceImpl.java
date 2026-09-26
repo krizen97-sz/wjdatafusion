@@ -154,8 +154,17 @@ public class SupportServerServiceImpl implements ISupportServerService
     @Override
     public List<SupportServerCredential> selectServerCredentialList(Long serverId)
     {
-        requireServer(serverId);
-        List<SupportServerCredential> list = credentialMapper.selectCredentialsByServerId(serverId);
+        SupportServer server = requireServer(serverId);
+        List<SupportServerCredential> list = new ArrayList<>(credentialMapper.selectCredentialsByServerId(serverId));
+        if (StringUtils.isNotBlank(server.getOsUsername()) && StringUtils.isNotEmpty(server.getOsPasswordCipher())
+            && list.stream().noneMatch(item -> server.getOsUsername().trim().equalsIgnoreCase(StringUtils.trimToEmpty(item.getUsername()))))
+        {
+            SupportServerCredential legacy = new SupportServerCredential();
+            legacy.setServerId(serverId); legacy.setUsername(server.getOsUsername());
+            legacy.setCredentialName("系统登录"); legacy.setPasswordCipher(server.getOsPasswordCipher());
+            legacy.setStatus("0"); legacy.setIsDefault(list.isEmpty() ? "1" : "0"); legacy.setLegacyRegistration(true);
+            list.add(legacy);
+        }
         for (SupportServerCredential credential : list)
         {
             maskCredentialPassword(credential);
@@ -164,9 +173,23 @@ public class SupportServerServiceImpl implements ISupportServerService
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int insertServerCredential(SupportServerCredential credential)
     {
+        if (credential == null) throw new ServiceException("账号信息不能为空");
+        SupportServer lockedServer = lockCredentialServer(credential.getServerId());
+        credential.setPasswordCipher(null);
+        if (Boolean.TRUE.equals(credential.getLegacyRegistration()))
+        {
+            SupportServer server = lockedServer;
+            if (!StringUtils.trimToEmpty(server.getOsUsername()).equals(StringUtils.trimToEmpty(credential.getUsername()))
+                || StringUtils.isEmpty(server.getOsPasswordCipher()))
+                throw new ServiceException("原登录账号已变化，请刷新后再修改");
+            credential.setPasswordCipher(server.getOsPasswordCipher());
+        }
         validateAndNormalizeCredential(credential, false);
+        if (selectCredentialForUpdate(credential.getServerId(), credential.getUsername()) != null)
+            throw new ServiceException("该用户名已经登记，请修改已有账号");
         encryptCredentialPassword(credential);
         credential.setCreateTime(DateUtils.getNowDate());
         credential.setUpdateTime(DateUtils.getNowDate());
@@ -177,23 +200,36 @@ public class SupportServerServiceImpl implements ISupportServerService
         int rows = credentialMapper.insertCredential(credential);
         if (rows > 0)
         {
+            serverMapper.clearLegacyCredential(credential.getServerId(), credential.getUsername(), credential.getCreateBy(), DateUtils.getNowDate());
             SupportServer server = requireServer(credential.getServerId());
             changeLogService.record(server.getSiteId(), "INSERT", "SERVER_CREDENTIAL", credential.getCredentialId(), credential.getCredentialName(),
-                    "新增服务器凭据档案 " + credential.getCredentialName(), null, credential);
+                    "新增服务器账号 " + credential.getUsername(), null, credential);
         }
         return rows;
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int updateServerCredential(SupportServerCredential credential)
     {
+        if (credential == null || credential.getCredentialId() == null) throw new ServiceException("请选择账号");
         SupportServerCredential original = credentialMapper.selectCredentialById(credential.getCredentialId());
         if (original == null)
         {
             throw new ServiceException("服务器凭据不存在");
         }
         credential.setServerId(original.getServerId());
+        lockCredentialServer(original.getServerId());
+        original = credentialMapper.selectCredentialByIdForUpdate(credential.getCredentialId());
+        if (original == null) throw new ServiceException("服务器账号已删除，请刷新");
         validateAndNormalizeCredential(credential, true);
+        if (!credential.getUsername().equalsIgnoreCase(original.getUsername()))
+        {
+            SupportServerCredential duplicate = selectCredentialForUpdate(original.getServerId(), credential.getUsername());
+            if (duplicate != null && !duplicate.getCredentialId().equals(original.getCredentialId()))
+                throw new ServiceException("该用户名已经登记，请修改已有账号");
+        }
+        credential.setPasswordCipher(null);
         encryptCredentialPassword(credential);
         if (StringUtils.isBlank(credential.getPasswordCipher()))
         {
@@ -207,14 +243,16 @@ public class SupportServerServiceImpl implements ISupportServerService
         int rows = credentialMapper.updateCredential(credential);
         if (rows > 0)
         {
+            serverMapper.clearLegacyCredential(original.getServerId(), original.getUsername(), credential.getUpdateBy(), DateUtils.getNowDate());
             SupportServer server = requireServer(credential.getServerId());
             changeLogService.record(server.getSiteId(), "UPDATE", "SERVER_CREDENTIAL", credential.getCredentialId(), credential.getCredentialName(),
-                    "修改服务器凭据档案 " + credential.getCredentialName(), original, credential);
+                    "修改服务器账号 " + credential.getUsername(), original, credential);
         }
         return rows;
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public int deleteServerCredentialById(Long credentialId)
     {
         SupportServerCredential credential = credentialMapper.selectCredentialById(credentialId);
@@ -222,12 +260,16 @@ public class SupportServerServiceImpl implements ISupportServerService
         {
             return 0;
         }
+        lockCredentialServer(credential.getServerId());
+        credential = credentialMapper.selectCredentialByIdForUpdate(credentialId);
+        if (credential == null) return 0;
         int rows = credentialMapper.deleteCredentialById(credentialId);
         if (rows > 0)
         {
+            serverMapper.clearLegacyCredential(credential.getServerId(), credential.getUsername(), com.hm.common.utils.SecurityUtils.getUsername(), DateUtils.getNowDate());
             SupportServer server = requireServer(credential.getServerId());
             changeLogService.record(server.getSiteId(), "DELETE", "SERVER_CREDENTIAL", credentialId, credential.getCredentialName(),
-                    "删除服务器凭据档案 " + credential.getCredentialName(), credential, null);
+                    "删除服务器账号 " + credential.getUsername(), credential, null);
         }
         return rows;
     }
@@ -245,6 +287,20 @@ public class SupportServerServiceImpl implements ISupportServerService
             return StringUtils.EMPTY;
         }
         return cryptoService.decrypt(credential.getPasswordCipher());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public int deleteLegacyServerCredential(Long serverId, String expectedUsername)
+    {
+        SupportServer server = lockCredentialServer(serverId);
+        if (StringUtils.isBlank(expectedUsername) || !expectedUsername.equals(server.getOsUsername())
+            || selectCredentialForUpdate(serverId, expectedUsername) != null)
+            throw new ServiceException("账号已变化，请刷新后再操作");
+        int rows = serverMapper.clearLegacyCredential(serverId, expectedUsername, com.hm.common.utils.SecurityUtils.getUsername(), DateUtils.getNowDate());
+        if (rows > 0) changeLogService.record(server.getSiteId(), "DELETE", "SERVER", serverId, server.getServerName(),
+            "删除服务器登录账号 " + expectedUsername, Map.of("username", expectedUsername), null);
+        return rows;
     }
 
     @Override
@@ -314,7 +370,8 @@ public class SupportServerServiceImpl implements ISupportServerService
             }
         }
 
-        if (StringUtils.isNotBlank(server.getOsPasswordCipher()) && StringUtils.isNotBlank(server.getOsUsername()))
+        if (StringUtils.isNotBlank(server.getOsPasswordCipher()) && StringUtils.isNotBlank(server.getOsUsername())
+            && credentials.stream().noneMatch(item -> server.getOsUsername().trim().equalsIgnoreCase(StringUtils.trimToEmpty(item.getUsername()))))
         {
             String legacyPlain = cryptoService.decrypt(server.getOsPasswordCipher());
             String legacyUsername = StringUtils.trimToEmpty(server.getOsUsername());
@@ -350,7 +407,8 @@ public class SupportServerServiceImpl implements ISupportServerService
         boolean otherConfigured = otherCredential != null && StringUtils.isNotBlank(otherCredential.getPasswordCipher());
         String otherUsername = otherCredential == null ? null : otherCredential.getUsername();
 
-        if (StringUtils.isNotBlank(server.getOsPasswordCipher()) && StringUtils.isNotBlank(server.getOsUsername()))
+        if (StringUtils.isNotBlank(server.getOsPasswordCipher()) && StringUtils.isNotBlank(server.getOsUsername())
+            && selectCredentialByUsernameIgnoreCase(server.getServerId(), server.getOsUsername()) == null)
         {
             String legacyUsername = server.getOsUsername().trim();
             if (SERVER_LOGIN_HIK.equalsIgnoreCase(legacyUsername))
@@ -405,7 +463,7 @@ public class SupportServerServiceImpl implements ISupportServerService
             credential.setServerId(server.getServerId());
             credential.setCreateTime(DateUtils.getNowDate());
         }
-        credential.setUsername(username);
+        credential.setUsername(insert ? (username.equalsIgnoreCase(StringUtils.trimToEmpty(server.getOsUsername())) ? server.getOsUsername().trim() : username) : credential.getUsername());
         credential.setCredentialName(credentialName);
         credential.setPurpose(purpose);
         credential.setIsDefault(isDefault);
@@ -601,12 +659,13 @@ public class SupportServerServiceImpl implements ISupportServerService
         {
             throw new ServiceException("登录账号不能为空");
         }
-        if (!update && StringUtils.isBlank(credential.getPassword()))
+        if (!update && StringUtils.isBlank(credential.getPassword())
+            && !(Boolean.TRUE.equals(credential.getLegacyRegistration()) && StringUtils.isNotEmpty(credential.getPasswordCipher())))
         {
             throw new ServiceException("登录密码不能为空");
         }
         credential.setCredentialName(credential.getCredentialName().trim());
-        credential.setUsername(isFixedLoginUsername(credential.getUsername()) ? normalizeFixedLoginUsername(credential.getUsername()) : credential.getUsername().trim());
+        credential.setUsername(credential.getUsername().trim());
         credential.setStatus("1".equals(credential.getStatus()) ? "1" : "0");
         credential.setIsDefault("1".equals(credential.getIsDefault()) ? "1" : "0");
     }
@@ -634,6 +693,23 @@ public class SupportServerServiceImpl implements ISupportServerService
             }
         }
         return null;
+    }
+
+    private SupportServer lockCredentialServer(Long serverId)
+    {
+        SupportServer before = requireServer(serverId);
+        lockSite(before);
+        SupportServer current = serverMapper.selectSupportServerByServerIdForUpdate(serverId);
+        if (current == null || !java.util.Objects.equals(before.getSiteId(), current.getSiteId()))
+            throw new ServiceException("服务器归属已变化，请刷新后再操作");
+        return current;
+    }
+
+    private SupportServerCredential selectCredentialForUpdate(Long serverId, String username)
+    {
+        return credentialMapper.selectCredentialsByServerIdForUpdate(serverId).stream()
+            .filter(item -> StringUtils.trimToEmpty(username).equalsIgnoreCase(StringUtils.trimToEmpty(item.getUsername())))
+            .findFirst().orElse(null);
     }
 
     private void encryptCredentialPassword(SupportServerCredential credential)

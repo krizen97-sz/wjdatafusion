@@ -94,7 +94,7 @@ const showCredentials = ref(false)
 const page = reactive({ pageNum: 1, pageSize: 10 })
 let validationSequence = 0
 const credentialFields = [
-  { key: 'hikPassword', label: 'hik密码' }, { key: 'rootPassword', label: 'root密码' },
+  { key: 'hikPassword', label: 'HIK密码' }, { key: 'rootPassword', label: 'root密码' },
   { key: 'otherUsername', label: '其他账号' }, { key: 'otherPassword', label: '其他密码' }
 ]
 const visibleCredentialFields = computed(() => showCredentials.value ? credentialFields : [])

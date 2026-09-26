@@ -89,7 +89,7 @@
         <el-collapse-item title="登录凭据（选填）" name="credentials">
           <div class="intake-grid">
             <template v-if="isServer">
-              <el-form-item label="hik密码"><el-input v-model="form.hikPassword" type="password" show-password autocomplete="new-password" /></el-form-item>
+              <el-form-item label="HIK密码"><el-input v-model="form.hikPassword" type="password" show-password autocomplete="new-password" /></el-form-item>
               <el-form-item label="root密码"><el-input v-model="form.rootPassword" type="password" show-password autocomplete="new-password" /></el-form-item>
             </template>
             <el-form-item :label="isServer ? '其他登录账号' : '登录账号'"><el-input v-model="form.loginUsername" maxlength="64" autocomplete="off" /></el-form-item>

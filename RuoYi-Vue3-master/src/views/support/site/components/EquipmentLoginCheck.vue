@@ -2,7 +2,7 @@
   <section class="equipment-login-check" aria-label="SSH密码登录校验">
     <el-form label-position="top">
       <el-form-item label="是否 root 直接登录">
-        <el-switch v-model="rootDirect" aria-label="是否root直接登录" :disabled="!canEdit || running"
+        <el-switch v-model="rootDirect" aria-label="是否root直接登录" :disabled="disabled || !canEdit || running"
           :loading="changing" :before-change="changePolicy" />
       </el-form-item>
     </el-form>
@@ -11,7 +11,7 @@
       <el-descriptions-item label="登录策略">{{ rootDirect ? 'root直接登录' : '优先HIK登录后切换root；仅登记root时直接登录' }}</el-descriptions-item>
     </el-descriptions>
     <div class="equipment-login-check__actions">
-      <el-button v-if="canVerify" type="primary" icon="Key" :loading="running" :disabled="changing" @click="check()">
+      <el-button v-if="canVerify" type="primary" icon="Key" :loading="running" :disabled="disabled || changing" @click="check()">
         {{ running ? '正在校验' : '校验登录' }}
       </el-button>
     </div>
@@ -20,20 +20,22 @@
       <el-alert :title="result.message" :type="resultType" :closable="false" show-icon />
       <el-descriptions :column="1" border>
         <el-descriptions-item label="校验时间">{{ result.checkedAt }}</el-descriptions-item>
-        <el-descriptions-item label="登录账号">{{ result.loginUsername }}</el-descriptions-item>
+        <el-descriptions-item label="登录账号"><span :title="'实际SSH用户名：' + result.loginUsername">{{ displayAccountName(result.loginUsername) }}</span></el-descriptions-item>
         <el-descriptions-item label="root密码">{{ result.rootPasswordVerified ? '校验通过' : '未通过或未完成验证' }}</el-descriptions-item>
         <el-descriptions-item v-if="result.hostFingerprint" label="主机指纹">
           <span class="equipment-login-check__fingerprint">{{ result.hostFingerprint }}</span>
         </el-descriptions-item>
       </el-descriptions>
-      <el-button v-if="result.status === 'HOST_KEY_REQUIRED' && canVerify" icon="Select" :disabled="running || changing"
+      <el-button v-if="result.status === 'HOST_KEY_REQUIRED' && canVerify" icon="Select" :disabled="disabled || running || changing"
         @click="confirmHost">确认指纹并校验</el-button>
       <el-table :data="result.steps" size="small">
         <el-table-column prop="name" label="步骤" width="110" />
         <el-table-column label="结果" width="90">
           <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusLabel(row.status) }}</el-tag></template>
         </el-table-column>
-        <el-table-column prop="message" label="说明" min-width="160" />
+        <el-table-column label="说明" min-width="160">
+          <template #default="{ row }">{{ row.name === 'SSH登录' && row.status === 'success' ? displayAccountName(result.loginUsername) + ' 账号已登录' : row.message }}</template>
+        </el-table-column>
       </el-table>
     </template>
   </section>
@@ -42,7 +44,8 @@
 <script setup>
 import { computed, getCurrentInstance, onBeforeUnmount, ref, watch } from 'vue'
 import { checkServerLogin, getEquipmentWorkbook, saveEquipmentWorkbook } from '@/api/support/equipment'
-const props = defineProps({ siteId: [Number, String], device: { type: Object, required: true } })
+import { displayAccountName } from './equipmentAccounts.rules'
+const props = defineProps({ siteId: [Number, String], device: { type: Object, required: true }, disabled: Boolean })
 const emit = defineEmits(['saved'])
 const { proxy } = getCurrentInstance()
 const rootDirect = ref(false)
@@ -62,7 +65,7 @@ watch([() => props.siteId, () => props.device.sourceId, () => props.device.rootD
 onBeforeUnmount(() => { generation++ })
 
 async function changePolicy() {
-  if (changing.value || running.value || !canEdit.value) return false
+  if (props.disabled || changing.value || running.value || !canEdit.value) return false
   changing.value = true
   const token = generation
   const nextValue = !rootDirect.value
@@ -87,7 +90,7 @@ async function changePolicy() {
   } finally { changing.value = false }
 }
 async function check(fingerprint) {
-  if (running.value || changing.value || !canVerify.value) return
+  if (props.disabled || running.value || changing.value || !canVerify.value) return
   const token = generation
   running.value = true
   error.value = ''

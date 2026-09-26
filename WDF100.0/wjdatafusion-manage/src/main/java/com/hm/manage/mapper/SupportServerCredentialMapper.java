@@ -7,8 +7,10 @@ import com.hm.manage.domain.SupportServerCredential;
 public interface SupportServerCredentialMapper
 {
     SupportServerCredential selectCredentialById(Long credentialId);
+    SupportServerCredential selectCredentialByIdForUpdate(Long credentialId);
 
     List<SupportServerCredential> selectCredentialsByServerId(Long serverId);
+    List<SupportServerCredential> selectCredentialsByServerIdForUpdate(Long serverId);
 
     SupportServerCredential selectCredentialByServerIdAndUsername(@Param("serverId") Long serverId, @Param("username") String username);
 

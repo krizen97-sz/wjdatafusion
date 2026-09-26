@@ -38,7 +38,7 @@ export const WORKBOOK_FIELDS = [
   { prop: 'rackUEnd', name: '结束U位', size: 105, kind: 'number' },
   { prop: 'loginUsername', name: '登录账号', size: 135, source: 'HARDWARE' },
   { prop: 'loginPassword', name: '设备密码', size: 190, kind: 'password', source: 'HARDWARE' },
-  { prop: 'hikPassword', name: 'hik密码', size: 190, kind: 'password', source: 'SERVER' },
+  { prop: 'hikPassword', name: 'HIK密码', size: 190, kind: 'password', source: 'SERVER' },
   { prop: 'rootPassword', name: 'root密码', size: 190, kind: 'password', source: 'SERVER' },
   { prop: 'rootDirectLogin', name: 'root直接登录', size: 145, kind: 'boolean', source: 'SERVER' },
   { prop: 'otherUsername', name: '其他账号', size: 145, source: 'SERVER' },

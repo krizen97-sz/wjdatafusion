@@ -23,6 +23,8 @@ public class SupportEquipmentCredentialService
     private ISupportServerService serverService;
     @Autowired
     private ISupportHardwareAssetService hardwareAssetService;
+    @Autowired
+    private com.hm.manage.service.support.CredentialCryptoService cryptoService;
 
     public List<Map<String, Object>> readPlain(SupportEquipmentBatchBo command)
     {
@@ -66,14 +68,12 @@ public class SupportEquipmentCredentialService
                     Map<String, Object> item = new LinkedHashMap<>();
                     item.put("username", credential.getUsername());
                     item.put("name", credential.getCredentialName());
-                    item.put("password", serverService.getServerCredentialPasswordPlain(credential.getCredentialId()));
+                    item.put("credentialId", credential.getCredentialId());
+                    item.put("legacyRegistration", Boolean.TRUE.equals(credential.getLegacyRegistration()));
+                    item.put("password", Boolean.TRUE.equals(credential.getLegacyRegistration())
+                        ? cryptoService.decrypt(server.getOsPasswordCipher())
+                        : serverService.getServerCredentialPasswordPlain(credential.getCredentialId()));
                     credentials.add(item);
-                }
-                for (Map<String, Object> summary : serverService.selectServerCredentialPlainSummaries(new Long[] { server.getServerId() }))
-                {
-                    appendLegacy(credentials, "hik", summary.get("hikPassword"));
-                    appendLegacy(credentials, "root", summary.get("rootPassword"));
-                    appendLegacy(credentials, (String) summary.get("otherUsername"), summary.get("otherPassword"));
                 }
             }
             else if (device instanceof SupportHardwareAsset asset)
@@ -92,14 +92,4 @@ public class SupportEquipmentCredentialService
         return result;
     }
 
-    private void appendLegacy(List<Map<String, Object>> credentials, String username, Object password)
-    {
-        if (username == null || username.isBlank() || password == null || password.toString().isEmpty()
-            || credentials.stream().anyMatch(item -> username.equals(item.get("username")))) return;
-        Map<String, Object> item = new LinkedHashMap<>();
-        item.put("username", username);
-        item.put("name", "系统登录");
-        item.put("password", password);
-        credentials.add(item);
-    }
 }

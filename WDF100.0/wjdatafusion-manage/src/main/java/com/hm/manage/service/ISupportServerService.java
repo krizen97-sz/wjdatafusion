@@ -25,6 +25,8 @@ public interface ISupportServerService
 
     int deleteServerCredentialById(Long credentialId);
 
+    int deleteLegacyServerCredential(Long serverId, String expectedUsername);
+
     String getServerCredentialPasswordPlain(Long credentialId);
 
     List<Map<String, Object>> selectServerCredentialPlainSummaries(Long[] serverIds);

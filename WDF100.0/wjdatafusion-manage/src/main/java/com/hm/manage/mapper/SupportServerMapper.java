@@ -7,6 +7,7 @@ import com.hm.manage.domain.SupportServer;
 public interface SupportServerMapper
 {
     SupportServer selectSupportServerByServerId(Long serverId);
+    SupportServer selectSupportServerByServerIdForUpdate(Long serverId);
 
     List<SupportServer> selectSupportServerList(SupportServer server);
 
@@ -17,6 +18,9 @@ public interface SupportServerMapper
     int insertSupportServer(SupportServer server);
 
     int updateSupportServer(SupportServer server);
+
+    int clearLegacyCredential(@Param("serverId") Long serverId, @Param("username") String username,
+        @Param("actor") String actor, @Param("now") java.util.Date now);
 
     int deleteSupportServerByServerId(Long serverId);
 

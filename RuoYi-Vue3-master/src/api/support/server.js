@@ -17,11 +17,15 @@ export function listServerCredentials(serverId) {
 }
 
 export function addServerCredential(data) {
-  return request({ url: '/support/server/credential', method: 'post', data })
+  return request({ url: '/support/server/credential', method: 'post', data, headers: { repeatSubmit: false } })
 }
 
 export function updateServerCredential(data) {
-  return request({ url: '/support/server/credential', method: 'put', data })
+  return request({ url: '/support/server/credential', method: 'put', data, headers: { repeatSubmit: false } })
+}
+
+export function delLegacyServerCredential(serverId, username) {
+  return request({ url: '/support/server/credential/legacy/' + serverId, method: 'delete', params: { username } })
 }
 
 export function delServerCredential(credentialId) {

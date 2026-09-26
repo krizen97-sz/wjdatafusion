@@ -45,6 +45,11 @@
         limit 1
     </select>
 
+    <select id="selectSupportServerByServerIdForUpdate" resultMap="SupportServerResult">
+        <include refid="selectSupportServerVo"/>
+        where server_id = #{serverId} for update
+    </select>
+
     <select id="selectSupportServerList" parameterType="SupportServer" resultMap="SupportServerResult">
         <include refid="selectSupportServerVo"/>
         <where>
@@ -132,6 +137,12 @@
             <if test="remark != null">remark = #{remark},</if>
         </trim>
         where server_id = #{serverId}
+    </update>
+
+    <update id="clearLegacyCredential">
+        update sup_server set os_username = null, os_password_cipher = null,
+            update_by = #{actor}, update_time = #{now}
+        where server_id = #{serverId} and lower(trim(os_username)) = lower(trim(#{username}))
     </update>
 
     <delete id="deleteSupportServerByServerId" parameterType="Long">

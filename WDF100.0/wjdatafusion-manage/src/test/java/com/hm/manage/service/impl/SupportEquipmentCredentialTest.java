@@ -83,10 +83,14 @@ class SupportEquipmentCredentialTest
         when(servers.selectSupportServerByServerId(1L)).thenReturn(server);
         var credential = new SupportServerCredential();
         credential.setCredentialId(10L); credential.setUsername("root");
-        when(servers.selectServerCredentialList(1L)).thenReturn(List.of(credential));
+        var legacy = new SupportServerCredential();
+        legacy.setUsername("HIK"); legacy.setLegacyRegistration(true);
+        server.setOsPasswordCipher("legacy-cipher");
+        when(servers.selectServerCredentialList(1L)).thenReturn(List.of(credential, legacy));
+        var crypto = mock(com.hm.manage.service.support.CredentialCryptoService.class);
+        ReflectionTestUtils.setField(service, "cryptoService", crypto);
+        when(crypto.decrypt("legacy-cipher")).thenReturn("legacy-hik");
         when(servers.getServerCredentialPasswordPlain(10L)).thenReturn("test-root");
-        when(servers.selectServerCredentialPlainSummaries(any())).thenReturn(List.of(Map.of(
-            "rootPassword", "test-root", "hikPassword", "legacy-hik")));
         var asset = new SupportHardwareAsset();
         asset.setAssetId(1L); asset.setSiteId(1L); asset.setLoginUsername("admin");
         when(hardware.selectSupportHardwareAssetByAssetId(1L)).thenReturn(asset);
@@ -97,6 +101,9 @@ class SupportEquipmentCredentialTest
         assertEquals("HARDWARE:1", result.get(1).get("deviceKey"));
         assertEquals(2, ((List<?>) result.get(0).get("credentials")).size());
         verify(servers, times(1)).getServerCredentialPasswordPlain(10L);
+        verify(servers, never()).getServerCredentialPasswordPlain(null);
+        verify(servers, never()).selectServerCredentialPlainSummaries(any());
+        verify(crypto).decrypt("legacy-cipher");
     }
 
     @Test

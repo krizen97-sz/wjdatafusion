@@ -325,6 +325,7 @@ public class SupportEquipmentWorkbookService
             if (!passwordChanged && !("otherPassword".equals(field) && fields.containsKey("otherUsername"))) continue;
             Map<String, Object> existing = accountFor(row.before, field);
             String username = "hikPassword".equals(field) ? "hik" : "rootPassword".equals(field) ? "root" : text(row.after.get("otherUsername")).trim();
+            if (!"otherPassword".equals(field) && !text(existing.get("username")).isEmpty()) username = text(existing.get("username"));
             String cipher = passwordChanged ? crypto.encrypt((String) fields.get(field)) : text(existing.get("cipher"));
             Long credentialId = number(existing.get("credentialId"));
             if (credentialId != null)
