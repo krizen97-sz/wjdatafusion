@@ -80,91 +80,9 @@
       @pagination="getList"
     />
 
-    <el-dialog v-model="open" :aria-label="title" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--platform">
-      <template #header="{ titleId, titleClass }">
-        <div class="editor-hero editor-hero--platform">
-          <div class="editor-hero__icon">平</div>
-          <div class="editor-hero__copy">
-            <h3 :id="titleId" :class="titleClass">{{ title }}</h3>
-            <p>{{ platformDialogLead }}</p>
-          </div>
-          <div class="editor-hero__chips">
-            <span class="editor-chip" :class="form.platformLevel === 'MAIN' ? 'editor-chip--main' : 'editor-chip--sub'">
-              {{ getPlatformLevelLabel(form.platformLevel) }}
-            </span>
-            <span class="editor-chip editor-chip--ghost">现场 ID {{ form.siteId || '未填写' }}</span>
-            <span v-if="form.platformLevel === 'SUB'" class="editor-chip editor-chip--ghost">父平台 {{ platformFormParentName }}</span>
-            <span v-if="form.platformLevel === 'MAIN'" class="editor-chip editor-chip--network" :class="getNetworkEnvClass(form.networkEnv)" :style="getNetworkEnvStyle(form.networkEnv)">
-              网络 {{ getNetworkEnvLabel(form.networkEnv) }}
-            </span>
-          </div>
-        </div>
-      </template>
-      <div class="editor-shell">
-        <div class="editor-layout">
-          <section class="editor-panel">
-            <div class="editor-section">
-              <div class="editor-section__head">
-                <div>
-                  <strong>基础结构</strong>
-                  <p>定义平台在拓扑里的层级、归属现场和启用状态。</p>
-                </div>
-              </div>
-              <el-form ref="platformRef" :model="form" :rules="rules" label-position="top" class="editor-form editor-form--grid">
-                <el-form-item label="现场 ID" prop="siteId">
-                  <el-input-number v-model="form.siteId" :min="1" controls-position="right" />
-                </el-form-item>
-                <el-form-item label="运行状态" prop="status">
-                  <el-radio-group v-model="form.status">
-                    <el-radio value="0">正常</el-radio>
-                    <el-radio value="1">停用</el-radio>
-                  </el-radio-group>
-                </el-form-item>
-                <el-form-item class="editor-form__wide" label="平台名称" prop="platformName">
-                  <el-input v-model="form.platformName" placeholder="例如：综合安防平台 / 云存储平台" />
-                </el-form-item>
-                <el-form-item label="平台级别" prop="platformLevel">
-                  <el-radio-group v-model="form.platformLevel">
-                    <el-radio value="MAIN">主平台</el-radio>
-                    <el-radio value="SUB">子平台</el-radio>
-                  </el-radio-group>
-                </el-form-item>
-                <el-form-item v-if="form.platformLevel === 'MAIN'" label="网络环境" prop="networkEnv">
-                  <el-select v-model="form.networkEnv" placeholder="请选择网络环境" filterable style="width: 100%">
-                    <el-option v-for="dict in support_network_env" :key="dict.value" :label="dict.label" :value="dict.value" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item v-if="form.platformLevel === 'SUB'" label="父平台" prop="parentPlatformId">
-                  <el-select v-model="form.parentPlatformId" placeholder="请选择父平台" clearable style="width: 100%">
-                    <el-option
-                      v-for="item in parentPlatformOptions"
-                      :key="item.platformId"
-                      :label="item.platformName"
-                      :value="item.platformId"
-                    />
-                  </el-select>
-                </el-form-item>
-                <el-form-item class="editor-form__wide" label="备注" prop="remark">
-                  <el-input v-model="form.remark" type="textarea" :rows="3" placeholder="补充平台职责、部署特点或注意事项" />
-                </el-form-item>
-              </el-form>
-            </div>
-          </section>
-          <aside class="editor-preview">
-            <article class="editor-preview-card editor-preview-card--platform" :class="form.platformLevel === 'MAIN' ? getNetworkEnvClass(form.networkEnv) : ''" :style="form.platformLevel === 'MAIN' ? getNetworkEnvStyle(form.networkEnv) : null">
-              <span class="editor-preview-card__eyebrow">拓扑预览</span>
-              <strong>{{ form.platformName || '未命名平台' }}</strong>
-              <p>{{ platformPreviewCopy }}</p>
-              <div class="editor-preview-card__meta">
-                <span>级别 {{ getPlatformLevelLabel(form.platformLevel) }}</span>
-                <span v-if="form.platformLevel === 'MAIN'">网络 {{ getNetworkEnvLabel(form.networkEnv) }}</span>
-                <span>状态 {{ getStatusLabel(form.status) }}</span>
-                <span>现场 {{ form.siteId || '待设置' }}</span>
-              </div>
-            </article>
-          </aside>
-        </div>
-      </div>
+<el-dialog v-model="open" :title="title" width="min(600px, 94vw)" append-to-body :close-on-click-modal="false">
+      <SiteEntityForm ref="platformRef" kind="platform" :model="form" :rules="rules" :networks="support_network_env" :parents="parentPlatformOptions" editable-site>
+      </SiteEntityForm>
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="cancel">取 消</el-button>
@@ -264,60 +182,9 @@
       </el-table>
     </el-dialog>
 
-    <el-dialog v-model="endpointFormOpen" :aria-label="endpointTitle" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--page">
-      <template #header="{ titleId, titleClass }">
-        <div class="editor-hero editor-hero--page">
-          <div class="editor-hero__icon">页</div>
-          <div class="editor-hero__copy">
-            <h3 :id="titleId" :class="titleClass">{{ endpointTitle }}</h3>
-            <p>{{ endpointDialogLead }}</p>
-          </div>
-          <div class="editor-hero__chips">
-            <span class="editor-chip editor-chip--page">页面入口</span>
-            <span class="editor-chip editor-chip--ghost">所属 {{ endpointPlatformName }}</span>
-            <span class="editor-chip editor-chip--ghost">{{ endpointCredentialLabel }}</span>
-          </div>
-        </div>
-      </template>
-      <div class="editor-shell">
-        <div class="editor-layout">
-          <section class="editor-panel">
-            <div class="editor-section">
-              <div class="editor-section__head">
-                <div>
-                  <strong>页面入口</strong>
-                  <p>名称、访问地址和账号信息会直接影响拓扑卡片中的识别效率。</p>
-                </div>
-              </div>
-              <el-form ref="endpointRef" :model="endpointForm" :rules="endpointRules" label-position="top" class="editor-form editor-form--grid">
-                <el-form-item label="页面名称" prop="endpointName">
-                  <el-input v-model="endpointForm.endpointName" placeholder="例如：运维后台 / 管理入口" />
-                </el-form-item>
-                <el-form-item label="登录账号" prop="loginUsername">
-                  <el-input v-model="endpointForm.loginUsername" placeholder="填写页面登录账号" />
-                </el-form-item>
-                <el-form-item class="editor-form__wide" label="访问 URL" prop="accessUrl">
-                  <el-input v-model="endpointForm.accessUrl" placeholder="https://example.com/portal" />
-                </el-form-item>
-                <el-form-item class="editor-form__wide" label="登录密码" prop="loginPassword">
-                  <el-input v-model="endpointForm.loginPassword" type="password" show-password placeholder="留空表示不改动现有密码" />
-                </el-form-item>
-              </el-form>
-            </div>
-          </section>
-          <aside class="editor-preview">
-            <article class="editor-preview-card editor-preview-card--page">
-              <span class="editor-preview-card__eyebrow">页面预览</span>
-              <strong>{{ endpointForm.endpointName || '未命名页面' }}</strong>
-              <p>{{ endpointForm.accessUrl || '请输入访问 URL，保存后会在页面卡片中直接展示。' }}</p>
-              <div class="editor-preview-card__meta">
-                <span>账号 {{ endpointForm.loginUsername || '未填写' }}</span>
-                <span>密码 {{ endpointForm.loginPassword ? '本次将更新' : '保持现状 / 未配置' }}</span>
-              </div>
-            </article>
-          </aside>
-        </div>
-      </div>
+<el-dialog v-model="endpointFormOpen" :title="endpointTitle" width="min(600px, 94vw)" append-to-body :close-on-click-modal="false">
+      <SiteEntityForm ref="endpointRef" kind="endpoint" :model="endpointForm" :rules="endpointRules">
+      </SiteEntityForm>
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="endpointFormOpen = false">取 消</el-button>
@@ -330,6 +197,7 @@
 
 <script setup name="SupportPlatform">
 import { listPlatform, getPlatform, addPlatform, updatePlatform, delPlatform, bindServer, unbindServer, bindContact, unbindContact, listPlatformServers, listPlatformContacts } from '@/api/support/platform'
+import SiteEntityForm from '@/views/support/site/components/SiteEntityForm.vue'
 import { listServer } from '@/api/support/server'
 import { listContact } from '@/api/support/contact'
 import { listEndpoint, getEndpoint, addEndpoint, updateEndpoint, delEndpoint, viewEndpointPlain } from '@/api/support/endpoint'
@@ -771,227 +639,41 @@ getList()
   border-color: var(--el-color-success-light-7) !important;
 }
 
-.support-editor-dialog :deep(.el-dialog) {
-  overflow: hidden;
-  border-radius: 14px;
-  background: var(--surface-muted);
-}
 
-.support-editor-dialog :deep(.el-dialog__header) {
-  margin-right: 0;
-  padding: 0;
-}
 
-.support-editor-dialog :deep(.el-dialog__headerbtn) {
-  top: 18px;
-  right: 18px;
-}
 
-.support-editor-dialog :deep(.el-dialog__body) {
-  padding: 0 24px 24px;
-}
 
-.support-editor-dialog :deep(.el-dialog__footer) {
-  padding: 0 24px 24px;
-}
 
-.editor-hero {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 16px;
-  padding: 24px;
-  border-bottom: 1px solid var(--surface-border);
-}
 
-.editor-hero--platform {
-  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 56%, var(--el-color-primary-light-9) 100%);
-}
 
-.editor-hero--page {
-  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 52%, var(--el-color-primary-light-9) 100%);
-}
 
-.editor-hero__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 54px;
-  height: 54px;
-  border-radius: 14px;
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--app-heading);
-  background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
-  border: 1px solid color-mix(in srgb, var(--surface-border) 90%, transparent);
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--app-heading) 8%, transparent);
-}
 
-.editor-hero__copy {
-  display: grid;
-  gap: 6px;
-}
 
-.editor-hero__copy h3 {
-  margin: 0;
-  font-size: 28px;
-  line-height: 1.12;
-  color: var(--app-heading);
-}
 
-.editor-hero__copy p {
-  margin: 0;
-  max-width: 56ch;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--app-muted);
-}
 
-.editor-hero__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  grid-column: 1 / -1;
-}
 
-.editor-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  font-size: 12px;
-  font-weight: 600;
-}
 
-.editor-chip--main {
-  color: var(--el-color-primary);
-  background: var(--surface-subtle);
-  border-color: var(--el-color-primary-light-9);
-}
 
-.editor-chip--sub {
-  color: var(--app-text);
-  background: var(--surface-subtle);
-  border-color: var(--el-color-primary-light-9);
-}
 
-.editor-chip--page {
-  color: var(--app-text);
-  background: var(--surface-subtle);
-  border-color: var(--el-color-warning-light-7);
-}
 
-.editor-chip--ghost {
-  color: var(--app-muted);
-  background: color-mix(in srgb, var(--surface-strong) 76%, transparent);
-  border-color: color-mix(in srgb, var(--surface-border) 92%, transparent);
-}
 
-.editor-chip--network {
-  color: var(--network-text);
-  background: var(--network-bg);
-  border-color: var(--network-border);
-}
 
-.editor-shell {
-  padding-top: 20px;
-}
 
-.editor-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(240px, 0.9fr);
-  gap: 18px;
-}
 
-.editor-panel,
-.editor-preview {
-  display: grid;
-  gap: 16px;
-}
 
-.editor-section {
-  padding: 18px;
-  border-radius: 14px;
-  border: 1px solid var(--surface-border);
-  background: var(--surface-strong);
-  box-shadow: 0 16px 36px color-mix(in srgb, var(--app-heading) 5%, transparent);
-}
 
-.editor-section__head {
-  margin-bottom: 16px;
-}
 
-.editor-section__head strong {
-  color: var(--app-heading);
-  font-size: 15px;
-}
 
-.editor-section__head p {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--app-muted);
-}
 
-.editor-form--grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 16px;
-}
 
-.editor-form__wide {
-  grid-column: 1 / -1;
-}
 
-.editor-form :deep(.el-form-item) {
-  margin-bottom: 16px;
-}
 
-.editor-form :deep(.el-form-item__label) {
-  padding-bottom: 8px;
-  font-weight: 600;
-  color: var(--app-text);
-}
 
-.editor-form :deep(.el-input__wrapper),
-.editor-form :deep(.el-textarea__inner),
-.editor-form :deep(.el-select__wrapper),
-.editor-form :deep(.el-input-number),
-.editor-form :deep(.el-input-number .el-input__wrapper) {
-  border-radius: 16px;
-  background: var(--surface-muted);
-  box-shadow: 0 0 0 1px var(--surface-border) inset;
-}
 
-.editor-form :deep(.el-radio-group) {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-}
 
-.editor-form :deep(.el-input-number) {
-  width: 100%;
-}
 
-.editor-preview-card {
-  display: grid;
-  gap: 12px;
-  min-height: 100%;
-  padding: 18px;
-  border-radius: 14px;
-  border: 1px solid var(--surface-border);
-}
 
-.editor-preview-card--platform {
-  background: var(--network-card-bg, linear-gradient(180deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%));
-  border-color: var(--network-border, var(--surface-border));
-  box-shadow: 0 18px 42px var(--network-shadow, color-mix(in srgb, var(--app-heading) 6%, transparent));
-}
 
-.editor-preview-card--page {
-  background: linear-gradient(180deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
-}
 
 .network-env--police {
   --network-text: var(--el-color-primary);
@@ -1057,43 +739,10 @@ getList()
   --network-shadow: color-mix(in srgb, var(--el-color-info) 11%, transparent);
 }
 
-.editor-preview-card__eyebrow {
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--network-muted, var(--app-text));
-}
 
-.editor-preview-card strong {
-  font-size: 24px;
-  line-height: 1.12;
-  color: var(--network-text, var(--app-heading));
-}
 
-.editor-preview-card p {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--app-text);
-}
 
-.editor-preview-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 
-.editor-preview-card__meta span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--surface-border) 95%, transparent);
-  background: color-mix(in srgb, var(--surface-strong) 80%, transparent);
-  color: var(--app-muted);
-  font-size: 12px;
-}
 
 .editor-dialog-footer {
   display: flex;
@@ -1107,13 +756,6 @@ getList()
 }
 
 @media (max-width: 900px) {
-  .editor-layout,
-  .editor-form--grid {
-    grid-template-columns: 1fr;
-  }
 
-  .editor-hero {
-    padding: 20px;
-  }
 }
 </style>

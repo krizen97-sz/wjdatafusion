@@ -34,6 +34,14 @@
   },
   "entries": [
     {
+      "id": "UIX-011-equipment-workbook",
+      "rule": "custom-core-control-style",
+      "paths": ["src/views/support/site/components/EquipmentInventory.vue"],
+      "reason": "UIX-011 maps the existing RevoGrid spreadsheet to project theme variables; all surrounding controls remain native Element Plus.",
+      "owner": "site-fusion",
+      "expires": null
+    },
+    {
       "id": "UIX-010-governance-flow-svg",
       "rule": "business-inline-svg",
       "paths": ["src/views/governance/components/FlowDiagram.vue"],

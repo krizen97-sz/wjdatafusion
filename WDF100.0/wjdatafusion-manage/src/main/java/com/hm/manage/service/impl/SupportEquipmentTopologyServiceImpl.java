@@ -303,6 +303,8 @@ public class SupportEquipmentTopologyServiceImpl implements ISupportEquipmentTop
             device.setAssetModel(asset.getAssetModel());
             device.setInstallLocation(asset.getInstallLocation());
             device.setLoginUsername(asset.getLoginUsername());
+            device.setSshPort(asset.getSshPort());
+            device.setOsType(asset.getOsType());
             device.setEquipmentRoom(asset.getEquipmentRoom());
             device.setCabinetNo(asset.getCabinetNo());
             device.setRackUStart(asset.getRackUStart());

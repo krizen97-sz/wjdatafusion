@@ -277,6 +277,8 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
             row.setAssetName(StringUtils.defaultIfEmpty(server.getServerName(), server.getServerAddress()));
             row.setIpAddress(server.getServerAddress());
             row.setLoginUsername(server.getOsUsername());
+            row.setSshPort(server.getSshPort());
+            row.setOsType(server.getOsType());
             row.setEquipmentRoom(server.getEquipmentRoom());
             row.setCabinetNo(server.getCabinetNo());
             row.setRackUStart(server.getRackUStart());
@@ -401,6 +403,10 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
 
     private boolean matchQuery(SupportEquipmentAsset row, SupportEquipmentAsset query)
     {
+        if (query.getDeviceKeys() != null && !query.getDeviceKeys().contains(row.getSourceType() + ":" + row.getSourceId()))
+        {
+            return false;
+        }
         if (StringUtils.isNotBlank(query.getSourceType()) && !query.getSourceType().equalsIgnoreCase(row.getSourceType()))
         {
             return false;

@@ -57,6 +57,7 @@
                 <el-button icon="Search" aria-label="搜索现场配置" title="搜索现场配置" @click="loadAll" />
               </template>
             </el-input>
+            <el-button icon="InfoFilled" @click="inspectorOpen = true">查看详情</el-button>
             <div class="canvas-layout-switch" role="group" aria-label="画布布局方向">
               <button
                 type="button"
@@ -346,30 +347,34 @@
             </div>
           </section>
 
-          <aside class="fusion-inspector">
+          <el-drawer v-model="inspectorOpen" title="配置详情" size="min(420px, 94vw)" append-to-body>
+          <div class="fusion-inspector">
             <div class="fusion-inspector__head">
               <span>{{ inspectorMeta.kicker }}</span>
               <strong>{{ inspectorMeta.title }}</strong>
               <small>{{ inspectorMeta.subtitle }}</small>
             </div>
-            <div class="fusion-inspector__tabs" role="tablist">
-              <button
+            <el-tabs v-model="inspectorPanelTab" class="motion-tabs" @tab-change="setInspectorPanelTab">
+              <el-tab-pane
                 v-for="tab in inspectorPanelTabs"
                 :key="tab.value"
-                type="button"
-                :class="{ 'is-active': inspectorPanelTab === tab.value }"
-                @click="setInspectorPanelTab(tab.value)"
+                :name="tab.value"
+                :label="tab.label + ' ' + tab.meta"
               >
-                <strong>{{ tab.label }}</strong>
-                <small>{{ tab.meta }}</small>
-              </button>
-            </div>
+                <template #label>
+                  <span class="motion-control-label">
+                    <svg-icon :icon-class="{ detail: 'keyline-info', message: 'keyline-mail', log: 'keyline-clock' }[tab.value]" class="motion-control-label__icon" />
+                    <span class="motion-control-label__text">{{ tab.label }} {{ tab.meta }}</span>
+                  </span>
+                </template>
+              </el-tab-pane>
+            </el-tabs>
 
             <section v-show="inspectorPanelTab === 'detail'" class="fusion-inspector__content">
               <div class="fusion-inspector__pane">
                 <div class="fusion-inspector__actions">
                   <el-button v-if="inspectorActions.edit" type="primary" plain @click="inspectorActions.edit">
-                    {{ inspectorEditOpen ? '继续编辑' : '编辑信息' }}
+                    编辑信息
                   </el-button>
                   <el-button v-if="inspectorActions.bindServer" plain @click="inspectorActions.bindServer">设备资产</el-button>
                   <el-button v-if="inspectorActions.bindContact" plain @click="inspectorActions.bindContact">关联人员</el-button>
@@ -384,126 +389,6 @@
                     <dd>{{ item.value }}</dd>
                   </template>
                 </dl>
-                <div v-if="inspectorEditOpen" class="fusion-inspector__editor">
-                  <div class="fusion-inspector__editor-head">
-                    <strong>属性编辑</strong>
-                    <button type="button" @click="cancelInspectorEdit">收起</button>
-                  </div>
-
-                  <template v-if="inspectorEditType === 'platform'">
-                    <label>平台名称</label>
-                    <el-input v-model="inspectorDraft.platformName" placeholder="请输入平台名称" />
-                    <template v-if="inspectorDraft.platformLevel === 'MAIN'">
-                      <label>网络环境</label>
-                      <el-select v-model="inspectorDraft.networkEnv" placeholder="请选择网络环境" filterable>
-                        <el-option v-for="dict in support_network_env" :key="dict.value" :label="dict.label" :value="dict.value" />
-                      </el-select>
-                    </template>
-                    <label>状态</label>
-                    <el-select v-model="inspectorDraft.status" placeholder="请选择状态">
-                      <el-option label="正常" value="0" />
-                      <el-option label="停用" value="1" />
-                    </el-select>
-                    <label>备注</label>
-                    <el-input v-model="inspectorDraft.remark" type="textarea" :rows="3" placeholder="补充平台说明" />
-                  </template>
-
-                  <template v-else-if="inspectorEditType === 'endpoint'">
-                    <label>页面名称</label>
-                    <el-input v-model="inspectorDraft.endpointName" placeholder="请输入页面名称" />
-                    <label>访问地址</label>
-                    <el-input v-model="inspectorDraft.accessUrl" placeholder="请输入访问地址" />
-                    <label>登录账号</label>
-                    <el-input v-model="inspectorDraft.loginUsername" placeholder="请输入登录账号" />
-                    <label>登录密码</label>
-                    <el-input v-model="inspectorDraft.loginPassword" type="password" show-password placeholder="留空则不修改密码" />
-                  </template>
-
-                  <template v-else-if="inspectorEditType === 'server'">
-                    <label>服务器名称</label>
-                    <el-input v-model="inspectorDraft.serverName" placeholder="请输入服务器名称" />
-                    <label>服务器地址</label>
-                    <el-input v-model="inspectorDraft.serverAddress" placeholder="请输入服务器地址" />
-                    <label>SSH端口</label>
-                    <el-input-number v-model="inspectorDraft.sshPort" :min="1" :max="65535" controls-position="right" />
-                    <label>操作系统</label>
-                    <el-input v-model="inspectorDraft.osType" placeholder="例如 CentOS / Windows Server" />
-                    <label>hik密码</label>
-                    <el-input v-model="inspectorDraft.hikPassword" :type="getServerPasswordInputType('inspector', 'hikPassword')" :placeholder="inspectorDraft.hikCredentialConfigured ? '已保存，点击右侧眼睛查看明文' : '用户名固定为hik'">
-                      <template #suffix>
-                        <el-button
-                          v-if="canShowServerPasswordEye('inspector', 'hikPassword')"
-                          class="server-password-eye"
-                          link
-                          type="primary"
-                          icon="View"
-                          aria-label="显示或隐藏密码"
-                          title="显示或隐藏密码"
-                          :loading="isServerPasswordLoading('inspector', 'hikPassword')"
-                          @click.stop="toggleServerPasswordPlain('inspector', 'hikPassword')"
-                        />
-                      </template>
-                    </el-input>
-                    <label>root密码</label>
-                    <el-input v-model="inspectorDraft.rootPassword" :type="getServerPasswordInputType('inspector', 'rootPassword')" :placeholder="inspectorDraft.rootCredentialConfigured ? '已保存，点击右侧眼睛查看明文' : '用户名固定为root'">
-                      <template #suffix>
-                        <el-button
-                          v-if="canShowServerPasswordEye('inspector', 'rootPassword')"
-                          class="server-password-eye"
-                          link
-                          type="primary"
-                          icon="View"
-                          aria-label="显示或隐藏密码"
-                          title="显示或隐藏密码"
-                          :loading="isServerPasswordLoading('inspector', 'rootPassword')"
-                          @click.stop="toggleServerPasswordPlain('inspector', 'rootPassword')"
-                        />
-                      </template>
-                    </el-input>
-                    <label>其他账号用户名</label>
-                    <el-input v-model="inspectorDraft.otherUsername" placeholder="可选，例如运维账号" />
-                    <label>其他账号密码</label>
-                    <el-input v-model="inspectorDraft.otherPassword" :type="getServerPasswordInputType('inspector', 'otherPassword')" :placeholder="inspectorDraft.otherCredentialConfigured ? '已保存，点击右侧眼睛查看明文' : '填写其他账号时必填'">
-                      <template #suffix>
-                        <el-button
-                          v-if="canShowServerPasswordEye('inspector', 'otherPassword')"
-                          class="server-password-eye"
-                          link
-                          type="primary"
-                          icon="View"
-                          aria-label="显示或隐藏密码"
-                          title="显示或隐藏密码"
-                          :loading="isServerPasswordLoading('inspector', 'otherPassword')"
-                          @click.stop="toggleServerPasswordPlain('inspector', 'otherPassword')"
-                        />
-                      </template>
-                    </el-input>
-                  </template>
-
-                  <template v-else-if="inspectorEditType === 'contact'">
-                    <label>所属组织</label>
-                    <el-select v-model="inspectorDraft.orgId" placeholder="请选择组织" filterable>
-                      <el-option v-for="org in orgList" :key="org.orgId" :label="`${getOrgTypeLabel(org.orgType)}｜${org.orgName}`" :value="org.orgId" />
-                    </el-select>
-                    <label>姓名</label>
-                    <el-input v-model="inspectorDraft.contactName" placeholder="请输入联系人姓名" />
-                    <label>角色</label>
-                    <el-select v-model="inspectorDraft.roleType" placeholder="请选择角色" filterable>
-                      <el-option v-for="dict in support_contact_role" :key="dict.value" :label="dict.label" :value="dict.value" />
-                    </el-select>
-                    <label>手机</label>
-                    <el-input v-model="inspectorDraft.phone" placeholder="请输入手机号" />
-                    <label>邮箱</label>
-                    <el-input v-model="inspectorDraft.email" placeholder="请输入邮箱" />
-                    <label>微信</label>
-                    <el-input v-model="inspectorDraft.wechat" placeholder="请输入微信" />
-                  </template>
-
-                  <div class="fusion-inspector__editor-actions">
-                    <el-button @click="cancelInspectorEdit">取消</el-button>
-                    <el-button type="primary" :loading="inspectorSaving" @click="submitInspectorEdit">保存</el-button>
-                  </div>
-                </div>
               </div>
             </section>
 
@@ -578,7 +463,8 @@
                 </ul>
               </div>
             </section>
-          </aside>
+          </div>
+          </el-drawer>
         </div>
       </section>
 
@@ -1278,7 +1164,7 @@
       append-to-body
       destroy-on-close
       :show-close="false"
-      title="现场设备统一管控图"
+      title="现场设备管理"
       class="equipment-room-3d-dialog"
     >
       <EquipmentRoom3DWorkspace
@@ -1288,7 +1174,6 @@
         :site-name="props.site.siteName"
         :initial-device-key="equipmentRoom3dInitialDeviceKey"
         :initial-platform-id="equipmentRoom3dInitialPlatformId"
-        :initial-directory-open="equipmentDirectoryRequested"
         @create-device="openEquipmentIntake"
         @close="closeEquipmentRoom3d"
         @edit-device="handleEquipmentRoom3dEditDevice"
@@ -1344,8 +1229,8 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="serverCredentialFormOpen" :title="serverCredentialTitle" width="560px" append-to-body class="server-credential-form-dialog">
-      <el-form ref="serverCredentialRef" :model="serverCredentialForm" :rules="serverCredentialRules" label-position="top">
+    <el-dialog v-model="serverCredentialFormOpen" :title="serverCredentialTitle" width="min(600px, 94vw)" append-to-body>
+      <el-form ref="serverCredentialRef" :model="serverCredentialForm" :rules="serverCredentialRules" label-width="100px">
         <el-form-item label="凭据名称" prop="credentialName">
           <el-input v-model="serverCredentialForm.credentialName" placeholder="例如：巡检账号 / 运维账号 / root账号" />
         </el-form-item>
@@ -1383,7 +1268,7 @@
 
 
 
-    <el-dialog v-model="hardwareAssetFormOpen" :title="hardwareAssetTitle" width="860px" append-to-body class="hardware-asset-form-dialog">
+    <el-dialog v-model="hardwareAssetFormOpen" :title="hardwareAssetTitle" width="min(860px, 94vw)" append-to-body class="hardware-asset-form-dialog">
       <el-form ref="hardwareAssetRef" :model="hardwareAssetForm" :rules="hardwareAssetRules" label-width="104px">
         <div class="hardware-form-section">
           <strong>基础信息</strong>
@@ -1618,87 +1503,9 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="platformFormOpen" :aria-label="platformTitle" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--platform">
-      <template #header="{ titleId, titleClass }">
-        <div class="editor-hero editor-hero--platform">
-          <div class="editor-hero__icon">平</div>
-          <div class="editor-hero__copy">
-            <span class="editor-hero__eyebrow">平台编辑工作卡</span>
-            <h3 :id="titleId" :class="titleClass">{{ platformTitle }}</h3>
-            <p>{{ platformDialogLead }}</p>
-          </div>
-          <div class="editor-hero__chips">
-            <span class="editor-chip" :class="platformForm.platformLevel === 'MAIN' ? 'editor-chip--main' : 'editor-chip--sub'">
-              {{ getPlatformLevelLabel(platformForm.platformLevel) }}
-            </span>
-            <span class="editor-chip editor-chip--ghost">现场 {{ site?.siteName || '未指定现场' }}</span>
-            <span v-if="platformForm.platformLevel === 'SUB'" class="editor-chip editor-chip--ghost">
-              父平台 {{ platformParentName }}
-            </span>
-	            <span v-if="platformForm.platformLevel === 'MAIN'" class="editor-chip editor-chip--network" :class="getNetworkEnvClass(platformForm.networkEnv)">
-	              网络 {{ getNetworkEnvLabel(platformForm.networkEnv) }}
-	            </span>
-          </div>
-        </div>
-      </template>
-      <div class="editor-shell">
-        <div class="editor-layout">
-          <section class="editor-panel">
-            <div class="editor-section">
-              <div class="editor-section__head">
-                <div>
-                  <strong>基础结构</strong>
-                  <p>定义平台在现场拓扑中的身份、层级与启用状态。</p>
-                </div>
-              </div>
-              <el-form ref="platformRef" :model="platformForm" :rules="platformRules" label-position="top" class="editor-form editor-form--grid">
-                <el-form-item class="editor-form__wide" label="平台名称" prop="platformName">
-                  <el-input v-model="platformForm.platformName" placeholder="例如：综合安防平台 / 云存储平台" />
-                </el-form-item>
-                <el-form-item label="平台级别" prop="platformLevel">
-                  <el-radio-group v-model="platformForm.platformLevel">
-                    <el-radio value="MAIN">主平台</el-radio>
-                    <el-radio value="SUB">子平台</el-radio>
-                  </el-radio-group>
-                </el-form-item>
-                <el-form-item label="运行状态" prop="status">
-                  <el-radio-group v-model="platformForm.status">
-                    <el-radio value="0">正常</el-radio>
-                    <el-radio value="1">停用</el-radio>
-                  </el-radio-group>
-                </el-form-item>
-                <el-form-item v-if="platformForm.platformLevel === 'MAIN'" class="editor-form__wide" label="网络环境" prop="networkEnv">
-                  <el-select v-model="platformForm.networkEnv" placeholder="请选择网络环境" filterable style="width: 100%">
-                    <el-option v-for="dict in support_network_env" :key="dict.value" :label="dict.label" :value="dict.value" />
-                  </el-select>
-                </el-form-item>
-	                <el-form-item class="editor-form__wide" label="父平台" prop="parentPlatformId" v-if="platformForm.platformLevel === 'SUB'">
-                  <el-select v-model="platformForm.parentPlatformId" placeholder="请选择父平台" style="width: 100%" clearable>
-                    <el-option
-                      v-for="item in parentPlatformOptions"
-                      :key="item.platformId"
-                      :label="item.platformName"
-                      :value="item.platformId"
-                    />
-                  </el-select>
-                </el-form-item>
-              </el-form>
-            </div>
-          </section>
-          <aside class="editor-preview">
-	            <article class="editor-preview-card editor-preview-card--platform" :class="platformForm.platformLevel === 'MAIN' ? getNetworkEnvClass(platformForm.networkEnv) : ''">
-              <span class="editor-preview-card__eyebrow">拓扑预览</span>
-              <strong>{{ platformForm.platformName || '未命名平台' }}</strong>
-              <p>{{ platformPreviewCopy }}</p>
-	              <div class="editor-preview-card__meta">
-	                <span>级别 {{ getPlatformLevelLabel(platformForm.platformLevel) }}</span>
-	                <span v-if="platformForm.platformLevel === 'MAIN'">网络 {{ getNetworkEnvLabel(platformForm.networkEnv) }}</span>
-	                <span>状态 {{ getStatusLabel(platformForm.status) }}</span>
-	              </div>
-            </article>
-          </aside>
-        </div>
-      </div>
+<el-dialog v-model="platformFormOpen" :title="platformTitle" width="min(600px, 94vw)" append-to-body :close-on-click-modal="false">
+      <SiteEntityForm ref="platformRef" kind="platform" :model="platformForm" :rules="platformRules" :networks="support_network_env" :parents="parentPlatformOptions">
+      </SiteEntityForm>
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="platformFormOpen = false">取 消</el-button>
@@ -1707,61 +1514,9 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="endpointFormOpen" :aria-label="endpointTitle" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--page">
-      <template #header="{ titleId, titleClass }">
-        <div class="editor-hero editor-hero--page">
-          <div class="editor-hero__icon">页</div>
-          <div class="editor-hero__copy">
-            <span class="editor-hero__eyebrow">页面编辑工作卡</span>
-            <h3 :id="titleId" :class="titleClass">{{ endpointTitle }}</h3>
-            <p>{{ endpointDialogLead }}</p>
-          </div>
-          <div class="editor-hero__chips">
-            <span class="editor-chip editor-chip--page">页面入口</span>
-            <span class="editor-chip editor-chip--ghost">所属 {{ endpointPlatformName }}</span>
-            <span class="editor-chip editor-chip--ghost">{{ endpointCredentialLabel }}</span>
-          </div>
-        </div>
-      </template>
-      <div class="editor-shell">
-        <div class="editor-layout">
-          <section class="editor-panel">
-            <div class="editor-section">
-              <div class="editor-section__head">
-                <div>
-                  <strong>页面入口</strong>
-                  <p>名称和 URL 会直接影响拓扑里子平台卡片的可读性。</p>
-                </div>
-              </div>
-              <el-form ref="endpointRef" :model="endpointForm" :rules="endpointRules" label-position="top" class="editor-form editor-form--grid">
-                <el-form-item label="页面名称" prop="endpointName">
-                  <el-input v-model="endpointForm.endpointName" placeholder="例如：管理后台 / 运维入口" />
-                </el-form-item>
-                <el-form-item label="登录账号" prop="loginUsername">
-                  <el-input v-model="endpointForm.loginUsername" placeholder="填写页面登录账号" />
-                </el-form-item>
-                <el-form-item class="editor-form__wide" label="访问 URL" prop="accessUrl">
-                  <el-input v-model="endpointForm.accessUrl" placeholder="https://example.com/portal" />
-                </el-form-item>
-                <el-form-item class="editor-form__wide" label="登录密码" prop="loginPassword">
-                  <el-input v-model="endpointForm.loginPassword" type="password" show-password placeholder="留空表示不改动现有密码" />
-                </el-form-item>
-              </el-form>
-            </div>
-          </section>
-          <aside class="editor-preview">
-            <article class="editor-preview-card editor-preview-card--page">
-              <span class="editor-preview-card__eyebrow">页面预览</span>
-              <strong>{{ endpointForm.endpointName || '未命名页面' }}</strong>
-              <p>{{ endpointForm.accessUrl || '请输入访问 URL，顶部卡片会用这里的地址做识别。' }}</p>
-              <div class="editor-preview-card__meta">
-                <span>账号 {{ endpointForm.loginUsername || '未填写' }}</span>
-                <span>密码 {{ endpointForm.loginPassword ? '本次将更新' : '保持现状 / 未配置' }}</span>
-              </div>
-            </article>
-          </aside>
-        </div>
-      </div>
+<el-dialog v-model="endpointFormOpen" :title="endpointTitle" width="min(600px, 94vw)" append-to-body :close-on-click-modal="false">
+      <SiteEntityForm ref="endpointRef" kind="endpoint" :model="endpointForm" :rules="endpointRules">
+      </SiteEntityForm>
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="endpointFormOpen = false">取 消</el-button>
@@ -1858,69 +1613,9 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="orgFormOpen" :aria-label="orgTitle" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--org">
-      <template #header="{ titleId, titleClass }">
-        <div class="editor-hero editor-hero--org">
-          <div class="editor-hero__icon">组</div>
-          <div class="editor-hero__copy">
-            <span class="editor-hero__eyebrow">组织编辑工作卡</span>
-            <h3 :id="titleId" :class="titleClass">{{ orgTitle }}</h3>
-            <p>{{ orgDialogLead }}</p>
-          </div>
-          <div class="editor-hero__chips">
-            <span class="editor-chip editor-chip--org">{{ getOrgTypeLabel(orgForm.orgType) }}</span>
-            <span class="editor-chip editor-chip--ghost">状态 {{ getStatusLabel(orgForm.status) }}</span>
-            <span class="editor-chip editor-chip--ghost">{{ orgForm.shortName ? `简称 ${orgForm.shortName}` : '可配置简称' }}</span>
-          </div>
-        </div>
-      </template>
-      <div class="editor-shell">
-        <div class="editor-layout">
-          <section class="editor-panel">
-            <div class="editor-section">
-              <div class="editor-section__head">
-                <div>
-                  <strong>组织身份</strong>
-                  <p>组织会作为联系人的归属容器显示在组织池中，名称建议与现场业务称呼一致。</p>
-                </div>
-              </div>
-              <el-form ref="orgRef" :model="orgForm" :rules="orgRules" label-position="top" class="editor-form editor-form--grid">
-                <el-form-item label="组织类型" prop="orgType">
-                  <el-select v-model="orgForm.orgType" style="width: 100%">
-                    <el-option label="客户" value="CUSTOMER" />
-                    <el-option label="用户" value="USER" />
-                    <el-option label="第三方厂家" value="THIRD_VENDOR" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="状态" prop="status">
-                  <el-radio-group v-model="orgForm.status">
-                    <el-radio value="0">正常</el-radio>
-                    <el-radio value="1">停用</el-radio>
-                  </el-radio-group>
-                </el-form-item>
-                <el-form-item class="editor-form__wide" label="组织名称" prop="orgName">
-                  <el-input v-model="orgForm.orgName" placeholder="例如：科信大队 / 某某科技有限公司" />
-                </el-form-item>
-                <el-form-item class="editor-form__wide" label="组织简称" prop="shortName">
-                  <el-input v-model="orgForm.shortName" placeholder="便于在组织池和联系人摘要中快速识别" />
-                </el-form-item>
-              </el-form>
-            </div>
-          </section>
-          <aside class="editor-preview">
-            <article class="editor-preview-card editor-preview-card--org">
-              <span class="editor-preview-card__eyebrow">组织预览</span>
-              <strong>{{ orgForm.orgName || '未命名组织' }}</strong>
-              <p>{{ orgPreviewCopy }}</p>
-              <div class="editor-preview-card__meta">
-                <span>类型 {{ getOrgTypeLabel(orgForm.orgType) }}</span>
-                <span>状态 {{ getStatusLabel(orgForm.status) }}</span>
-                <span>简称 {{ orgForm.shortName || '未填写' }}</span>
-              </div>
-            </article>
-          </aside>
-        </div>
-      </div>
+<el-dialog v-model="orgFormOpen" :title="orgTitle" width="min(600px, 94vw)" append-to-body :close-on-click-modal="false">
+      <SiteEntityForm ref="orgRef" kind="org" :model="orgForm" :rules="orgRules">
+      </SiteEntityForm>
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="orgFormOpen = false">取 消</el-button>
@@ -1929,93 +1624,17 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="contactFormOpen" :aria-label="contactTitle" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--contact">
-      <template #header="{ titleId, titleClass }">
-        <div class="editor-hero editor-hero--contact">
-          <div class="editor-hero__icon">人</div>
-          <div class="editor-hero__copy">
-            <span class="editor-hero__eyebrow">人员编辑工作卡</span>
-            <h3 :id="titleId" :class="titleClass">{{ contactTitle }}</h3>
-            <p>{{ contactDialogLead }}</p>
-          </div>
-          <div class="editor-hero__chips">
-            <span class="editor-chip editor-chip--contact">{{ getRoleLabel(contactForm.roleType) }}</span>
-            <span class="editor-chip editor-chip--ghost">组织 {{ contactOrgName }}</span>
-            <span class="editor-chip editor-chip--org">类型 {{ contactOrgTypeLabel }}</span>
-            <span class="editor-chip editor-chip--ghost">{{ contactForm.isPrimary === '1' ? '主联系人' : '普通联系人' }}</span>
-          </div>
-        </div>
-      </template>
-      <div class="editor-shell">
-        <div class="editor-layout">
-          <section class="editor-panel">
-            <div class="editor-section">
-              <div class="editor-section__head">
-                <div>
-                  <strong>身份与联系方式</strong>
-                  <p>联系人信息会在组织池和主平台人员层同时被引用，建议保持正式命名。</p>
-                </div>
-              </div>
-              <el-form ref="contactRef" :model="contactForm" :rules="contactRules" label-position="top" class="editor-form editor-form--grid">
-                <el-form-item label="所属组织" prop="orgId">
-                  <el-select v-model="contactForm.orgId" style="width: 100%" filterable>
-                    <el-option
-                      v-for="item in orgList"
-                      :key="item.orgId"
-                      :label="item.orgName"
-                      :value="item.orgId"
-                    />
-                  </el-select>
-                  <div class="role-config-actions">
-                    <el-button link type="primary" @click="openContactOrgAdd">新增组织</el-button>
-                    <el-button link type="primary" :disabled="!contactForm.orgId" @click="openContactOrgEdit">编辑组织</el-button>
-                  </div>
-                </el-form-item>
-                <el-form-item label="角色" prop="roleType">
-                  <el-select v-model="contactForm.roleType" style="width: 100%" filterable>
-                    <el-option v-for="dict in support_contact_role" :key="dict.value" :label="dict.label" :value="dict.value" />
-                  </el-select>
-                  <div class="role-config-actions">
-                    <el-button link type="primary" @click="openContactRoleDialog">新增角色</el-button>
-                    <el-button link type="primary" @click="openContactRoleConfig">配置角色</el-button>
-                  </div>
-                </el-form-item>
-                <el-form-item label="联系人姓名" prop="contactName">
-                  <el-input v-model="contactForm.contactName" placeholder="请输入联系人姓名" />
-                </el-form-item>
-                <el-form-item label="手机" prop="phone">
-                  <el-input v-model="contactForm.phone" placeholder="用于快速联系或值守电话" />
-                </el-form-item>
-                <el-form-item label="邮箱" prop="email">
-                  <el-input v-model="contactForm.email" placeholder="用于接收账号或维护通知" />
-                </el-form-item>
-                <el-form-item label="微信" prop="wechat">
-                  <el-input v-model="contactForm.wechat" placeholder="可填写常用沟通号" />
-                </el-form-item>
-                <el-form-item class="editor-form__wide" label="联系人级别" prop="isPrimary">
-                  <el-radio-group v-model="contactForm.isPrimary">
-                    <el-radio value="0">普通联系人</el-radio>
-                    <el-radio value="1">主联系人</el-radio>
-                  </el-radio-group>
-                </el-form-item>
-              </el-form>
-            </div>
-          </section>
-          <aside class="editor-preview">
-            <article class="editor-preview-card editor-preview-card--contact">
-              <span class="editor-preview-card__eyebrow">人员摘要</span>
-              <strong>{{ contactForm.contactName || '未命名联系人' }}</strong>
-              <p>{{ contactOrgName }} · {{ contactOrgTypeLabel }} · {{ getRoleLabel(contactForm.roleType) }}</p>
-              <div class="editor-preview-card__meta">
-                <span>类型 {{ contactOrgTypeLabel }}</span>
-                <span>手机 {{ contactForm.phone || '未填写' }}</span>
-                <span>邮箱 {{ contactForm.email || '未填写' }}</span>
-                <span>{{ contactForm.isPrimary === '1' ? '将作为主联系人展示' : '作为普通联系人展示' }}</span>
-              </div>
-            </article>
-          </aside>
-        </div>
-      </div>
+<el-dialog v-model="contactFormOpen" :title="contactTitle" width="min(600px, 94vw)" append-to-body :close-on-click-modal="false">
+      <SiteEntityForm ref="contactRef" kind="contact" :model="contactForm" :rules="contactRules" :roles="support_contact_role" :orgs="orgList">
+        <template #org-actions>
+          <el-button link type="primary" @click="openContactOrgAdd">新增组织</el-button>
+          <el-button link type="primary" :disabled="!contactForm.orgId" @click="openContactOrgEdit">编辑组织</el-button>
+        </template>
+        <template #role-actions>
+          <el-button link type="primary" @click="openContactRoleDialog">新增角色</el-button>
+          <el-button link type="primary" @click="openContactRoleConfig">配置角色</el-button>
+        </template>
+      </SiteEntityForm>
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="contactFormOpen = false">取 消</el-button>
@@ -2135,6 +1754,8 @@ import { formatSiteRegion } from '@/utils/supportSiteRegion'
 import { latestSupportRelease } from '@/views/support/version/releaseNotes'
 import EquipmentRoom3DWorkspace from './components/EquipmentRoom3DWorkspace.vue'
 import EquipmentIntakeDialog from './components/EquipmentIntakeDialog.vue'
+import SiteEntityForm from '@/views/support/site/components/SiteEntityForm.vue'
+import { normalizeEndpointUrl, copyEndpointPassword, writeSecretToClipboard } from './endpointNavigation'
 import { deleteEquipmentBatch } from '@/api/support/equipment'
 
 const CANVAS_LAYOUT_STORAGE_KEY = 'support-site-canvas-layout'
@@ -2159,6 +1780,7 @@ const emit = defineEmits(['update:visible'])
 const { proxy } = getCurrentInstance()
 const { support_network_env, support_contact_role, support_hardware_type } = proxy.useDict('support_network_env', 'support_contact_role', 'support_hardware_type')
 const canViewPlain = computed(() => !!proxy?.$auth?.hasPermi(['support:credential:viewPlain']))
+const endpointCopying = ref(false)
 const equipmentIntakeRef = ref()
 const equipmentLoadedSiteId = ref(null)
 const equipmentDirectoryRequested = ref(false)
@@ -2248,6 +1870,7 @@ const inspectorEditType = ref(null)
 const inspectorDraft = ref({})
 const inspectorSaving = ref(false)
 const inspectorPanelTab = ref('detail')
+const inspectorOpen = ref(false)
 const platformServerMap = ref({})
 const platformContactMap = ref({})
 const platformServers = ref([])
@@ -2451,6 +2074,7 @@ const canvasContextMenuItems = computed(() => {
   if (type === 'endpoint') {
     return [
       { label: '跳转页面', action: 'openEndpointUrl' },
+      ...(canViewPlain.value ? [{ label: '复制密码并打开页面', action: 'copyEndpointAndOpen' }] : []),
       { label: '编辑页面', action: 'editEndpoint' },
       ...(canViewPlain.value ? [{ label: '查看明文密码', action: 'viewEndpointPlain' }] : []),
       { label: '删除页面', action: 'deleteEndpoint', danger: true }
@@ -2939,10 +2563,9 @@ const inspectorActions = computed(() => {
 
 function openInspectorEdit(type, row) {
   if (!row) return
-  resetServerPasswordReveal('inspector')
-  inspectorEditType.value = type
-  inspectorDraft.value = createInspectorDraft(type, row)
-  inspectorEditOpen.value = true
+  inspectorOpen.value = false
+  const handlers = { platform: handlePlatformEdit, endpoint: handleEndpointEdit, server: handleServerEdit, contact: handleContactEdit }
+  handlers[type]?.(row)
 }
 
 function createInspectorDraft(type, row) {
@@ -3420,7 +3043,7 @@ function shouldPollSiteMessages() {
     && canListMessage.value
     && typeof window !== 'undefined'
     && isSiteMessagePollingVisible()
-    && (inspectorPanelTab.value === 'message' || messageBarrageOpen.value || siteMessageDetailOpen.value)
+    && ((inspectorOpen.value && inspectorPanelTab.value === 'message') || messageBarrageOpen.value || siteMessageDetailOpen.value)
 }
 
 function syncSiteMessagePolling() {
@@ -4616,6 +4239,10 @@ function runCanvasContextAction(action) {
     openEndpointUrl(payload)
     return
   }
+  if (action === 'copyEndpointAndOpen') {
+    copyPasswordAndOpenEndpoint(payload)
+    return
+  }
   if (action === 'viewEndpointPlain') {
     viewEndpointPassword(payload)
     return
@@ -4876,12 +4503,39 @@ function handleEndpointDelete(row) {
 }
 
 function openEndpointUrl(row) {
-  if (!row?.accessUrl) {
-    proxy.$modal.msgWarning('当前页面未配置访问地址')
-    return
+  try {
+    window.open(normalizeEndpointUrl(row?.accessUrl), '_blank', 'noopener,noreferrer')
+  } catch (error) {
+    proxy.$modal.msgWarning(error.message || '页面地址格式不正确')
   }
-  const url = /^https?:\/\//i.test(row.accessUrl) ? row.accessUrl : `http://${row.accessUrl}`
-  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+async function copyPasswordAndOpenEndpoint(row) {
+  if (!canViewPlain.value || endpointCopying.value) return
+  endpointCopying.value = true
+  try {
+    const result = await copyEndpointPassword({
+      url: row.accessUrl,
+      readPassword: async () => (await viewEndpointPlain(row.endpointId)).plain,
+      copy: writeSecretToClipboard,
+      open: url => {
+        const page = window.open('about:blank', '_blank')
+        if (!page) return false
+        page.opener = null
+        page.location.replace(url)
+        return true
+      }
+    })
+    proxy.$modal.msgSuccess('密码已复制到剪贴板')
+    if (!result.opened) {
+      await proxy.$modal.confirm('密码已复制，但浏览器拦截了新窗口。点击确定打开页面。')
+      openEndpointUrl({ accessUrl: result.url })
+    }
+  } catch (error) {
+    if (error instanceof Error) proxy.$modal.msgWarning(error.message)
+  } finally {
+    endpointCopying.value = false
+  }
 }
 
 function viewEndpointPassword(row) {
@@ -5173,7 +4827,9 @@ async function handleEquipmentRoom3dPassword(device) {
 }
 
 function handleEquipmentRoom3dExport(query = {}) {
-  proxy.download('/support/equipment/export', query, `设备资产清单_${props.site?.siteName || '现场'}_${Date.now()}.xlsx`)
+  const params = { ...query, siteId: props.site?.siteId }
+  if (Array.isArray(params.deviceKeys)) params.deviceKeys = params.deviceKeys.join(',')
+  proxy.download('/support/equipment/export', params, `设备资产清单_${props.site?.siteName || '现场'}_${Date.now()}.xlsx`)
 }
 
 function validateRackURange(_rule, _value, callback) {
@@ -5517,6 +5173,7 @@ watch(
 watch(
   () => innerVisible.value,
   (visible) => {
+    inspectorOpen.value = false
 	  if (!visible) {
 	    siteCanvasFullscreen.value = false
       messageBarrageOpen.value = false
@@ -5537,6 +5194,7 @@ watch(
 watch(
   () => props.site?.siteId,
   async () => {
+    inspectorOpen.value = false
     siteMessageList.value = []
     siteMessageTotal.value = 0
     siteMessageLatestId.value = null
@@ -5566,6 +5224,7 @@ watch(
 watch(
   () => [
     inspectorPanelTab.value,
+    inspectorOpen.value,
     messageBarrageOpen.value,
     siteMessageDetailOpen.value,
     innerVisible.value,
@@ -5828,6 +5487,7 @@ onBeforeUnmount(() => {
   align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
   padding: 12px 14px;
   border: 1px solid #deebf6;
   border-radius: 16px;
@@ -5838,7 +5498,8 @@ onBeforeUnmount(() => {
 .fusion-workbench__title {
   display: grid;
   gap: 4px;
-  min-width: min(480px, 100%);
+  min-width: 0;
+  flex: 0 1 300px;
 }
 
 .fusion-workbench__title span {
@@ -5907,10 +5568,14 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  flex: 1 1 900px;
 }
 
 .fusion-workbench__search {
-  width: 240px;
+  width: min(240px, 100%);
+  flex: 0 0 min(240px, 100%);
 }
 
 .canvas-layout-switch {
@@ -6027,7 +5692,7 @@ onBeforeUnmount(() => {
 
 .fusion-workbench__body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   align-items: stretch;
   min-height: 680px;
@@ -6036,7 +5701,7 @@ onBeforeUnmount(() => {
 .fusion-workbench.is-fullscreen .fusion-workbench__body {
   min-height: 0;
   height: 100%;
-  grid-template-columns: minmax(0, 1fr) 330px;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .fusion-canvas {
@@ -7041,14 +6706,10 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 10px;
   height: 100%;
-  max-height: 680px;
+  max-height: none;
   min-width: 0;
   min-height: 0;
-  padding: 14px;
-  border: 1px solid #d8e7f6;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 10px 26px rgba(22, 50, 79, 0.06);
+  background: var(--el-bg-color);
   overflow: hidden;
 }
 
@@ -9878,22 +9539,16 @@ onBeforeUnmount(() => {
   font-weight: 700;
 }
 
-.hardware-asset-form-dialog :deep(.el-dialog) {
-  border-radius: 18px;
-}
-
 .hardware-form-section {
-  margin-bottom: 14px;
-  padding: 14px;
-  border-radius: 14px;
-  border: 1px solid #e1ebf5;
-  background: var(--surface-muted);
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 
 .hardware-form-section > strong {
   display: block;
   margin-bottom: 12px;
-  color: #193a5f;
+  color: var(--el-text-color-primary);
   font-size: 14px;
 }
 
@@ -9906,7 +9561,7 @@ onBeforeUnmount(() => {
 }
 
 .hardware-form-section__head > strong {
-  color: #193a5f;
+  color: var(--el-text-color-primary);
   font-size: 14px;
 }
 
@@ -9927,9 +9582,6 @@ onBeforeUnmount(() => {
   line-height: 1.6;
 }
 
-.hardware-form-section--credential {
-  background: linear-gradient(135deg, #fbfdff 0%, #f4f9ff 100%);
-}
 
 .location-dimension-grid {
   display: grid;
@@ -10300,229 +9952,42 @@ onBeforeUnmount(() => {
   color: #9aabbb;
 }
 
-.support-editor-dialog :deep(.el-dialog) {
-  overflow: hidden;
-  border-radius: 14px;
-  background: var(--surface-muted);
-}
 
-.support-editor-dialog :deep(.el-dialog__header) {
-  margin-right: 0;
-  padding: 0;
-}
 
-.support-editor-dialog :deep(.el-dialog__headerbtn) {
-  top: 18px;
-  right: 18px;
-}
 
-.support-editor-dialog :deep(.el-dialog__body) {
-  padding: 0 24px 24px;
-}
 
-.support-editor-dialog :deep(.el-dialog__footer) {
-  padding: 0 24px 24px;
-}
 
-.editor-hero {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 16px;
-  padding: 24px;
-  border-bottom: 1px solid var(--surface-border);
-}
 
-.editor-hero--platform {
-  background: linear-gradient(135deg, #edf5ff 0%, #f7fbff 56%, #eef7ff 100%);
-}
 
-.editor-hero--page {
-  background: linear-gradient(135deg, #eef6ff 0%, #f8fbff 52%, #f3f8ff 100%);
-}
 
-.editor-hero--server {
-  background: linear-gradient(135deg, #edf6ff 0%, #f6fbff 54%, #eef7ff 100%);
-}
 
-.editor-hero--org {
-  background: linear-gradient(135deg, #eef6ff 0%, #f8fbff 54%, #f3f8ff 100%);
-}
 
-.editor-hero--contact {
-  background: linear-gradient(135deg, #eff6ff 0%, #f8fbff 48%, #f3f8ff 100%);
-}
 
-.editor-hero__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 54px;
-  height: 54px;
-  border-radius: 20px;
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--app-heading);
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(212, 224, 238, 0.9);
-  box-shadow: 0 12px 28px rgba(22, 50, 79, 0.08);
-}
 
-.editor-hero__copy {
-  display: grid;
-  gap: 6px;
-}
 
-.editor-hero__eyebrow {
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--app-muted);
-}
 
-.editor-hero__copy h3 {
-  margin: 0;
-  font-size: 28px;
-  line-height: 1.12;
-  color: var(--app-heading);
-}
 
-.editor-hero__copy p {
-  margin: 0;
-  max-width: 58ch;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--app-muted);
-}
 
-.editor-hero__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  grid-column: 1 / -1;
-}
 
-.editor-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  font-size: 12px;
-  font-weight: 600;
-}
 
-.editor-chip--main {
-  color: #165bb8;
-  background: var(--surface-subtle);
-  border-color: #cfe1fa;
-}
 
-.editor-chip--network {
-  color: var(--network-strong, #165bb8);
-  background: var(--network-chip-bg, #e8f2ff);
-  border-color: var(--network-border, #cfe1fa);
-}
 
-.editor-chip--sub {
-  color: #2e6eb3;
-  background: var(--surface-subtle);
-  border-color: #cfe0fb;
-}
 
-.editor-chip--page {
-  color: #2d6eb0;
-  background: var(--surface-subtle);
-  border-color: #efd6b2;
-}
 
-.editor-chip--server {
-  color: #1c6d78;
-  background: #e7f7f8;
-  border-color: #cbe8eb;
-}
 
-.editor-chip--org {
-  color: #2f6fb3;
-  background: var(--surface-subtle);
-  border-color: var(--surface-border);
-}
 
-.editor-chip--contact {
-  color: #3d6fa6;
-  background: var(--surface-subtle);
-  border-color: var(--surface-border);
-}
 
-.editor-chip--ghost {
-  color: var(--app-muted);
-  background: rgba(255, 255, 255, 0.76);
-  border-color: rgba(214, 225, 237, 0.92);
-}
 
-.editor-shell {
-  padding-top: 20px;
-}
 
-.editor-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(240px, 0.9fr);
-  gap: 18px;
-}
 
-.editor-panel,
-.editor-preview {
-  display: grid;
-  gap: 16px;
-}
 
-.editor-section {
-  padding: 18px;
-  border-radius: 24px;
-  border: 1px solid var(--surface-border);
-  background: var(--surface-strong);
-  box-shadow: 0 16px 36px rgba(22, 50, 79, 0.05);
-}
 
-.editor-section__head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
 
-.editor-section__head strong {
-  color: var(--app-heading);
-  font-size: 15px;
-}
 
-.editor-section__head p {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--app-muted);
-}
 
-.editor-form--grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 16px;
-}
 
-.editor-form__wide {
-  grid-column: 1 / -1;
-}
 
-.editor-form :deep(.el-form-item) {
-  margin-bottom: 16px;
-}
 
-.editor-form :deep(.el-form-item__label) {
-  padding-bottom: 8px;
-  font-weight: 600;
-  color: #60748a;
-}
 
 .role-config-actions {
   display: flex;
@@ -10531,25 +9996,8 @@ onBeforeUnmount(() => {
   margin-top: 6px;
 }
 
-.editor-form :deep(.el-input__wrapper),
-.editor-form :deep(.el-textarea__inner),
-.editor-form :deep(.el-select__wrapper),
-.editor-form :deep(.el-input-number),
-.editor-form :deep(.el-input-number .el-input__wrapper) {
-  border-radius: 16px;
-  background: var(--surface-muted);
-  box-shadow: 0 0 0 1px #dfe8f1 inset;
-}
 
-.editor-form :deep(.el-radio-group) {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-}
 
-.editor-form :deep(.el-input-number) {
-  width: 100%;
-}
 
 .server-password-eye {
   width: 24px;
@@ -10561,19 +10009,7 @@ onBeforeUnmount(() => {
   margin: 0;
 }
 
-.editor-preview-card {
-  display: grid;
-  gap: 12px;
-  min-height: 100%;
-  padding: 18px;
-  border-radius: 24px;
-  border: 1px solid var(--surface-border);
-}
 
-.editor-preview-card--platform {
-  border-color: var(--network-border, var(--surface-border));
-  background: var(--network-preview-bg, linear-gradient(180deg, #f1f7ff 0%, #f9fbff 100%));
-}
 
 .network-env--police {
   --network-strong: #165bb8;
@@ -10646,59 +10082,14 @@ onBeforeUnmount(() => {
   --network-shadow: rgba(35, 106, 134, 0.12);
 }
 
-.editor-preview-card--page {
-  background: linear-gradient(180deg, #f3f8ff 0%, #fbfdff 100%);
-}
 
-.editor-preview-card--server {
-  background: linear-gradient(180deg, #eef8ff 0%, #f8fcff 100%);
-}
 
-.editor-preview-card--org {
-  background: linear-gradient(180deg, #f2f8ff 0%, #fbfdff 100%);
-}
 
-.editor-preview-card--contact {
-  background: linear-gradient(180deg, #f2f7ff 0%, #fbfdff 100%);
-}
 
-.editor-preview-card__eyebrow {
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #6d8197;
-}
 
-.editor-preview-card strong {
-  font-size: 24px;
-  line-height: 1.12;
-  color: var(--app-heading);
-}
 
-.editor-preview-card p {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #6f8298;
-}
 
-.editor-preview-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 
-.editor-preview-card__meta span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid rgba(216, 228, 238, 0.95);
-  background: rgba(255, 255, 255, 0.8);
-  color: var(--app-muted);
-  font-size: 12px;
-}
 
 .editor-dialog-footer {
   display: flex;
@@ -10805,17 +10196,8 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 900px) {
-  .editor-layout {
-    grid-template-columns: 1fr;
-  }
 
-  .editor-hero {
-    padding: 20px;
-  }
 
-  .editor-form--grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 992px) {

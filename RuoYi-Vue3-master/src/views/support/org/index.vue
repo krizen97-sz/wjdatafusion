@@ -110,68 +110,9 @@
       </el-col>
     </el-row>
 
-    <el-dialog v-model="orgOpen" :aria-label="orgTitle" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--org">
-      <template #header="{ titleId, titleClass }">
-        <div class="editor-hero editor-hero--org">
-          <div class="editor-hero__icon">组</div>
-          <div class="editor-hero__copy">
-            <h3 :id="titleId" :class="titleClass">{{ orgTitle }}</h3>
-            <p>{{ orgDialogLead }}</p>
-          </div>
-          <div class="editor-hero__chips">
-            <span class="editor-chip editor-chip--org">{{ getOrgTypeLabel(orgForm.orgType) }}</span>
-            <span class="editor-chip editor-chip--ghost">状态 {{ getStatusLabel(orgForm.status) }}</span>
-            <span class="editor-chip editor-chip--ghost">{{ orgForm.shortName ? `简称 ${orgForm.shortName}` : '可配置简称' }}</span>
-          </div>
-        </div>
-      </template>
-      <div class="editor-shell">
-        <div class="editor-layout">
-          <section class="editor-panel">
-            <div class="editor-section">
-              <div class="editor-section__head">
-                <div>
-                  <strong>组织身份</strong>
-                  <p>组织会作为联系人的归属容器显示在组织池中，名称建议和现场实际称呼保持一致。</p>
-                </div>
-              </div>
-              <el-form ref="orgRef" :model="orgForm" :rules="orgRules" label-position="top" class="editor-form editor-form--grid">
-                <el-form-item label="组织类型" prop="orgType">
-                  <el-select v-model="orgForm.orgType" style="width: 100%">
-                    <el-option label="客户" value="CUSTOMER" />
-                    <el-option label="用户" value="USER" />
-                    <el-option label="第三方厂家" value="THIRD_VENDOR" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="状态" prop="status">
-                  <el-radio-group v-model="orgForm.status">
-                    <el-radio value="0">正常</el-radio>
-                    <el-radio value="1">停用</el-radio>
-                  </el-radio-group>
-                </el-form-item>
-                <el-form-item class="editor-form__wide" label="组织名称" prop="orgName">
-                  <el-input v-model="orgForm.orgName" placeholder="例如：科信大队 / 某某科技有限公司" />
-                </el-form-item>
-                <el-form-item class="editor-form__wide" label="组织简称" prop="shortName">
-                  <el-input v-model="orgForm.shortName" placeholder="便于在组织池和人员摘要中快速识别" />
-                </el-form-item>
-              </el-form>
-            </div>
-          </section>
-          <aside class="editor-preview">
-            <article class="editor-preview-card editor-preview-card--org">
-              <span class="editor-preview-card__eyebrow">组织预览</span>
-              <strong>{{ orgForm.orgName || '未命名组织' }}</strong>
-              <p>{{ orgPreviewCopy }}</p>
-              <div class="editor-preview-card__meta">
-                <span>类型 {{ getOrgTypeLabel(orgForm.orgType) }}</span>
-                <span>状态 {{ getStatusLabel(orgForm.status) }}</span>
-                <span>简称 {{ orgForm.shortName || '未填写' }}</span>
-              </div>
-            </article>
-          </aside>
-        </div>
-      </div>
+<el-dialog v-model="orgOpen" :title="orgTitle" width="min(600px, 94vw)" append-to-body :close-on-click-modal="false">
+      <SiteEntityForm ref="orgRef" kind="org" :model="orgForm" :rules="orgRules">
+      </SiteEntityForm>
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="orgOpen = false">取 消</el-button>
@@ -180,87 +121,17 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="contactOpen" :aria-label="contactTitle" width="760px" append-to-body class="support-editor-dialog support-editor-dialog--contact">
-      <template #header="{ titleId, titleClass }">
-        <div class="editor-hero editor-hero--contact">
-          <div class="editor-hero__icon">人</div>
-          <div class="editor-hero__copy">
-            <h3 :id="titleId" :class="titleClass">{{ contactTitle }}</h3>
-            <p>{{ contactDialogLead }}</p>
-          </div>
-          <div class="editor-hero__chips">
-            <span class="editor-chip editor-chip--contact">{{ getRoleLabel(contactForm.roleType) }}</span>
-            <span class="editor-chip editor-chip--ghost">组织 {{ contactOrgName }}</span>
-            <span class="editor-chip editor-chip--org">类型 {{ contactOrgTypeLabel }}</span>
-            <span class="editor-chip editor-chip--ghost">{{ contactForm.isPrimary === '1' ? '主联系人' : '普通联系人' }}</span>
-          </div>
-        </div>
-      </template>
-      <div class="editor-shell">
-        <div class="editor-layout">
-          <section class="editor-panel">
-            <div class="editor-section">
-              <div class="editor-section__head">
-                <div>
-                  <strong>身份与联系方式</strong>
-                  <p>联系人会在组织池与主平台人员层中被引用，建议保留正式称呼和稳定联系方式。</p>
-                </div>
-              </div>
-              <el-form ref="contactRef" :model="contactForm" :rules="contactRules" label-position="top" class="editor-form editor-form--grid">
-                <el-form-item class="editor-form__wide" label="所属组织">
-                  <div class="contact-org-field">
-                    <span>{{ contactOrgName }}</span>
-                    <div>
-                      <el-button link type="primary" @click="openContactOrgAdd">新增组织</el-button>
-                      <el-button link type="primary" :disabled="!currentOrg" @click="openContactOrgEdit">编辑组织</el-button>
-                    </div>
-                  </div>
-                </el-form-item>
-                <el-form-item label="联系人姓名" prop="contactName">
-                  <el-input v-model="contactForm.contactName" placeholder="请输入联系人姓名" />
-                </el-form-item>
-                <el-form-item label="角色" prop="roleType">
-                  <el-select v-model="contactForm.roleType" style="width: 100%" filterable>
-                    <el-option v-for="dict in support_contact_role" :key="dict.value" :label="dict.label" :value="dict.value" />
-                  </el-select>
-                  <div class="role-config-actions">
-                    <el-button link type="primary" @click="openContactRoleDialog">新增角色</el-button>
-                    <el-button link type="primary" @click="openContactRoleConfig">配置角色</el-button>
-                  </div>
-                </el-form-item>
-                <el-form-item label="手机" prop="phone">
-                  <el-input v-model="contactForm.phone" placeholder="用于快速拨号和值守联系" />
-                </el-form-item>
-                <el-form-item label="邮箱" prop="email">
-                  <el-input v-model="contactForm.email" placeholder="用于接收维护通知" />
-                </el-form-item>
-                <el-form-item label="微信" prop="wechat">
-                  <el-input v-model="contactForm.wechat" placeholder="可填写常用沟通号" />
-                </el-form-item>
-                <el-form-item label="联系人级别" prop="isPrimary">
-                  <el-radio-group v-model="contactForm.isPrimary">
-                    <el-radio value="0">普通联系人</el-radio>
-                    <el-radio value="1">主联系人</el-radio>
-                  </el-radio-group>
-                </el-form-item>
-              </el-form>
-            </div>
-          </section>
-          <aside class="editor-preview">
-            <article class="editor-preview-card editor-preview-card--contact">
-              <span class="editor-preview-card__eyebrow">人员摘要</span>
-              <strong>{{ contactForm.contactName || '未命名联系人' }}</strong>
-              <p>{{ contactOrgName }} · {{ contactOrgTypeLabel }} · {{ getRoleLabel(contactForm.roleType) }}</p>
-              <div class="editor-preview-card__meta">
-                <span>类型 {{ contactOrgTypeLabel }}</span>
-                <span>手机 {{ contactForm.phone || '未填写' }}</span>
-                <span>邮箱 {{ contactForm.email || '未填写' }}</span>
-                <span>{{ contactForm.isPrimary === '1' ? '将作为主联系人展示' : '作为普通联系人展示' }}</span>
-              </div>
-            </article>
-          </aside>
-        </div>
-      </div>
+<el-dialog v-model="contactOpen" :title="contactTitle" width="min(600px, 94vw)" append-to-body :close-on-click-modal="false">
+      <SiteEntityForm ref="contactRef" kind="contact" :model="contactForm" :rules="contactRules" :roles="support_contact_role" :fixed-org="contactOrgName">
+        <template #org-actions>
+          <el-button link type="primary" @click="openContactOrgAdd">新增组织</el-button>
+          <el-button link type="primary" :disabled="!contactForm.orgId" @click="openContactOrgEdit">编辑组织</el-button>
+        </template>
+        <template #role-actions>
+          <el-button link type="primary" @click="openContactRoleDialog">新增角色</el-button>
+          <el-button link type="primary" @click="openContactRoleConfig">配置角色</el-button>
+        </template>
+      </SiteEntityForm>
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="contactOpen = false">取 消</el-button>
@@ -287,6 +158,7 @@
 
 <script setup name="SupportOrg">
 import useDictStore from '@/store/modules/dict'
+import SiteEntityForm from '@/views/support/site/components/SiteEntityForm.vue'
 import { listOrg, getOrg, addOrg, updateOrg, delOrg, listOrgPlatforms } from '@/api/support/org'
 import { listContact, getContact, addContact, updateContact, delContact } from '@/api/support/contact'
 import { addData, getDicts } from '@/api/system/dict/data'
@@ -620,176 +492,33 @@ getOrgList()
   flex-wrap: wrap;
 }
 
-.support-editor-dialog :deep(.el-dialog) {
-  overflow: hidden;
-  border-radius: 14px;
-  background: var(--surface-muted);
-}
 
-.support-editor-dialog :deep(.el-dialog__header) {
-  margin-right: 0;
-  padding: 0;
-}
 
-.support-editor-dialog :deep(.el-dialog__headerbtn) {
-  top: 18px;
-  right: 18px;
-}
 
-.support-editor-dialog :deep(.el-dialog__body) {
-  padding: 0 24px 24px;
-}
 
-.support-editor-dialog :deep(.el-dialog__footer) {
-  padding: 0 24px 24px;
-}
 
-.editor-hero {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 16px;
-  padding: 24px;
-  border-bottom: 1px solid var(--surface-border);
-}
 
-.editor-hero--org {
-  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 54%, var(--el-color-primary-light-9) 100%);
-}
 
-.editor-hero--contact {
-  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 48%, var(--el-color-primary-light-9) 100%);
-}
 
-.editor-hero__icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 54px;
-  height: 54px;
-  border-radius: 14px;
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--app-heading);
-  background: color-mix(in srgb, var(--surface-strong) 82%, transparent);
-  border: 1px solid color-mix(in srgb, var(--surface-border) 90%, transparent);
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--el-color-primary) 8%, transparent);
-}
 
-.editor-hero__copy {
-  display: grid;
-  gap: 6px;
-}
 
-.editor-hero__copy h3 {
-  margin: 0;
-  font-size: 28px;
-  line-height: 1.12;
-  color: var(--app-heading);
-}
 
-.editor-hero__copy p {
-  margin: 0;
-  max-width: 56ch;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--app-muted);
-}
 
-.editor-hero__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  grid-column: 1 / -1;
-}
 
-.editor-chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 30px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  font-size: 12px;
-  font-weight: 600;
-}
 
-.editor-chip--contact {
-  color: var(--app-text);
-  background: var(--surface-subtle);
-  border-color: var(--surface-border);
-}
 
-.editor-chip--org {
-  color: var(--el-color-primary);
-  background: var(--surface-subtle);
-  border-color: var(--surface-border);
-}
 
-.editor-chip--ghost {
-  color: var(--app-muted);
-  background: color-mix(in srgb, var(--surface-strong) 76%, transparent);
-  border-color: color-mix(in srgb, var(--surface-border) 92%, transparent);
-}
 
-.editor-shell {
-  padding-top: 20px;
-}
 
-.editor-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(240px, 0.9fr);
-  gap: 18px;
-}
 
-.editor-panel,
-.editor-preview {
-  display: grid;
-  gap: 16px;
-}
 
-.editor-section {
-  padding: 18px;
-  border-radius: 14px;
-  border: 1px solid var(--surface-border);
-  background: var(--surface-strong);
-  box-shadow: 0 16px 36px color-mix(in srgb, var(--el-color-primary) 5%, transparent);
-}
 
-.editor-section__head {
-  margin-bottom: 16px;
-}
 
-.editor-section__head strong {
-  color: var(--app-heading);
-  font-size: 15px;
-}
 
-.editor-section__head p {
-  margin: 6px 0 0;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--app-muted);
-}
 
-.editor-form--grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 16px;
-}
 
-.editor-form__wide {
-  grid-column: 1 / -1;
-}
 
-.editor-form :deep(.el-form-item) {
-  margin-bottom: 16px;
-}
 
-.editor-form :deep(.el-form-item__label) {
-  padding-bottom: 8px;
-  font-weight: 600;
-  color: var(--app-text);
-}
 
 .role-config-actions {
   display: flex;
@@ -819,73 +548,15 @@ getOrgList()
   font-weight: 600;
 }
 
-.editor-form :deep(.el-input__wrapper),
-.editor-form :deep(.el-select__wrapper) {
-  border-radius: 16px;
-  background: var(--surface-muted);
-  box-shadow: 0 0 0 1px var(--surface-border) inset;
-}
 
-.editor-form :deep(.el-radio-group) {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-}
 
-.editor-preview-card {
-  display: grid;
-  gap: 12px;
-  min-height: 100%;
-  padding: 18px;
-  border-radius: 14px;
-  border: 1px solid var(--surface-border);
-}
 
-.editor-preview-card--org {
-  background: linear-gradient(180deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
-}
 
-.editor-preview-card--contact {
-  background: linear-gradient(180deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-9) 100%);
-}
 
-.editor-preview-card__eyebrow {
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--app-text);
-}
 
-.editor-preview-card strong {
-  font-size: 24px;
-  line-height: 1.12;
-  color: var(--app-heading);
-}
 
-.editor-preview-card p {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.6;
-  color: var(--app-text);
-}
 
-.editor-preview-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
 
-.editor-preview-card__meta span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 32px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--surface-border) 95%, transparent);
-  background: color-mix(in srgb, var(--surface-strong) 80%, transparent);
-  color: var(--app-muted);
-  font-size: 12px;
-}
 
 .editor-dialog-footer {
   display: flex;
@@ -899,13 +570,6 @@ getOrgList()
 }
 
 @media (max-width: 900px) {
-  .editor-layout,
-  .editor-form--grid {
-    grid-template-columns: 1fr;
-  }
 
-  .editor-hero {
-    padding: 20px;
-  }
 }
 </style>

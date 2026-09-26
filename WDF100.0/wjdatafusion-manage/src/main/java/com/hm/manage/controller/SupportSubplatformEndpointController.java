@@ -62,7 +62,7 @@ public class SupportSubplatformEndpointController extends BaseController
     }
 
     @PreAuthorize("@ss.hasPermi('support:platform:add')")
-    @Log(title = "子平台页面", businessType = BusinessType.INSERT)
+    @Log(title = "子平台页面", businessType = BusinessType.INSERT, isSaveRequestData = false)
     @PostMapping
     public AjaxResult add(@RequestBody SupportSubplatformEndpoint endpoint)
     {
@@ -70,7 +70,7 @@ public class SupportSubplatformEndpointController extends BaseController
     }
 
     @PreAuthorize("@ss.hasPermi('support:platform:edit')")
-    @Log(title = "子平台页面", businessType = BusinessType.UPDATE)
+    @Log(title = "子平台页面", businessType = BusinessType.UPDATE, isSaveRequestData = false)
     @PutMapping
     public AjaxResult edit(@RequestBody SupportSubplatformEndpoint endpoint)
     {
@@ -86,10 +86,11 @@ public class SupportSubplatformEndpointController extends BaseController
     }
 
     @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
-    @Log(title = "查看页面密码明文", businessType = BusinessType.GRANT)
+    @Log(title = "查看页面密码明文", businessType = BusinessType.GRANT, isSaveResponseData = false)
     @GetMapping("/plain/{endpointId}")
-    public AjaxResult viewPlain(@PathVariable Long endpointId)
+    public AjaxResult viewPlain(@PathVariable Long endpointId, HttpServletResponse response)
     {
+        response.setHeader("Cache-Control", "no-store");
         SupportSubplatformEndpoint endpoint = endpointService.selectSupportSubplatformEndpointByEndpointId(endpointId);
         changeLogService.recordQuery(null, "ENDPOINT", endpointId, endpoint == null ? null : endpoint.getEndpointName(), "查看页面密码明文");
         return success().put("plain", endpointService.getEndpointPasswordPlain(endpointId));

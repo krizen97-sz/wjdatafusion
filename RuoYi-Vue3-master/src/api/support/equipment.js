@@ -1,5 +1,10 @@
 import request from '@/utils/request'
 
+export function readEquipmentPasswords(data) {
+  return request({ url: '/support/equipment/credentials/plain', method: 'post', data,
+    headers: { repeatSubmit: false } })
+}
+
 export function createEquipment(data) {
   return request({ url: '/support/equipment', method: 'post', data })
 }

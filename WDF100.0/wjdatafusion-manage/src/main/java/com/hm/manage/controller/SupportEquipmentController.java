@@ -28,6 +28,7 @@ import com.hm.manage.service.ISupportEquipmentService;
 import com.hm.manage.service.impl.SupportEquipmentServerIntakeService;
 import com.hm.manage.domain.bo.SupportEquipmentServerIntakeBo;
 import com.hm.framework.web.service.PermissionService;
+import com.hm.manage.service.impl.SupportEquipmentCredentialService;
 
 @RestController
 @RequestMapping("/support/equipment")
@@ -41,6 +42,18 @@ public class SupportEquipmentController extends BaseController
 
     @Autowired
     private PermissionService permissions;
+
+    @Autowired
+    private SupportEquipmentCredentialService credentialService;
+
+    @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
+    @Log(title = "批量查看设备密码", businessType = BusinessType.GRANT, isSaveResponseData = false)
+    @PostMapping("/credentials/plain")
+    public AjaxResult credentialPlain(@RequestBody SupportEquipmentBatchBo command, HttpServletResponse response)
+    {
+        response.setHeader("Cache-Control", "no-store");
+        return success(credentialService.readPlain(command));
+    }
 
     @PreAuthorize("@ss.hasAnyPermi('support:equipment:add,support:server:add')")
     @PostMapping("/servers/template")

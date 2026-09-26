@@ -4,20 +4,28 @@
       THESIS: 以设备为唯一对象，把档案、平台归属、机房位置、凭据和链路收进一张可操作的管控图。
       OWN-WORLD: 继承若依与Element Plus中性色表面，设备类型、位置状态、光口和电口只承担语义区分。
       STORY: 运维人员从全现场设备目录定位对象，在同一图中查看并修正平台、位置、链路和设备档案。
-      FIRST VIEWPORT: 全幅Three.js场景承载主任务，设备清单与配置检查器按需从两侧弹出。
+      FIRST VIEWPORT: 设备工作簿默认展示，Three.js机房图按需打开，共用设备、位置和链路数据。
       FORM: 既有设备管理的Operate型专业可视化扩展；使用UIX-004拓扑例外。
       FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
     -->
     <header class="room3d-header">
       <div class="room3d-heading">
-        <h2>现场设备统一管控图</h2>
+        <h2>现场设备管理</h2>
         <p>{{ siteName || '当前现场' }} · {{ devices.length }} 台设备 · {{ devices.filter(item => !isDevicePlaced(item)).length }} 台未上架</p>
       </div>
       <div class="room3d-controls">
+        <el-segmented v-model="viewMode" :options="viewOptions" class="motion-segmented" aria-label="设备管理视图">
+          <template #default="{ item }">
+            <span class="motion-control-label">
+              <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
+              <span class="motion-control-label__text">{{ item.label }}</span>
+            </span>
+          </template>
+        </el-segmented>
         <span class="room3d-live-status" :class="{ 'has-error': liveSyncError }">
           <i></i>{{ liveSyncError ? '同步失败' : (syncing ? '同步中' : '10秒自动同步') }}
         </span>
-        <el-select v-model="selectedRoomId" class="room3d-room-select" placeholder="选择机房" filterable>
+        <el-select v-if="viewMode === 'map'" v-model="selectedRoomId" class="room3d-room-select" placeholder="选择机房" filterable>
           <el-option
             v-for="room in rooms"
             :key="room.roomId"
@@ -25,22 +33,23 @@
             :value="room.roomId"
           />
         </el-select>
-        <el-button icon="List" @click="openDeviceDrawer">设备清单</el-button>
-        <el-button icon="Setting" @click="openInspectorDrawer">配置信息</el-button>
+        <el-button v-if="viewMode === 'map'" icon="Setting" @click="openInspectorDrawer">配置信息</el-button>
         <el-button v-if="canCreateEquipment" type="primary" icon="Plus" @click="requestCreate">新增设备</el-button>
-        <el-button v-hasPermi="['support:equipment:add', 'support:server:add']" icon="Files" @click="emit('batch-create', { platformId: activeScopePlatformId })">批量录入服务器</el-button>
+        <el-button v-hasPermi="['support:equipment:add', 'support:server:add']" icon="Files" @click="emit('batch-create', { platformId: inventoryPlatformId || activeScopePlatformId })">批量录入服务器</el-button>
         <el-button
           icon="Plus"
           v-hasPermi="['support:equipment:add', 'support:equipment:edit', 'support:hardwareAsset:add', 'support:hardwareAsset:edit']"
           @click="openRoomForm()"
+          v-if="viewMode === 'map'"
         >新增机房</el-button>
         <el-button
           icon="Box"
           :disabled="!selectedRoom"
           v-hasPermi="['support:equipment:add', 'support:equipment:edit', 'support:hardwareAsset:add', 'support:hardwareAsset:edit']"
           @click="openCabinetForm()"
+          v-if="viewMode === 'map'"
         >新增机柜</el-button>
-        <el-dropdown v-if="canUseDataMenu" trigger="click" @command="handleDataCommand">
+        <el-dropdown v-if="canUseDataMenu && viewMode === 'map'" trigger="click" @command="handleDataCommand">
           <el-button icon="Files">数据</el-button>
           <template #dropdown>
             <el-dropdown-menu>
@@ -58,6 +67,7 @@
         </el-dropdown>
         <el-segmented
           v-model="workspaceMode"
+          v-if="viewMode === 'map'"
           class="motion-segmented"
           :options="workspaceModeOptions"
           :disabled="!selectedRoom"
@@ -70,11 +80,11 @@
             </span>
           </template>
         </el-segmented>
-        <label class="room3d-switch-label">
+        <label v-if="viewMode === 'map'" class="room3d-switch-label">
           <span>链路</span>
           <el-switch v-model="showLinks" />
         </label>
-        <el-tooltip content="恢复鸟瞰视角" placement="bottom">
+        <el-tooltip v-if="viewMode === 'map'" content="恢复鸟瞰视角" placement="bottom">
           <el-button icon="Aim" :disabled="!selectedRoom" aria-label="恢复鸟瞰视角" @click="resetCamera" />
         </el-tooltip>
         <el-tooltip content="刷新实时数据" placement="bottom">
@@ -85,7 +95,7 @@
     </header>
 
     <div v-if="loadError" class="room3d-error">
-      <el-result icon="error" title="三维机房加载失败" :sub-title="loadError">
+      <el-result icon="error" title="设备数据加载失败" :sub-title="loadError">
         <template #extra>
           <el-button type="primary" @click="loadTopology">重新加载</el-button>
         </template>
@@ -93,24 +103,9 @@
     </div>
 
     <div v-else class="room3d-body">
-      <el-drawer
-        v-model="deviceDrawerOpen"
-        direction="ltr"
-        size="min(900px, 94vw)"
-        append-to-body
-        destroy-on-close
-        class="room3d-device-drawer"
-        @closed="clearDeviceSelection"
-      >
-        <template #header="{ titleId, titleClass }">
-          <div :id="titleId" :class="titleClass" class="room3d-drawer-heading">
-            <strong>设备清单</strong>
-            <el-text type="info" size="small">{{ filteredDevices.length }} / {{ devices.length }} 台</el-text>
-          </div>
-        </template>
-
-        <div class="room3d-device-drawer-body">
-          <div class="room3d-device-scope">
+      <section v-if="viewMode === 'list'" class="room3d-inventory-panel" :class="{ 'has-query': showDeviceQuery }">
+        <div class="room3d-device-scope">
+            <el-space wrap>
             <el-segmented v-model="deviceScope" class="motion-segmented" :options="deviceScopeOptions">
               <template #default="{ item }">
                 <span class="motion-control-label">
@@ -119,10 +114,11 @@
                 </span>
               </template>
             </el-segmented>
+              <el-button icon="Search" :type="showDeviceQuery ? 'primary' : 'default'" plain @click="showDeviceQuery = !showDeviceQuery">筛选</el-button>
+            </el-space>
             <el-text type="info" size="small">{{ deviceScopeDescription }}</el-text>
           </div>
-
-          <el-form class="room3d-device-query" :inline="true" label-width="56px">
+        <el-form v-if="showDeviceQuery" class="room3d-device-query" :inline="true" label-width="56px">
             <el-form-item label="关键字">
               <el-input
                 v-model="deviceKeyword"
@@ -157,83 +153,18 @@
               <el-button icon="Refresh" @click="resetDeviceQuery">重置</el-button>
             </el-form-item>
           </el-form>
+        <EquipmentInventory
+          ref="inventoryRef"
+          v-model:sheet="inventorySheet" :revision="inventoryRevision"
+          :site-id="siteId" :devices="filteredDevices" :platforms="platformOptions" :links="links"
+          :scope-platform-id="activeScopePlatformId" :loading="loading" :deleting="batchDeleting"
+          @detail="locateDeviceFromDrawer" @edit="emit('edit-device', $event)"
+          @place="revealDevice($event, true)" @delete="removeDevices"
+          @export="emit('export-devices', { ...$event, siteId: Number(siteId) })"
+        />
+      </section>
 
-          <div class="room3d-device-toolbar">
-            <el-text type="info" size="small">
-              当前页 {{ pagedDevices.length }} 台<span v-if="selectedDeviceKeys.length">，已选 {{ selectedDeviceKeys.length }} 台</span>
-            </el-text>
-            <el-space wrap>
-              <el-button v-if="canCreateEquipment" type="primary" size="small" icon="Plus" @click="requestCreate">新增设备</el-button>
-              <el-button v-if="canExportEquipment" size="small" icon="Download" @click="handleDataCommand('export-devices')">导出设备</el-button>
-              <el-button size="small" :disabled="!selectedDeviceKeys.length" @click="clearDeviceSelection">取消选择</el-button>
-              <el-button
-                size="small"
-                type="danger"
-                plain
-                icon="Delete"
-                :disabled="!selectedDeviceKeys.length"
-                :loading="batchDeleting"
-                v-hasPermi="['support:equipment:remove', 'support:hardwareAsset:remove', 'support:server:remove']"
-                @click="removeSelectedDevices"
-              >批量删除</el-button>
-            </el-space>
-          </div>
-
-          <el-table
-            ref="deviceTableRef"
-            v-loading="loading"
-            :data="pagedDevices"
-            row-key="deviceKey"
-            size="small"
-            height="100%"
-            empty-text="没有符合条件的设备"
-            @selection-change="handleDeviceSelectionChange"
-          >
-            <el-table-column type="selection" width="48" align="center" :selectable="canDeleteDevice" />
-            <el-table-column label="设备名称" prop="assetName" min-width="140" show-overflow-tooltip />
-            <el-table-column label="类型" prop="assetTypeLabel" width="76" show-overflow-tooltip />
-            <el-table-column label="IP地址" min-width="112" show-overflow-tooltip>
-              <template #default="{ row }">{{ row.ipAddress || row.manageIp || '-' }}</template>
-            </el-table-column>
-            <el-table-column label="平台归属" prop="bindingLabel" min-width="145" show-overflow-tooltip />
-            <el-table-column label="安装位置" min-width="160" show-overflow-tooltip>
-              <template #default="{ row }">{{ isDevicePlaced(row) ? formatDeviceLocation(row) : '未配置机房位置' }}</template>
-            </el-table-column>
-            <el-table-column label="状态" width="66" align="center">
-              <template #default="{ row }">
-                <el-tag :type="row.status === '1' ? 'info' : 'success'" size="small">
-                  {{ row.status === '1' ? '停用' : '正常' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="174" align="center" fixed="right">
-              <template #default="{ row }">
-                <el-button link type="primary" @click="locateDeviceFromDrawer(row)">详情</el-button>
-                <el-button v-if="canManageDevice(row)" link type="primary" icon="Edit" @click="emit('edit-device', row)">编辑</el-button>
-                <el-button v-if="canPlaceEquipment" link type="primary" @click="openPlacementForm(row)">位置</el-button>
-              </template>
-            </el-table-column>
-            <template #empty>
-              <el-empty :description="devices.length ? '没有符合筛选条件的设备' : '当前现场尚未录入设备'" :image-size="60">
-                <el-button v-if="devices.length" icon="Refresh" @click="resetDeviceQuery">重置筛选</el-button>
-                <el-button v-if="canCreateEquipment" type="primary" icon="Plus" @click="requestCreate">新增设备</el-button>
-              </el-empty>
-            </template>
-          </el-table>
-
-          <Pagination
-            v-show="filteredDevices.length > 0"
-            :total="filteredDevices.length"
-            v-model:page="devicePage.pageNum"
-            v-model:limit="devicePage.pageSize"
-            :page-sizes="[10, 20, 30]"
-            :auto-scroll="false"
-            @pagination="handleDevicePagination"
-          />
-        </div>
-      </el-drawer>
-
-      <main class="room3d-scene-panel">
+      <main v-if="viewMode === 'map'" class="room3d-scene-panel">
         <div class="room3d-scene-summary">
           <span><strong>{{ currentRoomCabinets.length }}</strong> 个机柜</span>
           <span>
@@ -731,6 +662,7 @@
 
 <script setup>
 import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useWindowSize } from '@vueuse/core'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { CSS2DObject, CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js'
@@ -768,13 +700,14 @@ import {
   summarizeOutgoingPorts
 } from './equipmentRoom3d.helpers.js'
 import { getDeviceIntakeGaps } from './equipmentIntake.rules'
+import EquipmentInventory from './EquipmentInventory.vue'
+import { filterEquipmentSheet } from './equipmentInventory.rules'
 
 const props = defineProps({
   siteId: { type: [Number, String], required: true },
   siteName: { type: String, default: '' },
   initialDeviceKey: { type: String, default: '' },
-  initialPlatformId: { type: [Number, String], default: null },
-  initialDirectoryOpen: { type: Boolean, default: false }
+  initialPlatformId: { type: [Number, String], default: null }
 })
 
 const emit = defineEmits([
@@ -788,6 +721,18 @@ const emit = defineEmits([
   'changed'
 ])
 const { proxy } = getCurrentInstance()
+const viewMode = ref('list')
+const { width: viewportWidth } = useWindowSize()
+const showDeviceQuery = ref(true)
+watch(viewportWidth, width => { showDeviceQuery.value = width >= 768 }, { immediate: true })
+const inventoryRef = ref(null)
+const inventorySheet = ref('ALL')
+const inventoryRevision = ref(0)
+const inventoryPlatformId = computed(() => /^\d+$/.test(inventorySheet.value) ? Number(inventorySheet.value) : null)
+const viewOptions = [
+  { label: '设备清单', value: 'list', icon: 'keyline-list' },
+  { label: '机房摆放图', value: 'map', icon: 'keyline-building' }
+]
 
 const loading = ref(false)
 const syncing = ref(false)
@@ -804,16 +749,12 @@ const selectedCabinetId = ref(null)
 const selectedDeviceKey = ref('')
 const showLinks = ref(true)
 const workspaceMode = ref('view')
-const deviceDrawerOpen = ref(props.initialDirectoryOpen)
 const inspectorDrawerOpen = ref(false)
-const deviceTableRef = ref(null)
 const deviceScope = ref(props.initialPlatformId ? 'PLATFORM' : 'SITE')
 const deviceKeyword = ref('')
 const assetTypeFilter = ref('ALL')
 const placementFilter = ref('ALL')
 const attentionFilter = ref('ALL')
-const devicePage = reactive({ pageNum: 1, pageSize: 10 })
-const selectedDeviceKeys = ref([])
 const batchDeleting = ref(false)
 const bindingPlatformId = ref(null)
 const bindingSaving = ref(false)
@@ -894,11 +835,7 @@ const deviceScopeDescription = computed(() => deviceScope.value === 'PLATFORM'
   : `当前现场：${props.siteName || '全部设备'}`
 )
 const filteredDevices = computed(() => devices.value.filter(matchesDeviceFilters))
-const pagedDevices = computed(() => {
-  const start = (devicePage.pageNum - 1) * devicePage.pageSize
-  return filteredDevices.value.slice(start, start + devicePage.pageSize)
-})
-const visibleCurrentRoomDevices = computed(() => filteredDevices.value.filter((device) =>
+const visibleCurrentRoomDevices = computed(() => filterEquipmentSheet(filteredDevices.value, inventorySheet.value, platformOptions.value).filter((device) =>
   Number(device.roomId) === Number(selectedRoomId.value) && isDevicePlaced(device)
 ))
 const selectedCabinet = computed(() => cabinets.value.find((cabinet) => Number(cabinet.cabinetId) === Number(selectedCabinetId.value)) || null)
@@ -1018,7 +955,6 @@ let initialDeviceHandledKey = ''
 onMounted(async () => {
   reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
   await nextTick()
-  initScene()
   await loadPlatforms()
   await loadTopology()
   startLiveSync()
@@ -1027,6 +963,25 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   stopLiveSync()
   disposeScene()
+})
+
+watch(viewMode, async (mode) => {
+  inspectorDrawerOpen.value = false
+  if (mode !== 'map') {
+    disposeScene()
+    return
+  }
+  await nextTick()
+  if (viewMode.value !== 'map') return
+  renderError.value = ''
+  initScene()
+  rebuildScene()
+}, { flush: 'pre' })
+watch(viewportWidth, async () => {
+  if (viewMode.value !== 'map') return
+  await nextTick()
+  resizeScene()
+  resetCamera()
 })
 
 watch(selectedRoomId, async () => {
@@ -1040,6 +995,7 @@ watch(selectedRoomId, async () => {
 })
 
 watch(showLinks, rebuildScene)
+watch(inventorySheet, rebuildScene)
 watch(workspaceMode, () => {
   if (sceneHost.value) sceneHost.value.style.cursor = workspaceMode.value === 'layout' ? 'move' : 'grab'
 })
@@ -1051,17 +1007,12 @@ watch(() => props.initialPlatformId, (value) => {
   if (!value && deviceScope.value === 'PLATFORM') deviceScope.value = 'SITE'
 })
 watch([deviceKeyword, deviceScope, assetTypeFilter, placementFilter, attentionFilter], () => {
-  devicePage.pageNum = 1
-  clearDeviceSelection()
+  inventoryRef.value?.resetPage()
   if (selectedDevice.value && !matchesDeviceFilters(selectedDevice.value)) {
     selectedDeviceKey.value = ''
     selectedCabinetId.value = null
   }
   rebuildScene()
-})
-watch(() => filteredDevices.value.length, (total) => {
-  const maxPage = Math.max(1, Math.ceil(total / devicePage.pageSize))
-  if (devicePage.pageNum > maxPage) devicePage.pageNum = maxPage
 })
 watch(selectedDeviceKey, () => {
   bindingPlatformId.value = null
@@ -1079,6 +1030,7 @@ async function loadPlatforms() {
 
 let topologyLoadPromise = null
 async function loadTopology(options = {}) {
+  if (!options.silent) inventoryRevision.value += 1
   if (topologyLoadPromise) {
     await topologyLoadPromise
     if (!options.fresh) return
@@ -1122,6 +1074,7 @@ async function performTopologyLoad(options = {}) {
       selectedCabinetId.value = null
     }
     await nextTick()
+    if (viewMode.value === 'map' && !renderer) initScene()
     rebuildScene()
     await focusInitialDevice()
   } catch (error) {
@@ -1152,7 +1105,7 @@ function handleVisibilityChange() {
 }
 
 function initScene() {
-  if (!sceneHost.value) return
+  if (!sceneHost.value || renderer) return
   try {
     scene = new THREE.Scene()
     camera = new THREE.PerspectiveCamera(42, 1, 0.1, 250)
@@ -1444,7 +1397,9 @@ function resetCamera() {
   if (!camera || !controls) return
   const { width, depth } = normalizeRoomSize(selectedRoom.value || {})
   const span = Math.max(width, depth)
-  camera.position.set(span * 1.08, Math.max(9, span * 1.12), span * 1.28)
+  const aspectScale = 1 / Math.min(1, Math.max(0.3, camera.aspect))
+  camera.position.set(span * 1.08 * aspectScale, Math.max(9, span * 1.12) * aspectScale, span * 1.28 * aspectScale)
+  controls.maxDistance = Math.max(42, camera.position.length() * 1.5)
   controls.target.set(0, 0.7, 0)
   controls.update()
 }
@@ -1560,7 +1515,6 @@ async function handlePointerUp(event) {
     selectedDeviceKey.value = ''
     inspectorDrawerOpen.value = true
   }
-  if (inspectorDrawerOpen.value) deviceDrawerOpen.value = false
   rebuildScene()
 }
 
@@ -1702,18 +1656,8 @@ function matchesDeviceFilters(device) {
   ].filter(Boolean).join(' ').toLowerCase().includes(keyword)
 }
 
-function handleDeviceSelectionChange(rows) {
-  selectedDeviceKeys.value = rows.map((device) => device.deviceKey)
-}
-
-function clearDeviceSelection() {
-  selectedDeviceKeys.value = []
-  deviceTableRef.value?.clearSelection?.()
-}
-
 function handleDeviceQuery() {
-  devicePage.pageNum = 1
-  clearDeviceSelection()
+  inventoryRef.value?.resetPage()
 }
 
 function resetDeviceQuery() {
@@ -1724,32 +1668,18 @@ function resetDeviceQuery() {
   handleDeviceQuery()
 }
 
-function handleDevicePagination({ page, limit }) {
-  devicePage.pageNum = page
-  devicePage.pageSize = limit
-  clearDeviceSelection()
-}
-
 function openDeviceDrawer() {
   inspectorDrawerOpen.value = false
-  deviceDrawerOpen.value = true
+  viewMode.value = 'list'
 }
 
 function openInspectorDrawer() {
-  deviceDrawerOpen.value = false
   inspectorDrawerOpen.value = true
 }
 
 async function locateDeviceFromDrawer(device) {
   await selectDevice(device)
-  deviceDrawerOpen.value = false
   inspectorDrawerOpen.value = true
-}
-
-async function removeSelectedDevices() {
-  const targets = devices.value.filter((device) => selectedDeviceKeys.value.includes(device.deviceKey))
-  if (!targets.length) return
-  await removeDevices(targets)
 }
 
 async function removeSelectedDevice() {
@@ -1758,6 +1688,10 @@ async function removeSelectedDevice() {
 }
 
 async function removeDevices(targets) {
+  if (targets.length > 500) {
+    proxy.$modal.msgWarning('单次最多删除500台设备，请缩小选择范围')
+    return
+  }
   if (!targets.every(canDeleteDevice)) {
     proxy.$modal.msgWarning('当前账号没有设备删除权限')
     return
@@ -1773,7 +1707,6 @@ async function removeDevices(targets) {
     })
     proxy.$modal.msgSuccess(`已删除 ${targets.length} 台设备`)
     const removedKeys = new Set(targets.map((device) => device.deviceKey))
-    selectedDeviceKeys.value = selectedDeviceKeys.value.filter((key) => !removedKeys.has(key))
     if (removedKeys.has(selectedDeviceKey.value)) selectedDeviceKey.value = ''
     await loadTopology()
     emit('changed')
@@ -1784,11 +1717,16 @@ async function removeDevices(targets) {
 
 
 function requestCreate() {
-  emit('create-device', { platformId: activeScopePlatformId.value })
+  emit('create-device', { platformId: inventoryPlatformId.value || activeScopePlatformId.value })
 }
 
 async function revealDevice(reference, placement = false) {
+  if (placement) {
+    viewMode.value = 'map'
+    await nextTick()
+  }
   deviceScope.value = 'SITE'
+  inventorySheet.value = 'ALL'
   resetDeviceQuery()
   await loadTopology({ fresh: true })
   const device = devices.value.find((item) => item.deviceKey === getDeviceKey(reference.sourceType, reference.sourceId))
@@ -1889,6 +1827,8 @@ async function focusInitialDevice() {
   const device = devices.value.find((item) => item.deviceKey === key)
   if (!device) return
   initialDeviceHandledKey = key
+  viewMode.value = 'map'
+  await nextTick()
   await selectDevice(device)
   openPlacementForm(device)
 }
@@ -2388,6 +2328,9 @@ function disposeScene() {
   renderer?.domElement?.remove()
   labelRenderer?.domElement?.remove()
   scene = null
+  sceneContent = null
+  camera = null
+  controls = null
   renderer = null
   labelRenderer = null
 }
@@ -2505,6 +2448,18 @@ defineExpose({
   min-height: 0;
   overflow: hidden;
 }
+
+.room3d-inventory-panel {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  padding: 16px;
+  gap: 12px;
+  min-height: 0;
+}
+
+.room3d-inventory-panel.has-query { grid-template-rows: auto auto minmax(0, 1fr); }
 
 .room3d-scene-panel {
   height: 100%;

@@ -22,6 +22,7 @@ import com.hm.manage.domain.vo.SupportEquipmentPlatformBindingVo;
 import com.hm.manage.mapper.SupportEquipmentBindingMapper;
 import com.hm.manage.mapper.SupportHardwareAssetMapper;
 import com.hm.manage.mapper.SupportServerMapper;
+import com.hm.manage.mapper.SupportSiteMapper;
 import com.hm.manage.service.ISupportHardwareAssetService;
 import com.hm.manage.service.ISupportPlatformService;
 import com.hm.manage.service.ISupportServerService;
@@ -50,6 +51,9 @@ class SupportEquipmentServiceImplTest
         ReflectionTestUtils.setField(service, "serverService", serverService);
         ReflectionTestUtils.setField(service, "hardwareAssetService", hardwareAssetService);
         ReflectionTestUtils.setField(service, "platformService", mock(ISupportPlatformService.class));
+        var siteMapper = mock(SupportSiteMapper.class);
+        when(siteMapper.selectSiteIdForUpdate(9L)).thenReturn(9L);
+        ReflectionTestUtils.setField(service, "siteMapper", siteMapper);
     }
 
     @Test
@@ -60,6 +64,8 @@ class SupportEquipmentServiceImplTest
         server.setSiteId(9L);
         server.setServerName("应用服务器");
         server.setServerAddress("10.0.0.31");
+        server.setSshPort(22);
+        server.setOsType("Linux");
         server.setEquipmentRoom("核心机房");
         server.setCabinetNo("A01");
         server.setRackUStart(10);
@@ -95,11 +101,15 @@ class SupportEquipmentServiceImplTest
         SupportEquipmentAsset serverRow = rows.stream().filter(row -> "SERVER".equals(row.getSourceType())).findFirst().orElseThrow();
         assertEquals("核心机房 / A01 / 10-12U", serverRow.getInstallLocation());
         assertEquals(2, serverRow.getPlatformCount());
+        assertEquals(22, serverRow.getSshPort());
+        assertEquals("Linux", serverRow.getOsType());
         assertEquals(Arrays.asList(101L, 102L), serverRow.getPlatformIds());
         assertTrue(serverRow.getCredentialCapable());
         SupportEquipmentAsset hardwareRow = rows.stream().filter(row -> "HARDWARE".equals(row.getSourceType())).findFirst().orElseThrow();
         assertEquals("核心机房 / A02 / 20U", hardwareRow.getInstallLocation());
         assertEquals(48, hardwareRow.getPortCount());
+        query.setDeviceKeys(List.of("HARDWARE:41"));
+        assertEquals(List.of(41L), service.selectEquipmentAssetList(query).stream().map(SupportEquipmentAsset::getSourceId).toList());
     }
 
     @Test

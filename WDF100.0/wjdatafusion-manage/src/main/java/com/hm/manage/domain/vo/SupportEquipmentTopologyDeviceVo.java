@@ -19,6 +19,13 @@ public class SupportEquipmentTopologyDeviceVo
     private String assetModel;
     private String installLocation;
     private String loginUsername;
+    private Integer sshPort;
+    private String osType;
+
+    public Integer getSshPort() { return sshPort; }
+    public void setSshPort(Integer sshPort) { this.sshPort = sshPort; }
+    public String getOsType() { return osType; }
+    public void setOsType(String osType) { this.osType = osType; }
     private String equipmentRoom;
     private String cabinetNo;
     private Long roomId;

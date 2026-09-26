@@ -13,6 +13,9 @@ public class SupportEquipmentAsset extends BaseEntity
     private String sourceType;
     private Long sourceId;
     private Long siteId;
+    private List<String> deviceKeys;
+    public List<String> getDeviceKeys() { return deviceKeys; }
+    public void setDeviceKeys(List<String> deviceKeys) { this.deviceKeys = deviceKeys; }
 
     @Excel(name = "设备类型")
     private String assetType;
@@ -43,6 +46,13 @@ public class SupportEquipmentAsset extends BaseEntity
 
     @Excel(name = "登录账号")
     private String loginUsername;
+    private Integer sshPort;
+    private String osType;
+
+    public Integer getSshPort() { return sshPort; }
+    public void setSshPort(Integer sshPort) { this.sshPort = sshPort; }
+    public String getOsType() { return osType; }
+    public void setOsType(String osType) { this.osType = osType; }
 
     @Excel(name = "所属机房")
     private String equipmentRoom;
