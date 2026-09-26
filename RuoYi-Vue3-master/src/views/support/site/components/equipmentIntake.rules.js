@@ -20,6 +20,7 @@ export function buildEquipmentCreatePayload(siteId, form) {
     result.server = {
       serverName: text(form.assetName), serverAddress: text(form.ipAddress),
       sshPort: form.sshPort, osType: text(form.osType), status: form.status,
+      rootDirectLogin: form.rootDirectLogin === true,
       hikPassword: form.hikPassword || null, rootPassword: form.rootPassword || null,
       otherUsername: text(form.loginUsername), otherPassword: form.loginPassword || null,
       remark: text(form.remark)

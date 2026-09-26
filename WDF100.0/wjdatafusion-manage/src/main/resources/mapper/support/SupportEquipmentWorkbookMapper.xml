@@ -28,6 +28,7 @@
     <select id="selectServers" resultType="java.util.LinkedHashMap">
         select server_id as sourceId, site_id as siteId, 'SERVER' as sourceType, 'SERVER' as assetType,
                server_name as assetName, server_address as ipAddress, ssh_port as sshPort, os_type as osType,
+               root_direct_login as rootDirectLogin,
                os_username as _legacyUsername, os_password_cipher as _legacyCipher,
                equipment_room as equipmentRoom, cabinet_no as cabinetNo, rack_u_start as rackUStart,
                rack_u_end as rackUEnd, status, remark, update_time as _updateTime
@@ -64,6 +65,7 @@
             <if test="fields.containsKey('assetName')">server_name = #{fields.assetName},</if>
             <if test="fields.containsKey('ipAddress')">server_address = #{fields.ipAddress},</if>
             <if test="fields.containsKey('sshPort')">ssh_port = #{fields.sshPort},</if>
+            <if test="fields.containsKey('rootDirectLogin')">root_direct_login = #{fields.rootDirectLogin},</if>
             <if test="fields.containsKey('osType')">os_type = #{fields.osType},</if>
             <if test="fields.containsKey('status')">status = #{fields.status},</if>
             <if test="fields.containsKey('remark')">remark = #{fields.remark},</if>

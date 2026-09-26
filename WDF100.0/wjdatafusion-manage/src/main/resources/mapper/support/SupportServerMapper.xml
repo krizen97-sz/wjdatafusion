@@ -10,6 +10,7 @@
         <result property="serverName" column="server_name"/>
         <result property="serverAddress" column="server_address"/>
         <result property="sshPort" column="ssh_port"/>
+        <result property="rootDirectLogin" column="root_direct_login"/>
         <result property="osType" column="os_type"/>
         <result property="equipmentRoom" column="equipment_room"/>
         <result property="cabinetNo" column="cabinet_no"/>
@@ -26,7 +27,7 @@
     </resultMap>
 
     <sql id="selectSupportServerVo">
-        select server_id, site_id, server_name, server_address, ssh_port, os_type,
+        select server_id, site_id, server_name, server_address, ssh_port, root_direct_login, os_type,
                equipment_room, cabinet_no, rack_u_start, rack_u_end,
                os_username, os_password_cipher,
                status, create_by, create_time, update_by, update_time, remark
@@ -69,6 +70,7 @@
             <if test="serverName != null and serverName != ''">server_name,</if>
             <if test="serverAddress != null and serverAddress != ''">server_address,</if>
             <if test="sshPort != null">ssh_port,</if>
+            <if test="rootDirectLogin != null">root_direct_login,</if>
             <if test="osType != null">os_type,</if>
             <if test="equipmentRoom != null">equipment_room,</if>
             <if test="cabinetNo != null">cabinet_no,</if>
@@ -88,6 +90,7 @@
             <if test="serverName != null and serverName != ''">#{serverName},</if>
             <if test="serverAddress != null and serverAddress != ''">#{serverAddress},</if>
             <if test="sshPort != null">#{sshPort},</if>
+            <if test="rootDirectLogin != null">#{rootDirectLogin},</if>
             <if test="osType != null">#{osType},</if>
             <if test="equipmentRoom != null">#{equipmentRoom},</if>
             <if test="cabinetNo != null">#{cabinetNo},</if>
@@ -111,6 +114,7 @@
             <if test="serverName != null and serverName != ''">server_name = #{serverName},</if>
             <if test="serverAddress != null and serverAddress != ''">server_address = #{serverAddress},</if>
             <if test="sshPort != null">ssh_port = #{sshPort},</if>
+            <if test="rootDirectLogin != null">root_direct_login = #{rootDirectLogin},</if>
             <if test="osType != null">os_type = #{osType},</if>
             <if test="equipmentRoom != null">equipment_room = #{equipmentRoom},</if>
             <if test="equipmentRoom == null">equipment_room = null,</if>

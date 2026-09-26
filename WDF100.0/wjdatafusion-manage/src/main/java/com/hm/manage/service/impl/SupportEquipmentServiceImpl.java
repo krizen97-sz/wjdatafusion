@@ -96,6 +96,7 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
             server.setServerName(input.getServerName());
             server.setServerAddress(input.getServerAddress());
             server.setSshPort(input.getSshPort());
+            server.setRootDirectLogin(Boolean.TRUE.equals(input.getRootDirectLogin()));
             server.setOsType(input.getOsType());
             server.setHikPassword(input.getHikPassword());
             server.setRootPassword(input.getRootPassword());
@@ -278,6 +279,7 @@ public class SupportEquipmentServiceImpl implements ISupportEquipmentService
             row.setIpAddress(server.getServerAddress());
             row.setLoginUsername(server.getOsUsername());
             row.setSshPort(server.getSshPort());
+            row.setRootDirectLogin(Boolean.TRUE.equals(server.getRootDirectLogin()));
             row.setOsType(server.getOsType());
             row.setEquipmentRoom(server.getEquipmentRoom());
             row.setCabinetNo(server.getCabinetNo());

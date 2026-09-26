@@ -45,6 +45,9 @@
         <el-form-item v-if="isServer && intakeMode !== 'import'" label="操作系统">
           <el-input v-model="form.osType" maxlength="50" placeholder="Linux / Windows Server" />
         </el-form-item>
+        <el-form-item v-if="isServer && isSingle" label="是否 root 直接登录">
+          <el-switch v-model="form.rootDirectLogin" aria-label="是否root直接登录" />
+        </el-form-item>
         <el-form-item v-if="isSingle || intakeMode === 'batch'" label="运行状态">
           <el-radio-group v-model="form.status">
             <el-radio value="0">正常</el-radio>
@@ -223,7 +226,7 @@ function reset(context = {}) {
   const type = availableTypes.value.some((item) => item.value === context.assetType) ? context.assetType : availableTypes.value[0]?.value
   Object.keys(form).forEach((key) => delete form[key])
   Object.assign(form, { assetType: type, assetName: '', ipAddress: '', platformId: resolveIntakePlatform(props.platforms, context.platformId, type),
-    networkEnv: '', status: '0', sshPort: DEFAULT_NEW_SERVER_SSH_PORT, addressText: '', namePrefix: '服务器',
+    networkEnv: '', status: '0', sshPort: DEFAULT_NEW_SERVER_SSH_PORT, rootDirectLogin: false, addressText: '', namePrefix: '服务器',
     loginUsername: '', loginPassword: '', hikPassword: '', rootPassword: '' })
   intakeMode.value = type === 'SERVER' && ['batch', 'import'].includes(context.mode) ? context.mode : 'single'
   importFile.value = null

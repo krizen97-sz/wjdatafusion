@@ -21,6 +21,12 @@ public class SupportServer extends BaseEntity
     @Excel(name = "SSH端口")
     private Integer sshPort;
 
+    @Excel(name = "root直接登录", readConverterExp = "true=是,false=否")
+    private Boolean rootDirectLogin;
+
+    public Boolean getRootDirectLogin() { return rootDirectLogin; }
+    public void setRootDirectLogin(Boolean rootDirectLogin) { this.rootDirectLogin = rootDirectLogin; }
+
     @Excel(name = "操作系统")
     private String osType;
 

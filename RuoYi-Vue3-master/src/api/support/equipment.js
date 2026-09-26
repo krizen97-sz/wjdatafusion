@@ -1,5 +1,10 @@
 import request from '@/utils/request'
 
+export function checkServerLogin(data) {
+  return request({ url: '/support/equipment/servers/loginCheck', method: 'post', data,
+    timeout: 90000, headers: { repeatSubmit: false } })
+}
+
 export function getEquipmentWorkbook(siteId) {
   return request({ url: '/support/equipment/workbook/' + siteId, method: 'get' })
 }

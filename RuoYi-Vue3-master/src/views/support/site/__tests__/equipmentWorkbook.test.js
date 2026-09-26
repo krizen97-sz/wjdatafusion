@@ -17,6 +17,31 @@ function fixture(sourceType = 'SERVER') {
 const options = { rooms: [{ roomId: 1 }], cabinets: [{ roomId: 1, cabinetId: 2, uCapacity: 45 }],
   platforms: [{ platformId: 10, platformLevel: 'SUB' }, { platformId: 11, platformLevel: 'MAIN' }] }
 
+test('root direct login is off by default, editable for servers only and sent as a boolean', () => {
+  const { original, draft } = fixture()
+  setWorkbookValue(draft, 'rootDirectLogin', false)
+  assert.deepEqual(workbookRowChanges(original, draft), {})
+  setWorkbookValue(draft, 'rootDirectLogin', true)
+  assert.deepEqual(workbookRowChanges(original, draft), { rootDirectLogin: true })
+  const hardware = fixture('HARDWARE')
+  setWorkbookValue(hardware.draft, 'rootDirectLogin', true)
+  assert.equal(hardware.draft.rootDirectLogin, undefined)
+})
+
+test('login check stays in credentials, reuses native switch and sends only saved device identity', () => {
+  const read = path => readFileSync(new URL(path, import.meta.url), 'utf8')
+  const component = read('../components/EquipmentLoginCheck.vue')
+  const workspace = read('../components/EquipmentRoom3DWorkspace.vue')
+  assert.equal(parse(component).errors.length, 0)
+  assert.match(component, /el-switch/)
+  assert.match(component, /support:credential:verify/)
+  assert.match(component, /serverId: props.device.sourceId/)
+  assert.doesNotMatch(component, /readEquipmentPasswords|localStorage|sessionStorage/)
+  assert.match(component, /HOST_KEY_REQUIRED/)
+  assert.match(workspace, /deviceConfigTab === 'credentials'/)
+  assert.match(component, /saveEquipmentWorkbook/)
+})
+
 test('workbook sends only changes and never turns existing SSH ports into defaults', () => {
   const { original, draft } = fixture()
   setWorkbookValue(draft, 'assetName', '新设备名')

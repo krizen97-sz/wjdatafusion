@@ -33,6 +33,8 @@ import com.hm.framework.web.service.PermissionService;
 import com.hm.manage.service.impl.SupportEquipmentCredentialService;
 import com.hm.manage.service.impl.SupportEquipmentWorkbookService;
 import com.hm.manage.domain.bo.SupportEquipmentWorkbookBo;
+import com.hm.manage.domain.bo.SupportServerLoginCheckBo;
+import com.hm.manage.service.impl.SupportServerLoginCheckService;
 
 @RestController
 @RequestMapping("/support/equipment")
@@ -52,6 +54,18 @@ public class SupportEquipmentController extends BaseController
 
     @Autowired
     private SupportEquipmentWorkbookService workbookService;
+
+    @Autowired
+    private SupportServerLoginCheckService loginCheckService;
+
+    @PreAuthorize("@ss.hasPermi('support:credential:verify')")
+    @Log(title = "服务器密码登录校验", businessType = BusinessType.OTHER, isSaveRequestData = false, isSaveResponseData = false)
+    @PostMapping("/servers/loginCheck")
+    public AjaxResult loginCheck(@RequestBody SupportServerLoginCheckBo command, HttpServletResponse response)
+    {
+        response.setHeader("Cache-Control", "no-store");
+        return success(loginCheckService.check(command));
+    }
 
     @PreAuthorize("@ss.hasAnyPermi('support:equipment:edit,support:server:edit,support:hardwareAsset:edit')")
     @GetMapping("/workbook/{siteId}")

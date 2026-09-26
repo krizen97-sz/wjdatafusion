@@ -98,6 +98,17 @@ class SupportEquipmentWorkbookServiceTest
     }
 
     @Test
+    void rootPolicyIsBooleanSparseAndServerOnly()
+    {
+        assertEquals(false, snapshot("SERVER:1").get("rootDirectLogin"));
+        service.save(command(change("SERVER", 1L, Map.of("rootDirectLogin", true))), "tester");
+        verify(mapper).updateServer(eq(9L), eq(1L), argThat(fields -> Boolean.TRUE.equals(fields.get("rootDirectLogin"))
+            && !fields.containsKey("equipmentRoom") && !fields.containsKey("_legacyCipher")), eq("tester"), any());
+        assertThrows(ServiceException.class, () -> service.save(command(change("SERVER", 1L, Map.of("rootDirectLogin", "false"))), "tester"));
+        assertThrows(ServiceException.class, () -> service.save(command(change("HARDWARE", 3L, Map.of("rootDirectLogin", true))), "tester"));
+    }
+
+    @Test
     void currentLockingReadRejectsOwnershipChangedAfterTheClientSnapshot()
     {
         var command = command(change("SERVER", 1L, Map.of("assetName", "pending")));

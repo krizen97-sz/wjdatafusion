@@ -304,6 +304,7 @@ public class SupportEquipmentTopologyServiceImpl implements ISupportEquipmentTop
             device.setInstallLocation(asset.getInstallLocation());
             device.setLoginUsername(asset.getLoginUsername());
             device.setSshPort(asset.getSshPort());
+            device.setRootDirectLogin(asset.getRootDirectLogin());
             device.setOsType(asset.getOsType());
             device.setEquipmentRoom(asset.getEquipmentRoom());
             device.setCabinetNo(asset.getCabinetNo());

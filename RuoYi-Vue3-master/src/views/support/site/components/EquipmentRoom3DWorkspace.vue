@@ -361,9 +361,11 @@
           </el-tab-pane>
           <el-tab-pane name="credentials">
             <template #label><span class="motion-control-label"><svg-icon icon-class="password" class="motion-control-label__icon" /><span class="motion-control-label__text">凭据</span></span></template>
-            <el-descriptions :column="1" border><el-descriptions-item label="登录账号">{{ selectedDevice.loginUsername || '-' }}</el-descriptions-item></el-descriptions>
+            <el-descriptions :column="1" border><el-descriptions-item :label="selectedDevice.sourceType === 'SERVER' ? '凭据来源' : '登录账号'">{{ selectedDevice.sourceType === 'SERVER' ? '已登记的服务器账号' : selectedDevice.loginUsername || '-' }}</el-descriptions-item></el-descriptions>
             <el-button v-if="canViewPassword" icon="View" @click="emit('view-password', selectedDevice)">显示密码</el-button>
             <el-button v-if="selectedDevice.credentialCapable && canManageEquipment" icon="Key" @click="emit('manage-credentials', selectedDevice)">管理账号</el-button>
+            <EquipmentLoginCheck v-if="selectedDevice.sourceType === 'SERVER' && deviceConfigTab === 'credentials'"
+              :key="getDeviceKey(selectedDevice)" :site-id="siteId" :device="selectedDevice" @saved="loadTopology" />
           </el-tab-pane>
           </el-tabs>
         </template>
@@ -716,6 +718,7 @@ import {
 } from './equipmentRoom3d.helpers.js'
 import { getDeviceIntakeGaps } from './equipmentIntake.rules'
 import EquipmentInventory from './EquipmentInventory.vue'
+import EquipmentLoginCheck from './EquipmentLoginCheck.vue'
 import EquipmentRelationTree from './EquipmentRelationTree.vue'
 import { buildEquipmentTree, filterEquipmentNode, findEquipmentTreeNode } from './equipmentInventory.rules'
 

@@ -2,7 +2,7 @@ export const SECRET_FIELDS = ['loginPassword', 'hikPassword', 'rootPassword', 'o
 export const LOCATION_FIELDS = ['roomId', 'cabinetId', 'rackUStart', 'rackUEnd']
 export const FIELD_LENGTHS = {"assetName":120,"ipAddress":255,"manageIp":255,"osType":64,"networkEnv":100,"macAddress":64,"manufacturer":100,"assetModel":120,"serialNo":120,"ownerOrg":160,"ownerContact":80,"loginUsername":128,"otherUsername":128,"remark":500,"outputType":80,"terminalType":80,"department":120,"useLocation":200,"switchLevel":80,"uplinkDevice":160,"vlanInfo":500,"gatewayMode":80,"gatewayDirection":120,"gatewayBandwidth":80,"securityZone":200}
 const common = ['assetName', 'ipAddress', 'status', 'remark', 'platformIds', ...LOCATION_FIELDS]
-const server = ['sshPort', 'osType', 'otherUsername', 'hikPassword', 'rootPassword', 'otherPassword']
+const server = ['sshPort', 'rootDirectLogin', 'osType', 'otherUsername', 'hikPassword', 'rootPassword', 'otherPassword']
 export const HARDWARE_EXTRA_FIELDS = [
   { prop: 'networkEnv', name: '网络环境', size: 130, kind: 'network' },
   { prop: 'macAddress', name: 'MAC地址', size: 160 },
@@ -40,6 +40,7 @@ export const WORKBOOK_FIELDS = [
   { prop: 'loginPassword', name: '设备密码', size: 190, kind: 'password', source: 'HARDWARE' },
   { prop: 'hikPassword', name: 'hik密码', size: 190, kind: 'password', source: 'SERVER' },
   { prop: 'rootPassword', name: 'root密码', size: 190, kind: 'password', source: 'SERVER' },
+  { prop: 'rootDirectLogin', name: 'root直接登录', size: 145, kind: 'boolean', source: 'SERVER' },
   { prop: 'otherUsername', name: '其他账号', size: 145, source: 'SERVER' },
   { prop: 'otherPassword', name: '其他密码', size: 190, kind: 'password', source: 'SERVER' },
   { prop: 'manageIp', name: '管理IP', size: 150, source: 'HARDWARE' },
@@ -54,6 +55,7 @@ export function editableFields(row) {
   return [...common, ...(row.sourceType === 'SERVER' ? server : hardware)]
 }
 function normalized(field, value) {
+  if (field === 'rootDirectLogin') return value === true || value === 1
   if (field === 'platformIds') return [...new Set((value || []).map(Number))].sort((a, b) => a - b)
   if (LOCATION_FIELDS.includes(field) || ['sshPort', 'channelCount', 'portCount'].includes(field)) {
     if (value === '' || value == null) return null

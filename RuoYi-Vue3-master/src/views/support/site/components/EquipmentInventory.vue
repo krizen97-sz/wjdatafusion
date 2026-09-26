@@ -114,7 +114,7 @@ const columns = computed(() => [
     if (fieldGroup.value === 'EXTENDED') return false
     if (fieldGroup.value === 'ALL') return true
     const location = field.prop === 'platformIds' || LOCATION_FIELDS.includes(field.prop)
-    const credential = SECRET_FIELDS.includes(field.prop) || ['loginUsername', 'otherUsername'].includes(field.prop)
+    const credential = SECRET_FIELDS.includes(field.prop) || ['loginUsername', 'otherUsername', 'rootDirectLogin'].includes(field.prop)
     return fieldGroup.value === 'LOCATION' ? location : fieldGroup.value === 'CREDENTIAL' ? credential : !location && !credential
   }).map(field => ({
     ...field, cellTemplate: valueCell,

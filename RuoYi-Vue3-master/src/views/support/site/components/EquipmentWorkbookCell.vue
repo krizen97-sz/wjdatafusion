@@ -3,6 +3,8 @@
     <template v-if="!editable">
       <span class="equipment-workbook-cell__text">{{ displayValue }}</span>
     </template>
+    <el-switch v-else-if="column.kind === 'boolean'" :model-value="model[column.prop] === true" :disabled="model._saving"
+      :aria-label="fieldLabel" @update:model-value="change" @keydown.stop @mousedown.stop />
     <template v-else-if="column.kind === 'password'">
       <el-input
         :disabled="model._saving"
@@ -49,7 +51,7 @@
 </template>
 <script setup>
 import { computed } from 'vue'
-import { ElButton, ElInput, ElOption, ElSelect, ElTooltip } from 'element-plus'
+import { ElButton, ElInput, ElOption, ElSelect, ElSwitch, ElTooltip } from 'element-plus'
 import { FIELD_LENGTHS } from './equipmentWorkbook.rules'
 const props = defineProps({ model: Object, column: Object, onChange: Function })
 const editable = computed(() => props.model._editing && props.model.canEdit && !props.column.readonly
@@ -67,6 +69,7 @@ const displayValue = computed(() => {
   if (props.column.source && props.column.source !== props.model.sourceType) return '-'
   if (props.column.assetTypes && !props.column.assetTypes.includes(props.model.assetType)) return '-'
   const row = props.model
+  if (props.column.kind === 'boolean') return row[props.column.prop] === true || row[props.column.prop] === 1 ? '开启' : '关闭'
   if (props.column.kind === 'platforms') return row.bindingLabel || (row.platformIds || []).map(id => row._platformLabels?.[id] || id).join(' / ') || '未归属'
   if (props.column.kind === 'room') return row._options?.rooms.find(item => Number(item.roomId) === Number(row.roomId))?.roomName || row.equipmentRoom || '未上架'
   if (props.column.kind === 'cabinet') return row._options?.cabinets.find(item => Number(item.cabinetId) === Number(row.cabinetId))?.cabinetNo || row.cabinetNo || '-'

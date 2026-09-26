@@ -22,7 +22,7 @@ public class SupportEquipmentWorkbookService
 {
     private static final Set<String> COMMON = Set.of("assetName", "ipAddress", "status", "remark",
         "platformIds", "roomId", "cabinetId", "rackUStart", "rackUEnd");
-    private static final Set<String> SERVER = Set.of("sshPort", "osType", "hikPassword", "rootPassword", "otherUsername", "otherPassword");
+    private static final Set<String> SERVER = Set.of("sshPort", "rootDirectLogin", "osType", "hikPassword", "rootPassword", "otherUsername", "otherPassword");
     private static final Set<String> HARDWARE = Set.of("manageIp", "manufacturer", "assetModel", "loginUsername", "loginPassword",
         "networkEnv", "macAddress", "serialNo", "ownerOrg", "ownerContact", "channelCount", "outputType",
         "terminalType", "department", "useLocation", "switchLevel", "portCount", "uplinkDevice", "vlanInfo",
@@ -158,6 +158,7 @@ public class SupportEquipmentWorkbookService
             Long id = number(row.get("sourceId"));
             String key = text(row.get("sourceType")) + ":" + id;
             row.put("deviceKey", key);
+            if (isServer(row)) row.put("rootDirectLogin", Boolean.TRUE.equals(row.get("rootDirectLogin")) || "1".equals(text(row.get("rootDirectLogin"))));
             List<Long> ids = (isServer(row) ? serverBindings : hardwareBindings).stream()
                 .filter(binding -> Objects.equals(id, number(binding.get("sourceId"))))
                 .map(binding -> number(binding.get("platformId"))).distinct().sorted().toList();
@@ -210,6 +211,10 @@ public class SupportEquipmentWorkbookService
                 List<Long> ids = list.stream().map(SupportEquipmentWorkbookService::number).toList();
                 if (ids.stream().anyMatch(id -> id == null || id <= 0)) throw new ServiceException("请选择有效平台");
                 value = ids.stream().distinct().sorted().toList();
+            }
+            else if ("rootDirectLogin".equals(key))
+            {
+                if (!(value instanceof Boolean)) throw new ServiceException("root直接登录必须是开启或关闭");
             }
             else if (LOCATION.contains(key) || Set.of("sshPort", "channelCount", "portCount").contains(key)) value = number(value);
             else

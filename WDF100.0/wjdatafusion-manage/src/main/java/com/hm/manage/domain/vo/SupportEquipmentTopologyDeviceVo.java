@@ -20,6 +20,9 @@ public class SupportEquipmentTopologyDeviceVo
     private String installLocation;
     private String loginUsername;
     private Integer sshPort;
+    private Boolean rootDirectLogin;
+    public Boolean getRootDirectLogin() { return rootDirectLogin; }
+    public void setRootDirectLogin(Boolean rootDirectLogin) { this.rootDirectLogin = rootDirectLogin; }
     private String osType;
 
     public Integer getSshPort() { return sshPort; }

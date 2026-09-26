@@ -1,5 +1,22 @@
 export const releaseNotes = [
   {
+    version: 'v4.14.0',
+    submitTime: '2026-09-26 22:46:26',
+    level: 'minor', levelLabel: '小版本', tagType: 'primary',
+    title: '服务器密码登录校验与root登录策略',
+    summary: '设备凭据配置新增SSH登录校验，按登记账号验证HIK登录后切换root或root直接登录。',
+    changes: [
+      '新增是否root直接登录开关，默认关闭；关闭时有HIK凭据优先HIK后su，仅有root凭据时直接登录root。',
+      '凭据配置与设备清单账号密码组均可维护登录策略，共用工作簿保存及操作记录，现场Excel导入导出保留配置。',
+      '校验只使用后端已登记的加密凭据、地址和SSH端口；HIK失败不改试root，不自动重试密码，按设备限制重复校验。',
+      '先确认SSH主机指纹再发送密码，固定只读身份检测；分阶段显示登录及root切换结果，免密su不误报密码正确。',
+      '独立登录校验权限，结果不包含明文密码或远端原始输出；不改变远端SSH策略、账号密码和业务配置。'
+    ],
+    scope: ['现场融合管理', '服务器管理', '设备凭据', 'SSH登录校验'],
+    database: 'sup_server新增root_direct_login字段，默认0；新增support:credential:verify按钮权限。升级脚本可重复执行，不修改现有凭据。前后端和SQL需配套更新。',
+    scripts: ['WDF100.0/sql/support_upgrade_20260926_server_credential_login_check_v4_14_0.sql']
+  },
+  {
     version: 'v4.13.0',
     submitTime: '2026-09-26 22:18:00',
     level: 'minor', levelLabel: '小版本', tagType: 'primary',

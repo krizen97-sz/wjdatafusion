@@ -104,7 +104,7 @@ public class SupportSiteServiceImpl implements ISupportSiteService
     private static final String[] MAIN_PLATFORM_HEADERS = {"源平台ID", "平台名称", "网络环境", "状态", "备注"};
     private static final String[] SUB_PLATFORM_HEADERS = {"源平台ID", "源父平台ID", "子平台名称", "网络环境", "状态", "备注"};
     private static final String[] ENDPOINT_HEADERS = {"源页面ID", "源子平台ID", "页面名称", "访问URL", "登录账号", "登录密码", "备注"};
-    private static final String[] SERVER_HEADERS = {"源服务器ID", "服务器名称", "服务器IP", "SSH端口", "操作系统", "所属机房", "机柜编号", "起始U位", "结束U位", "系统账号", "系统密码", "状态", "备注"};
+    private static final String[] SERVER_HEADERS = {"源服务器ID", "服务器名称", "服务器IP", "SSH端口", "操作系统", "所属机房", "机柜编号", "起始U位", "结束U位", "系统账号", "系统密码", "状态", "备注", "root直接登录"};
     private static final String[] HARDWARE_ASSET_HEADERS = {"源资产ID", "源平台ID", "资产名称", "资产类型", "网络环境", "IP地址", "管理地址", "MAC地址", "厂商", "型号", "序列号", "安装位置", "所属机房", "机柜编号", "起始U位", "结束U位", "归属组织", "责任人", "登录账号", "登录密码", "状态", "通道数", "输出类型", "终端类型", "使用部门", "使用位置", "交换机层级", "端口数", "历史上联设备", "VLAN说明", "网闸模式", "数据流向", "带宽", "安全域说明", "备注"};
     private static final String[] EQUIPMENT_ROOM_HEADERS = {"源机房ID", "机房名称", "机房编码", "机房宽度", "机房深度", "状态", "备注"};
     private static final String[] EQUIPMENT_CABINET_HEADERS = {"源机柜ID", "源机房ID", "机柜编号", "机柜U数", "X坐标", "Z坐标", "朝向角度", "状态", "备注"};
@@ -530,7 +530,7 @@ public class SupportSiteServiceImpl implements ISupportSiteService
         {
             serverRows.add(row(server.getServerId(), server.getServerName(), server.getServerAddress(), server.getSshPort(), server.getOsType(),
                 server.getEquipmentRoom(), server.getCabinetNo(), server.getRackUStart(), server.getRackUEnd(),
-                server.getOsUsername(), safeDecrypt(server.getOsPasswordCipher()), server.getStatus(), server.getRemark()));
+                server.getOsUsername(), safeDecrypt(server.getOsPasswordCipher()), server.getStatus(), server.getRemark(), Boolean.TRUE.equals(server.getRootDirectLogin()) ? "是" : "否"));
         }
         List<String[]> hardwareAssetRows = new ArrayList<>();
         for (SupportHardwareAsset asset : hardwareAssets)
@@ -1000,6 +1000,10 @@ public class SupportSiteServiceImpl implements ISupportSiteService
             server.setServerName(requiredValue(row, "服务器名称", SHEET_SERVER, fileName));
             server.setServerAddress(requiredValue(row, "服务器IP", SHEET_SERVER, fileName));
             server.setSshPort(defaultSshPort(value(row, "SSH端口"), fileName));
+            String directLogin = value(row, "root直接登录");
+            if (StringUtils.isNotBlank(directLogin) && !List.of("是", "否", "true", "false", "1", "0").contains(directLogin))
+                throw new ServiceException("root直接登录字段应为是或否");
+            server.setRootDirectLogin(List.of("是", "true", "1").contains(directLogin == null ? "" : directLogin));
             server.setOsType(value(row, "操作系统"));
             server.setEquipmentRoom(value(row, "所属机房"));
             server.setCabinetNo(value(row, "机柜编号"));

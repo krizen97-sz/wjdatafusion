@@ -77,4 +77,17 @@ class SupportEquipmentPermissionTest
         controller.remove(both);
         verify(equipment).deleteEquipmentAssets(both);
     }
+
+    @Test
+    void loginVerificationHasIndependentPermissionAndNoSensitiveLogBodies() throws Exception
+    {
+        var method = SupportEquipmentController.class.getMethod("loginCheck",
+            com.hm.manage.domain.bo.SupportServerLoginCheckBo.class, jakarta.servlet.http.HttpServletResponse.class);
+        assertEquals("@ss.hasPermi('support:credential:verify')",
+            method.getAnnotation(org.springframework.security.access.prepost.PreAuthorize.class).value());
+        var log = method.getAnnotation(com.hm.common.annotation.Log.class);
+        assertFalse(log.isSaveRequestData()); assertFalse(log.isSaveResponseData());
+        assertEquals(List.of("siteId", "serverId", "hostFingerprint"),
+            java.util.Arrays.stream(com.hm.manage.domain.bo.SupportServerLoginCheckBo.class.getRecordComponents()).map(java.lang.reflect.RecordComponent::getName).toList());
+    }
 }
