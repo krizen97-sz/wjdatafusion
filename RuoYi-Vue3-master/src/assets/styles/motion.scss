@@ -11,12 +11,24 @@
 }
 
 .el-button {
+  --motion-button-icon-x: 1px;
+  --motion-button-icon-y: 0px;
   transition:
     color var(--motion-duration-fast) var(--motion-ease-standard),
     background-color var(--motion-duration-fast) var(--motion-ease-standard),
     border-color var(--motion-duration-fast) var(--motion-ease-standard),
     box-shadow var(--motion-duration-fast) var(--motion-ease-out),
     transform var(--motion-duration-instant) var(--motion-ease-out);
+}
+
+.el-button[data-motion-direction='up'] {
+  --motion-button-icon-x: 0px;
+  --motion-button-icon-y: -2px;
+}
+
+.el-button[data-motion-direction='down'] {
+  --motion-button-icon-x: 0px;
+  --motion-button-icon-y: 2px;
 }
 
 .el-button:not(.is-disabled):not(.is-loading):not(.is-link):not(.is-text):active {
@@ -66,9 +78,9 @@
   animation: motion-ripple-expand 460ms var(--motion-ease-out) forwards;
 }
 
-.motion-execute-action.is-loading::before {
+.el-button.is-loading:not(.is-link):not(.is-text):not(.is-circle)::after {
   position: absolute;
-  z-index: 0;
+  pointer-events: none;
   right: 8px;
   bottom: 1px;
   left: 8px;
@@ -80,6 +92,10 @@
   transform: scaleX(0.18);
   transform-origin: left center;
   animation: motion-execution-progress 900ms var(--motion-ease-standard) infinite;
+}
+
+.el-button.is-motion-success .motion-action-state__icon {
+  animation: motion-confirm-enter var(--motion-duration-base) var(--motion-ease-out) both;
 }
 
 .el-button.is-motion-success {
@@ -255,7 +271,12 @@
 @media (hover: hover) and (pointer: fine) {
   .el-button:not(.is-disabled):not(.is-loading):not(.is-link):not(.is-text):not(:active):hover {
     box-shadow: 0 4px 12px color-mix(in srgb, var(--app-heading) 10%, transparent);
-    transform: translateY(-1px);
+  }
+
+  .el-button:not(.motion-entry-action):not(.is-disabled):not(.is-loading):not(.is-link):not(.is-text):not(:active):hover > .el-icon,
+  .el-button:not(.motion-entry-action):not(.is-disabled):not(.is-loading):not(.is-link):not(.is-text):not(:active):hover > span > .el-icon,
+  .el-button:not(.motion-entry-action):not(.is-disabled):not(.is-loading):not(.is-link):not(.is-text):not(:active):hover > span > .svg-icon {
+    transform: translate(var(--motion-button-icon-x), var(--motion-button-icon-y));
   }
 
   .motion-entry-action:not(.is-disabled):not(.is-loading):not(:active):hover .el-icon,
@@ -273,6 +294,23 @@
   .tags-view-item:hover .svg-icon {
     transform: translateX(2px);
   }
+}
+
+/* Dense row actions and input add-ons must not move out of their hit area. */
+.el-table .el-button,
+.el-input-group__append .el-button,
+.el-input-group__prepend .el-button {
+  transform: none !important;
+}
+
+.el-table .el-button .el-icon,
+.el-table .el-button .svg-icon {
+  transform: none !important;
+}
+
+@keyframes motion-confirm-enter {
+  from { opacity: 0; transform: translateX(-3px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes motion-ripple-expand {
@@ -311,11 +349,15 @@
   }
 
   .motion-ripple-layer,
-  .motion-execute-action.is-loading::before {
+  .el-button.is-loading:not(.is-link):not(.is-text):not(.is-circle)::after {
     display: none !important;
   }
 
   .motion-view-stage,
+  .el-button,
+  .el-button .el-icon,
+  .el-button .svg-icon,
+  .el-button .motion-action-state__icon,
   .sidebar-container .svg-icon,
   .right-menu-item.hover-effect .svg-icon,
   .right-menu-item.hover-effect .el-icon,

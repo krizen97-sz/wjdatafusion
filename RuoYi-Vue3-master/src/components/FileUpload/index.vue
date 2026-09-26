@@ -17,7 +17,7 @@
       v-if="!disabled"
     >
       <!-- 上传按钮 -->
-      <el-button type="primary">选取文件</el-button>
+      <el-button type="primary" icon="Upload" data-motion-direction="up">选取文件</el-button>
     </el-upload>
     <!-- 上传提示 -->
     <div class="el-upload__tip" v-if="showTip && !disabled">

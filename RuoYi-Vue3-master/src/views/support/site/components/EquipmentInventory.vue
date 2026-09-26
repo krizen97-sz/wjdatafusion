@@ -6,7 +6,7 @@
       </el-checkbox>
       <el-text type="info">共 {{ visibleDevices.length }} 台，已选 {{ selectedKeys.length }} 台</el-text>
       <el-switch v-if="canViewPlain" v-model="showPasswords" active-text="全部明文显示" aria-label="全部明文显示" :loading="passwordLoading" />
-      <el-button v-if="canExport" icon="Download" :disabled="!visibleDevices.length" @click="exportRows">导出设备</el-button>
+      <el-button v-if="canExport" icon="Download" data-motion-direction="down" :disabled="!visibleDevices.length" @click="exportRows">导出设备</el-button>
       <el-button
         v-if="canRemove" type="danger" plain icon="Delete" :disabled="!canRemoveSelected"
         :loading="deleting" @click="removeRows"

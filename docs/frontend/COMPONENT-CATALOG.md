@@ -31,6 +31,7 @@
 
 | 能力 | 用法 | 适用场景 | 禁止范围 |
 | --- | --- | --- | --- |
+| 原生按钮反馈 | 普通 `el-button` 自动继承；上传/下载可设 `data-motion-direction="up/down"` | 悬停时图标轻移，按压下沉1px；真实loading显示细轨道 | link/text、禁用、加载中的图标不做悬停位移；表格操作与输入附加按钮本体不位移 |
 | 精准活动轨道 | `el-tabs.motion-tabs` | 应用级内容 Tabs | 不手写 div Tabs 或第二条活动线 |
 | 语义分段滑动面 | `el-segmented.motion-segmented` | 全部/异常/正常、业务/技术等互斥筛选 | 选中背景已表达状态，只用单层轻阴影，不叠加选中边框或下划线；不替代普通查询条件或多选 |
 | 图标文字标签 | `.motion-control-label` + `SvgIcon` | Tabs / Segmented 的 label/default slot | 使用共享块级 Flex 居中，图标按当前字号使用 `1em`；状态只改颜色/字重，不添加 `translateY`、top 或 margin 纵向补偿；Segmented 文字使用 `--el-font-size-base`；不写内联 SVG 或 Emoji |
@@ -41,6 +42,8 @@
 
 `v-motion-ripple` 在 `src/directive/common/motionRipple.js` 注册，负责按指针位置
 计算有界状态层、重复触发清理，以及 disabled/loading/reduced-motion 保护。
+未接入该指令的普通按钮不会创建Ripple节点。减少动态效果同时关闭按钮位移、
+成功进入动效与加载轨道；键盘操作保留原生焦点、按压和业务事件。
 业务页不得复制其 DOM 或计算逻辑。
 
 ## 3. 图标能力

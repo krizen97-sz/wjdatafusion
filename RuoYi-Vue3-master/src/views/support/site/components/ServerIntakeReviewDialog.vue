@@ -70,7 +70,7 @@
     <template #footer>
       <el-button :disabled="saving" @click="close">返回修改</el-button>
       <el-button icon="Refresh" :loading="validating" :disabled="saving || !rows.length" @click="validate">重新校验</el-button>
-      <el-button type="primary" icon="Upload" :loading="saving"
+      <el-button v-motion-ripple class="motion-execute-action" type="primary" icon="Upload" data-motion-direction="up" :loading="saving"
         :disabled="busy || dirty || !!counts.error || !(counts.create + counts.reuse)" @click="submit">确认上传</el-button>
     </template>
   </el-dialog>

@@ -46,19 +46,16 @@
         <el-button type="danger" plain icon="Delete" :disabled="multiple" @click="handleDelete" v-hasPermi="['support:site:remove']">删除</el-button>
       </el-col>
       <el-col :span="1.5">
-        <el-button type="warning" plain icon="Download" :disabled="multiple" @click="handleExport" v-hasPermi="['support:site:export']">导出</el-button>
+        <el-button type="warning" plain icon="Download" data-motion-direction="down" :disabled="multiple" @click="handleExport" v-hasPermi="['support:site:export']">导出</el-button>
       </el-col>
       <el-col :span="1.5">
-        <el-button type="info" plain icon="Upload" @click="handleImport" v-hasPermi="['support:site:import']">导入</el-button>
+        <el-button type="info" plain icon="Upload" data-motion-direction="up" @click="handleImport" v-hasPermi="['support:site:import']">导入</el-button>
       </el-col>
       <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
     </el-row>
 
     <el-table class="support-table" v-loading="loading" :data="siteList" @selection-change="handleSelectionChange">
       <el-table-column type="selection" width="55" align="center" />
-      <el-table-column label="现场ID" align="center" prop="siteId" width="90" />
-      <el-table-column label="现场名称" align="center" prop="siteName" />
-      <el-table-column label="现场编码" align="center" prop="siteCode" />
       <el-table-column label="行政区" align="center" min-width="220">
         <template #default="scope">
           <div v-if="getSiteRegionSegments(scope.row).length" class="site-region-cell">
@@ -83,6 +80,9 @@
           <span v-else>未填写</span>
         </template>
       </el-table-column>
+      <el-table-column label="现场编码" align="center" prop="siteCode" />
+      <el-table-column label="现场名称" align="center" prop="siteName" />
+      <el-table-column label="现场ID" align="center" prop="siteId" width="90" />
       <el-table-column label="详细地址" align="center" prop="location" show-overflow-tooltip />
       <el-table-column label="状态" align="center" prop="status">
         <template #default="scope">

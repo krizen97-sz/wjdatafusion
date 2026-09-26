@@ -64,7 +64,7 @@
       <div v-if="isServer && intakeMode === 'import'" class="intake-import">
         <div class="intake-import-toolbar">
           <el-text type="info">XLSX · 最大 5 MB · 最多 512 台</el-text>
-          <el-button icon="Download" :disabled="saving" @click="downloadTemplate">下载模板</el-button>
+          <el-button icon="Download" data-motion-direction="down" :disabled="saving" @click="downloadTemplate">下载模板</el-button>
         </div>
         <el-upload ref="uploadRef" drag accept=".xlsx" :auto-upload="false" :limit="1" :disabled="saving || !form.platformId"
           :show-file-list="false" :aria-busy="saving"
@@ -108,7 +108,7 @@
     </el-form>
     <template #footer>
       <el-button :disabled="saving" @click="visible = false">取消</el-button>
-      <el-button v-if="intakeMode !== 'import' || importFile" type="primary" icon="Check" :loading="saving"
+      <el-button v-if="intakeMode !== 'import' || importFile" v-motion-ripple class="motion-execute-action" type="primary" icon="Check" :loading="saving"
         :disabled="!availableTypes.length" @click="submit">{{ isSingle ? '保存设备' : '校验并预览' }}</el-button>
     </template>
   </el-dialog>

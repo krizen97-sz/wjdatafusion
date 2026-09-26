@@ -46,17 +46,16 @@
             </div>
           </div>
           <div class="fusion-workbench__actions">
-            <el-input
-              v-model="platformQuery.platformName"
-              class="fusion-workbench__search"
-              placeholder="搜索平台名称"
-              clearable
-              @keyup.enter="loadAll"
-            >
-              <template #append>
-                <el-button icon="Search" aria-label="搜索现场配置" title="搜索现场配置" @click="loadAll" />
-              </template>
-            </el-input>
+            <div class="fusion-workbench__search" role="search" aria-label="平台搜索">
+              <el-input
+                v-model="platformQuery.platformName"
+                placeholder="搜索平台名称"
+                aria-label="搜索平台名称"
+                clearable
+                @keyup.enter="loadAll"
+              />
+              <el-button type="primary" icon="Search" aria-label="搜索现场配置" :loading="platformLoading" @click="loadAll">搜索</el-button>
+            </div>
             <el-button icon="InfoFilled" @click="inspectorOpen = true">查看详情</el-button>
             <div class="canvas-layout-switch" role="group" aria-label="画布布局方向">
               <button
@@ -1509,7 +1508,7 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="platformFormOpen = false">取 消</el-button>
-          <el-button type="primary" :loading="dialogSaving.platform" @click="submitPlatformForm">保存平台</el-button>
+          <el-button v-motion-ripple class="motion-execute-action" type="primary" :loading="dialogSaving.platform" @click="submitPlatformForm">保存平台</el-button>
         </div>
       </template>
     </el-dialog>
@@ -1520,7 +1519,7 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="endpointFormOpen = false">取 消</el-button>
-          <el-button type="primary" :loading="dialogSaving.endpoint" @click="submitEndpointForm">保存页面</el-button>
+          <el-button v-motion-ripple class="motion-execute-action" type="primary" :loading="dialogSaving.endpoint" @click="submitEndpointForm">保存页面</el-button>
         </div>
       </template>
     </el-dialog>
@@ -1609,7 +1608,7 @@
               </el-form>
       <template #footer>
           <el-button :disabled="dialogSaving.server" @click="serverFormOpen = false">取消</el-button>
-          <el-button type="primary" :loading="dialogSaving.server" @click="submitServerForm">保存服务器</el-button>
+          <el-button v-motion-ripple class="motion-execute-action" type="primary" :loading="dialogSaving.server" @click="submitServerForm">保存服务器</el-button>
       </template>
     </el-dialog>
 
@@ -1619,7 +1618,7 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="orgFormOpen = false">取 消</el-button>
-          <el-button type="primary" :loading="dialogSaving.org" @click="submitOrgForm">保存组织</el-button>
+          <el-button v-motion-ripple class="motion-execute-action" type="primary" :loading="dialogSaving.org" @click="submitOrgForm">保存组织</el-button>
         </div>
       </template>
     </el-dialog>
@@ -1638,7 +1637,7 @@
       <template #footer>
         <div class="editor-dialog-footer">
           <el-button @click="contactFormOpen = false">取 消</el-button>
-          <el-button type="primary" :loading="dialogSaving.contact" @click="submitContactForm">保存人员</el-button>
+          <el-button v-motion-ripple class="motion-execute-action" type="primary" :loading="dialogSaving.contact" @click="submitContactForm">保存人员</el-button>
         </div>
       </template>
     </el-dialog>
@@ -5574,8 +5573,24 @@ onBeforeUnmount(() => {
 }
 
 .fusion-workbench__search {
-  width: min(240px, 100%);
-  flex: 0 0 min(240px, 100%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 300px;
+  max-width: 100%;
+  min-width: 0;
+  flex: 0 1 300px;
+}
+
+.fusion-workbench__search :deep(.el-input) {
+  width: 0;
+  min-width: 0;
+  flex: 1 1 0;
+}
+
+.fusion-workbench__search :deep(.el-button) {
+  flex: 0 0 auto;
+  margin: 0;
 }
 
 .canvas-layout-switch {
@@ -10219,6 +10234,11 @@ onBeforeUnmount(() => {
   .fusion-workbench__actions,
   .fusion-workbench__search {
     width: 100%;
+    flex: none;
+  }
+
+  .fusion-workbench__title {
+    flex: none;
   }
 
   .canvas-layout-switch {
