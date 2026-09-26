@@ -1,12 +1,12 @@
 <template>
   <section class="equipment-inventory">
     <div class="inventory-toolbar">
-      <el-checkbox :model-value="allSelected" :indeterminate="partSelected" :disabled="!sheetDevices.length" @change="selectAll">
-        全选当前 Sheet
+      <el-checkbox :model-value="allSelected" :indeterminate="partSelected" :disabled="!visibleDevices.length" @change="selectAll">
+        全选当前列表
       </el-checkbox>
-      <el-text type="info">共 {{ sheetDevices.length }} 台，已选 {{ selectedKeys.length }} 台</el-text>
+      <el-text type="info">共 {{ visibleDevices.length }} 台，已选 {{ selectedKeys.length }} 台</el-text>
       <el-switch v-if="canViewPlain" v-model="showPasswords" active-text="全部明文显示" aria-label="全部明文显示" :loading="passwordLoading" />
-      <el-button v-if="canExport" icon="Download" :disabled="!sheetDevices.length" @click="exportRows">导出设备</el-button>
+      <el-button v-if="canExport" icon="Download" :disabled="!visibleDevices.length" @click="exportRows">导出设备</el-button>
       <el-button
         v-if="canRemove" type="danger" plain icon="Delete" :disabled="!canRemoveSelected"
         :loading="deleting" @click="removeRows"
@@ -15,27 +15,17 @@
     <el-alert v-if="passwordError" type="error" :title="passwordError" :closable="false" show-icon />
     <div class="inventory-grid" v-loading="loading">
       <Grid
-        v-if="sheetDevices.length" class="inventory-grid__table" theme="equipment" :theme-definitions="EQUIPMENT_GRID_THEMES"
+        v-if="visibleDevices.length" class="inventory-grid__table" theme="equipment" :theme-definitions="EQUIPMENT_GRID_THEMES"
         :source="gridRows" :columns="columns" :readonly="true"
         :row-headers="true" :row-size="38" :range="true" :resize="true" :use-clipboard="true"
       />
-      <el-empty v-else description="当前工作表没有设备" :image-size="72" />
+      <el-empty v-else description="当前分类没有符合条件的设备" :image-size="72" />
     </div>
     <Pagination
-      v-show="sheetDevices.length" :total="sheetDevices.length"
+      v-show="visibleDevices.length" :total="visibleDevices.length"
       v-model:page="page.pageNum" v-model:limit="page.pageSize"
       :page-sizes="[20, 50, 100]" :auto-scroll="false"
     />
-    <el-tabs v-model="activeSheet" class="motion-tabs inventory-sheets" tab-position="bottom">
-      <el-tab-pane v-for="sheet in sheets" :key="sheet.value" :label="sheet.label" :name="sheet.value">
-        <template #label>
-          <span class="motion-control-label">
-            <svg-icon icon-class="keyline-file-spreadsheet" class="motion-control-label__icon" />
-            <span class="motion-control-label__text">{{ sheet.label }}</span>
-          </span>
-        </template>
-      </el-tab-pane>
-    </el-tabs>
   </section>
 </template>
 
@@ -45,22 +35,19 @@ import { useWindowSize } from '@vueuse/core'
 import Grid, { VGridVueTemplate } from '@revolist/vue3-datagrid'
 import EquipmentInventoryCell from './EquipmentInventoryCell.vue'
 import { readEquipmentPasswords } from '@/api/support/equipment'
-import { EQUIPMENT_GRID_THEMES, buildEquipmentSheets, filterEquipmentSheet, inventoryDeviceKey, inventoryPasswordCells } from './equipmentInventory.rules'
+import { EQUIPMENT_GRID_THEMES, inventoryDeviceKey, inventoryPasswordCells } from './equipmentInventory.rules'
 
 const props = defineProps({
   siteId: { type: [Number, String], required: true },
   devices: { type: Array, default: () => [] },
-  platforms: { type: Array, default: () => [] },
   links: { type: Array, default: () => [] },
-  scopePlatformId: { type: [Number, String], default: null },
-  sheet: { type: String, default: 'ALL' },
+  contextKey: { type: String, default: 'ALL' },
   revision: { type: Number, default: 0 },
   loading: Boolean, deleting: Boolean
 })
-const emit = defineEmits(['detail', 'edit', 'place', 'delete', 'export', 'update:sheet'])
+const emit = defineEmits(['detail', 'edit', 'place', 'delete', 'export'])
 const { proxy } = getCurrentInstance()
 const { width: viewportWidth } = useWindowSize()
-const activeSheet = computed({ get: () => props.sheet, set: value => emit('update:sheet', value) })
 const selectedKeys = ref([])
 const page = reactive({ pageNum: 1, pageSize: 20 })
 const showPasswords = ref(false)
@@ -71,14 +58,13 @@ let passwordRequest = 0
 const canViewPlain = computed(() => proxy.$auth.hasPermi(['support:credential:viewPlain']))
 const canExport = computed(() => proxy.$auth.hasPermi(['support:equipment:export', 'support:server:export', 'support:hardwareAsset:export']))
 const canRemove = computed(() => proxy.$auth.hasPermi(['support:equipment:remove', 'support:server:remove', 'support:hardwareAsset:remove']))
-const canRemoveSelected = computed(() => selectedKeys.value.length > 0 && sheetDevices.value
+const canRemoveSelected = computed(() => selectedKeys.value.length > 0 && visibleDevices.value
   .filter(device => selectedKeys.value.includes(inventoryDeviceKey(device)))
   .every(device => proxy.$auth.hasPermi(['support:equipment:remove', device.sourceType === 'SERVER' ? 'support:server:remove' : 'support:hardwareAsset:remove'])))
 const canPlace = computed(() => proxy.$auth.hasPermi(['support:equipment:edit', 'support:hardwareAsset:edit']))
-const sheets = computed(() => buildEquipmentSheets(props.platforms, props.scopePlatformId))
-const sheetDevices = computed(() => filterEquipmentSheet(props.devices, activeSheet.value, props.platforms))
-const pageDevices = computed(() => sheetDevices.value.slice((page.pageNum - 1) * page.pageSize, page.pageNum * page.pageSize))
-const allSelected = computed(() => sheetDevices.value.length > 0 && selectedKeys.value.length === sheetDevices.value.length)
+const visibleDevices = computed(() => props.devices)
+const pageDevices = computed(() => visibleDevices.value.slice((page.pageNum - 1) * page.pageSize, page.pageNum * page.pageSize))
+const allSelected = computed(() => visibleDevices.value.length > 0 && selectedKeys.value.length === visibleDevices.value.length)
 const partSelected = computed(() => selectedKeys.value.length > 0 && !allSelected.value)
 const gridRows = computed(() => pageDevices.value.map(device => {
   const key = inventoryDeviceKey(device)
@@ -123,15 +109,14 @@ function selectRow(row, checked) {
   selectedKeys.value = [...keys]
 }
 function selectAll(checked) {
-  selectedKeys.value = checked ? sheetDevices.value.map(inventoryDeviceKey) : []
+  selectedKeys.value = checked ? visibleDevices.value.map(inventoryDeviceKey) : []
 }
 function removeRows() {
-  emit('delete', sheetDevices.value.filter(device => selectedKeys.value.includes(inventoryDeviceKey(device))))
+  emit('delete', visibleDevices.value.filter(device => selectedKeys.value.includes(inventoryDeviceKey(device))))
 }
 function exportRows() {
   emit('export', {
-    platformId: /^\d+$/.test(activeSheet.value) ? Number(activeSheet.value) : props.scopePlatformId,
-    deviceKeys: selectedKeys.value.length ? selectedKeys.value : sheetDevices.value.map(inventoryDeviceKey)
+    deviceKeys: selectedKeys.value.length ? selectedKeys.value : visibleDevices.value.map(inventoryDeviceKey)
   })
 }
 function clearPasswords() {
@@ -161,19 +146,18 @@ async function loadPasswords() {
     if (request === passwordRequest) passwordLoading.value = false
   }
 }
-watch([activeSheet, () => props.scopePlatformId], () => {
+watch(() => props.contextKey, () => {
   page.pageNum = 1
   selectedKeys.value = []
-})
-watch(sheets, items => {
-  if (!items.some(item => item.value === activeSheet.value)) activeSheet.value = 'ALL'
+  showPasswords.value = false
+  clearPasswords()
 })
 watch(() => props.devices.map(inventoryDeviceKey).join(','), () => {
-  const available = new Set(sheetDevices.value.map(inventoryDeviceKey))
+  const available = new Set(visibleDevices.value.map(inventoryDeviceKey))
   selectedKeys.value = selectedKeys.value.filter(key => available.has(key))
   page.pageNum = 1
 })
-watch(() => props.siteId, () => { showPasswords.value = false; activeSheet.value = 'ALL'; clearPasswords() })
+watch(() => props.siteId, () => { showPasswords.value = false; clearPasswords() })
 watch(() => props.revision, () => { showPasswords.value = false; clearPasswords() })
 watch([showPasswords, canViewPlain, () => pageDevices.value.map(inventoryDeviceKey).join(',')], loadPasswords)
 onBeforeUnmount(clearPasswords)
@@ -192,6 +176,4 @@ defineExpose({ resetPage: () => { page.pageNum = 1; selectedKeys.value = [] } })
 .inventory-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding-bottom: 12px; }
 .inventory-grid { flex: 1; min-height: 200px; min-width: 0; overflow: hidden; border: 1px solid var(--el-border-color); }
 .inventory-grid__table { width: 100%; height: 100%; }
-.inventory-sheets { flex: 0 0 auto; }
-.inventory-sheets :deep(.el-tabs__header) { margin: 0; }
 </style>

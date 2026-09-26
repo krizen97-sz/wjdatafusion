@@ -1,11 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { EQUIPMENT_GRID_THEMES, buildEquipmentSheets, filterEquipmentSheet, inventoryDeviceKey, inventoryPasswordCells } from '../components/equipmentInventory.rules.js'
+import { EQUIPMENT_GRID_THEMES, buildEquipmentTree, filterEquipmentNode, findEquipmentTreeNode, inventoryDeviceKey, inventoryPasswordCells } from '../components/equipmentInventory.rules.js'
 import { normalizeEndpointUrl, copyEndpointPassword } from '../endpointNavigation.js'
 
 const platforms = [
   { platformId: 1, platformLevel: 'MAIN', platformName: 'A' },
+  { platformId: 4, platformLevel: 'MAIN', platformName: 'B' },
   { platformId: 2, parentPlatformId: 1, platformLevel: 'SUB', displayName: 'A / 门户' },
   { platformId: 3, parentPlatformId: 4, platformLevel: 'SUB', displayName: 'B / 门户' }
 ]
@@ -15,13 +16,55 @@ test('grid theme uses the library theme API so inline compact defaults cannot ov
   assert.equal(EQUIPMENT_GRID_THEMES[0].tokens.text, 'var(--el-text-color-primary)')
   assert.equal(EQUIPMENT_GRID_THEMES[0].tokens.background, 'var(--el-bg-color)')
 })
-test('sheets use stable IDs, preserve duplicate names, and retain public and unassigned assets', () => {
-  assert.deepEqual(buildEquipmentSheets(platforms, 1).map(s => s.value), ['ALL', '2', 'OTHER'])
-  assert.equal(buildEquipmentSheets(platforms).length, 4)
-  assert.deepEqual(filterEquipmentSheet([shared, hardware], 'OTHER', platforms), [hardware])
-  assert.equal(filterEquipmentSheet([shared, hardware], '2', platforms)[0], shared)
-  assert.equal(filterEquipmentSheet([shared, hardware], '3', platforms)[0], shared)
+test('tree preserves main-child relationships and counts shared assets once at the root', () => {
+  const tree = buildEquipmentTree(platforms, [shared, hardware, shared], null, '现场')
+  assert.equal(tree[0].count, 2)
+  assert.deepEqual(tree[0].children.map(node => node.id), ['PLATFORM:1', 'PLATFORM:4', 'OTHER'])
+  assert.equal(findEquipmentTreeNode(tree, 'PLATFORM:1').children[0].id, 'PLATFORM:2')
+  assert.equal(findEquipmentTreeNode(tree, 'PLATFORM:4').children[0].id, 'PLATFORM:3')
+  assert.equal(findEquipmentTreeNode(tree, 'PLATFORM:1').count, 1)
+  assert.equal(findEquipmentTreeNode(tree, 'OTHER').count, 1)
+  assert.equal(filterEquipmentNode([shared, hardware], 'PLATFORM:2', platforms)[0], shared)
+  assert.equal(filterEquipmentNode([shared, hardware], 'PLATFORM:3', platforms)[0], shared)
   assert.notEqual(inventoryDeviceKey(shared), inventoryDeviceKey(hardware))
+})
+test('current platform scope keeps its ancestor path and excludes unrelated branches', () => {
+  const tree = buildEquipmentTree(platforms, [shared, hardware], 2)
+  assert.equal(tree[0].count, 1)
+  assert.equal(findEquipmentTreeNode(tree, 'PLATFORM:1').count, 1)
+  assert.equal(findEquipmentTreeNode(tree, 'PLATFORM:2').count, 1)
+  assert.equal(findEquipmentTreeNode(tree, 'PLATFORM:4'), null)
+  assert.equal(findEquipmentTreeNode(tree, 'OTHER').count, 0)
+})
+test('main counts deduplicate shared children and preserve directly owned hardware', () => {
+  const peers = [...platforms, { platformId: 5, parentPlatformId: 1, platformLevel: 'SUB', platformName: '共用子平台' }]
+  const sharedChild = { ...shared, platformIds: [2, 5] }
+  const direct = { ...hardware, platformIds: [1] }
+  const tree = buildEquipmentTree(peers, [sharedChild, direct, sharedChild], 1)
+  assert.equal(findEquipmentTreeNode(tree, 'PLATFORM:1').count, 2)
+  assert.equal(findEquipmentTreeNode(tree, 'PLATFORM:2').count, 1)
+  assert.equal(findEquipmentTreeNode(tree, 'PLATFORM:5').count, 1)
+  assert.equal(findEquipmentTreeNode(tree, 'DIRECT:1').count, 1)
+  assert.deepEqual(filterEquipmentNode([sharedChild, direct], 'DIRECT:1', peers), [direct])
+})
+test('zero platforms remain visible and orphaned or unknown associations are not lost', () => {
+  const orphan = { platformId: 6, parentPlatformId: 99, platformLevel: 'SUB', platformName: '孤立平台' }
+  const unknown = { ...hardware, platformIds: [999] }
+  const tree = buildEquipmentTree([...platforms, orphan], [unknown], null)
+  assert.equal(findEquipmentTreeNode(tree, 'PLATFORM:6').count, 0)
+  assert.equal(findEquipmentTreeNode(tree, 'OTHER').count, 1)
+  assert.equal(findEquipmentTreeNode(buildEquipmentTree(platforms, []), 'PLATFORM:1').count, 0)
+  assert.deepEqual(filterEquipmentNode([shared], 'invalid', platforms), [])
+})
+test('inventory has no sheet tabs and the view switch stays in the mode-independent topbar', () => {
+  const inventory = readFileSync(new URL('../components/EquipmentInventory.vue', import.meta.url), 'utf8')
+  const workspace = readFileSync(new URL('../components/EquipmentRoom3DWorkspace.vue', import.meta.url), 'utf8')
+  const switchIndex = workspace.indexOf('data-testid="equipment-view-switch"')
+  const controlsIndex = workspace.indexOf('<div class="room3d-controls">')
+  assert.ok(switchIndex > 0 && switchIndex < controlsIndex)
+  assert.ok(workspace.includes('<EquipmentRelationTree'))
+  assert.doesNotMatch(inventory, /el-tabs|activeSheet|全选当前 Sheet/)
+  assert.match(inventory, /watch\(\(\) => props.contextKey/)
 })
 test('masking never places secrets in hidden spreadsheet cells', () => {
   const credentials = [{ username: 'root', password: 'test-secret' }, { username: 'ops', password: 'other-test' }]

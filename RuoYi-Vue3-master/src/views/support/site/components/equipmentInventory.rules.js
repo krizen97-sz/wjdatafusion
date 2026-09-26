@@ -25,26 +25,63 @@ export function inventoryDeviceKey(device) {
   return device.deviceKey || device.sourceType + ':' + device.sourceId
 }
 
-export function buildEquipmentSheets(platforms, scopePlatformId) {
-  const scoped = platforms.filter(item => !scopePlatformId || Number(item.platformId) === Number(scopePlatformId)
-    || Number(item.parentPlatformId) === Number(scopePlatformId))
-  return [
-    { value: 'ALL', label: '全部设备' },
-    ...scoped.filter(item => item.platformLevel === 'SUB').map(item => ({
-      value: String(item.platformId), label: item.displayName || item.platformName
-    })),
-    { value: 'OTHER', label: '公共 / 未归属子平台' }
-  ]
+export function filterEquipmentNode(devices, nodeKey, platforms) {
+  const knownIds = new Set(platforms.map(item => Number(item.platformId)))
+  const [kind, value] = String(nodeKey || 'ALL').split(':')
+  const id = Number(value)
+  const platform = platforms.find(item => Number(item.platformId) === id)
+  const childIds = new Set(platforms.filter(item => Number(item.parentPlatformId) === id).map(item => Number(item.platformId)))
+  const unique = [...new Map(devices.map(device => [inventoryDeviceKey(device), device])).values()]
+  return unique.filter(device => {
+    const ids = (device.platformIds || []).map(Number)
+    if (kind === 'ALL') return true
+    if (kind === 'OTHER') return !ids.some(key => knownIds.has(key))
+    if (kind === 'DIRECT') return ids.includes(id)
+    if (kind !== 'PLATFORM' || !platform) return false
+    return ids.includes(id) || (platform.platformLevel === 'MAIN' &&
+      (ids.some(key => childIds.has(key)) || (device.mainPlatformIds || []).map(Number).includes(id)))
+  })
 }
 
-export function filterEquipmentSheet(devices, sheet, platforms) {
-  const subIds = new Set(platforms.filter(item => item.platformLevel === 'SUB').map(item => Number(item.platformId)))
-  return devices.filter(device => {
-    const ids = (device.platformIds || []).map(Number)
-    if (sheet === 'ALL') return true
-    if (sheet === 'OTHER') return !ids.some(id => subIds.has(id))
-    return ids.includes(Number(sheet))
+export function buildEquipmentTree(platforms, devices, scopePlatformId, siteName = '全部设备') {
+  const scope = platforms.find(item => Number(item.platformId) === Number(scopePlatformId))
+  const rows = scopePlatformId ? filterEquipmentNode(devices, 'PLATFORM:' + scopePlatformId, platforms)
+    : filterEquipmentNode(devices, 'ALL', platforms)
+  const allowed = item => !scopePlatformId || Number(item.platformId) === Number(scopePlatformId)
+    || (scope?.platformLevel === 'MAIN' && Number(item.parentPlatformId) === Number(scopePlatformId))
+    || (scope?.platformLevel === 'SUB' && Number(item.platformId) === Number(scope.parentPlatformId))
+  const available = platforms.filter(allowed)
+  const makeNode = platform => ({
+    id: 'PLATFORM:' + platform.platformId,
+    platformId: platform.platformId,
+    kind: platform.platformLevel === 'MAIN' ? 'main' : 'sub',
+    label: platform.platformName || platform.displayName || '平台 ' + platform.platformId,
+    count: filterEquipmentNode(rows, 'PLATFORM:' + platform.platformId, platforms).length
   })
+  const mains = available.filter(item => item.platformLevel === 'MAIN')
+  const mainIds = new Set(mains.map(item => Number(item.platformId)))
+  const children = mains.map(main => {
+    const node = makeNode(main)
+    node.children = available.filter(item => item.platformLevel === 'SUB' && Number(item.parentPlatformId) === Number(main.platformId)).map(makeNode)
+    const directCount = filterEquipmentNode(rows, 'DIRECT:' + main.platformId, platforms).length
+    if (directCount) node.children.push({
+      id: 'DIRECT:' + main.platformId, platformId: main.platformId, kind: 'direct',
+      label: '主平台直属设备', count: directCount
+    })
+    return node
+  })
+  children.push(...available.filter(item => item.platformLevel === 'SUB' && !mainIds.has(Number(item.parentPlatformId))).map(makeNode))
+  children.push({ id: 'OTHER', kind: 'other', label: '公共 / 未归属平台', count: filterEquipmentNode(rows, 'OTHER', platforms).length })
+  return [{ id: 'ALL', kind: 'site', label: siteName || '全部设备', count: rows.length, children }]
+}
+
+export function findEquipmentTreeNode(tree, key) {
+  for (const node of tree) {
+    if (node.id === key) return node
+    const child = findEquipmentTreeNode(node.children || [], key)
+    if (child) return child
+  }
+  return null
 }
 
 export function inventoryPasswordCells(device, credentials, visible) {

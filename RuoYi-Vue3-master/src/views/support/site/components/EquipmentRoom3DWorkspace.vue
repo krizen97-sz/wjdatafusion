@@ -9,12 +9,14 @@
       FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
     -->
     <header class="room3d-header">
+      <div class="room3d-topbar">
       <div class="room3d-heading">
         <h2>现场设备管理</h2>
         <p>{{ siteName || '当前现场' }} · {{ devices.length }} 台设备 · {{ devices.filter(item => !isDevicePlaced(item)).length }} 台未上架</p>
       </div>
-      <div class="room3d-controls">
-        <el-segmented v-model="viewMode" :options="viewOptions" class="motion-segmented" aria-label="设备管理视图">
+      <div class="room3d-mode-switch">
+        <el-button v-if="viewportWidth < 900" icon="Menu" @click="relationDrawerOpen = true">目录</el-button>
+        <el-segmented v-model="viewMode" :options="viewOptions" class="motion-segmented" aria-label="设备管理视图" data-testid="equipment-view-switch">
           <template #default="{ item }">
             <span class="motion-control-label">
               <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
@@ -22,9 +24,22 @@
             </span>
           </template>
         </el-segmented>
+      </div>
+      <div class="room3d-top-actions">
         <span class="room3d-live-status" :class="{ 'has-error': liveSyncError }">
           <i></i>{{ liveSyncError ? '同步失败' : (syncing ? '同步中' : '10秒自动同步') }}
         </span>
+        <el-tooltip content="刷新实时数据" placement="bottom">
+          <el-button icon="Refresh" :loading="loading" aria-label="刷新实时数据" @click="loadTopology" />
+        </el-tooltip>
+        <el-tooltip content="关闭设备管理" placement="bottom">
+          <el-button icon="Close" aria-label="关闭设备管理" @click="emit('close')" />
+        </el-tooltip>
+      </div>
+      </div>
+      <div class="room3d-controls">
+        <el-button v-if="canCreateEquipment" type="primary" icon="Plus" @click="requestCreate">新增设备</el-button>
+        <el-button v-hasPermi="['support:equipment:add', 'support:server:add']" icon="Files" @click="emit('batch-create', { platformId: inventoryPlatformId || activeScopePlatformId })">批量录入服务器</el-button>
         <el-select v-if="viewMode === 'map'" v-model="selectedRoomId" class="room3d-room-select" placeholder="选择机房" filterable>
           <el-option
             v-for="room in rooms"
@@ -34,8 +49,6 @@
           />
         </el-select>
         <el-button v-if="viewMode === 'map'" icon="Setting" @click="openInspectorDrawer">配置信息</el-button>
-        <el-button v-if="canCreateEquipment" type="primary" icon="Plus" @click="requestCreate">新增设备</el-button>
-        <el-button v-hasPermi="['support:equipment:add', 'support:server:add']" icon="Files" @click="emit('batch-create', { platformId: inventoryPlatformId || activeScopePlatformId })">批量录入服务器</el-button>
         <el-button
           icon="Plus"
           v-hasPermi="['support:equipment:add', 'support:equipment:edit', 'support:hardwareAsset:add', 'support:hardwareAsset:edit']"
@@ -87,10 +100,6 @@
         <el-tooltip v-if="viewMode === 'map'" content="恢复鸟瞰视角" placement="bottom">
           <el-button icon="Aim" :disabled="!selectedRoom" aria-label="恢复鸟瞰视角" @click="resetCamera" />
         </el-tooltip>
-        <el-tooltip content="刷新实时数据" placement="bottom">
-          <el-button icon="Refresh" :loading="loading" aria-label="刷新实时数据" @click="loadTopology" />
-        </el-tooltip>
-        <el-button icon="Close" @click="emit('close')">关闭</el-button>
       </div>
     </header>
 
@@ -103,17 +112,23 @@
     </div>
 
     <div v-else class="room3d-body">
+      <aside v-if="viewportWidth >= 900" class="room3d-directory">
+        <EquipmentRelationTree
+          v-model:scope-mode="deviceScope" :scope-options="deviceScopeOptions"
+          :tree="equipmentTree" :model-value="inventoryNodeKey" :initial-platform-id="initialPlatformId"
+          @update:model-value="selectRelationNode"
+        />
+      </aside>
+      <el-drawer v-else v-model="relationDrawerOpen" title="设备关联目录" direction="ltr" size="85%" append-to-body>
+        <EquipmentRelationTree
+          v-model:scope-mode="deviceScope" :scope-options="deviceScopeOptions"
+          :tree="equipmentTree" :model-value="inventoryNodeKey" :initial-platform-id="initialPlatformId"
+          @update:model-value="selectRelationNode"
+        />
+      </el-drawer>
       <section v-if="viewMode === 'list'" class="room3d-inventory-panel" :class="{ 'has-query': showDeviceQuery }">
         <div class="room3d-device-scope">
             <el-space wrap>
-            <el-segmented v-model="deviceScope" class="motion-segmented" :options="deviceScopeOptions">
-              <template #default="{ item }">
-                <span class="motion-control-label">
-                  <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
-                  <span class="motion-control-label__text">{{ item.label }}</span>
-                </span>
-              </template>
-            </el-segmented>
               <el-button icon="Search" :type="showDeviceQuery ? 'primary' : 'default'" plain @click="showDeviceQuery = !showDeviceQuery">筛选</el-button>
             </el-space>
             <el-text type="info" size="small">{{ deviceScopeDescription }}</el-text>
@@ -155,9 +170,9 @@
           </el-form>
         <EquipmentInventory
           ref="inventoryRef"
-          v-model:sheet="inventorySheet" :revision="inventoryRevision"
-          :site-id="siteId" :devices="filteredDevices" :platforms="platformOptions" :links="links"
-          :scope-platform-id="activeScopePlatformId" :loading="loading" :deleting="batchDeleting"
+          :context-key="deviceScope + ':' + inventoryNodeKey" :revision="inventoryRevision"
+          :site-id="siteId" :devices="filteredDevices" :links="links"
+          :loading="loading" :deleting="batchDeleting"
           @detail="locateDeviceFromDrawer" @edit="emit('edit-device', $event)"
           @place="revealDevice($event, true)" @delete="removeDevices"
           @export="emit('export-devices', { ...$event, siteId: Number(siteId) })"
@@ -701,7 +716,8 @@ import {
 } from './equipmentRoom3d.helpers.js'
 import { getDeviceIntakeGaps } from './equipmentIntake.rules'
 import EquipmentInventory from './EquipmentInventory.vue'
-import { filterEquipmentSheet } from './equipmentInventory.rules'
+import EquipmentRelationTree from './EquipmentRelationTree.vue'
+import { buildEquipmentTree, filterEquipmentNode, findEquipmentTreeNode } from './equipmentInventory.rules'
 
 const props = defineProps({
   siteId: { type: [Number, String], required: true },
@@ -726,9 +742,10 @@ const { width: viewportWidth } = useWindowSize()
 const showDeviceQuery = ref(true)
 watch(viewportWidth, width => { showDeviceQuery.value = width >= 768 }, { immediate: true })
 const inventoryRef = ref(null)
-const inventorySheet = ref('ALL')
+const inventoryNodeKey = ref('ALL')
+const relationDrawerOpen = ref(false)
 const inventoryRevision = ref(0)
-const inventoryPlatformId = computed(() => /^\d+$/.test(inventorySheet.value) ? Number(inventorySheet.value) : null)
+const inventoryPlatformId = computed(() => findEquipmentTreeNode(equipmentTree.value, inventoryNodeKey.value)?.platformId || null)
 const viewOptions = [
   { label: '设备清单', value: 'list', icon: 'keyline-list' },
   { label: '机房摆放图', value: 'map', icon: 'keyline-building' }
@@ -834,8 +851,10 @@ const deviceScopeDescription = computed(() => deviceScope.value === 'PLATFORM'
   ? `当前平台：${currentScopePlatform.value?.platformName || '加载中'}`
   : `当前现场：${props.siteName || '全部设备'}`
 )
-const filteredDevices = computed(() => devices.value.filter(matchesDeviceFilters))
-const visibleCurrentRoomDevices = computed(() => filterEquipmentSheet(filteredDevices.value, inventorySheet.value, platformOptions.value).filter((device) =>
+const scopeDevices = computed(() => filterEquipmentNode(devices.value, activeScopePlatformId.value ? 'PLATFORM:' + activeScopePlatformId.value : 'ALL', platformOptions.value))
+const equipmentTree = computed(() => buildEquipmentTree(platformOptions.value, devices.value, activeScopePlatformId.value, props.siteName))
+const filteredDevices = computed(() => filterEquipmentNode(scopeDevices.value, inventoryNodeKey.value, platformOptions.value).filter(matchesDeviceFilters))
+const visibleCurrentRoomDevices = computed(() => filteredDevices.value.filter((device) =>
   Number(device.roomId) === Number(selectedRoomId.value) && isDevicePlaced(device)
 ))
 const selectedCabinet = computed(() => cabinets.value.find((cabinet) => Number(cabinet.cabinetId) === Number(selectedCabinetId.value)) || null)
@@ -955,7 +974,6 @@ let initialDeviceHandledKey = ''
 onMounted(async () => {
   reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true
   await nextTick()
-  await loadPlatforms()
   await loadTopology()
   startLiveSync()
 })
@@ -995,7 +1013,14 @@ watch(selectedRoomId, async () => {
 })
 
 watch(showLinks, rebuildScene)
-watch(inventorySheet, rebuildScene)
+watch(inventoryNodeKey, () => {
+  if (selectedDevice.value && !filteredDevices.value.some(device => device.deviceKey === selectedDeviceKey.value)) clearSelection()
+  rebuildScene()
+})
+watch(deviceScope, () => { inventoryNodeKey.value = 'ALL' })
+watch(equipmentTree, tree => {
+  if (!findEquipmentTreeNode(tree, inventoryNodeKey.value)) inventoryNodeKey.value = 'ALL'
+})
 watch(workspaceMode, () => {
   if (sceneHost.value) sceneHost.value.style.cursor = workspaceMode.value === 'layout' ? 'move' : 'grab'
 })
@@ -1008,7 +1033,7 @@ watch(() => props.initialPlatformId, (value) => {
 })
 watch([deviceKeyword, deviceScope, assetTypeFilter, placementFilter, attentionFilter], () => {
   inventoryRef.value?.resetPage()
-  if (selectedDevice.value && !matchesDeviceFilters(selectedDevice.value)) {
+  if (selectedDevice.value && !filteredDevices.value.some(device => device.deviceKey === selectedDeviceKey.value)) {
     selectedDeviceKey.value = ''
     selectedCabinetId.value = null
   }
@@ -1017,16 +1042,6 @@ watch([deviceKeyword, deviceScope, assetTypeFilter, placementFilter, attentionFi
 watch(selectedDeviceKey, () => {
   bindingPlatformId.value = null
 })
-
-async function loadPlatforms() {
-  if (!props.siteId) return
-  try {
-    const response = await listPlatformTree(props.siteId)
-    platformTree.value = response.data || []
-  } catch (error) {
-    platformTree.value = []
-  }
-}
 
 let topologyLoadPromise = null
 async function loadTopology(options = {}) {
@@ -1049,17 +1064,22 @@ async function performTopologyLoad(options = {}) {
   else loading.value = true
   if (!silent) loadError.value = ''
   try {
-    const response = await getEquipmentTopology(props.siteId)
+    const [response, platformResponse] = await Promise.all([
+      getEquipmentTopology(props.siteId),
+      listPlatformTree(props.siteId)
+    ])
     const data = response.data || {}
     const nextRooms = data.rooms || []
     const nextCabinets = data.cabinets || []
     const nextDevices = data.devices || []
     const nextLinks = data.links || []
-    const nextSignature = JSON.stringify([nextRooms, nextCabinets, nextDevices, nextLinks])
+    const nextPlatforms = platformResponse.data || []
+    const nextSignature = JSON.stringify([nextRooms, nextCabinets, nextDevices, nextLinks, nextPlatforms])
     liveSyncError.value = false
     loadError.value = ''
     if (silent && nextSignature === topologySignature) return
     topologySignature = nextSignature
+    platformTree.value = nextPlatforms
     rooms.value = nextRooms
     cabinets.value = nextCabinets
     devices.value = nextDevices
@@ -1635,11 +1655,6 @@ function matchesDeviceFilters(device) {
   if (assetTypeFilter.value !== 'ALL' && device.assetType !== assetTypeFilter.value) return false
   if (placementFilter.value === 'PLACED' && !isDevicePlaced(device)) return false
   if (placementFilter.value === 'UNPLACED' && isDevicePlaced(device)) return false
-  if (activeScopePlatformId.value) {
-    const platformIds = (device.platformIds || []).map(Number)
-    const mainPlatformIds = (device.mainPlatformIds || []).map(Number)
-    if (!platformIds.includes(activeScopePlatformId.value) && !mainPlatformIds.includes(activeScopePlatformId.value)) return false
-  }
   const keyword = deviceKeyword.value.trim().toLowerCase()
   if (!keyword) return true
   return [
@@ -1658,6 +1673,11 @@ function matchesDeviceFilters(device) {
 
 function handleDeviceQuery() {
   inventoryRef.value?.resetPage()
+}
+
+function selectRelationNode(key) {
+  inventoryNodeKey.value = key
+  relationDrawerOpen.value = false
 }
 
 function resetDeviceQuery() {
@@ -1726,7 +1746,7 @@ async function revealDevice(reference, placement = false) {
     await nextTick()
   }
   deviceScope.value = 'SITE'
-  inventorySheet.value = 'ALL'
+  inventoryNodeKey.value = 'ALL'
   resetDeviceQuery()
   await loadTopology({ fresh: true })
   const device = devices.value.find((item) => item.deviceKey === getDeviceKey(reference.sourceType, reference.sourceId))
@@ -2089,9 +2109,7 @@ function handleDataCommand(command) {
   if (command === 'export-devices') {
     emit('export-devices', {
       siteId: Number(props.siteId),
-      platformId: activeScopePlatformId.value || undefined,
-      assetType: assetTypeFilter.value === 'ALL' ? undefined : assetTypeFilter.value,
-      assetName: deviceKeyword.value || undefined
+      deviceKeys: filteredDevices.value.map(device => device.deviceKey)
     })
     return
   }
@@ -2359,18 +2377,25 @@ defineExpose({
 }
 
 .room3d-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  min-height: 72px;
-  padding: 12px 18px;
   border-bottom: 1px solid var(--el-border-color-light);
   background: var(--el-bg-color);
 }
 
+.room3d-topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 72px;
+  padding: 12px 18px;
+}
+
+.room3d-mode-switch { display: flex; align-items: center; gap: 8px; justify-self: center; }
+.room3d-mode-switch :deep(.el-segmented) { width: 224px; flex: 0 0 224px; }
+.room3d-top-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
+
 .room3d-heading {
-  min-width: 260px;
+  min-width: 0;
 }
 
 .room3d-heading h2,
@@ -2389,15 +2414,21 @@ defineExpose({
   margin: 4px 0 0;
   color: var(--el-text-color-secondary);
   font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .room3d-controls {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 8px;
   min-width: 0;
   flex-wrap: wrap;
+  min-height: 52px;
+  padding: 8px 18px;
+  border-top: 1px solid var(--el-border-color-lighter);
 }
 
 .room3d-room-select {
@@ -2444,9 +2475,21 @@ defineExpose({
 }
 
 .room3d-body {
-  display: block;
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
+}
+
+.room3d-directory {
+  min-width: 0;
+  min-height: 0;
+  padding: 16px 12px;
+  border-radius: 0;
+  box-shadow: none;
+  border-right: 1px solid var(--el-border-color-light);
+  background: var(--el-bg-color);
 }
 
 .room3d-inventory-panel {
@@ -3070,23 +3113,11 @@ defineExpose({
   font-size: 15px;
 }
 
-@media (max-width: 1180px) {
-  .room3d-header {
-    align-items: flex-start;
-  }
-
-  .room3d-controls {
-    flex-wrap: wrap;
-  }
-
-}
-
-@media (max-width: 900px) {
+@media (max-width: 899px) {
   .room3d-header {
     position: sticky;
     top: 0;
     z-index: 8;
-    flex-direction: column;
   }
 
   .room3d-controls {
@@ -3099,6 +3130,7 @@ defineExpose({
   }
 
   .room3d-body {
+    grid-template-columns: minmax(0, 1fr);
     overflow: hidden;
   }
 
@@ -3146,6 +3178,13 @@ defineExpose({
     right: 10px;
     left: 10px;
   }
+}
+
+@media (max-width: 767px) {
+  .room3d-topbar { grid-template-columns: minmax(0, 1fr) auto; }
+  .room3d-top-actions { grid-column: 2; grid-row: 1; }
+  .room3d-mode-switch { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
+  .room3d-top-actions .room3d-live-status { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
