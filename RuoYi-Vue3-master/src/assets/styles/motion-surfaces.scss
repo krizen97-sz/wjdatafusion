@@ -1,0 +1,282 @@
+/* Native component state remains authoritative; motion never dispatches actions. */
+.dialog-fade-enter-active {
+  animation: motion-surface-in var(--motion-duration-overlay) var(--motion-ease-out);
+}
+
+.dialog-fade-leave-active {
+  animation: motion-surface-out var(--motion-duration-exit) var(--motion-ease-standard);
+}
+
+/* Move the panel, not its fixed overlay or draggable/fullscreen coordinate system. */
+.dialog-fade-enter-active .el-overlay-dialog,
+.dialog-fade-leave-active .el-overlay-dialog,
+.fade-in-linear-enter-active .el-overlay-message-box,
+.fade-in-linear-leave-active .el-overlay-message-box {
+  animation: none;
+}
+
+.dialog-fade-enter-active .el-dialog:not(.is-fullscreen):not(.is-draggable),
+.fade-in-linear-enter-active .el-message-box:not(.is-draggable) {
+  animation: motion-panel-in var(--motion-duration-overlay) var(--motion-ease-out);
+}
+
+.dialog-fade-leave-active .el-dialog:not(.is-fullscreen):not(.is-draggable),
+.fade-in-linear-leave-active .el-message-box:not(.is-draggable) {
+  animation: motion-panel-out var(--motion-duration-exit) var(--motion-ease-standard);
+}
+
+.el-drawer:not(.is-dragging) {
+  transition: transform var(--motion-duration-overlay) var(--motion-ease-out);
+}
+
+.el-drawer-fade-enter-active,
+.el-drawer-fade-leave-active {
+  transition: background-color var(--motion-duration-overlay) var(--motion-ease-standard);
+}
+
+.el-drawer-fade-leave-active,
+.el-drawer-fade-leave-active .el-drawer:not(.is-dragging) {
+  transition-duration: var(--motion-duration-exit);
+}
+
+/* Popper owns placement transforms. Only its native transition timing changes. */
+.el-zoom-in-top-enter-active,
+.el-zoom-in-bottom-enter-active,
+.el-zoom-in-left-enter-active {
+  transition-duration: var(--motion-duration-base);
+  transition-timing-function: var(--motion-ease-out);
+}
+
+.el-zoom-in-top-leave-active,
+.el-zoom-in-bottom-leave-active,
+.el-zoom-in-left-leave-active {
+  transition-duration: var(--motion-duration-exit);
+}
+
+.el-dropdown-menu__item,
+.el-select-dropdown__item,
+.el-tree-node__content,
+.el-menu-item,
+.el-sub-menu__title {
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.sidebar-container .el-sub-menu.is-opened > .el-menu > .nest-menu .menu-title {
+  animation: motion-menu-reveal var(--motion-duration-base) var(--motion-ease-out);
+}
+
+.el-switch__core,
+.el-checkbox__inner,
+.el-radio__inner {
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-base) var(--motion-ease-standard);
+}
+
+.el-switch__action,
+.el-switch__inner {
+  transition-duration: var(--motion-duration-base);
+  transition-timing-function: var(--motion-ease-out);
+}
+
+.el-checkbox__inner::after,
+.el-radio__inner::after {
+  transition: transform var(--motion-duration-base) var(--motion-ease-out);
+}
+
+.el-checkbox__input.is-disabled .el-checkbox__inner,
+.el-checkbox__input.is-disabled .el-checkbox__inner::after,
+.el-radio__input.is-disabled .el-radio__inner,
+.el-radio__input.is-disabled .el-radio__inner::after,
+.el-switch.is-disabled .el-switch__core,
+.el-switch.is-disabled .el-switch__action {
+  transition: none;
+}
+
+.el-input__wrapper,
+.el-textarea__inner,
+.el-select__wrapper {
+  transition:
+    box-shadow var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.el-upload-dragger {
+  transition:
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.el-upload:not(.is-disabled) .el-upload-dragger.is-dragover {
+  background-color: var(--el-color-primary-light-9);
+}
+
+.el-upload-list__item {
+  transition:
+    opacity var(--motion-duration-base) var(--motion-ease-standard),
+    transform var(--motion-duration-base) var(--motion-ease-out),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+.el-upload-list .el-list-enter-from,
+.el-upload-list .el-list-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.el-progress-bar__inner,
+.el-step__line-inner {
+  transition-duration: var(--motion-duration-base);
+  transition-timing-function: var(--motion-ease-standard);
+}
+
+.el-step__head.is-success .el-step__icon-inner,
+.el-upload-list__item.is-success .el-upload-list__item-status-label {
+  animation: motion-feedback-in var(--motion-duration-base) var(--motion-ease-out);
+}
+
+.el-message,
+.el-notification {
+  transition-duration: var(--motion-duration-base);
+  transition-timing-function: var(--motion-ease-out);
+}
+
+.el-message-fade-leave-active,
+.el-notification-fade-leave-active {
+  transition-duration: var(--motion-duration-exit);
+}
+
+.el-message-fade-enter-from,
+.el-message-fade-leave-to {
+  transform: translateY(-8px);
+}
+
+.el-message-fade-enter-from.is-bottom,
+.el-message-fade-leave-to.is-bottom {
+  transform: translateY(8px);
+}
+
+.el-message--success .el-message__icon,
+.el-notification .el-notification--success {
+  animation: motion-feedback-in var(--motion-duration-base) var(--motion-ease-out);
+}
+
+.motion-icon-swap {
+  display: inline-grid;
+  place-items: center;
+  width: 1em;
+  height: 1em;
+  vertical-align: middle;
+}
+
+.motion-icon-swap > .el-icon,
+.motion-icon-swap > .svg-icon {
+  display: block;
+  grid-area: 1 / 1;
+  width: 1em;
+  height: 1em;
+  vertical-align: initial;
+}
+
+.motion-icon-swap-enter-active {
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-out),
+    transform var(--motion-duration-fast) var(--motion-ease-out);
+}
+
+.motion-icon-swap-leave-active {
+  transition: opacity var(--motion-duration-instant) var(--motion-ease-standard);
+}
+
+.motion-icon-swap-enter-from {
+  opacity: 0;
+  transform: translateX(2px);
+}
+
+.motion-icon-swap-leave-to {
+  opacity: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .el-upload:not(.is-disabled) .el-upload-dragger:hover > .el-icon {
+    transform: translate(0, -2px);
+  }
+}
+
+@keyframes motion-surface-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes motion-surface-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes motion-panel-in {
+  from { transform: translateY(8px); }
+  to { transform: translateY(0); }
+}
+
+@keyframes motion-panel-out {
+  from { transform: translateY(0); }
+  to { transform: translateY(4px); }
+}
+
+@keyframes motion-menu-reveal {
+  from { opacity: 0; transform: translateX(-4px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes motion-feedback-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog-fade-enter-active,
+  .dialog-fade-leave-active,
+  .dialog-fade-enter-active .el-dialog,
+  .dialog-fade-leave-active .el-dialog,
+  .fade-in-linear-enter-active .el-message-box,
+  .fade-in-linear-leave-active .el-message-box,
+  .sidebar-container .menu-title,
+  .el-step__icon-inner,
+  .el-upload-list__item-status-label,
+  .el-message__icon,
+  .el-notification__icon {
+    animation: none !important;
+  }
+
+  .el-drawer,
+  .el-drawer-fade-enter-active,
+  .el-drawer-fade-leave-active,
+  .el-popper,
+  .el-message,
+  .el-notification,
+  .el-switch__core,
+  .el-switch__action,
+  .el-switch__inner,
+  .el-checkbox__inner,
+  .el-checkbox__inner::after,
+  .el-radio__inner,
+  .el-radio__inner::after,
+  .el-input__wrapper,
+  .el-textarea__inner,
+  .el-select__wrapper,
+  .el-upload-dragger,
+  .el-upload-list__item,
+  .el-progress-bar__inner,
+  .el-step__line-inner,
+  .motion-icon-swap-enter-active,
+  .motion-icon-swap-leave-active {
+    transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
+  }
+
+  .motion-icon-swap-enter-from,
+  .el-upload .el-upload-dragger > .el-icon {
+    transform: none !important;
+  }
+}

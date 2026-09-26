@@ -3,9 +3,14 @@
     type="button"
     class="screenfull-button"
     :aria-label="isFullscreen ? '退出全屏' : '进入全屏'"
+    :aria-pressed="isFullscreen"
     @click="toggle"
   >
-    <svg-icon :icon-class="isFullscreen ? 'exit-fullscreen' : 'fullscreen'" />
+    <span class="motion-icon-swap" aria-hidden="true">
+      <Transition name="motion-icon-swap">
+        <svg-icon :key="isFullscreen" :icon-class="isFullscreen ? 'exit-fullscreen' : 'fullscreen'" />
+      </Transition>
+    </span>
   </button>
 </template>
 

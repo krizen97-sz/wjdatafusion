@@ -3,7 +3,7 @@
 /* fade */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.28s;
+  transition: opacity var(--motion-duration-base) var(--motion-ease-standard);
 }
 
 .fade-enter-from,
@@ -15,7 +15,8 @@
 .fade-transform--move,
 .fade-transform-leave-active,
 .fade-transform-enter-active {
-  transition: opacity .22s ease, transform .22s ease;
+  transition: opacity var(--motion-duration-base) var(--motion-ease-standard),
+    transform var(--motion-duration-base) var(--motion-ease-out);
 }
 
 .fade-transform-leave-active {
@@ -23,36 +24,58 @@
   top: 0;
   left: 0;
   width: 100%;
+  pointer-events: none;
+  transition-duration: var(--motion-duration-exit);
 }
 
 .fade-transform-enter-from {
   opacity: 0;
-  transform: translateX(-30px);
+  transform: translateX(-8px);
 }
 
 .fade-transform-leave-to {
   opacity: 0;
-  transform: translateX(30px);
+  transform: translateX(8px);
 }
 
 /* breadcrumb transition */
 .breadcrumb-enter-active,
 .breadcrumb-leave-active {
-  transition: all .5s;
+  transition: opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .breadcrumb-enter-from,
 .breadcrumb-leave-active {
   opacity: 0;
-  transform: translateX(20px);
+  transform: translateX(4px);
 }
 
 .breadcrumb-move {
-  transition: all .5s;
+  transition: transform var(--motion-duration-fast) var(--motion-ease-out);
 }
 
 .breadcrumb-leave-active {
   position: absolute;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-enter-active,
+  .fade-leave-active,
+  .fade-transform-enter-active,
+  .fade-transform-leave-active,
+  .breadcrumb-enter-active,
+  .breadcrumb-leave-active,
+  .breadcrumb-move {
+    transition-duration: 1ms !important;
+  }
+
+  .fade-transform-enter-from,
+  .fade-transform-leave-to,
+  .breadcrumb-enter-from,
+  .breadcrumb-leave-active {
+    transform: none !important;
+  }
 }
 
 /* 黑暗模式下过渡效果 */

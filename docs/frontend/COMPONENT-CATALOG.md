@@ -29,6 +29,12 @@
 `src/assets/styles/variables.module.scss`。它们属于现有 Element Plus 控件的
 交互增强，不是第二套组件系统。
 
+v4.12.0的全局场景过渡位于 `src/assets/styles/motion-surfaces.scss`：
+弹窗、抽屉、选择控件、上传、消息与通知直接复用原生状态类；
+共享侧栏、全屏和查询显隐按钮通过 `.motion-icon-swap` 与 Vue Transition
+交接图标，尺寸不随状态变化。可拖拽和全屏窗口不附加位移，不覆盖Popper定位。
+覆盖与验收边界见 [GLOBAL-MOTION.md](GLOBAL-MOTION.md)。
+
 | 能力 | 用法 | 适用场景 | 禁止范围 |
 | --- | --- | --- | --- |
 | 原生按钮反馈 | 普通 `el-button` 自动继承；上传/下载可设 `data-motion-direction="up/down"` | 悬停时图标轻移，按压下沉1px；真实loading显示细轨道 | link/text、禁用、加载中的图标不做悬停位移；表格操作与输入附加按钮本体不位移 |

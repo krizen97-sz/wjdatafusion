@@ -2,7 +2,13 @@
   <div class="top-right-btn" :style="style">
     <el-row>
       <el-tooltip class="item" effect="dark" :content="showSearch ? '隐藏搜索' : '显示搜索'" placement="top" v-if="search">
-      <el-button circle icon="Search" :aria-label="showSearch ? '收起搜索条件' : '展开搜索条件'" @click="toggleSearch()" />
+      <el-button circle :aria-label="showSearch ? '收起搜索条件' : '展开搜索条件'" :aria-pressed="showSearch" @click="toggleSearch()">
+        <span class="motion-icon-swap" aria-hidden="true">
+          <Transition name="motion-icon-swap">
+            <el-icon :key="showSearch"><Hide v-if="showSearch" /><Search v-else /></el-icon>
+          </Transition>
+        </span>
+      </el-button>
       </el-tooltip>
       <el-tooltip class="item" effect="dark" content="刷新" placement="top">
       <el-button circle icon="Refresh" aria-label="刷新列表" @click="refresh()" />

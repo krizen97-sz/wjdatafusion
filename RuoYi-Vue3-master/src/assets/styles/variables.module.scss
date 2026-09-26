@@ -91,6 +91,8 @@ $--color-info: #7d90a6;
   --motion-duration-fast: 160ms;
   --motion-duration-base: 220ms;
   --motion-duration-deliberate: 300ms;
+  --motion-duration-overlay: 280ms;
+  --motion-duration-exit: 140ms;
   --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --motion-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
   --motion-state-hover: color-mix(in srgb, var(--el-color-primary) 7%, transparent);
