@@ -1165,6 +1165,7 @@
       :show-close="false"
       title="现场设备管理"
       class="equipment-room-3d-dialog"
+      :before-close="beforeEquipmentRoomClose"
     >
       <EquipmentRoom3DWorkspace
         v-if="equipmentRoom3dOpen"
@@ -1175,7 +1176,6 @@
         :initial-platform-id="equipmentRoom3dInitialPlatformId"
         @create-device="openEquipmentIntake"
         @close="closeEquipmentRoom3d"
-        @edit-device="handleEquipmentRoom3dEditDevice"
         @batch-create="handleEquipmentRoom3dBatchCreate"
         @manage-credentials="handleEquipmentRoom3dCredentials"
         @view-password="handleEquipmentRoom3dPassword"
@@ -4747,11 +4747,18 @@ function openEquipmentRoom3d(deviceKey = '', platformId = equipmentRoom3dInitial
   equipmentRoom3dOpen.value = true
 }
 
-function closeEquipmentRoom3d() {
+async function closeEquipmentRoom3d() {
+  if (await equipmentRoom3dRef.value?.confirmClose?.() === false) return
   equipmentDirectoryRequested.value = false
   equipmentRoom3dOpen.value = false
   equipmentRoom3dInitialDeviceKey.value = ''
   equipmentRoom3dInitialPlatformId.value = null
+}
+
+async function beforeEquipmentRoomClose(done) {
+  if (await equipmentRoom3dRef.value?.confirmClose?.() === false) return
+  await closeEquipmentRoom3d()
+  done()
 }
 
 async function handleEquipmentRoom3dChanged() {
@@ -4776,14 +4783,6 @@ function syncFormLocation(form, latest) {
   form.cabinetNo = latest.cabinetNo || null
   form.rackUStart = latest.rackUStart || null
   form.rackUEnd = latest.rackUEnd || null
-}
-
-function handleEquipmentRoom3dEditDevice(device) {
-  if (device.sourceType === EQUIPMENT_SOURCE_SERVER) {
-    handleServerEdit({ serverId: device.sourceId })
-    return
-  }
-  handleHardwareAssetEdit({ assetId: device.sourceId })
 }
 
 function syncEquipmentWorkspacePlatform(context = {}) {

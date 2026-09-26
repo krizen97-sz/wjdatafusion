@@ -1,5 +1,14 @@
 import request from '@/utils/request'
 
+export function getEquipmentWorkbook(siteId) {
+  return request({ url: '/support/equipment/workbook/' + siteId, method: 'get' })
+}
+
+export function saveEquipmentWorkbook(data) {
+  return request({ url: '/support/equipment/workbook', method: 'put', data,
+    headers: { repeatSubmit: false } })
+}
+
 export function readEquipmentPasswords(data) {
   return request({ url: '/support/equipment/credentials/plain', method: 'post', data,
     headers: { repeatSubmit: false } })

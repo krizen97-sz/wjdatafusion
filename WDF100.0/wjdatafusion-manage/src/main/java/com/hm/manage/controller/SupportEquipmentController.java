@@ -9,6 +9,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,6 +31,8 @@ import com.hm.manage.service.impl.SupportEquipmentServerIntakeService;
 import com.hm.manage.domain.bo.SupportEquipmentServerIntakeBo;
 import com.hm.framework.web.service.PermissionService;
 import com.hm.manage.service.impl.SupportEquipmentCredentialService;
+import com.hm.manage.service.impl.SupportEquipmentWorkbookService;
+import com.hm.manage.domain.bo.SupportEquipmentWorkbookBo;
 
 @RestController
 @RequestMapping("/support/equipment")
@@ -45,6 +49,25 @@ public class SupportEquipmentController extends BaseController
 
     @Autowired
     private SupportEquipmentCredentialService credentialService;
+
+    @Autowired
+    private SupportEquipmentWorkbookService workbookService;
+
+    @PreAuthorize("@ss.hasAnyPermi('support:equipment:edit,support:server:edit,support:hardwareAsset:edit')")
+    @GetMapping("/workbook/{siteId}")
+    public AjaxResult workbook(@PathVariable Long siteId, HttpServletResponse response)
+    {
+        response.setHeader("Cache-Control", "no-store");
+        return success(workbookService.snapshot(siteId));
+    }
+
+    @PreAuthorize("@ss.hasAnyPermi('support:equipment:edit,support:server:edit,support:hardwareAsset:edit')")
+    @Log(title = "设备清单编辑", businessType = BusinessType.UPDATE, isSaveRequestData = false, isSaveResponseData = false)
+    @PutMapping("/workbook")
+    public AjaxResult saveWorkbook(@RequestBody SupportEquipmentWorkbookBo command)
+    {
+        return success(workbookService.save(command, getUsername()));
+    }
 
     @PreAuthorize("@ss.hasPermi('support:credential:viewPlain')")
     @Log(title = "批量查看设备密码", businessType = BusinessType.GRANT, isSaveResponseData = false)

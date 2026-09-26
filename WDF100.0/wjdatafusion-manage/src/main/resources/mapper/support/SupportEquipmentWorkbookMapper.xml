@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportEquipmentWorkbookMapper">
+    <select id="lockRooms" resultType="Long">
+        select room_id from sup_equipment_room where site_id = #{siteId} order by room_id for update
+    </select>
+    <select id="lockCabinets" resultType="Long">
+        select cabinet_id from sup_equipment_cabinet where site_id = #{siteId} order by cabinet_id for update
+    </select>
+    <select id="selectServerBindings" resultType="java.util.LinkedHashMap">
+        select r.server_id as sourceId, r.platform_id as platformId
+        from sup_platform_server_rel r join sup_server s on s.server_id = r.server_id
+        join sup_platform p on p.platform_id = r.platform_id
+        where s.site_id = #{siteId} and p.site_id = #{siteId} order by r.server_id, r.platform_id
+        <if test="lock">for update</if>
+    </select>
+    <select id="selectHardwareBindings" resultType="java.util.LinkedHashMap">
+        select r.asset_id as sourceId, r.platform_id as platformId
+        from sup_platform_asset_rel r join sup_hardware_asset a on a.asset_id = r.asset_id
+        join sup_platform p on p.platform_id = r.platform_id
+        where a.site_id = #{siteId} and p.site_id = #{siteId} order by r.asset_id, r.platform_id
+        <if test="lock">for update</if>
+    </select>
+    <select id="selectNetworks" resultType="java.util.LinkedHashMap">
+        select dict_value as value, dict_label as label from sys_dict_data
+        where dict_type = 'support_network_env' and status = '0' order by dict_sort, dict_code
+    </select>
+    <select id="selectServers" resultType="java.util.LinkedHashMap">
+        select server_id as sourceId, site_id as siteId, 'SERVER' as sourceType, 'SERVER' as assetType,
+               server_name as assetName, server_address as ipAddress, ssh_port as sshPort, os_type as osType,
+               os_username as _legacyUsername, os_password_cipher as _legacyCipher,
+               equipment_room as equipmentRoom, cabinet_no as cabinetNo, rack_u_start as rackUStart,
+               rack_u_end as rackUEnd, status, remark, update_time as _updateTime
+        from sup_server where site_id = #{siteId} order by server_id
+        <if test="lock">for update</if>
+    </select>
+    <select id="selectHardware" resultType="java.util.LinkedHashMap">
+        select asset_id as sourceId, site_id as siteId, 'HARDWARE' as sourceType, asset_type as assetType,
+               asset_name as assetName, ip_address as ipAddress, manage_ip as manageIp,
+               manufacturer, asset_model as assetModel, login_username as loginUsername,
+               network_env as networkEnv, mac_address as macAddress, serial_no as serialNo, owner_org as ownerOrg, owner_contact as ownerContact, channel_count as channelCount, output_type as outputType, terminal_type as terminalType, department as department, use_location as useLocation, switch_level as switchLevel, port_count as portCount, uplink_device as uplinkDevice, vlan_info as vlanInfo, gateway_mode as gatewayMode, gateway_direction as gatewayDirection, gateway_bandwidth as gatewayBandwidth, security_zone as securityZone,
+               login_password_cipher as _passwordCipher, equipment_room as equipmentRoom,
+               cabinet_no as cabinetNo, rack_u_start as rackUStart, rack_u_end as rackUEnd,
+               status, remark, update_time as _updateTime
+        from sup_hardware_asset where site_id = #{siteId} order by asset_id
+        <if test="lock">for update</if>
+    </select>
+    <select id="selectServerCredentials" resultType="java.util.LinkedHashMap">
+        select c.credential_id as credentialId, c.server_id as serverId, c.credential_name as credentialName,
+               c.username, c.password_cipher as cipher, c.update_time as updatedAt
+        from sup_server_credential c join sup_server s on s.server_id = c.server_id
+        where s.site_id = #{siteId} order by c.server_id, c.is_default desc, c.credential_id desc
+        <if test="lock">for update</if>
+    </select>
+    <select id="selectPlatforms" resultType="java.util.LinkedHashMap">
+        select platform_id as platformId, parent_platform_id as parentPlatformId, platform_name as platformName,
+               platform_level as platformLevel
+        from sup_platform where site_id = #{siteId} order by platform_id
+        <if test="lock">for update</if>
+    </select>
+    <update id="updateServer">
+        update sup_server
+        <set>
+            <if test="fields.containsKey('assetName')">server_name = #{fields.assetName},</if>
+            <if test="fields.containsKey('ipAddress')">server_address = #{fields.ipAddress},</if>
+            <if test="fields.containsKey('sshPort')">ssh_port = #{fields.sshPort},</if>
+            <if test="fields.containsKey('osType')">os_type = #{fields.osType},</if>
+            <if test="fields.containsKey('status')">status = #{fields.status},</if>
+            <if test="fields.containsKey('remark')">remark = #{fields.remark},</if>
+            <if test="fields.containsKey('equipmentRoom')">equipment_room = #{fields.equipmentRoom},</if>
+            <if test="fields.containsKey('cabinetNo')">cabinet_no = #{fields.cabinetNo},</if>
+            <if test="fields.containsKey('rackUStart')">rack_u_start = #{fields.rackUStart},</if>
+            <if test="fields.containsKey('rackUEnd')">rack_u_end = #{fields.rackUEnd},</if>
+            <if test="fields.containsKey('_legacyCipher')">os_password_cipher = #{fields._legacyCipher},</if>
+            <if test="fields.containsKey('_legacyUsername')">os_username = #{fields._legacyUsername},</if>
+            update_by = #{actor}, update_time = #{now}
+        </set>
+        where server_id = #{id} and site_id = #{siteId}
+    </update>
+    <update id="updateHardware">
+        update sup_hardware_asset
+        <set>
+            <if test="fields.containsKey('assetName')">asset_name = #{fields.assetName},</if>
+            <if test="fields.containsKey('ipAddress')">ip_address = #{fields.ipAddress},</if>
+            <if test="fields.containsKey('manageIp')">manage_ip = #{fields.manageIp},</if>
+            <if test="fields.containsKey('manufacturer')">manufacturer = #{fields.manufacturer},</if>
+            <if test="fields.containsKey('assetModel')">asset_model = #{fields.assetModel},</if>
+            <if test="fields.containsKey('loginUsername')">login_username = #{fields.loginUsername},</if>
+            <if test="fields.containsKey('networkEnv')">network_env = #{fields.networkEnv},</if>
+            <if test="fields.containsKey('macAddress')">mac_address = #{fields.macAddress},</if>
+            <if test="fields.containsKey('serialNo')">serial_no = #{fields.serialNo},</if>
+            <if test="fields.containsKey('ownerOrg')">owner_org = #{fields.ownerOrg},</if>
+            <if test="fields.containsKey('ownerContact')">owner_contact = #{fields.ownerContact},</if>
+            <if test="fields.containsKey('channelCount')">channel_count = #{fields.channelCount},</if>
+            <if test="fields.containsKey('outputType')">output_type = #{fields.outputType},</if>
+            <if test="fields.containsKey('terminalType')">terminal_type = #{fields.terminalType},</if>
+            <if test="fields.containsKey('department')">department = #{fields.department},</if>
+            <if test="fields.containsKey('useLocation')">use_location = #{fields.useLocation},</if>
+            <if test="fields.containsKey('switchLevel')">switch_level = #{fields.switchLevel},</if>
+            <if test="fields.containsKey('portCount')">port_count = #{fields.portCount},</if>
+            <if test="fields.containsKey('uplinkDevice')">uplink_device = #{fields.uplinkDevice},</if>
+            <if test="fields.containsKey('vlanInfo')">vlan_info = #{fields.vlanInfo},</if>
+            <if test="fields.containsKey('gatewayMode')">gateway_mode = #{fields.gatewayMode},</if>
+            <if test="fields.containsKey('gatewayDirection')">gateway_direction = #{fields.gatewayDirection},</if>
+            <if test="fields.containsKey('gatewayBandwidth')">gateway_bandwidth = #{fields.gatewayBandwidth},</if>
+            <if test="fields.containsKey('securityZone')">security_zone = #{fields.securityZone},</if>
+            <if test="fields.containsKey('status')">status = #{fields.status},</if>
+            <if test="fields.containsKey('remark')">remark = #{fields.remark},</if>
+            <if test="fields.containsKey('equipmentRoom')">equipment_room = #{fields.equipmentRoom},</if>
+            <if test="fields.containsKey('cabinetNo')">cabinet_no = #{fields.cabinetNo},</if>
+            <if test="fields.containsKey('rackUStart')">rack_u_start = #{fields.rackUStart},</if>
+            <if test="fields.containsKey('rackUEnd')">rack_u_end = #{fields.rackUEnd},</if>
+            <if test="fields.containsKey('_passwordCipher')">login_password_cipher = #{fields._passwordCipher},</if>
+            update_by = #{actor}, update_time = #{now}
+        </set>
+        where asset_id = #{id} and site_id = #{siteId}
+    </update>
+    <update id="updateCredential">
+        update sup_server_credential
+        set username = #{username}, password_cipher = #{cipher}, update_by = #{actor}, update_time = #{now}
+        where credential_id = #{credentialId} and server_id = #{serverId}
+    </update>
+</mapper>

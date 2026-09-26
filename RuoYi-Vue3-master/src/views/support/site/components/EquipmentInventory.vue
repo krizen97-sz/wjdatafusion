@@ -1,179 +1,342 @@
 <template>
   <section class="equipment-inventory">
     <div class="inventory-toolbar">
-      <el-checkbox :model-value="allSelected" :indeterminate="partSelected" :disabled="!visibleDevices.length" @change="selectAll">
-        全选当前列表
-      </el-checkbox>
-      <el-text type="info">共 {{ visibleDevices.length }} 台，已选 {{ selectedKeys.length }} 台</el-text>
-      <el-switch v-if="canViewPlain" v-model="showPasswords" active-text="全部明文显示" aria-label="全部明文显示" :loading="passwordLoading" />
-      <el-button v-if="canExport" icon="Download" data-motion-direction="down" :disabled="!visibleDevices.length" @click="exportRows">导出设备</el-button>
-      <el-button
-        v-if="canRemove" type="danger" plain icon="Delete" :disabled="!canRemoveSelected"
-        :loading="deleting" @click="removeRows"
-      >删除所选</el-button>
+      <template v-if="editing">
+        <el-tag type="warning" effect="plain" role="status">正在编辑</el-tag>
+        <el-text>已修改 {{ dirtyCount }} 台设备</el-text>
+        <el-button type="primary" icon="Check" :loading="saving || confirming" :disabled="!dirtyCount || starting" @click="saveDraft">保存</el-button>
+        <el-button icon="Close" :disabled="saving || starting || confirming" @click="cancelEditing">取消</el-button>
+        <el-button icon="Refresh" :loading="starting" :disabled="saving || confirming" @click="rebaseDraft">重新核对</el-button>
+      </template>
+      <template v-else>
+        <el-button v-if="canEditAny" type="primary" icon="Edit" :loading="starting" :disabled="!visibleDevices.length" @click="startEditing()">编辑</el-button>
+        <el-checkbox :model-value="allSelected" :indeterminate="partSelected" :disabled="!visibleDevices.length || starting" @change="selectAll">全选当前列表</el-checkbox>
+        <el-text type="info">共 {{ visibleDevices.length }} 台，已选 {{ selectedKeys.length }} 台</el-text>
+        <el-button v-if="canExport" icon="Download" data-motion-direction="down" :disabled="!visibleDevices.length || starting" @click="exportRows">导出设备</el-button>
+        <el-button v-if="canRemove" type="danger" plain icon="Delete" :disabled="!canRemoveSelected || starting" :loading="deleting" @click="removeRows">删除所选</el-button>
+      </template>
+      <el-select v-model="fieldGroup" class="inventory-field-group" aria-label="设备字段组" :disabled="saving || starting || confirming">
+        <el-option label="常用字段" value="ALL" /><el-option label="基础档案" value="PROFILE" />
+        <el-option label="平台与位置" value="LOCATION" /><el-option label="账号密码" value="CREDENTIAL" />
+        <el-option v-if="hasHardware" label="硬件扩展属性" value="EXTENDED" />
+      </el-select>
+      <el-switch v-if="canViewPlain" v-model="showPasswords" active-text="全部明文显示" aria-label="全部明文显示" :disabled="saving || starting" :loading="passwordLoading" />
     </div>
+    <el-alert v-if="saveError" type="error" :title="saveError" :closable="false" show-icon />
     <el-alert v-if="passwordError" type="error" :title="passwordError" :closable="false" show-icon />
-    <div class="inventory-grid" v-loading="loading">
+    <div class="inventory-grid" v-loading="loading || starting">
       <Grid
         v-if="visibleDevices.length" class="inventory-grid__table" theme="equipment" :theme-definitions="EQUIPMENT_GRID_THEMES"
         :source="gridRows" :columns="columns" :readonly="true"
-        :row-headers="true" :row-size="38" :range="true" :resize="true" :use-clipboard="true"
+        :row-headers="true" :row-size="editing ? 42 : 38" :range="!editing" :resize="true" :use-clipboard="!editing"
       />
       <el-empty v-else description="当前分类没有符合条件的设备" :image-size="72" />
     </div>
-    <Pagination
-      v-show="visibleDevices.length" :total="visibleDevices.length"
+    <Pagination v-show="visibleDevices.length" :total="visibleDevices.length"
       v-model:page="page.pageNum" v-model:limit="page.pageSize"
-      :page-sizes="[20, 50, 100]" :auto-scroll="false"
-    />
+      :page-sizes="[20, 50, 100]" :auto-scroll="false" :disabled="saving || starting || confirming" />
   </section>
 </template>
 
 <script setup>
-import { computed, getCurrentInstance, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, getCurrentInstance, markRaw, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { useWindowSize } from '@vueuse/core'
 import Grid, { VGridVueTemplate } from '@revolist/vue3-datagrid'
 import EquipmentInventoryCell from './EquipmentInventoryCell.vue'
-import { readEquipmentPasswords } from '@/api/support/equipment'
+import EquipmentWorkbookCell from './EquipmentWorkbookCell.vue'
+import { getEquipmentWorkbook, readEquipmentPasswords, saveEquipmentWorkbook } from '@/api/support/equipment'
 import { EQUIPMENT_GRID_THEMES, inventoryDeviceKey, inventoryPasswordCells } from './equipmentInventory.rules'
+import { LOCATION_FIELDS, SECRET_FIELDS, WORKBOOK_FIELDS, setWorkbookValue, validateWorkbookDraft, workbookPayload, workbookRowChanges } from './equipmentWorkbook.rules'
 
 const props = defineProps({
   siteId: { type: [Number, String], required: true },
-  devices: { type: Array, default: () => [] },
-  links: { type: Array, default: () => [] },
-  contextKey: { type: String, default: 'ALL' },
-  revision: { type: Number, default: 0 },
+  devices: { type: Array, default: () => [] }, links: { type: Array, default: () => [] },
+  rooms: { type: Array, default: () => [] }, cabinets: { type: Array, default: () => [] },
+  platforms: { type: Array, default: () => [] },
+  contextKey: { type: String, default: 'ALL' }, revision: { type: Number, default: 0 },
   loading: Boolean, deleting: Boolean
 })
-const emit = defineEmits(['detail', 'edit', 'place', 'delete', 'export'])
+const emit = defineEmits(['configure', 'delete', 'export', 'editing-change', 'saved'])
 const { proxy } = getCurrentInstance()
 const { width: viewportWidth } = useWindowSize()
 const selectedKeys = ref([])
 const page = reactive({ pageNum: 1, pageSize: 20 })
-const showPasswords = ref(false)
-const passwordLoading = ref(false)
-const passwordError = ref('')
+const fieldGroup = ref('ALL')
+const editing = ref(false), starting = ref(false), saving = ref(false)
+const confirming = ref(false)
+const saveError = ref('')
+const originals = ref({})
+const drafts = ref([])
+const editKeys = ref([])
+const options = ref({ rooms: [], cabinets: [], platforms: [] })
+const showPasswords = ref(false), passwordLoading = ref(false), passwordError = ref('')
 const passwordCache = ref({})
-let passwordRequest = 0
+let passwordRequest = 0, editRequest = 0
 const canViewPlain = computed(() => proxy.$auth.hasPermi(['support:credential:viewPlain']))
+const canEditAny = computed(() => props.devices.some(device => mayEdit(device)))
 const canExport = computed(() => proxy.$auth.hasPermi(['support:equipment:export', 'support:server:export', 'support:hardwareAsset:export']))
 const canRemove = computed(() => proxy.$auth.hasPermi(['support:equipment:remove', 'support:server:remove', 'support:hardwareAsset:remove']))
 const canRemoveSelected = computed(() => selectedKeys.value.length > 0 && visibleDevices.value
   .filter(device => selectedKeys.value.includes(inventoryDeviceKey(device)))
   .every(device => proxy.$auth.hasPermi(['support:equipment:remove', device.sourceType === 'SERVER' ? 'support:server:remove' : 'support:hardwareAsset:remove'])))
 const canPlace = computed(() => proxy.$auth.hasPermi(['support:equipment:edit', 'support:hardwareAsset:edit']))
-const visibleDevices = computed(() => props.devices)
+const canBind = computed(() => proxy.$auth.hasPermi(['support:equipment:edit']))
+const visibleDevices = computed(() => editing.value ? editKeys.value.map(key => drafts.value.find(row => row.deviceKey === key)).filter(Boolean) : props.devices)
 const pageDevices = computed(() => visibleDevices.value.slice((page.pageNum - 1) * page.pageSize, page.pageNum * page.pageSize))
+const hasHardware = computed(() => visibleDevices.value.some(device => device.sourceType === 'HARDWARE'))
 const allSelected = computed(() => visibleDevices.value.length > 0 && selectedKeys.value.length === visibleDevices.value.length)
 const partSelected = computed(() => selectedKeys.value.length > 0 && !allSelected.value)
-const gridRows = computed(() => pageDevices.value.map(device => {
-  const key = inventoryDeviceKey(device)
-  const outgoing = props.links.filter(link => link.sourceType === device.sourceType && Number(link.sourceId) === Number(device.sourceId))
-  return {
-    ...device, deviceKey: key, _selected: selectedKeys.value.includes(key),
-    _canEdit: proxy.$auth.hasPermi(['support:equipment:edit', device.sourceType === 'SERVER' ? 'support:server:edit' : 'support:hardwareAsset:edit']),
-    _canPlace: canPlace.value,
-    statusLabel: device.status === '1' ? '停用' : '正常',
-    rackRange: device.rackUStart ? device.rackUStart + '-' + device.rackUEnd + 'U' : '-',
-    uplink: outgoing.map(link => link.targetName || link.targetIp || link.targetId).join(' / ') || device.legacyUplinkDevice || '-',
-    ...inventoryPasswordCells(device, passwordCache.value[key], showPasswords.value && canViewPlain.value)
-  }
-}))
-const cell = VGridVueTemplate(EquipmentInventoryCell, {
-  onSelect: selectRow, onDetail: row => emit('detail', originalDevice(row)),
-  onEdit: row => emit('edit', originalDevice(row)), onPlace: row => emit('place', originalDevice(row))
+const dirtyCount = computed(() => editing.value ? workbookPayload(props.siteId, originals.value, drafts.value).rows.length : 0)
+const readOptions = computed(() => ({ rooms: props.rooms, cabinets: props.cabinets, platforms: props.platforms }))
+const gridRows = computed(() => {
+  if (editing.value) return pageDevices.value
+  return pageDevices.value.map(device => {
+    const key = inventoryDeviceKey(device)
+    return {
+      ...device, deviceKey: key, _selected: selectedKeys.value.includes(key), _editing: false,
+      _options: readOptions.value, _platformLabels: platformLabels(props.platforms),
+      ...inventoryPasswordCells(device, passwordCache.value[key], showPasswords.value && canViewPlain.value)
+    }
+  })
 })
+const actionCell = VGridVueTemplate(EquipmentInventoryCell, {
+  onSelect: selectRow, onConfigure: row => emit('configure', originalDevice(row))
+})
+const valueCell = VGridVueTemplate(EquipmentWorkbookCell, { onChange: changeValue })
 const columns = computed(() => [
-  { prop: '_selected', name: '选择', size: 60, pin: 'colPinStart', cellTemplate: cell },
-  { prop: 'assetName', name: '设备名称', size: 190, pin: viewportWidth.value >= 768 ? 'colPinStart' : undefined },
-  ...[
-    ['assetTypeLabel', '类型', 85], ['ipAddress', 'IP 地址', 150], ['sshPort', 'SSH 端口', 95],
-    ['osType', '操作系统', 125], ['loginUsername', '登录账号', 120],
-    ...(canViewPlain.value ? [
-      ['loginPassword', '设备登录密码', 170], ['hikPassword', 'hik 密码', 170], ['rootPassword', 'root 密码', 170],
-      ['otherUsername', '其他账号', 140], ['otherPassword', '其他密码', 180]
-    ] : []),
-    ['bindingLabel', '平台归属', 180], ['equipmentRoom', '机房', 170], ['cabinetNo', '机柜', 100],
-    ['rackRange', 'U 位', 100], ['uplink', '上联设备', 150], ['manufacturer', '厂商', 120],
-    ['assetModel', '型号', 130], ['statusLabel', '状态', 80]
-  ].map(([prop, name, size]) => ({ prop, name, size })),
-  { prop: '_actions', name: '操作', size: 150, pin: viewportWidth.value >= 768 ? 'colPinEnd' : undefined, cellTemplate: cell }
+  { prop: '_selected', name: '选择', size: 60, pin: 'colPinStart', cellTemplate: actionCell },
+  ...WORKBOOK_FIELDS.filter(field => {
+    if (field.source && !visibleDevices.value.some(device => device.sourceType === field.source)) return false
+    if (field.kind === 'password' && !canViewPlain.value && !editing.value) return false
+    if (['assetName', 'assetTypeLabel', 'ipAddress'].includes(field.prop)) return true
+    if (field.group === 'EXTENDED') return fieldGroup.value === 'EXTENDED'
+    if (fieldGroup.value === 'EXTENDED') return false
+    if (fieldGroup.value === 'ALL') return true
+    const location = field.prop === 'platformIds' || LOCATION_FIELDS.includes(field.prop)
+    const credential = SECRET_FIELDS.includes(field.prop) || ['loginUsername', 'otherUsername'].includes(field.prop)
+    return fieldGroup.value === 'LOCATION' ? location : fieldGroup.value === 'CREDENTIAL' ? credential : !location && !credential
+  }).map(field => ({
+    ...field, cellTemplate: valueCell,
+    permission: field.prop === 'platformIds' ? '_canBind' : LOCATION_FIELDS.includes(field.prop) ? '_canPlace' : undefined,
+    pin: (field.prop === 'assetName' && viewportWidth.value >= 768) || (field.prop === 'ipAddress' && viewportWidth.value >= 1280) ? 'colPinStart' : undefined
+  })),
+  { prop: '_actions', name: '操作', size: 95, pin: viewportWidth.value >= 768 ? 'colPinEnd' : undefined, cellTemplate: actionCell }
 ])
-function originalDevice(row) {
-  return props.devices.find(device => inventoryDeviceKey(device) === row.deviceKey)
+function mayEdit(device) {
+  return proxy.$auth.hasPermi(['support:equipment:edit', device.sourceType === 'SERVER' ? 'support:server:edit' : 'support:hardwareAsset:edit'])
 }
+function platformLabels(platforms) {
+  return Object.fromEntries(platforms.map(item => {
+    const parent = platforms.find(p => Number(p.platformId) === Number(item.parentPlatformId))
+    return [item.platformId, item.displayName || (parent ? parent.platformName + ' / ' : '') + item.platformName]
+  }))
+}
+function installSnapshot(snapshot) {
+  const labels = platformLabels(snapshot.platforms || [])
+  options.value = markRaw({ rooms: snapshot.rooms || [], cabinets: snapshot.cabinets || [], platforms: snapshot.platforms || [], networks: snapshot.networks || [] })
+  originals.value = Object.fromEntries(snapshot.rows.map(row => [row.deviceKey, row]))
+  drafts.value = snapshot.rows.map(row => ({
+    ...row, platformIds: [...(row.platformIds || [])],
+    assetTypeLabel: props.devices.find(device => inventoryDeviceKey(device) === row.deviceKey)?.assetTypeLabel || row.assetType,
+    _editing: true, _saving: false, _options: options.value, _platformLabels: labels,
+    _canBind: canBind.value, _canPlace: canPlace.value, _dirtyFields: [], _errors: {},
+    _secrets: {}, _passwordInputs: {}, _plainValues: {}, _showPasswords: false
+  }))
+}
+async function startEditing(deviceKey, group = 'ALL') {
+  if (editing.value || starting.value || !canEditAny.value) return
+  const sequence = ++editRequest
+  starting.value = true
+  emit('editing-change', true)
+  saveError.value = ''
+  try {
+    const response = await getEquipmentWorkbook(props.siteId)
+    if (sequence !== editRequest) return
+    installSnapshot(response.data)
+    const wanted = typeof deviceKey === 'string' ? [deviceKey] : props.devices.map(inventoryDeviceKey)
+    editKeys.value = wanted.filter(key => originals.value[key])
+    if (!editKeys.value.length) throw new Error('没有可编辑的设备，请刷新清单')
+    showPasswords.value = false
+    clearPasswords()
+    selectedKeys.value = []
+    page.pageNum = 1
+    fieldGroup.value = ['ALL', 'PROFILE', 'LOCATION', 'CREDENTIAL', 'EXTENDED'].includes(group) ? group : 'ALL'
+    editing.value = true
+  } catch (error) {
+    if (sequence !== editRequest) return
+    saveError.value = error?.msg || error?.message || '进入编辑模式失败'
+    emit('editing-change', false)
+  } finally { if (sequence === editRequest) starting.value = false }
+}
+function changeValue(key, field, value) {
+  if (saving.value || starting.value || confirming.value || !editing.value) return
+  const row = drafts.value.find(item => item.deviceKey === key)
+  if (!row || !mayEdit(row)) return
+  if ((field === 'platformIds' && !canBind.value) || (LOCATION_FIELDS.includes(field) && !canPlace.value)) return
+  setWorkbookValue(row, field, value)
+  row._dirtyFields = Object.keys(workbookRowChanges(originals.value[key], row))
+  row._errors = {}
+  saveError.value = ''
+}
+function finishEditing() {
+  editRequest++
+  editing.value = false
+  starting.value = false
+  drafts.value = []
+  originals.value = {}
+  editKeys.value = []
+  saveError.value = ''
+  showPasswords.value = false
+  clearPasswords()
+  emit('editing-change', false)
+}
+async function confirmClose() {
+  if (saving.value || starting.value || confirming.value) { proxy.$modal.msgWarning('正在处理，请稍候'); return false }
+  if (dirtyCount.value) {
+    try { await proxy.$modal.confirm('当前设备清单有未保存修改，是否放弃这些修改？') } catch { return false }
+  }
+  if (editing.value) finishEditing()
+  return true
+}
+async function cancelEditing() { await confirmClose() }
+async function saveDraft() {
+  if (saving.value || starting.value || confirming.value || !dirtyCount.value) return
+  const errors = validateWorkbookDraft(originals.value, drafts.value, options.value)
+  drafts.value.forEach(row => { row._errors = {} })
+  errors.forEach(error => { const row = drafts.value.find(item => item.deviceKey === error.key); row._errors[error.field] = error.message })
+  if (errors.length) { saveError.value = errors[0].message + (errors.length > 1 ? '，另有' + (errors.length - 1) + '处待修正' : ''); return }
+  const payload = workbookPayload(props.siteId, originals.value, drafts.value)
+  if (payload.rows.length > 500) { saveError.value = '单次最多保存500台设备'; return }
+  const clearCount = payload.rows.filter(row => SECRET_FIELDS.some(field => field in row.changes && row.changes[field] === null)).length
+  confirming.value = true
+  try { await proxy.$modal.confirm('确认保存 ' + payload.rows.length + ' 台设备的修改？' + (clearCount ? '其中 ' + clearCount + ' 台将清空指定密码。' : '')) }
+  catch { return }
+  finally { confirming.value = false }
+  saving.value = true
+  drafts.value.forEach(row => { row._saving = true })
+  try {
+    const response = await saveEquipmentWorkbook(payload)
+    finishEditing()
+    proxy.$modal.msgSuccess('已保存 ' + response.data.updated + ' 台设备')
+    emit('saved')
+  } catch (error) {
+    saveError.value = error?.msg || error?.message || '保存失败，草稿已保留'
+  } finally {
+    saving.value = false
+    drafts.value.forEach(row => { row._saving = false })
+  }
+}
+async function rebaseDraft() {
+  if (saving.value || starting.value || confirming.value || !editing.value) return
+  try { await proxy.$modal.confirm('将重新读取设备数据并保留你的修改，请核对后再保存。') } catch { return }
+  const pending = workbookPayload(props.siteId, originals.value, drafts.value).rows
+  starting.value = true
+  drafts.value.forEach(row => { row._saving = true })
+  try {
+    const response = await getEquipmentWorkbook(props.siteId)
+    const keys = new Set(response.data.rows.map(row => row.deviceKey))
+    if (pending.some(row => !keys.has(row.sourceType + ':' + row.sourceId))) throw new Error('草稿中的设备已被删除，请取消编辑后刷新')
+    installSnapshot(response.data)
+    for (const change of pending) {
+      const row = drafts.value.find(item => item.deviceKey === change.sourceType + ':' + change.sourceId)
+      for (const [field, value] of Object.entries(change.changes)) {
+        if (SECRET_FIELDS.includes(field)) { row._secrets[field] = value; row._passwordInputs[field] = value || '' }
+        else row[field] = value
+      }
+      row._dirtyFields = Object.keys(workbookRowChanges(originals.value[row.deviceKey], row))
+    }
+    showPasswords.value = false
+    clearPasswords()
+    saveError.value = ''
+  } catch (error) { saveError.value = error?.msg || error?.message || '重新核对失败，草稿已保留' }
+  finally { starting.value = false; drafts.value.forEach(row => { row._saving = false }) }
+}
+function originalDevice(row) { return props.devices.find(device => inventoryDeviceKey(device) === row.deviceKey) }
 function selectRow(row, checked) {
+  if (editing.value) return
   const keys = new Set(selectedKeys.value)
   if (checked) keys.add(row.deviceKey)
   else keys.delete(row.deviceKey)
   selectedKeys.value = [...keys]
 }
-function selectAll(checked) {
-  selectedKeys.value = checked ? visibleDevices.value.map(inventoryDeviceKey) : []
-}
-function removeRows() {
-  emit('delete', visibleDevices.value.filter(device => selectedKeys.value.includes(inventoryDeviceKey(device))))
-}
-function exportRows() {
-  emit('export', {
-    deviceKeys: selectedKeys.value.length ? selectedKeys.value : visibleDevices.value.map(inventoryDeviceKey)
-  })
-}
+function selectAll(checked) { selectedKeys.value = checked ? visibleDevices.value.map(inventoryDeviceKey) : [] }
+function removeRows() { if (!editing.value) emit('delete', visibleDevices.value.filter(device => selectedKeys.value.includes(inventoryDeviceKey(device)))) }
+function exportRows() { if (!editing.value) emit('export', { deviceKeys: selectedKeys.value.length ? selectedKeys.value : visibleDevices.value.map(inventoryDeviceKey) }) }
 function clearPasswords() {
-  passwordRequest += 1
+  passwordRequest++
   passwordCache.value = {}
   passwordLoading.value = false
+  drafts.value.forEach(row => {
+    row._plainValues = {}
+    row._showPasswords = false
+    for (const field of SECRET_FIELDS) {
+      if (!Object.prototype.hasOwnProperty.call(row._secrets, field)) delete row._passwordInputs[field]
+    }
+  })
 }
 async function loadPasswords() {
   clearPasswords()
   passwordError.value = ''
   if (!showPasswords.value || !canViewPlain.value || !pageDevices.value.length) return
-  const request = passwordRequest
-  const siteId = props.siteId
+  const request = passwordRequest, siteId = props.siteId
   passwordLoading.value = true
   try {
-    const response = await readEquipmentPasswords({
-      siteId,
-      devices: pageDevices.value.map(device => ({ sourceType: device.sourceType, sourceId: device.sourceId }))
-    })
+    const response = await readEquipmentPasswords({ siteId, devices: pageDevices.value.map(device => ({ sourceType: device.sourceType, sourceId: device.sourceId })) })
     if (request !== passwordRequest || siteId !== props.siteId || !showPasswords.value) return
     passwordCache.value = Object.fromEntries((response.data || []).map(row => [row.deviceKey, row.credentials]))
+    for (const row of drafts.value) {
+      const accounts = passwordCache.value[row.deviceKey]
+      row._showPasswords = true
+      if (!accounts) continue
+      row._plainValues = inventoryPasswordCells(row, accounts, true)
+      if (row.sourceType === 'SERVER') {
+        for (const [field, username] of [['hikPassword', 'hik'], ['rootPassword', 'root'], ['otherPassword', row.otherUsername]]) {
+          const credential = accounts.find(account => row[field + 'AccountName'] && account.name === row[field + 'AccountName'])
+            || accounts.find(account => String(account.username).toLowerCase() === String(username).toLowerCase())
+          row._plainValues[field] = credential?.password || ''
+        }
+      }
+    }
   } catch {
     if (request !== passwordRequest) return
     showPasswords.value = false
     passwordError.value = '读取密码失败，未展示任何明文。请检查权限后重新开启。'
-  } finally {
-    if (request === passwordRequest) passwordLoading.value = false
-  }
+  } finally { if (request === passwordRequest) passwordLoading.value = false }
+}
+function beforeUnload(event) {
+  if (!dirtyCount.value) return
+  event.preventDefault()
+  event.returnValue = ''
 }
 watch(() => props.contextKey, () => {
+  if (editing.value) return
   page.pageNum = 1
   selectedKeys.value = []
   showPasswords.value = false
   clearPasswords()
 })
+watch(hasHardware, value => { if (!value && fieldGroup.value === 'EXTENDED') fieldGroup.value = 'ALL' })
 watch(() => props.devices.map(inventoryDeviceKey).join(','), () => {
+  if (editing.value) return
   const available = new Set(visibleDevices.value.map(inventoryDeviceKey))
   selectedKeys.value = selectedKeys.value.filter(key => available.has(key))
   page.pageNum = 1
 })
-watch(() => props.siteId, () => { showPasswords.value = false; clearPasswords() })
-watch(() => props.revision, () => { showPasswords.value = false; clearPasswords() })
+watch(() => props.siteId, finishEditing)
+watch(() => props.revision, () => { if (!editing.value) { showPasswords.value = false; clearPasswords() } })
 watch([showPasswords, canViewPlain, () => pageDevices.value.map(inventoryDeviceKey).join(',')], loadPasswords)
-onBeforeUnmount(clearPasswords)
-defineExpose({ resetPage: () => { page.pageNum = 1; selectedKeys.value = [] } })
+onBeforeRouteLeave(confirmClose)
+onMounted(() => window.addEventListener('beforeunload', beforeUnload))
+onBeforeUnmount(() => { editRequest++; clearPasswords(); window.removeEventListener('beforeunload', beforeUnload) })
+defineExpose({ confirmClose, startEditing, resetPage: () => { if (!editing.value) { page.pageNum = 1; selectedKeys.value = [] } } })
 </script>
 
 <style scoped>
-.equipment-inventory {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  min-width: 0;
-  max-width: 100%;
-  height: 100%;
-}
-.inventory-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding-bottom: 12px; }
+.equipment-inventory { display: flex; flex-direction: column; min-height: 0; min-width: 0; max-width: 100%; height: 100%; }
+.inventory-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-bottom: 12px; }
+.inventory-toolbar :deep(.el-button + .el-button) { margin-left: 0; }
+.inventory-field-group { width: 140px; }
 .inventory-grid { flex: 1; min-height: 200px; min-width: 0; overflow: hidden; border: 1px solid var(--el-border-color); }
 .inventory-grid__table { width: 100%; height: 100%; }
 </style>

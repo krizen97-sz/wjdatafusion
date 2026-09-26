@@ -7,6 +7,7 @@
     <el-segmented
       v-if="scopeOptions.length" :model-value="scopeMode" :options="scopeOptions"
       class="motion-segmented" aria-label="设备目录范围"
+      :disabled="disabled"
       @change="value => emit('update:scopeMode', value)"
     >
       <template #default="{ item }">
@@ -16,13 +17,13 @@
         </span>
       </template>
     </el-segmented>
-    <el-input v-model="keyword" prefix-icon="Search" clearable placeholder="搜索平台" aria-label="搜索设备关联平台" />
+    <el-input v-model="keyword" :disabled="disabled" prefix-icon="Search" clearable placeholder="搜索平台" aria-label="搜索设备关联平台" />
     <el-scrollbar class="relation-tree-scroll">
       <el-tree
         ref="treeRef" :data="tree" node-key="id"
         :current-node-key="modelValue" :default-expanded-keys="expandedKeys"
         :expand-on-click-node="false" :filter-node-method="filterNode" highlight-current
-        empty-text="暂无平台" @node-click="node => emit('update:modelValue', node.id)"
+        :aria-disabled="disabled" empty-text="暂无平台" @node-click="selectNode"
       >
         <template #default="{ data }">
           <span class="relation-tree-node" :title="data.label">
@@ -43,7 +44,8 @@ const props = defineProps({
   modelValue: { type: String, default: 'ALL' },
   scopeMode: { type: String, default: 'SITE' },
   scopeOptions: { type: Array, default: () => [] },
-  initialPlatformId: { type: [Number, String], default: null }
+  initialPlatformId: { type: [Number, String], default: null },
+  disabled: Boolean
 })
 const emit = defineEmits(['update:modelValue', 'update:scopeMode'])
 const treeRef = ref()
@@ -60,6 +62,10 @@ const expandedKeys = computed(() => {
 })
 function filterNode(value, data) {
   return !value || data.label.toLowerCase().includes(value.trim().toLowerCase())
+}
+async function selectNode(node) {
+  if (!props.disabled) emit('update:modelValue', node.id)
+  else { await nextTick(); treeRef.value?.setCurrentKey(props.modelValue) }
 }
 watch(keyword, value => treeRef.value?.filter(value))
 watch([() => props.tree, () => props.modelValue], async () => {

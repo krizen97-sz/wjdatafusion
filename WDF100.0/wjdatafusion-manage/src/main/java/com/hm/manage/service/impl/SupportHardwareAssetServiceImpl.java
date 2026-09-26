@@ -71,6 +71,7 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
     @Transactional(rollbackFor = Exception.class)
     public int insertSupportHardwareAsset(SupportHardwareAsset asset)
     {
+        lockSite(asset);
         normalizeAndValidate(asset, false);
         encryptPassword(asset);
         asset.setCreateBy(SecurityUtils.getUsername());
@@ -92,6 +93,7 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
         {
             throw new ServiceException("资产ID不能为空");
         }
+        lockSite(asset);
         SupportHardwareAsset original = hardwareAssetMapper.selectSupportHardwareAssetByAssetId(asset.getAssetId());
         if (original == null)
         {
@@ -104,8 +106,11 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
         int rows = hardwareAssetMapper.updateSupportHardwareAsset(asset);
         if (rows > 0)
         {
-            platformAssetRelMapper.deleteByAssetId(asset.getAssetId());
-            bindPlatformIfPresent(asset);
+            if (!java.util.Objects.equals(original.getPlatformId(), asset.getPlatformId()))
+            {
+                platformAssetRelMapper.deleteByAssetId(asset.getAssetId());
+                bindPlatformIfPresent(asset);
+            }
             changeLogService.record(asset.getSiteId(), "UPDATE", "HARDWARE_ASSET", asset.getAssetId(), asset.getAssetName(), buildSummary("修改硬件资产", asset), original, asset);
         }
         return rows;
@@ -185,6 +190,14 @@ public class SupportHardwareAssetServiceImpl implements ISupportHardwareAssetSer
             changeLogService.record(asset.getSiteId(), "UNBIND", "HARDWARE_ASSET", assetId, asset.getAssetName(), "平台 " + platform.getPlatformName() + " 解绑硬件资产 " + asset.getAssetName());
         }
         return rows;
+    }
+
+    private void lockSite(SupportHardwareAsset asset)
+    {
+        if (asset == null || asset.getSiteId() == null || siteMapper.selectSiteIdForUpdate(asset.getSiteId()) == null)
+        {
+            throw new ServiceException("现场不存在");
+        }
     }
 
     private void normalizeAndValidate(SupportHardwareAsset asset, boolean update)

@@ -16,7 +16,7 @@
       </div>
       <div class="room3d-mode-switch">
         <el-button v-if="viewportWidth < 900" icon="Menu" @click="relationDrawerOpen = true">目录</el-button>
-        <el-segmented v-model="viewMode" :options="viewOptions" class="motion-segmented" aria-label="设备管理视图" data-testid="equipment-view-switch">
+        <el-segmented v-model="viewMode" :options="viewOptions" :disabled="inventoryEditing" class="motion-segmented" aria-label="设备管理视图" data-testid="equipment-view-switch">
           <template #default="{ item }">
             <span class="motion-control-label">
               <svg-icon :icon-class="item.icon" class="motion-control-label__icon" />
@@ -27,10 +27,10 @@
       </div>
       <div class="room3d-top-actions">
         <span class="room3d-live-status" :class="{ 'has-error': liveSyncError }">
-          <i></i>{{ liveSyncError ? '同步失败' : (syncing ? '同步中' : '10秒自动同步') }}
+          <i></i>{{ inventoryEditing ? '编辑中 · 同步已暂停' : liveSyncError ? '同步失败' : (syncing ? '同步中' : '10秒自动同步') }}
         </span>
         <el-tooltip content="刷新实时数据" placement="bottom">
-          <el-button icon="Refresh" :loading="loading" aria-label="刷新实时数据" @click="loadTopology" />
+          <el-button icon="Refresh" :loading="loading" :disabled="inventoryEditing" aria-label="刷新实时数据" @click="loadTopology" />
         </el-tooltip>
         <el-tooltip content="关闭设备管理" placement="bottom">
           <el-button icon="Close" aria-label="关闭设备管理" @click="emit('close')" />
@@ -38,8 +38,8 @@
       </div>
       </div>
       <div class="room3d-controls">
-        <el-button v-if="canCreateEquipment" type="primary" icon="Plus" @click="requestCreate">新增设备</el-button>
-        <el-button v-hasPermi="['support:equipment:add', 'support:server:add']" icon="Files" @click="emit('batch-create', { platformId: inventoryPlatformId || activeScopePlatformId })">批量录入服务器</el-button>
+        <el-button v-if="canCreateEquipment" type="primary" icon="Plus" :disabled="inventoryEditing" @click="requestCreate">新增设备</el-button>
+        <el-button v-hasPermi="['support:equipment:add', 'support:server:add']" icon="Files" :disabled="inventoryEditing" @click="emit('batch-create', { platformId: inventoryPlatformId || activeScopePlatformId })">批量录入服务器</el-button>
         <el-select v-if="viewMode === 'map'" v-model="selectedRoomId" class="room3d-room-select" placeholder="选择机房" filterable>
           <el-option
             v-for="room in rooms"
@@ -114,6 +114,7 @@
     <div v-else class="room3d-body">
       <aside v-if="viewportWidth >= 900" class="room3d-directory">
         <EquipmentRelationTree
+          :disabled="inventoryEditing"
           v-model:scope-mode="deviceScope" :scope-options="deviceScopeOptions"
           :tree="equipmentTree" :model-value="inventoryNodeKey" :initial-platform-id="initialPlatformId"
           @update:model-value="selectRelationNode"
@@ -121,6 +122,7 @@
       </aside>
       <el-drawer v-else v-model="relationDrawerOpen" title="设备关联目录" direction="ltr" size="85%" append-to-body>
         <EquipmentRelationTree
+          :disabled="inventoryEditing"
           v-model:scope-mode="deviceScope" :scope-options="deviceScopeOptions"
           :tree="equipmentTree" :model-value="inventoryNodeKey" :initial-platform-id="initialPlatformId"
           @update:model-value="selectRelationNode"
@@ -129,11 +131,11 @@
       <section v-if="viewMode === 'list'" class="room3d-inventory-panel" :class="{ 'has-query': showDeviceQuery }">
         <div class="room3d-device-scope">
             <el-space wrap>
-              <el-button icon="Search" :type="showDeviceQuery ? 'primary' : 'default'" plain @click="showDeviceQuery = !showDeviceQuery">筛选</el-button>
+              <el-button icon="Search" :type="showDeviceQuery ? 'primary' : 'default'" :disabled="inventoryEditing" plain @click="showDeviceQuery = !showDeviceQuery">筛选</el-button>
             </el-space>
             <el-text type="info" size="small">{{ deviceScopeDescription }}</el-text>
           </div>
-        <el-form v-if="showDeviceQuery" class="room3d-device-query" :inline="true" label-width="56px">
+        <el-form v-if="showDeviceQuery" :disabled="inventoryEditing" class="room3d-device-query" :inline="true" label-width="56px">
             <el-form-item label="关键字">
               <el-input
                 v-model="deviceKeyword"
@@ -172,9 +174,10 @@
           ref="inventoryRef"
           :context-key="deviceScope + ':' + inventoryNodeKey" :revision="inventoryRevision"
           :site-id="siteId" :devices="filteredDevices" :links="links"
+          :rooms="rooms" :cabinets="cabinets" :platforms="platformOptions"
           :loading="loading" :deleting="batchDeleting"
-          @detail="locateDeviceFromDrawer" @edit="emit('edit-device', $event)"
-          @place="revealDevice($event, true)" @delete="removeDevices"
+          @configure="locateDeviceFromDrawer" @delete="removeDevices"
+          @editing-change="handleInventoryEditing" @saved="handleWorkbookSaved"
           @export="emit('export-devices', { ...$event, siteId: Number(siteId) })"
         />
       </section>
@@ -234,7 +237,7 @@
 
       <el-drawer
         v-model="inspectorDrawerOpen"
-        title="配置信息"
+        :title="selectedDevice ? '设备配置' : '配置信息'"
         direction="rtl"
         size="min(460px, 94vw)"
         append-to-body
@@ -249,15 +252,11 @@
               <h3>{{ selectedDevice.assetName || '未命名设备' }}</h3>
             </div>
             <div class="room3d-inspector-actions">
-              <el-button v-if="canManageDevice(selectedDevice)" link type="primary" @click="emit('edit-device', selectedDevice)">编辑档案</el-button>
-              <el-button v-if="canPlaceEquipment" link type="primary" @click="openPlacementForm(selectedDevice)">安装位置</el-button>
-              <el-dropdown v-if="canManageEquipment || canDeleteEquipment || canViewPassword" trigger="click" @command="handleSelectedDeviceCommand">
+              <el-button v-if="canManageDevice(selectedDevice)" type="primary" icon="Edit" @click="editSelectedInInventory()">编辑设备</el-button>
+              <el-dropdown v-if="(isDevicePlaced(selectedDevice) && canPlaceEquipment) || canDeleteDevice(selectedDevice)" trigger="click" @command="handleSelectedDeviceCommand">
                 <el-button link type="primary" icon="MoreFilled" title="更多设备操作" aria-label="更多设备操作" />
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item v-if="canPlaceEquipment" command="placement" icon="Location">配置机房位置</el-dropdown-item>
-                    <el-dropdown-item v-if="selectedDevice.credentialCapable && canManageEquipment" command="credentials" icon="Key">管理服务器凭据</el-dropdown-item>
-                    <el-dropdown-item v-if="canViewPassword" command="password" icon="View">显示密码</el-dropdown-item>
                     <el-dropdown-item v-if="isDevicePlaced(selectedDevice) && canPlaceEquipment" command="clear-placement" divided icon="Remove">清空机房位置</el-dropdown-item>
                     <el-dropdown-item v-if="canDeleteDevice(selectedDevice)" command="delete" divided icon="Delete">删除设备</el-dropdown-item>
                   </el-dropdown-menu>
@@ -266,6 +265,9 @@
             </div>
           </div>
 
+          <el-tabs v-model="deviceConfigTab" class="motion-tabs">
+          <el-tab-pane name="profile">
+            <template #label><span class="motion-control-label"><svg-icon icon-class="keyline-file-text" class="motion-control-label__icon" /><span class="motion-control-label__text">档案</span></span></template>
           <el-descriptions :column="1" size="small" border>
             <el-descriptions-item label="设备类型">{{ selectedDevice.assetTypeLabel || selectedDevice.assetType || '-' }}</el-descriptions-item>
             <el-descriptions-item label="设备IP">{{ selectedDevice.ipAddress || '-' }}</el-descriptions-item>
@@ -278,6 +280,10 @@
               </el-tag>
             </el-descriptions-item>
           </el-descriptions>
+          <el-button v-if="selectedDevice.sourceType === 'HARDWARE' && canManageDevice(selectedDevice)" icon="Setting" @click="editSelectedInInventory('EXTENDED')">扩展属性</el-button>
+          </el-tab-pane>
+          <el-tab-pane name="location">
+            <template #label><span class="motion-control-label"><svg-icon icon-class="keyline-map-pin" class="motion-control-label__icon" /><span class="motion-control-label__text">归属位置</span></span></template>
 
           <section class="room3d-platform-section">
             <div class="room3d-section-head">
@@ -290,32 +296,19 @@
               <el-tag
                 v-for="binding in selectedDevice.platformBindings"
                 :key="binding.platformId"
-                :closable="canManageEquipment"
+                :closable="false"
                 :disable-transitions="true"
-                @close="unbindSelectedPlatform(binding)"
               >{{ formatPlatformBinding(binding) }}</el-tag>
             </div>
             <p v-else class="room3d-platform-empty">{{ selectedDevice.bindingScope === 'PUBLIC' ? '当前为现场公共设备' : '尚未归属平台' }}</p>
-            <div v-if="canManageEquipment" class="room3d-platform-bind">
-              <el-select v-model="bindingPlatformId" clearable filterable placeholder="选择要归属的平台">
-                <el-option
-                  v-for="platform in bindablePlatformOptions"
-                  :key="platform.platformId"
-                  :label="platform.displayName"
-                  :value="platform.platformId"
-                  :disabled="selectedDevice.platformIds?.includes(platform.platformId)"
-                />
-              </el-select>
-              <el-button
-                type="primary"
-                plain
-                :disabled="!bindingPlatformId"
-                :loading="bindingSaving"
-                v-hasPermi="['support:equipment:edit', 'support:hardwareAsset:edit', 'support:platform:edit']"
-                @click="bindSelectedPlatform"
-              >归属平台</el-button>
-            </div>
           </section>
+          <el-descriptions :column="1" border>
+            <el-descriptions-item label="安装位置">{{ formatDeviceLocation(selectedDevice) }}</el-descriptions-item>
+          </el-descriptions>
+          <el-button v-if="canPlaceEquipment" icon="Location" @click="openPlacementForm(selectedDevice)">可视化位置配置</el-button>
+          </el-tab-pane>
+          <el-tab-pane name="links">
+            <template #label><span class="motion-control-label"><svg-icon icon-class="network" class="motion-control-label__icon" /><span class="motion-control-label__text">链路</span></span></template>
 
           <section class="room3d-port-summary">
             <div>
@@ -327,7 +320,6 @@
               <strong>{{ selectedPortSummary.electrical }}</strong>
             </div>
           </section>
-
           <section class="room3d-link-section">
             <div class="room3d-section-head">
               <div>
@@ -366,6 +358,14 @@
               历史上联记录：{{ selectedDevice.legacyUplinkDevice }}
             </p>
           </section>
+          </el-tab-pane>
+          <el-tab-pane name="credentials">
+            <template #label><span class="motion-control-label"><svg-icon icon-class="password" class="motion-control-label__icon" /><span class="motion-control-label__text">凭据</span></span></template>
+            <el-descriptions :column="1" border><el-descriptions-item label="登录账号">{{ selectedDevice.loginUsername || '-' }}</el-descriptions-item></el-descriptions>
+            <el-button v-if="canViewPassword" icon="View" @click="emit('view-password', selectedDevice)">显示密码</el-button>
+            <el-button v-if="selectedDevice.credentialCapable && canManageEquipment" icon="Key" @click="emit('manage-credentials', selectedDevice)">管理账号</el-button>
+          </el-tab-pane>
+          </el-tabs>
         </template>
 
         <template v-else-if="selectedCabinet">
@@ -696,7 +696,7 @@ import {
   updateEquipmentLink,
   updateEquipmentRoom
 } from '@/api/support/equipmentLocation'
-import { bindEquipmentPlatform, deleteEquipmentBatch, unbindEquipmentPlatform } from '@/api/support/equipment'
+import { deleteEquipmentBatch } from '@/api/support/equipment'
 import { listPlatformTree } from '@/api/support/platform'
 import {
   CABINET_DEPTH,
@@ -729,7 +729,6 @@ const props = defineProps({
 const emit = defineEmits([
   'close',
   'create-device',
-  'edit-device',
   'batch-create',
   'manage-credentials',
   'view-password',
@@ -739,8 +738,10 @@ const emit = defineEmits([
 const { proxy } = getCurrentInstance()
 const viewMode = ref('list')
 const { width: viewportWidth } = useWindowSize()
+const inventoryEditing = ref(false)
+const queryBeforeEditing = ref(false)
 const showDeviceQuery = ref(true)
-watch(viewportWidth, width => { showDeviceQuery.value = width >= 768 }, { immediate: true })
+watch(viewportWidth, width => { if (!inventoryEditing.value) showDeviceQuery.value = width >= 768 }, { immediate: true })
 const inventoryRef = ref(null)
 const inventoryNodeKey = ref('ALL')
 const relationDrawerOpen = ref(false)
@@ -764,6 +765,7 @@ const platformTree = ref([])
 const selectedRoomId = ref(null)
 const selectedCabinetId = ref(null)
 const selectedDeviceKey = ref('')
+const deviceConfigTab = ref('profile')
 const showLinks = ref(true)
 const workspaceMode = ref('view')
 const inspectorDrawerOpen = ref(false)
@@ -773,8 +775,6 @@ const assetTypeFilter = ref('ALL')
 const placementFilter = ref('ALL')
 const attentionFilter = ref('ALL')
 const batchDeleting = ref(false)
-const bindingPlatformId = ref(null)
-const bindingSaving = ref(false)
 const workspaceModeOptions = [
   { label: '浏览', value: 'view', icon: 'keyline-eye' },
   { label: '调整机柜', value: 'layout', icon: 'keyline-grid-3x3' }
@@ -891,12 +891,6 @@ const canImportTopology = computed(() => Boolean(
   ])
 ))
 const canUseDataMenu = computed(() => canExportTopology.value || canExportEquipment.value || canImportTopology.value)
-const bindablePlatformOptions = computed(() => {
-  if (!selectedDevice.value) return []
-  return selectedDevice.value.sourceType === 'SERVER'
-    ? platformOptions.value.filter((platform) => platform.platformLevel === 'SUB')
-    : platformOptions.value
-})
 const placementDevice = computed(() => devices.value.find((device) => device.deviceKey === placementDeviceKey.value) || null)
 const placementCabinetOptions = computed(() => cabinets.value.filter((cabinet) => Number(cabinet.roomId) === Number(placementForm.roomId)))
 const placementCabinet = computed(() => placementCabinetOptions.value.find((cabinet) => Number(cabinet.cabinetId) === Number(placementForm.cabinetId)) || null)
@@ -926,7 +920,7 @@ const placementRangeLabel = computed(() => {
     ? `已选 ${placementForm.rackUStart}U`
     : `已选 ${placementForm.rackUStart}-${placementForm.rackUEnd}U`
 })
-const editorOpen = computed(() => roomFormOpen.value || cabinetFormOpen.value || placementFormOpen.value || importOpen.value || linkFormOpen.value)
+const editorOpen = computed(() => inventoryEditing.value || roomFormOpen.value || cabinetFormOpen.value || placementFormOpen.value || importOpen.value || linkFormOpen.value)
 const selectedPortSummary = computed(() => selectedDevice.value ? summarizeOutgoingPorts(selectedDevice.value, links.value) : { optical: 0, electrical: 0 })
 const switchOptions = computed(() => devices.value.filter((device) =>
   device.assetType === 'SWITCH' &&
@@ -1039,12 +1033,10 @@ watch([deviceKeyword, deviceScope, assetTypeFilter, placementFilter, attentionFi
   }
   rebuildScene()
 })
-watch(selectedDeviceKey, () => {
-  bindingPlatformId.value = null
-})
 
 let topologyLoadPromise = null
 async function loadTopology(options = {}) {
+  if (inventoryEditing.value) return
   if (!options.silent) inventoryRevision.value += 1
   if (topologyLoadPromise) {
     await topologyLoadPromise
@@ -1069,6 +1061,7 @@ async function performTopologyLoad(options = {}) {
       listPlatformTree(props.siteId)
     ])
     const data = response.data || {}
+    if (inventoryEditing.value) return
     const nextRooms = data.rooms || []
     const nextCabinets = data.cabinets || []
     const nextDevices = data.devices || []
@@ -1098,6 +1091,7 @@ async function performTopologyLoad(options = {}) {
     rebuildScene()
     await focusInitialDevice()
   } catch (error) {
+    if (inventoryEditing.value) return
     liveSyncError.value = true
     if (!silent) loadError.value = error?.msg || error?.message || '请检查接口和数据库升级脚本后重试'
   } finally {
@@ -1121,7 +1115,7 @@ function stopLiveSync() {
 }
 
 function handleVisibilityChange() {
-  if (document.visibilityState === 'visible') loadTopology({ silent: true })
+  if (document.visibilityState === 'visible' && !editorOpen.value) loadTopology({ silent: true })
 }
 
 function initScene() {
@@ -1577,7 +1571,7 @@ function handleSceneKeydown(event) {
   }
   if (event.key === 'Enter' && selectedCabinet.value) {
     event.preventDefault()
-    if (selectedDevice.value) emit('edit-device', selectedDevice.value)
+    if (selectedDevice.value) openInspectorDrawer()
     else focusCabinet(selectedCabinet.value.cabinetId)
   }
 }
@@ -1740,6 +1734,26 @@ function requestCreate() {
   emit('create-device', { platformId: inventoryPlatformId.value || activeScopePlatformId.value })
 }
 
+async function editSelectedInInventory(group = 'ALL') {
+  const key = selectedDevice.value?.deviceKey
+  if (!key) return
+  inspectorDrawerOpen.value = false
+  viewMode.value = 'list'
+  await nextTick()
+  await inventoryRef.value?.startEditing(key, group)
+}
+
+function handleInventoryEditing(value) {
+  if (value && !inventoryEditing.value) queryBeforeEditing.value = showDeviceQuery.value
+  inventoryEditing.value = value
+  showDeviceQuery.value = value ? false : queryBeforeEditing.value && viewportWidth.value >= 768
+}
+
+async function handleWorkbookSaved() {
+  await loadTopology({ fresh: true })
+  emit('changed')
+}
+
 async function revealDevice(reference, placement = false) {
   if (placement) {
     viewMode.value = 'map'
@@ -1761,58 +1775,10 @@ async function revealDevice(reference, placement = false) {
 
 async function handleSelectedDeviceCommand(command) {
   if (!selectedDevice.value) return
-  if (command === 'placement') openPlacementForm(selectedDevice.value)
-  if (command === 'credentials') emit('manage-credentials', selectedDevice.value)
-  if (command === 'password') emit('view-password', selectedDevice.value)
   if (command === 'clear-placement') await clearDevicePlacement(selectedDevice.value)
   if (command === 'delete') await removeSelectedDevice()
 }
 
-async function bindSelectedPlatform() {
-  if (!selectedDevice.value || !bindingPlatformId.value) return
-  if (!canManageEquipment.value) {
-    proxy.$modal.msgWarning('当前账号没有设备修改权限')
-    return
-  }
-  bindingSaving.value = true
-  try {
-    await bindEquipmentPlatform({
-      siteId: Number(props.siteId),
-      sourceType: selectedDevice.value.sourceType,
-      sourceId: selectedDevice.value.sourceId,
-      platformId: bindingPlatformId.value
-    })
-    proxy.$modal.msgSuccess('平台归属已更新')
-    bindingPlatformId.value = null
-    await loadTopology()
-    emit('changed')
-  } finally {
-    bindingSaving.value = false
-  }
-}
-
-async function unbindSelectedPlatform(binding) {
-  if (!selectedDevice.value || !binding?.platformId) return
-  if (!canManageEquipment.value) {
-    proxy.$modal.msgWarning('当前账号没有设备修改权限')
-    return
-  }
-  await proxy.$modal.confirm(`确认解除与 ${binding.platformName} 的归属关系？`)
-  bindingSaving.value = true
-  try {
-    await unbindEquipmentPlatform({
-      siteId: Number(props.siteId),
-      sourceType: selectedDevice.value.sourceType,
-      sourceId: selectedDevice.value.sourceId,
-      platformId: binding.platformId
-    })
-    proxy.$modal.msgSuccess('平台归属已解除')
-    await loadTopology()
-    emit('changed')
-  } finally {
-    bindingSaving.value = false
-  }
-}
 
 function formatPlatformBinding(binding) {
   const prefix = binding.platformLevel === 'MAIN' ? '主平台' : '子平台'
@@ -1824,6 +1790,7 @@ function formatManufacturerModel(device) {
 }
 
 async function selectDevice(device) {
+  deviceConfigTab.value = 'profile'
   if (device.roomId && Number(device.roomId) !== Number(selectedRoomId.value)) {
     selectedRoomId.value = device.roomId
     await nextTick()
@@ -2354,6 +2321,7 @@ function disposeScene() {
 }
 
 defineExpose({
+  confirmClose: async () => (await inventoryRef.value?.confirmClose()) !== false,
   refresh: () => loadTopology({ fresh: true }),
   revealDevice,
   showDirectory: () => { resetDeviceQuery(); openDeviceDrawer() }
@@ -2500,6 +2468,7 @@ defineExpose({
   padding: 16px;
   gap: 12px;
   min-height: 0;
+  overflow-y: auto;
 }
 
 .room3d-inventory-panel.has-query { grid-template-rows: auto auto minmax(0, 1fr); }

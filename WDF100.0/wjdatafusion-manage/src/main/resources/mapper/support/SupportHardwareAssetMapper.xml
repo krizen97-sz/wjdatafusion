@@ -71,6 +71,8 @@
     <select id="selectSupportHardwareAssetByAssetId" parameterType="Long" resultMap="SupportHardwareAssetResult">
         <include refid="selectSupportHardwareAssetVo"/>
         where a.asset_id = #{assetId}
+        order by rel.platform_id
+        limit 1
     </select>
 
     <select id="selectSupportHardwareAssetBySiteAndIp" resultMap="SupportHardwareAssetResult">
