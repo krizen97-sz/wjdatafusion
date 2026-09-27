@@ -293,6 +293,7 @@ public class SupportServerServiceImpl implements ISupportServerService
     @Transactional(rollbackFor = Exception.class)
     public int deleteLegacyServerCredential(Long serverId, String expectedUsername)
     {
+        expectedUsername = com.hm.manage.util.SupportServerAccountNames.normalize(expectedUsername);
         SupportServer server = lockCredentialServer(serverId);
         if (StringUtils.isBlank(expectedUsername) || !expectedUsername.equals(server.getOsUsername())
             || selectCredentialForUpdate(serverId, expectedUsername) != null)

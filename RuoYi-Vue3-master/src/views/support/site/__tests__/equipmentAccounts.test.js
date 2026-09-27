@@ -2,12 +2,17 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { parse } from '@vue/compiler-sfc'
-import { accountKey, accountMutation, displayAccountName, orderAccounts } from '../components/equipmentAccounts.rules.js'
+import { accountKey, accountMutation, displayAccountName, displayAccountDescription, normalizeAccountName, orderAccounts } from '../components/equipmentAccounts.rules.js'
 
-test('HIK display does not silently mutate the actual SSH username', () => {
-  assert.equal(displayAccountName('hik'), 'HIK')
-  assert.equal(displayAccountName('HIK'), 'HIK')
+test('all hik spellings display and submit the same lowercase username', () => {
+  for (const input of ['hik', 'HIK', 'Hik', ' hIk ']) {
+    assert.equal(displayAccountName(input), 'hik')
+    assert.equal(normalizeAccountName(input), 'hik')
+    assert.equal(accountMutation(1, { username: input }).username, 'hik')
+  }
   assert.equal(displayAccountName('root'), 'root')
+  assert.equal(displayAccountName('Admin'), 'Admin')
+  assert.equal(displayAccountDescription('HIK账号 / Hikvision'), 'hik账号 / Hikvision')
   const data = accountMutation(1, { username: 'hik', credentialId: 9, password: '' })
   assert.equal(data.username, 'hik')
   assert.equal(data.password, null)
@@ -18,7 +23,8 @@ test('legacy and stored credentials have stable different identities', () => {
   const data = accountMutation(1, { username: 'HIK', legacyRegistration: true, password: '  secret  ' })
   assert.equal(data.legacyRegistration, true)
   assert.equal(data.password, '  secret  ')
-  assert.equal(data.credentialName, 'HIK账号')
+  assert.equal(data.credentialName, 'hik账号')
+  assert.equal(accountKey({ username: 'HIK' }), accountKey({ username: 'hik' }))
   assert.equal('passwordCipher' in data, false)
   const accounts = [{ username: 'ops' }, { username: 'root' }, { username: 'hik' }]
   assert.deepEqual(orderAccounts(accounts).map(row => row.username), ['hik', 'root', 'ops'])

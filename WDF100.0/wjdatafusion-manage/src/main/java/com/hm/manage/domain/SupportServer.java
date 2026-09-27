@@ -163,12 +163,12 @@ public class SupportServer extends BaseEntity
 
     public String getOsUsername()
     {
-        return osUsername;
+        return com.hm.manage.util.SupportServerAccountNames.normalize(osUsername);
     }
 
     public void setOsUsername(String osUsername)
     {
-        this.osUsername = osUsername;
+        this.osUsername = com.hm.manage.util.SupportServerAccountNames.normalize(osUsername);
     }
 
     public String getOsPassword()

@@ -36,11 +36,11 @@ class SupportServerLoginCheckServiceTest
         when(verifier.verify(anyString(), anyInt(), anyString(), anyString(), anyString(), anyBoolean(), any()))
             .thenReturn(result("SUCCESS"));
     }
-    @Test void hikThenSuUsesSavedActualUsernameAndBothSecrets()
+    @Test void hikThenSuUsesLowercaseUsernameAndBothSavedSecrets()
     {
         when(accounts.selectCredentialsByServerId(1L)).thenReturn(List.of(account("HIK", "h"), account("root", "r")));
         service.check(command());
-        verify(verifier).verify("192.0.2.1", 55555, "HIK", "plain-h", "plain-r", false, null);
+        verify(verifier).verify("192.0.2.1", 55555, "hik", "plain-h", "plain-r", false, null);
     }
     @Test void rootOnlyDirectEvenWhenPolicyIsOff()
     {

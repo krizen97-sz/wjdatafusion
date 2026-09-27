@@ -61,7 +61,7 @@ class SupportServerAccountUnificationTest
         assertEquals(2, result.size());
         var legacy = result.get(1);
         assertTrue(legacy.getLegacyRegistration()); assertNull(legacy.getCredentialId());
-        assertEquals("HIK", legacy.getUsername()); assertEquals("******", legacy.getPassword());
+        assertEquals("hik", legacy.getUsername()); assertEquals("******", legacy.getPassword());
         assertEquals(1, accounts.size());
         String json = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(result);
         assertFalse(json.contains("legacy-cipher")); assertFalse(json.contains("root-cipher"));
@@ -83,9 +83,9 @@ class SupportServerAccountUnificationTest
         var input = account(null, "HIK", null); input.setLegacyRegistration(true);
         service.insertServerCredential(input);
         assertEquals("legacy-cipher", input.getPasswordCipher());
-        assertEquals("HIK", input.getUsername());
+        assertEquals("hik", input.getUsername());
         verify(credentials, times(1)).insertCredential(input);
-        verify(servers).clearLegacyCredential(eq(1L), eq("HIK"), any(), any());
+        verify(servers).clearLegacyCredential(eq(1L), eq("hik"), any(), any());
         verify(servers, never()).updateSupportServer(any());
     }
     @Test void legacyEditWithNewPasswordUsesEncryption()
@@ -104,11 +104,11 @@ class SupportServerAccountUnificationTest
         assertThrows(ServiceException.class, () -> service.insertServerCredential(input));
         verify(credentials, never()).insertCredential(any());
     }
-    @Test void accountCaseIsPreservedAndDuplicateInsertIsRejected()
+    @Test void hikCaseIsCanonicalizedAndDuplicateInsertIsRejected()
     {
         var input = account(null, "HIK", null); input.setPassword("new");
         service.insertServerCredential(input);
-        assertEquals("HIK", input.getUsername());
+        assertEquals("hik", input.getUsername());
         accounts.add(account(10L, "hik", "stored"));
         assertThrows(ServiceException.class, () -> service.insertServerCredential(input));
     }
@@ -120,8 +120,8 @@ class SupportServerAccountUnificationTest
         when(credentials.selectCredentialByIdForUpdate(10L)).thenReturn(current);
         var input = account(10L, "HIK", null);
         service.updateServerCredential(input);
-        assertEquals("concurrent-new", input.getPasswordCipher()); assertEquals("HIK", input.getUsername());
-        verify(servers).clearLegacyCredential(eq(1L), eq("HIK"), any(), any());
+        assertEquals("concurrent-new", input.getPasswordCipher()); assertEquals("hik", input.getUsername());
+        verify(servers).clearLegacyCredential(eq(1L), eq("hik"), any(), any());
     }
     @Test void deletingStoredAccountClearsOnlyItsMatchingLegacyShadow()
     {
@@ -133,7 +133,7 @@ class SupportServerAccountUnificationTest
             security.when(SecurityUtils::getUsername).thenReturn("tester");
             service.deleteServerCredentialById(10L);
         }
-        verify(servers).clearLegacyCredential(eq(1L), eq("HIK"), eq("tester"), any());
+        verify(servers).clearLegacyCredential(eq(1L), eq("hik"), eq("tester"), any());
         verify(credentials).deleteCredentialById(10L);
         verify(credentials, never()).deleteCredentialsByServerId(any());
     }
@@ -146,7 +146,7 @@ class SupportServerAccountUnificationTest
             security.when(SecurityUtils::getUsername).thenReturn("tester");
             service.deleteLegacyServerCredential(1L, "HIK");
         }
-        verify(servers).clearLegacyCredential(eq(1L), eq("HIK"), eq("tester"), any());
+        verify(servers).clearLegacyCredential(eq(1L), eq("hik"), eq("tester"), any());
         verify(credentials, never()).deleteCredentialById(any());
     }
     private SupportServerCredential account(Long id, String username, String cipher)

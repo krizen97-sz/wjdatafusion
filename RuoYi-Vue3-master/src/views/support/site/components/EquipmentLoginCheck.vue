@@ -8,7 +8,7 @@
     </el-form>
     <el-descriptions :column="1" border>
       <el-descriptions-item label="SSH目标">{{ device.ipAddress }}:{{ device.sshPort || 55555 }}</el-descriptions-item>
-      <el-descriptions-item label="登录策略">{{ rootDirect ? 'root直接登录' : '优先HIK登录后切换root；仅登记root时直接登录' }}</el-descriptions-item>
+      <el-descriptions-item label="登录策略">{{ rootDirect ? 'root直接登录' : '优先hik登录后切换root；仅登记root时直接登录' }}</el-descriptions-item>
     </el-descriptions>
     <div class="equipment-login-check__actions">
       <el-button v-if="canVerify" type="primary" icon="Key" :loading="running" :disabled="disabled || changing" @click="check()">
@@ -20,7 +20,7 @@
       <el-alert :title="result.message" :type="resultType" :closable="false" show-icon />
       <el-descriptions :column="1" border>
         <el-descriptions-item label="校验时间">{{ result.checkedAt }}</el-descriptions-item>
-        <el-descriptions-item label="登录账号"><span :title="'实际SSH用户名：' + result.loginUsername">{{ displayAccountName(result.loginUsername) }}</span></el-descriptions-item>
+        <el-descriptions-item label="登录账号"><span :title="'实际SSH用户名：' + displayAccountName(result.loginUsername)">{{ displayAccountName(result.loginUsername) }}</span></el-descriptions-item>
         <el-descriptions-item label="root密码">{{ result.rootPasswordVerified ? '校验通过' : '未通过或未完成验证' }}</el-descriptions-item>
         <el-descriptions-item v-if="result.hostFingerprint" label="主机指纹">
           <span class="equipment-login-check__fingerprint">{{ result.hostFingerprint }}</span>
@@ -70,7 +70,7 @@ async function changePolicy() {
   const token = generation
   const nextValue = !rootDirect.value
   try {
-    await proxy.$modal.confirm(nextValue ? '开启后将直接使用root登录，不再先登录HIK。确认修改？' : '关闭后有HIK凭据时先登录HIK，再切换root。确认修改？')
+    await proxy.$modal.confirm(nextValue ? '开启后将直接使用root登录，不再先登录hik。确认修改？' : '关闭后有hik凭据时先登录hik，再切换root。确认修改？')
     const snapshot = (await getEquipmentWorkbook(props.siteId)).data
     if (token !== generation) return false
     const row = snapshot.rows.find(item => item.sourceType === 'SERVER' && Number(item.sourceId) === Number(props.device.sourceId))

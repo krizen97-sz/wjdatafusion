@@ -158,6 +158,8 @@ public class SupportEquipmentWorkbookService
             Long id = number(row.get("sourceId"));
             String key = text(row.get("sourceType")) + ":" + id;
             row.put("deviceKey", key);
+            if (row.containsKey("loginUsername"))
+                row.put("loginUsername", com.hm.manage.util.SupportServerAccountNames.normalize(text(row.get("loginUsername"))));
             if (isServer(row)) row.put("rootDirectLogin", Boolean.TRUE.equals(row.get("rootDirectLogin")) || "1".equals(text(row.get("rootDirectLogin"))));
             List<Long> ids = (isServer(row) ? serverBindings : hardwareBindings).stream()
                 .filter(binding -> Objects.equals(id, number(binding.get("sourceId"))))
@@ -221,6 +223,7 @@ public class SupportEquipmentWorkbookService
             {
                 if (value != null && !(value instanceof String)) throw new ServiceException("文本字段格式无效");
                 value = text(value).trim();
+                if ("loginUsername".equals(key)) value = com.hm.manage.util.SupportServerAccountNames.normalize((String) value);
                 int max = LENGTHS.getOrDefault(key, 128);
                 if (value.toString().length() > max) throw new ServiceException("字段长度超过限制：" + key);
             }
@@ -326,6 +329,7 @@ public class SupportEquipmentWorkbookService
             Map<String, Object> existing = accountFor(row.before, field);
             String username = "hikPassword".equals(field) ? "hik" : "rootPassword".equals(field) ? "root" : text(row.after.get("otherUsername")).trim();
             if (!"otherPassword".equals(field) && !text(existing.get("username")).isEmpty()) username = text(existing.get("username"));
+            username = com.hm.manage.util.SupportServerAccountNames.normalize(username);
             String cipher = passwordChanged ? crypto.encrypt((String) fields.get(field)) : text(existing.get("cipher"));
             Long credentialId = number(existing.get("credentialId"));
             if (credentialId != null)

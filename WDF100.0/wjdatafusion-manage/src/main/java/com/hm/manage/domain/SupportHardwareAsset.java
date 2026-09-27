@@ -302,12 +302,12 @@ public class SupportHardwareAsset extends BaseEntity
 
     public String getLoginUsername()
     {
-        return loginUsername;
+        return com.hm.manage.util.SupportServerAccountNames.normalize(loginUsername);
     }
 
     public void setLoginUsername(String loginUsername)
     {
-        this.loginUsername = loginUsername;
+        this.loginUsername = com.hm.manage.util.SupportServerAccountNames.normalize(loginUsername);
     }
 
     public String getLoginPassword()

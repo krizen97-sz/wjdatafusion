@@ -1,5 +1,21 @@
 export const releaseNotes = [
   {
+    version: 'v4.14.2',
+    submitTime: '2026-09-27 10:42:17',
+    level: 'patch', levelLabel: '修订版本', tagType: 'success',
+    title: 'hik账号显示与实际登录统一小写',
+    summary: '设备账号的显示、保存及SSH登录统一使用小写hik，兼容历史大小写记录。',
+    changes: [
+      '统一账号列表、编辑框、密码列、批量录入确认及登录策略中的hik显示。',
+      '历史大小写账号在读取时按hik处理，新增及修改保存为hik；密码、root及其他账号不做大小写转换。',
+      'SSH连接前再次规范用户名，确保实际登录使用hik，而不只是修改显示文字。',
+      '兼容历史账号编辑、删除和密码查看；原有记录不在读取时批量迁移，不自动尝试其他大小写账号。'
+    ],
+    scope: ['现场融合管理', '设备账号', 'SSH登录校验'],
+    database: '无表结构变更，无新增升级SQL；历史记录兼容读取，用户保存时规范固定账号名，密码不变。',
+    scripts: []
+  },
+  {
     version: 'v4.14.1',
     submitTime: '2026-09-26 23:53:45',
     level: 'patch', levelLabel: '修订版本', tagType: 'success',

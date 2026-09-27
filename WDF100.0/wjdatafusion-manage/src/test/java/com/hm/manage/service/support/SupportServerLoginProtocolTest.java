@@ -14,11 +14,12 @@ class SupportServerLoginProtocolTest
     {
         assertTimeoutPreemptively(Duration.ofSeconds(35), () -> withFixture("normal", port -> {
             var verifier = new SupportServerLoginVerifier();
-            var first = verifier.verify("127.0.0.1", port, "hik", "hik-test", "root-test", false, null);
+            var first = verifier.verify("127.0.0.1", port, "HIK", "hik-test", "root-test", false, null);
             assertEquals("HOST_KEY_REQUIRED", first.status());
             String fingerprint = first.hostFingerprint();
-            var twoStage = verifier.verify("127.0.0.1", port, "hik", "hik-test", "root-test", false, fingerprint);
+            var twoStage = verifier.verify("127.0.0.1", port, "Hik", "hik-test", "root-test", false, fingerprint);
             assertEquals("SUCCESS", twoStage.status(), twoStage.message());
+            assertEquals("hik", twoStage.loginUsername());
             assertTrue(twoStage.rootPasswordVerified());
             var direct = verifier.verify("127.0.0.1", port, "root", "root-test", "root-test", true, fingerprint);
             assertEquals("SUCCESS", direct.status(), direct.message());

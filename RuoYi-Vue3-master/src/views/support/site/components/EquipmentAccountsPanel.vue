@@ -14,7 +14,7 @@
     <template v-else-if="editor">
       <el-form ref="formRef" :model="draft" :rules="rules" label-position="top" :disabled="saving" @submit.prevent="save">
         <el-form-item label="用户名" prop="username">
-          <el-input v-model="draft.username" :disabled="draft.legacyRegistration" maxlength="128" autocomplete="off" />
+          <el-input v-model="draft.username" :disabled="draft.legacyRegistration" maxlength="128" autocomplete="off" @blur="draft.username = normalizeAccountName(draft.username)" />
         </el-form-item>
         <el-form-item label="密码" prop="password">
           <el-input v-model="draft.password" type="password" show-password maxlength="128" autocomplete="new-password" :placeholder="draft.credentialId || draft.legacyRegistration ? '未修改' : '请输入密码'" />
@@ -31,9 +31,9 @@
     <el-table v-else-if="canRead && !loadFailed" :data="accounts" :row-key="accountKey" empty-text="尚未登记账号" size="small">
       <el-table-column label="用户名" min-width="110">
         <template #default="{ row }">
-          <span :title="'登记用户名：' + row.username">{{ displayAccountName(row.username) }}</span>
+          <span :title="'登记用户名：' + displayAccountName(row.username)">{{ displayAccountName(row.username) }}</span>
           <div v-if="accounts.filter(item => item.username?.toLowerCase() === row.username?.toLowerCase()).length > 1">
-            <el-text type="info" size="small">{{ row.credentialName || '账号 #' + row.credentialId }}</el-text>
+            <el-text type="info" size="small">{{ displayAccountDescription(row.credentialName) || '账号 #' + row.credentialId }}</el-text>
           </div>
           <el-tag v-if="row.status === '1'" type="info" size="small">停用</el-tag>
         </template>
@@ -56,7 +56,7 @@ import { computed, getCurrentInstance, onBeforeUnmount, reactive, ref, watch } f
 import { listServerCredentials, addServerCredential, updateServerCredential, delServerCredential, delLegacyServerCredential } from '@/api/support/server'
 import { getHardwareAsset } from '@/api/support/hardwareAsset'
 import { readEquipmentPasswords } from '@/api/support/equipment'
-import { accountKey, accountMutation, displayAccountName, orderAccounts } from './equipmentAccounts.rules'
+import { accountKey, accountMutation, displayAccountName, displayAccountDescription, normalizeAccountName, orderAccounts } from './equipmentAccounts.rules'
 const props = defineProps({ siteId: [Number, String], device: { type: Object, required: true } })
 const emit = defineEmits(['saved', 'editing-change', 'edit-hardware'])
 const { proxy } = getCurrentInstance()
@@ -112,7 +112,7 @@ function startEdit(row) {
   if (loading.value || loadFailed.value || saving.value || revealing.value || (row ? !canEdit.value : !canAdd.value)) return
   plain.value = {}; showPlain.value = false; error.value = ''
   Object.keys(draft).forEach(key => delete draft[key])
-  Object.assign(draft, row || { username: '', status: '0', isDefault: '0' }, { password: '' })
+  Object.assign(draft, row || { username: '', status: '0', isDefault: '0' }, { username: normalizeAccountName(row?.username), password: '' })
   original.value = JSON.stringify(draft)
   editor.value = true
 }

@@ -55,12 +55,12 @@ public class SupportServerCredential extends BaseEntity
 
     public String getUsername()
     {
-        return username;
+        return com.hm.manage.util.SupportServerAccountNames.normalize(username);
     }
 
     public void setUsername(String username)
     {
-        this.username = username;
+        this.username = com.hm.manage.util.SupportServerAccountNames.normalize(username);
     }
 
     public String getPassword()

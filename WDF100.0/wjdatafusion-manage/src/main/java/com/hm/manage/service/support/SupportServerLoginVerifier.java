@@ -36,6 +36,7 @@ public class SupportServerLoginVerifier
     public SupportServerLoginCheckVo verify(String host, int port, String username, String password,
         String rootPassword, boolean direct, String expectedFingerprint)
     {
+        username = com.hm.manage.util.SupportServerAccountNames.normalize(username);
         List<Step> steps = new ArrayList<>();
         FingerprintRepository keys = new FingerprintRepository(expectedFingerprint);
         Session session = null;
@@ -58,7 +59,7 @@ public class SupportServerLoginVerifier
                     identity.uid == 0 ? "root SSH登录和身份校验通过" : "登录账号未取得root身份",
                     true, username, host, port, keys, identity.uid == 0, steps, stage, identity.uid == 0 ? "success" : "error");
             if (identity.uid == 0)
-                return result("PASSWORD_NOT_VERIFIED", "HIK账号已是UID 0，无法通过免密切换证明root密码正确",
+                return result("PASSWORD_NOT_VERIFIED", "hik账号已是UID 0，无法通过免密切换证明root密码正确",
                     false, username, host, port, keys, false, steps, stage, "warning");
             steps.add(new Step(stage, "success", "已确认普通用户身份"));
             stage = "切换root";
@@ -66,11 +67,11 @@ public class SupportServerLoginVerifier
             String command = "LC_ALL=C; export LC_ALL; stty -echo || exit 90; su - root -c 'printf \"" + marker + "%s__\\n\" \"$(id -u)\"'";
             Probe root = execute(session, command, marker, rootPassword);
             if (root.uid != null && root.uid == 0 && root.passwordSent)
-                return result("SUCCESS", "HIK登录、root密码验证和root身份确认均通过", false, username, host, port, keys, true, steps, stage, "success");
+                return result("SUCCESS", "hik登录、root密码验证和root身份确认均通过", false, username, host, port, keys, true, steps, stage, "success");
             if (root.uid != null && root.uid == 0)
                 return result("PASSWORD_NOT_VERIFIED", "已获得root权限，但设备未要求密码，无法判定登记的root密码是否正确",
                     false, username, host, port, keys, false, steps, stage, "warning");
-            return result("SU_REJECTED", "HIK登录成功，root切换未通过；请检查root密码、账号状态及su/PAM策略",
+            return result("SU_REJECTED", "hik登录成功，root切换未通过；请检查root密码、账号状态及su/PAM策略",
                 false, username, host, port, keys, false, steps, stage, "error");
         }
         catch (Exception error)

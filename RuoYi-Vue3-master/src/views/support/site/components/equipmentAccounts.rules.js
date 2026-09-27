@@ -1,9 +1,18 @@
 export function accountKey(account) {
-  return account.credentialId != null ? 'account:' + account.credentialId : 'legacy:' + String(account.username || '')
+  return account.credentialId != null ? 'account:' + account.credentialId : 'legacy:' + normalizeAccountName(account.username)
+}
+
+export function normalizeAccountName(username) {
+  const value = String(username || '').trim()
+  return value.toLowerCase() === 'hik' ? 'hik' : value
 }
 
 export function displayAccountName(username) {
-  return String(username || '').trim().toLowerCase() === 'hik' ? 'HIK' : username || '-'
+  return normalizeAccountName(username) || '-'
+}
+
+export function displayAccountDescription(value) {
+  return String(value || '').replace(/\bhik\b/gi, 'hik')
 }
 
 export function orderAccounts(accounts) {
@@ -15,7 +24,7 @@ export function accountMutation(serverId, draft) {
   return {
     credentialId: draft.credentialId || null, serverId,
     legacyRegistration: draft.legacyRegistration === true,
-    username: String(draft.username || '').trim(),
+    username: normalizeAccountName(draft.username),
     credentialName: draft.credentialName || displayAccountName(draft.username) + '账号',
     password: draft.password || null,
     status: draft.status || '0', isDefault: draft.isDefault || '0',
