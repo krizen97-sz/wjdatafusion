@@ -1,5 +1,20 @@
 export const releaseNotes = [
   {
+    version: 'v4.15.0',
+    submitTime: '2026-09-29 09:42:19',
+    level: 'minor', levelLabel: '功能版本', tagType: 'primary',
+    title: '设备清单整格编辑与列内复制',
+    summary: '设备工作簿采用Excel式单元格编辑，支持同列选区复制、粘贴与向下填充。',
+    changes: [
+      '编辑模式保留清晰的表格网格，双击单元格后使用铺满格子的输入框；Enter确认、Escape撤销本格，离开单元格保留草稿。',
+      '恢复区域选择和复制粘贴，支持复制一个值后填充同列多行，以及拖动填充柄或使用向下填充按钮。',
+      '平台、机房、机柜继续使用现有选择器；批量粘贴校验字段类型和权限，隐藏密码不允许作为明文复制，所有改动确认保存后才落库。'
+    ],
+    scope: ['现场融合管理', '设备清单'],
+    database: '仅调整前端工作簿交互，沿用现有保存接口，无数据库修改，不需要升级SQL。',
+    scripts: []
+  },
+  {
     version: 'v4.14.3',
     submitTime: '2026-09-29 09:14:40',
     level: 'patch', levelLabel: '修订版本', tagType: 'success',

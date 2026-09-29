@@ -4,9 +4,12 @@
       <template v-if="editing">
         <el-tag type="warning" effect="plain" role="status">正在编辑</el-tag>
         <el-text>已修改 {{ dirtyCount }} 台设备</el-text>
-        <el-button type="primary" icon="Check" :loading="saving || confirming" :disabled="!dirtyCount || starting" @click="saveDraft">保存</el-button>
+        <el-button type="primary" icon="Check" :loading="saving || confirming" :disabled="(!dirtyCount && !cellEditing) || starting" @click="saveDraft">保存</el-button>
         <el-button icon="Close" :disabled="saving || starting || confirming" @click="cancelEditing">取消</el-button>
         <el-button icon="Refresh" :loading="starting" :disabled="saving || confirming" @click="rebaseDraft">重新核对</el-button>
+        <el-tooltip content="将选区首行的值复制到同列下方选中行" placement="top">
+          <el-button icon="Bottom" :disabled="!canFillDown || saving || starting || confirming" @click="fillDown">向下填充</el-button>
+        </el-tooltip>
       </template>
       <template v-else>
         <el-button v-if="canEditAny" type="primary" icon="Edit" :loading="starting" :disabled="!visibleDevices.length" @click="startEditing()">编辑</el-button>
@@ -24,11 +27,13 @@
     </div>
     <el-alert v-if="saveError" type="error" :title="saveError" :closable="false" show-icon />
     <el-alert v-if="passwordError" type="error" :title="passwordError" :closable="false" show-icon />
-    <div class="inventory-grid" v-loading="loading || starting">
+    <div class="inventory-grid" v-loading="loading || starting" @copy.capture="copyRange" @setrange="selectRange">
       <Grid
         v-if="visibleDevices.length" class="inventory-grid__table" theme="equipment" :theme-definitions="EQUIPMENT_GRID_THEMES"
-        :source="gridRows" :columns="columns" :readonly="true"
-        :row-headers="true" :row-size="editing ? 42 : 38" :range="!editing" :resize="true" :use-clipboard="!editing"
+        :source="gridRows" :columns="columns" :readonly="!editing || saving || starting || confirming"
+        :editors="gridEditors" :apply-on-close="true"
+        :row-headers="true" :row-size="editing ? 42 : 38" :range="true" :resize="true" :use-clipboard="{ rangeFill: true }"
+        @beforeedit="editCell" @beforerangeedit="editRange" @beforeautofill="autoFill" @afterfocus="focusCell"
       />
       <el-empty v-else description="当前分类没有符合条件的设备" :image-size="72" />
     </div>
@@ -42,12 +47,13 @@
 import { computed, getCurrentInstance, markRaw, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { useWindowSize } from '@vueuse/core'
-import Grid, { VGridVueTemplate } from '@revolist/vue3-datagrid'
+import Grid, { VGridVueEditor, VGridVueTemplate } from '@revolist/vue3-datagrid'
 import EquipmentInventoryCell from './EquipmentInventoryCell.vue'
 import EquipmentWorkbookCell from './EquipmentWorkbookCell.vue'
 import { getEquipmentWorkbook, readEquipmentPasswords, saveEquipmentWorkbook } from '@/api/support/equipment'
 import { EQUIPMENT_GRID_THEMES, inventoryDeviceKey, inventoryPasswordCells } from './equipmentInventory.rules'
 import { LOCATION_FIELDS, SECRET_FIELDS, WORKBOOK_FIELDS, setWorkbookValue, validateWorkbookDraft, workbookPayload, workbookRowChanges } from './equipmentWorkbook.rules'
+import { canEditWorkbookCell, prepareWorkbookRange, workbookCopyValue, workbookEditValue } from './equipmentWorkbook.grid'
 
 const props = defineProps({
   siteId: { type: [Number, String], required: true },
@@ -72,6 +78,21 @@ const editKeys = ref([])
 const options = ref({ rooms: [], cabinets: [], platforms: [] })
 const showPasswords = ref(false), passwordLoading = ref(false), passwordError = ref('')
 const passwordCache = ref({})
+const selection = ref(null)
+const cellEditing = ref(false)
+let activeEditor = null
+const vueEditor = VGridVueEditor(EquipmentWorkbookCell)
+const gridEditors = { equipment: (schema, save, close) => {
+  const editSession = { value: workbookEditValue(schema.model, schema.column) }
+  const editor = vueEditor({ ...schema.column, editSession }, save, close)
+  const session = { key: schema.model.deviceKey, field: schema.prop, initialValue: editSession.value, editSession }
+  activeEditor = session
+  cellEditing.value = true
+  editor.getValue = () => editSession.value
+  const destroy = editor.disconnectedCallback.bind(editor)
+  editor.disconnectedCallback = () => { if (activeEditor === session) { activeEditor = null; cellEditing.value = false }; destroy() }
+  return editor
+} }
 let passwordRequest = 0, editRequest = 0
 const canViewPlain = computed(() => proxy.$auth.hasPermi(['support:credential:viewPlain']))
 const canEditAny = computed(() => props.devices.some(device => mayEdit(device)))
@@ -103,9 +124,9 @@ const gridRows = computed(() => {
 const actionCell = VGridVueTemplate(EquipmentInventoryCell, {
   onSelect: selectRow, onConfigure: row => emit('configure', originalDevice(row))
 })
-const valueCell = VGridVueTemplate(EquipmentWorkbookCell, { onChange: changeValue })
+const valueCell = VGridVueTemplate(EquipmentWorkbookCell)
 const columns = computed(() => [
-  { prop: '_selected', name: '选择', size: 60, pin: 'colPinStart', cellTemplate: actionCell },
+  { prop: '_selected', name: '选择', size: 60, pin: 'colPinStart', cellTemplate: actionCell, readonly: true },
   ...WORKBOOK_FIELDS.filter(field => {
     if (field.source && !visibleDevices.value.some(device => device.sourceType === field.source)) return false
     if (field.kind === 'password' && !canViewPlain.value && !editing.value) return false
@@ -117,12 +138,81 @@ const columns = computed(() => [
     const credential = SECRET_FIELDS.includes(field.prop) || ['loginUsername', 'otherUsername', 'rootDirectLogin'].includes(field.prop)
     return fieldGroup.value === 'LOCATION' ? location : fieldGroup.value === 'CREDENTIAL' ? (credential || field.prop === 'sshPort') : !location && !credential
   }).map(field => ({
-    ...field, cellTemplate: valueCell,
-    permission: field.prop === 'platformIds' ? '_canBind' : LOCATION_FIELDS.includes(field.prop) ? '_canPlace' : undefined,
+    ...field, cellTemplate: valueCell, editor: 'equipment', readonly: ({ model }) => !canEditWorkbookCell(model, field),
     pin: (field.prop === 'assetName' && viewportWidth.value >= 768) || (field.prop === 'ipAddress' && viewportWidth.value >= 1280) ? 'colPinStart' : undefined
   })),
-  { prop: '_actions', name: '操作', size: 95, pin: viewportWidth.value >= 768 ? 'colPinEnd' : undefined, cellTemplate: actionCell }
+  { prop: '_actions', name: '操作', size: 95, pin: viewportWidth.value >= 768 ? 'colPinEnd' : undefined, cellTemplate: actionCell, readonly: true }
 ])
+const canFillDown = computed(() => editing.value && selection.value && selection.value.x === selection.value.x1 && selection.value.y1 > selection.value.y)
+function focusCell({ detail }) {
+  selection.value = { x: detail.colIndex, x1: detail.colIndex, y: detail.rowIndex, y1: detail.rowIndex, colType: detail.colType }
+}
+function selectRange({ detail }) {
+  selection.value = { ...detail, colType: selection.value?.colType || 'rgCol' }
+}
+function flushEditor() {
+  if (activeEditor && JSON.stringify(activeEditor.initialValue) !== JSON.stringify(activeEditor.editSession.value)) {
+    changeValue(activeEditor.key, activeEditor.field, activeEditor.editSession.value)
+  }
+}
+function editCell(event) {
+  event.preventDefault()
+  if (activeEditor?.key === event.detail.model.deviceKey && activeEditor.field === event.detail.prop
+    && JSON.stringify(activeEditor.initialValue) === JSON.stringify(event.detail.val)) return
+  changeValue(event.detail.model.deviceKey, event.detail.prop, event.detail.val)
+}
+function editRange(event) {
+  event.preventDefault()
+  applyRange(event.detail.data)
+}
+function applyRange(data) {
+  if (!editing.value || saving.value || starting.value || confirming.value) return
+  try {
+    const changes = prepareWorkbookRange(data, pageDevices.value, options.value)
+    changes.forEach(change => changeValue(change.key, change.field, change.value))
+    if (!changes.length) proxy.$modal.msgWarning('选区没有可编辑的单元格')
+  } catch (error) { proxy.$modal.msgWarning(error.message) }
+}
+function copyRange(event) {
+  if (event.target.closest?.('input, textarea, [contenteditable="true"]') || !selection.value || !event.clipboardData) return
+  // ClipboardEvent data must be written synchronously; the grid's async component method can miss this window.
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  try {
+    const range = selection.value
+    const columnsInRange = columns.value.filter(column => (column.pin || 'rgCol') === range.colType).slice(range.x, range.x1 + 1)
+    const data = []
+    for (let y = range.y; y <= range.y1; y++) data.push(columnsInRange.map(column =>
+      workbookCopyValue(gridRows.value[y], WORKBOOK_FIELDS.find(field => field.prop === column.prop))).join('\t'))
+    event.clipboardData.setData('text/plain', data.join('\n'))
+  } catch (error) { proxy.$modal.msgWarning(error.message) }
+}
+function autoFill(event) {
+  if (!editing.value || saving.value || starting.value || confirming.value) { event.preventDefault(); return }
+  try {
+    const { oldRange, newRange, mapping, newData } = event.detail
+    if (oldRange.x !== oldRange.x1 || newRange.x !== oldRange.x || newRange.x1 !== oldRange.x1) throw new Error('请在同一列内向下拖动填充')
+    for (const [index, fields] of Object.entries(mapping)) {
+      for (const [prop, source] of Object.entries(fields)) {
+        const field = WORKBOOK_FIELDS.find(item => item.prop === source.colProp)
+        newData[index][prop] = workbookCopyValue(pageDevices.value[source.rowIndex], field)
+      }
+    }
+  } catch (error) { event.preventDefault(); proxy.$modal.msgWarning(error.message) }
+}
+function fillDown() {
+  if (!canFillDown.value) return
+  const range = selection.value
+  const fields = columns.value.filter(column => (column.pin || 'rgCol') === range.colType)
+  const field = WORKBOOK_FIELDS.find(item => item.prop === fields[range.x]?.prop)
+  if (!field) return
+  try {
+    const value = workbookCopyValue(pageDevices.value[range.y], field)
+    const data = {}
+    for (let y = range.y + 1; y <= range.y1; y++) data[y] = { [field.prop]: value }
+    applyRange(data)
+  } catch (error) { proxy.$modal.msgWarning(error.message) }
+}
 function mayEdit(device) {
   return proxy.$auth.hasPermi(['support:equipment:edit', device.sourceType === 'SERVER' ? 'support:server:edit' : 'support:hardwareAsset:edit'])
 }
@@ -172,7 +262,7 @@ async function startEditing(deviceKey, group = 'ALL') {
 function changeValue(key, field, value) {
   if (saving.value || starting.value || confirming.value || !editing.value) return
   const row = drafts.value.find(item => item.deviceKey === key)
-  if (!row || !mayEdit(row)) return
+  if (!row || !mayEdit(row) || !canEditWorkbookCell(row, WORKBOOK_FIELDS.find(item => item.prop === field))) return
   if ((field === 'platformIds' && !canBind.value) || (LOCATION_FIELDS.includes(field) && !canPlace.value)) return
   setWorkbookValue(row, field, value)
   row._dirtyFields = Object.keys(workbookRowChanges(originals.value[key], row))
@@ -180,6 +270,9 @@ function changeValue(key, field, value) {
   saveError.value = ''
 }
 function finishEditing() {
+  activeEditor = null
+  cellEditing.value = false
+  selection.value = null
   editRequest++
   editing.value = false
   starting.value = false
@@ -193,6 +286,7 @@ function finishEditing() {
 }
 async function confirmClose() {
   if (saving.value || starting.value || confirming.value) { proxy.$modal.msgWarning('正在处理，请稍候'); return false }
+  flushEditor()
   if (dirtyCount.value) {
     try { await proxy.$modal.confirm('当前设备清单有未保存修改，是否放弃这些修改？') } catch { return false }
   }
@@ -201,6 +295,7 @@ async function confirmClose() {
 }
 async function cancelEditing() { await confirmClose() }
 async function saveDraft() {
+  flushEditor()
   if (saving.value || starting.value || confirming.value || !dirtyCount.value) return
   const errors = validateWorkbookDraft(originals.value, drafts.value, options.value)
   drafts.value.forEach(row => { row._errors = {} })
@@ -230,6 +325,7 @@ async function saveDraft() {
 async function rebaseDraft() {
   if (saving.value || starting.value || confirming.value || !editing.value) return
   try { await proxy.$modal.confirm('将重新读取设备数据并保留你的修改，请核对后再保存。') } catch { return }
+  flushEditor()
   const pending = workbookPayload(props.siteId, originals.value, drafts.value).rows
   starting.value = true
   drafts.value.forEach(row => { row._saving = true })
@@ -305,6 +401,7 @@ async function loadPasswords() {
   } finally { if (request === passwordRequest) passwordLoading.value = false }
 }
 function beforeUnload(event) {
+  flushEditor()
   if (!dirtyCount.value) return
   event.preventDefault()
   event.returnValue = ''
@@ -324,6 +421,7 @@ watch(() => props.devices.map(inventoryDeviceKey).join(','), () => {
   page.pageNum = 1
 })
 watch(() => props.siteId, finishEditing)
+watch([fieldGroup, () => page.pageNum, () => page.pageSize], () => { selection.value = null })
 watch(() => props.revision, () => { if (!editing.value) { showPasswords.value = false; clearPasswords() } })
 watch([showPasswords, canViewPlain, () => pageDevices.value.map(inventoryDeviceKey).join(',')], loadPasswords)
 onBeforeRouteLeave(confirmClose)
@@ -339,4 +437,6 @@ defineExpose({ confirmClose, startEditing, resetPage: () => { if (!editing.value
 .inventory-field-group { width: 140px; }
 .inventory-grid { flex: 1; min-height: 200px; min-width: 0; overflow: hidden; border: 1px solid var(--el-border-color); }
 .inventory-grid__table { width: 100%; height: 100%; }
+.inventory-grid .inventory-grid__table :deep(revogr-data .rgCell) { padding: 0; }
+.inventory-grid__table :deep(.rgCell > span), .inventory-grid__table :deep(revogr-edit > span) { display: block; height: 100%; }
 </style>

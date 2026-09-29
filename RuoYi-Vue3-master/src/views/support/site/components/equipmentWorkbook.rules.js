@@ -85,6 +85,7 @@ export function setWorkbookValue(row, field, value) {
     row._secrets = secrets
     return
   }
+  if (['roomId', 'cabinetId'].includes(field) && normalized(field, row[field]) === normalized(field, value)) return
   row[field] = value
   if (field === 'roomId') {
     row.cabinetId = null

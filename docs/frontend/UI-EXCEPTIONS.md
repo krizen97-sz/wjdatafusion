@@ -28,7 +28,7 @@
 | UIX-008 | `src/views/index.vue` | 按权限展示的现场工作台、变化摘要与快捷入口 | 不推广统计卡/工作台密度到普通列表页 | 已复核 |
 | UIX-009 | `src/views/support/version/index.vue` | 版本树、变更详情和脚本清单的 Read 型密集布局 | 折叠图标必须使用正式图标；普通表格/弹窗仍遵循全局规范 | 已复核 |
 | UIX-010 | `src/views/governance/components/FlowDiagram.vue` | ETL流程的SVG连线、箭头与分支标签；节点、端口及缩放工具在画布局部定位 | SVG不能画普通图标；配置、样本、状态、按钮、Tabs仍复用Element Plus；不扩散到管理列表 | 2026-09-09数据治理设计器 |
-| UIX-011 | `src/views/support/site/components/EquipmentInventory.vue` | 用户明确要求Excel式设备工作簿，复用已安装RevoGrid的区域选择、复制和固定列，Sheet使用原生Tabs | 不引入新表格依赖；按钮、筛选、分页、密码开关与编辑仍用Element Plus；不推广为普通列表标准 | v4.10.0，2026-09-26 |
+| UIX-011 | `src/views/support/site/components/EquipmentInventory.vue`、`EquipmentWorkbookCell.vue` | 用户明确要求Excel式设备工作簿，复用已安装RevoGrid的区域选择、复制、填充和固定列；编辑器使用铺满单元格的Element Plus控件 | 单元格内允许取消输入框圆角及重复边框；不影响全局控件，不引入新表格依赖；按钮、筛选、分页和密码开关仍用Element Plus | v4.15.0，2026-09-29 |
 
 UIX-011参考IPAM工作簿与文档编辑器，设备继续直接读取业务数据而不创建文档副本。
 网格只读，修改通过已有业务表单；隐藏密码不会进入网格数据源。验收范围包括
