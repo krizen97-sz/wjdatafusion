@@ -1,5 +1,19 @@
 export const releaseNotes = [
   {
+    version: 'v4.15.1',
+    submitTime: '2026-09-29 09:54:00',
+    level: 'patch', levelLabel: '修订版本', tagType: 'success',
+    title: '设备编辑默认明文显示密码',
+    summary: '有明文查看权限的用户进入设备清单编辑模式后，自动开启全部明文显示。',
+    changes: [
+      '沿用现有明文查看权限、密码读取接口和全部明文显示开关；编辑中可以手动隐藏，翻页自动加载当前页密码。',
+      '重新核对保留当前显示选择；保存、取消或离开编辑后隐藏明文。读取失败时仍保持隐藏，加载密码不会产生待保存修改。'
+    ],
+    scope: ['现场融合管理', '设备清单'],
+    database: '仅调整前端默认显示状态，无后端或数据库修改，不需要升级SQL。',
+    scripts: []
+  },
+  {
     version: 'v4.15.0',
     submitTime: '2026-09-29 09:42:19',
     level: 'minor', levelLabel: '功能版本', tagType: 'primary',

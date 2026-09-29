@@ -3,7 +3,7 @@ import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { parse } from '@vue/compiler-sfc'
 import { parse as parseScript } from '@babel/parser'
-import { computed, reactive } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { LOCATION_FIELDS, SECRET_FIELDS, WORKBOOK_FIELDS, setWorkbookValue, validateWorkbookDraft, workbookPayload, workbookRowChanges } from '../components/equipmentWorkbook.rules.js'
 
 function fixture(sourceType = 'SERVER') {
@@ -17,6 +17,44 @@ function fixture(sourceType = 'SERVER') {
 }
 const options = { rooms: [{ roomId: 1 }], cabinets: [{ roomId: 1, cabinetId: 2, uCapacity: 45 }],
   platforms: [{ platformId: 10, platformLevel: 'SUB' }, { platformId: 11, platformLevel: 'MAIN' }] }
+
+test('entering edit defaults plaintext to the existing permission, including an already-visible list', async () => {
+  const script = parse(readFileSync(new URL('../components/EquipmentInventory.vue', import.meta.url), 'utf8')).descriptor.scriptSetup.content
+  const start = parseScript(script, { sourceType: 'module' }).program.body.find(node => node.type === 'FunctionDeclaration' && node.id.name === 'startEditing')
+  for (const allowed of [true, false]) {
+    for (const alreadyVisible of [true, false]) {
+      const { original } = fixture()
+      const state = {
+        editing: ref(false), starting: ref(false), canEditAny: ref(true), canViewPlain: ref(allowed),
+        showPasswords: ref(alreadyVisible), saveError: ref(''), selectedKeys: ref([]), editKeys: ref([]),
+        originals: ref({}), page: { pageNum: 2 }, fieldGroup: ref('ALL'), editRequest: 0,
+        props: { siteId: 9, devices: [original] }, emit() {}, inventoryDeviceKey: row => row.deviceKey,
+        getEquipmentWorkbook: async () => ({ data: { rows: [original] } }),
+        installSnapshot: snapshot => { state.originals.value = Object.fromEntries(snapshot.rows.map(row => [row.deviceKey, row])) },
+        clearPasswords: () => { state.cleared = true }
+      }
+      const run = new Function(...Object.keys(state), 'return (' + script.slice(start.start, start.end) + ')')(...Object.values(state))
+      await run()
+      assert.equal(state.editing.value, true)
+      assert.equal(state.showPasswords.value, allowed)
+      assert.equal(state.cleared, true)
+      assert.equal(state.starting.value, false)
+      assert.equal(state.page.pageNum, 1)
+    }
+  }
+  assert.match(script, /watch\(\[showPasswords, canViewPlain, editing, /)
+  assert.match(script, /function finishEditing\(\)[\s\S]*?showPasswords.value = false\s+clearPasswords\(\)/)
+  assert.match(script, /async function rebaseDraft\(\)[\s\S]*?await loadPasswords\(\)/)
+})
+
+test('revealed credentials remain display data and never become pending password changes', () => {
+  const { original, draft } = fixture()
+  draft._showPasswords = true
+  draft._plainValues = { hikPassword: 'fixture-only-hik', rootPassword: 'fixture-only-root' }
+  assert.deepEqual(workbookPayload(9, { [original.deviceKey]: original }, [draft]).rows, [])
+  setWorkbookValue(draft, 'rootPassword', draft._plainValues.rootPassword)
+  assert.deepEqual(workbookRowChanges(original, draft), {})
+})
 
 test('credentials show the existing SSH column without changing other field groups or password permissions', () => {
   const source = readFileSync(new URL('../components/EquipmentInventory.vue', import.meta.url), 'utf8')

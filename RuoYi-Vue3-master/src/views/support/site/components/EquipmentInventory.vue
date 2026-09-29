@@ -247,12 +247,12 @@ async function startEditing(deviceKey, group = 'ALL') {
     const wanted = typeof deviceKey === 'string' ? [deviceKey] : props.devices.map(inventoryDeviceKey)
     editKeys.value = wanted.filter(key => originals.value[key])
     if (!editKeys.value.length) throw new Error('没有可编辑的设备，请刷新清单')
-    showPasswords.value = false
     clearPasswords()
     selectedKeys.value = []
     page.pageNum = 1
     fieldGroup.value = ['ALL', 'PROFILE', 'LOCATION', 'CREDENTIAL', 'EXTENDED'].includes(group) ? group : 'ALL'
     editing.value = true
+    showPasswords.value = canViewPlain.value
   } catch (error) {
     if (sequence !== editRequest) return
     saveError.value = error?.msg || error?.message || '进入编辑模式失败'
@@ -342,8 +342,7 @@ async function rebaseDraft() {
       }
       row._dirtyFields = Object.keys(workbookRowChanges(originals.value[row.deviceKey], row))
     }
-    showPasswords.value = false
-    clearPasswords()
+    await loadPasswords()
     saveError.value = ''
   } catch (error) { saveError.value = error?.msg || error?.message || '重新核对失败，草稿已保留' }
   finally { starting.value = false; drafts.value.forEach(row => { row._saving = false }) }
@@ -423,7 +422,7 @@ watch(() => props.devices.map(inventoryDeviceKey).join(','), () => {
 watch(() => props.siteId, finishEditing)
 watch([fieldGroup, () => page.pageNum, () => page.pageSize], () => { selection.value = null })
 watch(() => props.revision, () => { if (!editing.value) { showPasswords.value = false; clearPasswords() } })
-watch([showPasswords, canViewPlain, () => pageDevices.value.map(inventoryDeviceKey).join(',')], loadPasswords)
+watch([showPasswords, canViewPlain, editing, () => pageDevices.value.map(inventoryDeviceKey).join(',')], loadPasswords)
 onBeforeRouteLeave(confirmClose)
 onMounted(() => window.addEventListener('beforeunload', beforeUnload))
 onBeforeUnmount(() => { editRequest++; clearPasswords(); window.removeEventListener('beforeunload', beforeUnload) })
