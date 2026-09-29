@@ -1,6 +1,5 @@
 package com.hm.manage.service.impl;
 
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -47,7 +46,9 @@ public class SupportServerScanService
         if (platform == null || !command.siteId().equals(platform.getSiteId()) || !"SUB".equals(platform.getPlatformLevel()))
             throw new ServiceException("只能选择当前现场的子平台");
         int limit = command.attemptLimit() == null ? 1 : command.attemptLimit();
-        if (limit < 1 || limit > 3) throw new ServiceException("每个地址最多尝试1至3组授权凭据");
+        if (limit < 1 || limit > 3) throw new ServiceException("每个账号最多尝试1至3个不同密码");
+        if (!Set.of("AUTO", "ROOT_DIRECT", "HIK_SU_ROOT").contains(Objects.toString(command.loginMode(), "")))
+            throw new ServiceException("请选择密码池登录策略；旧页面请刷新后重试");
         List<String> hosts = SupportServerScanTargets.expand(command.targets());
         List<Integer> ports = SupportServerScanTargets.ports(command.ports());
         List<Map<String, Object>> selected = credentials.selected(command.siteId(), command.credentialIds());
@@ -57,7 +58,7 @@ public class SupportServerScanService
         if (jobs.values().stream().anyMatch(job -> job.siteId.equals(command.siteId()) && (RUNNING.contains(job.state) || "REVIEW".equals(job.state))))
             throw new ServiceException("该现场已有扫描任务，请先结束或取消");
         Map<String, Object> snapshot = workbook.snapshot(command.siteId());
-        Job job = new Job(command.siteId(), command.platformId(), userId, actor, ports, selected, limit);
+        Job job = new Job(command.siteId(), command.platformId(), userId, actor, ports, selected, limit, command.loginMode());
         Map<String, Map<String, Object>> existing = new HashMap<>();
         @SuppressWarnings("unchecked") List<Map<String, Object>> saved = (List<Map<String, Object>>) snapshot.get("rows");
         for (Map<String, Object> row : saved)
@@ -153,52 +154,71 @@ public class SupportServerScanService
         if (job.cancelled) return;
         try (SupportServerLoginGuard.Lease lease = guard.acquire(target.address))
         {
-            for (int index = 0; index < Math.min(job.attemptLimit, job.candidates.size()); index++)
-            {
-                if (job.cancelled || Thread.currentThread().isInterrupted()) return;
-                List<Long> ids = job.candidates.stream().map(row -> ((Number) row.get("credentialId")).longValue()).toList();
-                if (!sameCredentials(job.candidates, credentials.selected(job.siteId, ids))) throw new ServiceException("授权凭据已变化，已停止使用旧凭据");
-                Map<String, Object> candidate = job.candidates.get(index);
-                boolean direct = "ROOT_DIRECT".equals(candidate.get("mode"));
-                String root = crypto.decrypt(String.valueOf(candidate.get("rootCipher")));
-                String hik = direct ? "" : crypto.decrypt(String.valueOf(candidate.get("hikCipher")));
-                if (root == null || root.isEmpty() || (!direct && (hik == null || hik.isEmpty()))) throw new ServiceException("授权凭据不完整");
-                synchronized (job) { target.state = "VERIFYING"; target.attempts = index + 1; target.candidate = String.valueOf(candidate.get("name")); }
-                var login = verifier.verify(target.address, target.chosen.port(), direct ? "root" : "hik", direct ? root : hik,
-                    root, direct, target.chosen.fingerprint());
+            ensureCurrent(job);
+            var passwords = job.candidates.stream().map(row -> new SupportServerPasswordPoolMatcher.Password(
+                ((Number) row.get("credentialId")).longValue(), String.valueOf(row.get("name")),
+                crypto.decrypt(String.valueOf(row.get("passwordCipher"))))).toList();
+            String strategy = "AUTO".equals(job.loginMode) && target.original != null
+                && Boolean.TRUE.equals(target.original.get("rootDirectLogin")) ? "ROOT_DIRECT" : job.loginMode;
+            var match = SupportServerPasswordPoolMatcher.match(passwords, strategy, job.attemptLimit, (hikPassword, rootPassword) -> {
+                if (target.attempts > 0) Thread.sleep(2000);
+                ensureCurrent(job);
+                boolean direct = hikPassword == null;
+                synchronized (job)
+                {
+                    target.state = "VERIFYING"; target.attempts++;
+                    target.candidate = direct ? "root: " + rootPassword.name() : "hik: " + hikPassword.name() + " / root: " + rootPassword.name();
+                }
+                var login = verifier.verify(target.address, target.chosen.port(), direct ? "root" : "hik",
+                    direct ? rootPassword.value() : hikPassword.value(), rootPassword.value(), direct, target.chosen.fingerprint());
                 if (!Set.of("HOST_KEY_REQUIRED", "HOST_KEY_CHANGED").contains(login.status())) lease.attempted();
                 synchronized (job) { target.message = login.message(); target.mode = login.mode(); }
-                if ("SUCCESS".equals(login.status()) && login.rootPasswordVerified())
+                return login;
+            });
+            if (match.success())
+            {
+                ensureCurrent(job);
+                boolean direct = match.hik() == null;
+                String root = match.root().value(), hik = direct ? "" : match.hik().value();
+                var facts = probe.collect(target.address, target.chosen.port(), direct ? "root" : "hik", direct ? root : hik, target.chosen.fingerprint());
+                ensureCurrent(job);
+                Long previousId = target.original == null ? null : ((Number) target.original.get("sourceId")).longValue();
+                Long serverId = sync.sync(job.siteId, job.platformId, target.address, previousId,
+                    target.original == null ? null : String.valueOf(target.original.get("revision")), target.chosen.port(), direct,
+                    hik, root, facts, target.ports.stream().filter(SupportServerScanProbe.Port::open).map(port -> String.valueOf(port.port())).reduce((a, b) -> a + "," + b).orElse(""), job.actor);
+                synchronized (job)
                 {
-                    if (job.cancelled) return;
-                    var facts = probe.collect(target.address, target.chosen.port(), direct ? "root" : "hik", direct ? root : hik, target.chosen.fingerprint());
-                    if (job.cancelled) return;
-                    Long previousId = target.original == null ? null : ((Number) target.original.get("sourceId")).longValue();
-                    Long serverId = sync.sync(job.siteId, job.platformId, target.address, previousId,
-                        target.original == null ? null : String.valueOf(target.original.get("revision")), target.chosen.port(), direct,
-                        hik, root, facts, target.ports.stream().filter(SupportServerScanProbe.Port::open).map(port -> String.valueOf(port.port())).reduce((a, b) -> a + "," + b).orElse(""), job.actor);
-                    synchronized (job)
-                    {
-                        target.serverId = serverId; target.facts = facts.values(); target.state = "SYNCED";
-                        target.message = (previousId == null ? "已新建服务器并归属选定子平台" : "已同步服务器，原有平台归属保持不变")
-                            + (facts.warning().isEmpty() ? "" : "；" + facts.warning());
-                    }
-                    return;
+                    target.serverId = serverId; target.facts = facts.values(); target.state = "SYNCED";
+                    target.message = (previousId == null ? "已新建服务器并归属选定子平台" : "已同步服务器，原有平台归属保持不变")
+                        + (facts.warning().isEmpty() ? "" : "；" + facts.warning());
                 }
-                if (!Set.of("AUTH_REJECTED", "SU_REJECTED").contains(login.status())) break;
-                if (index + 1 < Math.min(job.attemptLimit, job.candidates.size())) Thread.sleep(2000);
+                return;
             }
-            synchronized (job) { target.state = "FAILED"; }
+            synchronized (job)
+            {
+                target.state = "FAILED";
+                if (Set.of("AUTH_REJECTED", "SU_REJECTED").contains(match.check().status()))
+                    target.message += "；已达到每账号尝试上限或候选密码已用尽，未同步";
+            }
         }
         catch (Exception error)
         {
             if (error instanceof InterruptedException) Thread.currentThread().interrupt();
             synchronized (job)
             {
-                target.state = "FAILED";
-                target.message = error instanceof ServiceException ? error.getMessage() : "验证或同步未完成，未写入本次结果，请检查服务配置后重试";
+                target.state = job.cancelled ? "SKIPPED" : "FAILED";
+                target.message = job.cancelled ? "任务已停止，本次未同步"
+                    : error instanceof ServiceException ? error.getMessage() : "验证或同步未完成，未写入本次结果，请检查服务配置后重试";
             }
         }
+    }
+
+    private void ensureCurrent(Job job)
+    {
+        if (job.cancelled || Thread.currentThread().isInterrupted()) throw new CancellationException();
+        List<Long> ids = job.candidates.stream().map(row -> ((Number) row.get("credentialId")).longValue()).toList();
+        if (!sameCredentials(job.candidates, credentials.selected(job.siteId, ids)))
+            throw new ServiceException("授权密码池已变化，已停止使用旧密码");
     }
 
     private void execute(Job job, List<Target> targets, Consumer<Target> action, String completed, SecurityContext security)
@@ -252,7 +272,7 @@ public class SupportServerScanService
     static boolean sameCredentials(List<Map<String, Object>> first, List<Map<String, Object>> second)
     {
         if (first.size() != second.size()) return false;
-        for (int i = 0; i < first.size(); i++) for (String key : List.of("credentialId", "mode", "hikCipher", "rootCipher"))
+        for (int i = 0; i < first.size(); i++) for (String key : List.of("credentialId", "passwordCipher"))
             if (!Objects.equals(first.get(i).get(key), second.get(i).get(key))) return false;
         return true;
     }
@@ -287,7 +307,7 @@ public class SupportServerScanService
     }
     private static final class Job
     {
-        final String id = UUID.randomUUID().toString(), actor;
+        final String id = UUID.randomUUID().toString(), actor, loginMode;
         final Long siteId, platformId, userId;
         final List<Integer> ports;
         final List<Map<String, Object>> candidates;
@@ -299,13 +319,15 @@ public class SupportServerScanService
         volatile long finished;
         String error = "";
         int done, total;
-        Job(Long siteId, Long platformId, Long userId, String actor, List<Integer> ports, List<Map<String, Object>> candidates, int limit)
-        { this.siteId = siteId; this.platformId = platformId; this.userId = userId; this.actor = actor; this.ports = ports; this.candidates = candidates; this.attemptLimit = limit; }
+        Job(Long siteId, Long platformId, Long userId, String actor, List<Integer> ports, List<Map<String, Object>> candidates, int limit, String loginMode)
+        { this.siteId = siteId; this.platformId = platformId; this.userId = userId; this.actor = actor; this.ports = ports; this.candidates = candidates; this.attemptLimit = limit; this.loginMode = loginMode; }
         synchronized Map<String, Object> view()
         {
-            return Map.of("taskId", id, "siteId", siteId, "platformId", platformId, "state", state, "done", done,
+            Map<String, Object> view = new LinkedHashMap<>(Map.of("taskId", id, "siteId", siteId, "platformId", platformId, "state", state, "done", done,
                 "total", total == 0 ? rows.size() : total, "error", error, "rows", rows.values().stream().map(Target::view).toList(),
-                "createdAt", java.time.Instant.ofEpochMilli(created).toString());
+                "createdAt", java.time.Instant.ofEpochMilli(created).toString()));
+            view.put("loginMode", loginMode); view.put("attemptLimit", attemptLimit);
+            return view;
         }
     }
 }

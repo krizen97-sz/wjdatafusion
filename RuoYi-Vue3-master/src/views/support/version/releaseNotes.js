@@ -1,5 +1,21 @@
 export const releaseNotes = [
   {
+    version: 'v4.17.0', submitTime: '2026-09-29 18:51:45',
+    level: 'minor', levelLabel: '小版本', tagType: 'primary',
+    title: '独立密码池与登录路径自动匹配',
+    summary: '扫描密码不再预先配对hik和root，由程序从同一授权密码池按阶段匹配。',
+    changes: [
+      '密码池每条只维护一个独立密码，登录策略改为任务配置：自动匹配、仅root直登或仅hik后切换root。',
+      '先匹配hik，成功后固定该密码并匹配root；自动模式仅在hik候选均被拒绝时尝试root直登，已有root直登设备沿用原策略。',
+      '按明文值精确去重，不修改密码大小写或空格；每账号默认尝试1个不同密码，最多3个，不展开全量组合。',
+      '保留主机指纹、冷却、停止及密码池变更保护；只有完整验证通过的密码和系统信息会同步。',
+      '旧成对密码迁移为独立加密条目，原设备凭据不变；前后端和独立数据库增量需配套升级。'
+    ],
+    scope: ['现场融合管理', '服务器扫描', '密码池'],
+    database: 'sup_server_scan_credential新增password_cipher；旧root密文原位复制、旧hik密文拆为独立条目，保留旧字段用于恢复，不修改服务器或角色数据。',
+    scripts: ['WDF100.0/sql/support_upgrade_20260929_server_credential_password_pool_v4_17_0.sql']
+  },
+  {
     version: 'v4.16.0', submitTime: '2026-09-29 16:47:51',
     level: 'minor', levelLabel: '小版本', tagType: 'primary',
     title: '网段服务器扫描与凭据版本同步',

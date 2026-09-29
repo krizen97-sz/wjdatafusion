@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.hm.manage.mapper.SupportServerScanMapper">
-    <sql id="credentialFields">credential_id as credentialId, site_id as siteId, credential_name as name, login_mode as mode,
-        hik_password_cipher as hikCipher, root_password_cipher as rootCipher, update_time as updatedAt</sql>
+    <sql id="credentialFields">credential_id as credentialId, site_id as siteId, credential_name as name,
+        password_cipher as passwordCipher, update_time as updatedAt</sql>
     <select id="selectCredentials" resultType="java.util.LinkedHashMap">
         select <include refid="credentialFields" /> from sup_server_scan_credential where site_id = #{siteId} order by credential_id
     </select>
@@ -10,12 +10,12 @@
         select <include refid="credentialFields" /> from sup_server_scan_credential where site_id = #{siteId} and credential_id = #{id}
     </select>
     <insert id="insertCredential" useGeneratedKeys="true" keyProperty="credentialId">
-        insert into sup_server_scan_credential(site_id, credential_name, login_mode, hik_password_cipher, root_password_cipher, create_by, create_time, update_by, update_time)
-        values(#{siteId}, #{name}, #{mode}, #{hikCipher}, #{rootCipher}, #{actor}, now(), #{actor}, now())
+        insert into sup_server_scan_credential(site_id, credential_name, login_mode, password_cipher, create_by, create_time, update_by, update_time)
+        values(#{siteId}, #{name}, 'PASSWORD_POOL', #{passwordCipher}, #{actor}, now(), #{actor}, now())
     </insert>
     <update id="updateCredential">
-        update sup_server_scan_credential set credential_name=#{name}, login_mode=#{mode}, hik_password_cipher=#{hikCipher},
-        root_password_cipher=#{rootCipher}, update_by=#{actor}, update_time=now() where site_id=#{siteId} and credential_id=#{credentialId}
+        update sup_server_scan_credential set credential_name=#{name}, password_cipher=#{passwordCipher},
+        update_by=#{actor}, update_time=now() where site_id=#{siteId} and credential_id=#{credentialId}
     </update>
     <delete id="deleteCredential">delete from sup_server_scan_credential where site_id=#{siteId} and credential_id=#{id}</delete>
     <select id="selectProfiles" resultType="java.util.LinkedHashMap">

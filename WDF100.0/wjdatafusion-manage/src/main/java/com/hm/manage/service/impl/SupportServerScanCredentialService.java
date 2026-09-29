@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.hm.common.exception.ServiceException;
@@ -30,9 +29,8 @@ public class SupportServerScanCredentialService
         if (siteId == null || siteId <= 0) throw new ServiceException("请选择现场");
         return mapper.selectCredentials(siteId).stream().map(row -> {
             Map<String, Object> visible = new LinkedHashMap<>();
-            for (String key : List.of("credentialId", "siteId", "name", "mode")) visible.put(key, row.get(key));
-            visible.put("hikConfigured", !text(row.get("hikCipher")).isEmpty());
-            visible.put("rootConfigured", !text(row.get("rootCipher")).isEmpty());
+            for (String key : List.of("credentialId", "siteId", "name")) visible.put(key, row.get(key));
+            visible.put("passwordConfigured", !text(row.get("passwordCipher")).isEmpty());
             return visible;
         }).toList();
     }
@@ -42,23 +40,21 @@ public class SupportServerScanCredentialService
     {
         if (input == null || input.siteId() == null || sites.selectSiteIdForUpdate(input.siteId()) == null)
             throw new ServiceException("现场不存在");
-        String name = text(input.name()).trim(), mode = text(input.mode());
-        if (name.isEmpty() || name.length() > 80 || !Set.of("ROOT_DIRECT", "HIK_SU_ROOT").contains(mode))
-            throw new ServiceException("请填写凭据名称并选择登录路径");
+        if (input.password() == null) throw new ServiceException("密码池配置已更新，请刷新页面后再保存");
+        String name = text(input.name()).trim();
+        if (name.isEmpty() || name.length() > 80) throw new ServiceException("请填写80字以内的密码名称");
         Map<String, Object> original = input.credentialId() == null ? null : mapper.selectCredential(input.siteId(), input.credentialId());
         if (input.credentialId() != null && original == null) throw new ServiceException("凭据不存在或不属于当前现场");
-        if (original == null && mapper.selectCredentials(input.siteId()).size() >= 20) throw new ServiceException("每个现场最多配置20组候选凭据");
+        if (original == null && mapper.selectCredentials(input.siteId()).size() >= 40) throw new ServiceException("每个现场最多配置40条候选密码");
         Map<String, Object> row = original == null ? new LinkedHashMap<>() : new LinkedHashMap<>(original);
-        row.put("siteId", input.siteId()); row.put("name", name); row.put("mode", mode); row.put("actor", actor);
-        row.put("hikCipher", "ROOT_DIRECT".equals(mode) ? "" : cipher(input.hikPassword(), text(row.get("hikCipher"))));
-        row.put("rootCipher", cipher(input.rootPassword(), text(row.get("rootCipher"))));
-        if (text(row.get("rootCipher")).isEmpty() || ("HIK_SU_ROOT".equals(mode) && text(row.get("hikCipher")).isEmpty()))
-            throw new ServiceException("请补全当前登录路径所需的密码");
+        row.put("siteId", input.siteId()); row.put("name", name); row.put("actor", actor);
+        row.put("passwordCipher", cipher(input.password(), text(row.get("passwordCipher"))));
+        if (text(row.get("passwordCipher")).isEmpty()) throw new ServiceException("请填写候选密码");
         if (original == null) mapper.insertCredential(row); else mapper.updateCredential(row);
         logs.record(input.siteId(), original == null ? "INSERT" : "UPDATE", "SERVER_SCAN_CREDENTIAL",
-            ((Number) row.get("credentialId")).longValue(), name, "维护扫描授权凭据 " + name,
-            original == null ? null : Map.of("名称", text(original.get("name")), "登录路径", modeLabel(text(original.get("mode")))),
-            Map.of("名称", name, "登录路径", modeLabel(mode), "密码变更", "仅记录维护动作，不记录密码内容"));
+            ((Number) row.get("credentialId")).longValue(), name, "维护扫描密码池 " + name,
+            original == null ? null : Map.of("名称", text(original.get("name"))),
+            Map.of("名称", name, "密码变更", "仅记录维护动作，不记录密码内容"));
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -68,21 +64,21 @@ public class SupportServerScanCredentialService
         Map<String, Object> original = mapper.selectCredential(siteId, id);
         if (original == null) throw new ServiceException("凭据不存在或不属于当前现场");
         mapper.deleteCredential(siteId, id);
-        logs.record(siteId, "DELETE", "SERVER_SCAN_CREDENTIAL", id, text(original.get("name")), "删除扫描授权凭据");
+        logs.record(siteId, "DELETE", "SERVER_SCAN_CREDENTIAL", id, text(original.get("name")), "删除扫描候选密码");
     }
 
     public List<Map<String, Object>> selected(Long siteId, List<Long> ids)
     {
-        if (ids == null || ids.isEmpty() || ids.size() > 3 || ids.stream().distinct().count() != ids.size())
-            throw new ServiceException("每次请选择1至3组授权凭据，不允许重复");
+        if (ids == null || ids.isEmpty() || ids.size() > 40 || ids.stream().anyMatch(id -> id == null || id <= 0)
+            || ids.stream().distinct().count() != ids.size())
+            throw new ServiceException("每次请选择1至40条候选密码，不允许重复");
         List<Map<String, Object>> selected = new ArrayList<>();
         for (Long id : ids)
         {
             Map<String, Object> row = mapper.selectCredential(siteId, id);
             if (row == null) throw new ServiceException("候选凭据不存在或不属于当前现场");
-            if (!Set.of("ROOT_DIRECT", "HIK_SU_ROOT").contains(text(row.get("mode"))) || text(row.get("rootCipher")).isEmpty()
-                || ("HIK_SU_ROOT".equals(row.get("mode")) && text(row.get("hikCipher")).isEmpty()))
-                throw new ServiceException("授权凭据配置不完整，请重新配置后再扫描");
+            if (text(row.get("passwordCipher")).isEmpty())
+                throw new ServiceException("密码池配置不完整，请确认已执行v4.17.0升级脚本");
             selected.add(new LinkedHashMap<>(row));
         }
         return selected;
@@ -95,5 +91,4 @@ public class SupportServerScanCredentialService
         return crypto.encrypt(value);
     }
     private static String text(Object value) { return value == null ? "" : String.valueOf(value); }
-    private static String modeLabel(String mode) { return "ROOT_DIRECT".equals(mode) ? "root直接登录" : "hik登录后切换root"; }
 }

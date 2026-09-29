@@ -1966,6 +1966,7 @@ CREATE TABLE IF NOT EXISTS sup_server_scan_credential (
   login_mode VARCHAR(20) NOT NULL COMMENT 'ROOT_DIRECT/HIK_SU_ROOT',
   hik_password_cipher VARCHAR(1024) NOT NULL DEFAULT '',
   root_password_cipher VARCHAR(1024) NOT NULL DEFAULT '',
+  password_cipher VARCHAR(1024) NOT NULL DEFAULT '' COMMENT 'Independent authorized candidate password (AES encrypted)',
   create_by VARCHAR(64) DEFAULT '',
   create_time DATETIME DEFAULT NULL,
   update_by VARCHAR(64) DEFAULT '',

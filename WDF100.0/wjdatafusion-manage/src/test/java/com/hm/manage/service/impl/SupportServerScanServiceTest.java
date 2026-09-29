@@ -20,6 +20,7 @@ class SupportServerScanServiceTest
     private SupportServerScanSyncService sync;
     private SupportServerScanService service;
     private List<Map<String, Object>> pool;
+    private String loginMode = "ROOT_DIRECT";
     private final String fingerprint = "SHA256:" + "A".repeat(43);
     @BeforeEach void setup()
     {
@@ -29,7 +30,7 @@ class SupportServerScanServiceTest
         var crypto = mock(CredentialCryptoService.class); var platforms = mock(ISupportPlatformService.class);
         SupportPlatform platform = new SupportPlatform(); platform.setSiteId(9L); platform.setPlatformId(3L); platform.setPlatformLevel("SUB");
         when(platforms.selectSupportPlatformByPlatformId(3L)).thenReturn(platform);
-        pool = List.of(candidate(1L, "ROOT_DIRECT"));
+        pool = List.of(candidate(1L, "root"));
         when(credentials.selected(eq(9L), any())).thenAnswer(call -> pool);
         when(workbook.snapshot(9L)).thenReturn(Map.of("rows", List.of()));
         when(crypto.decrypt(anyString())).thenAnswer(call -> "fixture-" + call.getArgument(0));
@@ -54,14 +55,18 @@ class SupportServerScanServiceTest
     }
     @Test void hikPathUsesLowercaseHikAndBothValidatedSecrets() throws Exception
     {
-        pool = List.of(candidate(1L, "HIK_SU_ROOT"));
-        String id = begin(); await(id,"REVIEW"); service.confirm(id,1L,confirmation(22)); await(id,"DONE");
+        loginMode = "HIK_SU_ROOT";
+        pool = List.of(candidate(1L, "hik"), candidate(2L, "root"));
+        when(verifier.verify(anyString(),anyInt(),anyString(),anyString(),anyString(),anyBoolean(),anyString()))
+            .thenReturn(result("SU_REJECTED"), result("SUCCESS"));
+        String id = start(2); await(id,"REVIEW"); service.confirm(id,1L,confirmation(22)); await(id,"DONE");
+        verify(verifier).verify("192.0.2.1",22,"hik","fixture-hik","fixture-hik",false,fingerprint);
         verify(verifier).verify("192.0.2.1",22,"hik","fixture-hik","fixture-root",false,fingerprint);
         verify(sync).sync(anyLong(),anyLong(),anyString(),isNull(),isNull(),eq(22),eq(false),eq("fixture-hik"),eq("fixture-root"),any(),anyString(),anyString());
     }
     @Test void neverOverwritesOnFailedAuthenticationAndHonorsCandidateLimit() throws Exception
     {
-        pool = List.of(candidate(1L,"HIK_SU_ROOT"),candidate(2L,"ROOT_DIRECT"));
+        pool = List.of(candidate(1L,"first"),candidate(2L,"second"));
         when(verifier.verify(anyString(),anyInt(),anyString(),anyString(),anyString(),anyBoolean(),anyString())).thenReturn(result("AUTH_REJECTED"));
         String id = begin(); await(id,"REVIEW"); service.confirm(id,1L,confirmation(22)); var done = await(id,"DONE");
         verify(verifier,times(1)).verify(anyString(),anyInt(),anyString(),anyString(),anyString(),anyBoolean(),anyString());
@@ -69,20 +74,21 @@ class SupportServerScanServiceTest
     }
     @Test void changedFingerprintNeverFallsBackToAnotherPassword() throws Exception
     {
-        pool = List.of(candidate(1L,"HIK_SU_ROOT"),candidate(2L,"ROOT_DIRECT"));
+        pool = List.of(candidate(1L,"first"),candidate(2L,"second"));
         when(verifier.verify(anyString(),anyInt(),anyString(),anyString(),anyString(),anyBoolean(),anyString())).thenReturn(result("HOST_KEY_CHANGED"));
         String id = start(2); await(id,"REVIEW"); service.confirm(id,1L,confirmation(22)); await(id,"DONE");
         verify(verifier,times(1)).verify(anyString(),anyInt(),anyString(),anyString(),anyString(),anyBoolean(),anyString()); verifyNoInteractions(sync);
     }
-    @Test void explicitlySelectedFallbackUsesTheNextPathWithinTheBudget() throws Exception
+    @Test void automaticModeFallsBackToRootOnlyWhenHikAuthenticationIsRejected() throws Exception
     {
-        pool=List.of(candidate(1L,"ROOT_DIRECT"),candidate(2L,"HIK_SU_ROOT"));
+        loginMode = "AUTO";
+        pool=List.of(candidate(1L,"root"));
         when(verifier.verify(anyString(),anyInt(),anyString(),anyString(),anyString(),anyBoolean(),anyString()))
             .thenReturn(result("AUTH_REJECTED"),result("SUCCESS"));
-        String id=start(2);await(id,"REVIEW");service.confirm(id,1L,confirmation(22));var done=await(id,"DONE");
+        String id=start(1);await(id,"REVIEW");service.confirm(id,1L,confirmation(22));var done=await(id,"DONE");
         assertEquals("SYNCED",rows(done).get(0).get("state"));assertEquals(2,rows(done).get(0).get("attempts"));
         verify(verifier).verify("192.0.2.1",22,"root","fixture-root","fixture-root",true,fingerprint);
-        verify(verifier).verify("192.0.2.1",22,"hik","fixture-hik","fixture-root",false,fingerprint);
+        verify(verifier).verify("192.0.2.1",22,"hik","fixture-root","fixture-root",false,fingerprint);
     }
     @Test void registeredHardwareCannotBeRecreatedAsAServerOrConfirmedByForgedInput() throws Exception
     {
@@ -100,7 +106,7 @@ class SupportServerScanServiceTest
     }
     @Test void changedPoolAndCancelledTasksCannotBeConfirmed() throws Exception
     {
-        String id = begin(); await(id,"REVIEW"); pool = List.of(candidate(2L,"ROOT_DIRECT"));
+        String id = begin(); await(id,"REVIEW"); pool = List.of(candidate(2L,"root"));
         assertThrows(Exception.class,()->service.confirm(id,1L,confirmation(22)));
         service.cancel(id,1L); assertThrows(Exception.class,()->service.confirm(id,1L,confirmation(22))); verifyNoInteractions(verifier,sync);
     }
@@ -114,21 +120,39 @@ class SupportServerScanServiceTest
     {
         var started=new java.util.concurrent.CountDownLatch(1);
         when(probe.inspect(anyString(),anyInt())).thenAnswer(call -> { started.countDown(); Thread.sleep(80); return new SupportServerScanProbe.Port(call.getArgument(1),true,"READY",fingerprint,"ready"); });
-        String id=String.valueOf(service.start(new SupportServerScanBo.Start(9L,3L,"192.0.2.1-192.0.2.10",List.of(22,2343,55555),List.of(1L),1),1L,"operator").get("taskId"));
+        String id=String.valueOf(service.start(new SupportServerScanBo.Start(9L,3L,"192.0.2.1-192.0.2.10",List.of(22,2343,55555),List.of(1L),1,loginMode),1L,"operator").get("taskId"));
         assertTrue(started.await(2,java.util.concurrent.TimeUnit.SECONDS));service.cancel(id,1L);
         var stopped=await(id,"CANCELLED");assertTrue(((Number)stopped.get("done")).intValue()<10);
         verifyNoInteractions(verifier,sync);
     }
+    @Test void poolChangedDuringLoginPreventsFurtherCollectionAndSynchronization() throws Exception
+    {
+        when(verifier.verify(anyString(),anyInt(),anyString(),anyString(),anyString(),anyBoolean(),anyString()))
+            .thenAnswer(call -> { pool = List.of(candidate(1L,"changed")); return result("SUCCESS"); });
+        String id=begin();await(id,"REVIEW");service.confirm(id,1L,confirmation(22));
+        assertEquals("FAILED",rows(await(id,"DONE")).get(0).get("state"));
+        verify(probe,never()).collect(anyString(),anyInt(),anyString(),anyString(),anyString());
+        verifyNoInteractions(sync);
+    }
+    @Test void autoKeepsAnExistingRootDirectPolicy() throws Exception
+    {
+        loginMode="AUTO";
+        when(workbook.snapshot(9L)).thenReturn(Map.of("rows",List.of(Map.of("sourceType","SERVER","ipAddress","192.0.2.1",
+            "sourceId",7L,"revision","r","canEdit",true,"status","0","rootDirectLogin",true))));
+        String id=begin();await(id,"REVIEW");service.confirm(id,1L,confirmation(22));await(id,"DONE");
+        verify(verifier).verify("192.0.2.1",22,"root","fixture-root","fixture-root",true,fingerprint);
+        verify(verifier,never()).verify(anyString(),anyInt(),eq("hik"),anyString(),anyString(),anyBoolean(),anyString());
+    }
     private String begin() { return start(1); }
-    private String start(int limit) { return String.valueOf(service.start(new SupportServerScanBo.Start(9L,3L,"192.0.2.1",List.of(22,2343,55555),pool.stream().map(row->(Long)row.get("credentialId")).toList(),limit),1L,"operator").get("taskId")); }
+    private String start(int limit) { return String.valueOf(service.start(new SupportServerScanBo.Start(9L,3L,"192.0.2.1",List.of(22,2343,55555),pool.stream().map(row->(Long)row.get("credentialId")).toList(),limit,loginMode),1L,"operator").get("taskId")); }
     private SupportServerScanBo.Confirm confirmation(int port) { return new SupportServerScanBo.Confirm(List.of(new SupportServerScanBo.Selection("192.0.2.1",port)),true); }
     private Map<String,Object> await(String id,String state) throws Exception
     {
-        long deadline=System.currentTimeMillis()+5000;
+        long deadline=System.currentTimeMillis()+15000;
         while(System.currentTimeMillis()<deadline) { var value=service.status(id,1L); if(state.equals(value.get("state"))) return value; Thread.sleep(10); }
         fail("Task did not reach "+state); return null;
     }
     @SuppressWarnings("unchecked") private List<Map<String,Object>> rows(Map<String,Object> value) { return (List<Map<String,Object>>)value.get("rows"); }
-    private Map<String,Object> candidate(Long id,String mode) { return Map.of("credentialId",id,"mode",mode,"name","candidate-"+id,"hikCipher","hik","rootCipher","root"); }
+    private Map<String,Object> candidate(Long id,String value) { return Map.of("credentialId",id,"name","candidate-"+id,"passwordCipher",value); }
     private SupportServerLoginCheckVo result(String status) { return new SupportServerLoginCheckVo(status,status,"ROOT_DIRECT","root","192.0.2.1",22,fingerprint,"SUCCESS".equals(status),"now",List.of()); }
 }

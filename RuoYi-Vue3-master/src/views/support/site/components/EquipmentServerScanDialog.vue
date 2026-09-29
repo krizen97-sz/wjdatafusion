@@ -21,18 +21,27 @@
             <el-checkbox :value="22">22</el-checkbox><el-checkbox :value="2343">2343</el-checkbox><el-checkbox :value="55555">55555</el-checkbox>
           </el-checkbox-group>
         </el-form-item>
-        <el-form-item label="每个地址最多尝试的凭据组数">
+        <el-form-item label="每个账号最多尝试的不同密码数">
           <el-input-number v-model="form.attemptLimit" :min="1" :max="Math.min(3, form.credentialIds.length || 1)" controls-position="right" aria-label="凭据尝试上限" />
         </el-form-item>
       </div>
-      <el-form-item label="授权候选凭据（按选中顺序尝试）" prop="credentialIds">
+      <el-form-item label="登录策略" prop="loginMode">
+        <el-select v-model="form.loginMode" aria-label="密码池登录策略">
+          <el-option label="自动匹配（优先hik；已登记root直登的设备沿用原策略）" value="AUTO" />
+          <el-option label="仅root直接登录" value="ROOT_DIRECT" />
+          <el-option label="仅hik登录后切换root" value="HIK_SU_ROOT" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="授权密码池（按选中顺序匹配，重复密码只计一次）" prop="credentialIds">
         <div class="scan-credential-picker">
-          <el-select v-model="form.credentialIds" multiple :multiple-limit="3" aria-label="授权候选凭据" placeholder="选择1至3组凭据">
-            <el-option v-for="item in credentials" :key="item.credentialId" :value="item.credentialId" :label="item.name + ' · ' + modeLabel(item.mode)" />
+          <el-select v-model="form.credentialIds" multiple :multiple-limit="40" collapse-tags collapse-tags-tooltip aria-label="授权密码池" placeholder="选择候选密码">
+            <el-option v-for="item in credentials" :key="item.credentialId" :value="item.credentialId" :label="item.name" />
           </el-select>
-          <el-button icon="Key" @click="poolOpen = true">管理凭据</el-button>
+          <el-button icon="Key" @click="poolOpen = true">管理密码池</el-button>
         </div>
       </el-form-item>
+      <el-alert :title="'每个账号只使用去重后的前' + form.attemptLimit + '个候选密码。自动匹配最多涉及hik和root两个账号；错误密码可能触发设备锁定。'"
+        type="warning" :closable="false" show-icon />
     </el-form>
 
     <template v-else>
@@ -49,7 +58,7 @@
         </el-select>
       </div>
       <el-progress v-if="running" :percentage="progress" :stroke-width="6" />
-      <el-alert v-if="task.state === 'REVIEW'" title="请与设备管理员核对所选SSH主机指纹。确认后将按凭据尝试上限登录，并自动新增或更新验证成功的服务器；失败不会覆盖原数据。" type="warning" :closable="false" show-icon />
+      <el-alert v-if="task.state === 'REVIEW'" :title="'请核对SSH主机指纹。策略：' + modeLabel(task.loginMode) + '；每账号最多' + task.attemptLimit + '个不同密码，成功后自动同步，失败不覆盖原数据。'" type="warning" :closable="false" show-icon />
       <el-alert v-if="task.error" :title="task.error" type="error" :closable="false" show-icon />
       <el-table ref="tableRef" :data="pageRows" row-key="address" border max-height="460" @selection-change="selected = $event">
         <el-table-column v-if="task.state === 'REVIEW'" type="selection" reserve-selection :selectable="row => row.state === 'READY'" width="45" />
@@ -73,7 +82,7 @@
           <template #default="{ row }">
             <el-tag :type="row.state === 'SYNCED' ? 'success' : row.state === 'FAILED' ? 'danger' : 'info'" size="small">{{ stateLabel(row.state) }}</el-tag>
             <div>{{ row.message }}</div>
-            <el-text v-if="row.attempts" type="info" size="small">{{ row.candidate }} · {{ modeLabel(row.mode) }} · 第{{ row.attempts }}组</el-text>
+            <el-text v-if="row.attempts" type="info" size="small">{{ row.candidate }} · {{ modeLabel(row.mode) }} · 路径校验{{ row.attempts }}次</el-text>
           </template>
         </el-table-column>
         <el-table-column label="系统版本" min-width="180">
@@ -95,25 +104,18 @@
     </template>
   </el-dialog>
 
-  <el-drawer v-model="poolOpen" title="现场授权候选凭据" size="min(720px, 96vw)" append-to-body :close-on-click-modal="false" :before-close="closePool" @closed="clearCredential">
-    <el-button v-if="!credentialFormOpen" icon="Plus" type="primary" @click="editCredential()">新增凭据</el-button>
+  <el-drawer v-model="poolOpen" title="现场授权密码池" size="min(720px, 96vw)" append-to-body :close-on-click-modal="false" :before-close="closePool" @closed="clearCredential">
+    <el-button v-if="!credentialFormOpen" icon="Plus" type="primary" @click="editCredential()">新增密码</el-button>
     <el-form v-if="credentialFormOpen" ref="credentialRef" :model="credential" :rules="credentialRules" :disabled="savingCredential" label-position="top" class="scan-form">
-      <el-form-item label="凭据名称" prop="name"><el-input v-model="credential.name" maxlength="80" /></el-form-item>
-      <el-form-item label="登录路径" prop="mode">
-        <el-radio-group v-model="credential.mode"><el-radio value="ROOT_DIRECT">root直接登录</el-radio><el-radio value="HIK_SU_ROOT">hik登录后切换root</el-radio></el-radio-group>
+      <el-form-item label="密码名称" prop="name"><el-input v-model="credential.name" maxlength="80" /></el-form-item>
+      <el-form-item label="候选密码" prop="password">
+        <el-input v-model="credential.password" type="password" show-password autocomplete="new-password" maxlength="128" :placeholder="credential.passwordConfigured ? '已配置，留空保留' : '请输入授权密码'" />
       </el-form-item>
-      <el-form-item v-if="credential.mode === 'HIK_SU_ROOT'" label="hik密码" prop="hikPassword">
-        <el-input v-model="credential.hikPassword" type="password" show-password autocomplete="new-password" maxlength="128" :placeholder="credential.hikConfigured ? '已配置，留空保留' : '请输入授权密码'" />
-      </el-form-item>
-      <el-form-item label="root密码" prop="rootPassword">
-        <el-input v-model="credential.rootPassword" type="password" show-password autocomplete="new-password" maxlength="128" :placeholder="credential.rootConfigured ? '已配置，留空保留' : '请输入授权密码'" />
-      </el-form-item>
-      <div class="scan-toolbar"><el-button :disabled="savingCredential" @click="clearCredential">取消</el-button><el-button type="primary" :loading="savingCredential" @click="saveCredential">保存凭据</el-button></div>
+      <div class="scan-toolbar"><el-button :disabled="savingCredential" @click="clearCredential">取消</el-button><el-button type="primary" :loading="savingCredential" @click="saveCredential">保存密码</el-button></div>
     </el-form>
     <el-table v-else :data="credentials" class="scan-form">
       <el-table-column prop="name" label="名称" min-width="130" />
-      <el-table-column label="路径" min-width="150"><template #default="{ row }">{{ modeLabel(row.mode) }}</template></el-table-column>
-      <el-table-column label="密码" width="90"><template #default>已加密</template></el-table-column>
+      <el-table-column label="密码状态" width="120"><template #default="{ row }"><el-tag :type="row.passwordConfigured ? 'success' : 'warning'">{{ row.passwordConfigured ? '已加密保存' : '未配置' }}</el-tag></template></el-table-column>
       <el-table-column label="操作" width="145"><template #default="{ row }"><el-button link type="primary" icon="Edit" @click="editCredential(row)">编辑</el-button><el-button link type="danger" icon="Delete" @click="removeCredential(row)">删除</el-button></template></el-table-column>
     </el-table>
   </el-drawer>
@@ -129,14 +131,18 @@ const { proxy } = getCurrentInstance()
 const loading = ref(false), busy = ref(false), error = ref(''), task = ref(null)
 const credentials = ref([]), platforms = ref([]), selected = ref([]), chosenPorts = reactive({})
 const formRef = ref(), tableRef = ref(), credentialRef = ref()
-const form = reactive({ platformId: null, targets: '', ports: [22, 2343, 55555], credentialIds: [], attemptLimit: 1 })
+const form = reactive({ platformId: null, targets: '', ports: [22, 2343, 55555], credentialIds: [], attemptLimit: 1, loginMode: 'AUTO' })
 const page = ref(1), pageSize = ref(20), resultFilter = ref('ALL')
 const poolOpen = ref(false), credentialFormOpen = ref(false), savingCredential = ref(false)
-const credential = reactive({ credentialId: null, name: '', mode: 'HIK_SU_ROOT', hikPassword: '', rootPassword: '', hikConfigured: false, rootConfigured: false })
+const credential = reactive({ credentialId: null, name: '', password: '', passwordConfigured: false })
 let credentialBefore = ''
 const required = message => ({ required: true, message, trigger: 'change' })
-const rules = { platformId: [required('请选择子平台')], targets: [required('请填写扫描范围')], ports: [required('请选择端口')], credentialIds: [required('请选择授权凭据')] }
-const credentialRules = { name: [required('请填写名称')], mode: [required('请选择登录路径')] }
+const rules = { platformId: [required('请选择子平台')], targets: [required('请填写扫描范围')], ports: [required('请选择端口')], credentialIds: [required('请选择候选密码')], loginMode: [required('请选择登录策略')] }
+const credentialRules = { name: [required('请填写名称')], password: [{ validator: (_rule, value, callback) => {
+  if (!value && !credential.passwordConfigured) callback(new Error('请填写候选密码'))
+  else if (value.length > 128 || /[\u0000-\u001f\u007f-\u009f]/.test(value)) callback(new Error('密码不能包含终端控制字符'))
+  else callback()
+}, trigger: 'blur' }] }
 const subplatforms = computed(() => platforms.value.filter(p => p.platformLevel === 'SUB').map(p => ({ ...p,
   label: (platforms.value.find(parent => Number(parent.platformId) === Number(p.parentPlatformId))?.platformName || '') + ' / ' + p.platformName })))
 const running = computed(() => ['DISCOVERING', 'SCANNING', 'STOPPING'].includes(task.value?.state))
@@ -146,7 +152,7 @@ const filteredRows = computed(() => (task.value?.rows || []).filter(row => resul
 const pageRows = computed(() => filteredRows.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 const syncedCount = computed(() => (task.value?.rows || []).filter(row => row.state === 'SYNCED').length)
 const failedCount = computed(() => (task.value?.rows || []).filter(row => row.state === 'FAILED').length)
-const modeLabel = mode => mode === 'ROOT_DIRECT' ? 'root直接登录' : mode === 'HIK_SU_ROOT' ? 'hik切换root' : '-'
+const modeLabel = mode => mode === 'AUTO' ? '自动匹配' : mode === 'ROOT_DIRECT' ? 'root直接登录' : mode === 'HIK_SU_ROOT' ? 'hik切换root' : '-'
 const serverLabel = row => row.existing ? row.serverName || '已登记服务器' : row.state === 'SYNCED' ? row.facts.hostName?.slice(0, 120) || '服务器-' + row.address : '待新建'
 const stateLabel = state => ({ PENDING: '等待中', READY: '可连接', NO_SSH: '未发现SSH', VERIFYING: '验证中', SYNCED: '已同步', FAILED: '失败', SKIPPED: '跳过' }[state] || state)
 const taskLabel = computed(() => ({ DISCOVERING: '端口探测中', REVIEW: '待核对指纹', SCANNING: '核验并同步中', STOPPING: '正在停止', CANCELLED: '已停止', DONE: '已完成', FAILED: '任务未完成', EXPIRED: '任务已过期' }[task.value?.state] || ''))
@@ -166,9 +172,11 @@ async function openDialog() {
   stopPolling(); const token = generation
   loading.value = true; error.value = ''; task.value = null; selected.value = []; page.value = 1; resultFilter.value = 'ALL'
   form.platformId = props.platformId ? Number(props.platformId) : null; form.targets = props.targets
+  form.credentialIds = []
   try {
     await loadOptions()
     if (token !== generation) return
+    form.credentialIds = credentials.value.map(item => item.credentialId)
     if (!subplatforms.value.some(p => p.platformId === form.platformId)) form.platformId = subplatforms.value.length === 1 ? subplatforms.value[0].platformId : null
     const response = await getActiveServerScan(props.siteId)
     if (token !== generation) return
@@ -214,7 +222,7 @@ function selectReady() {
 async function confirm() {
   if (busy.value || !selected.value.length) return
   if (selected.value.length > 128) { proxy.$modal.msgWarning('每次最多核验同步128台服务器'); return }
-  try { await proxy.$modal.confirm('确认已核对所选主机指纹，并使用授权凭据尝试登录？错误密码可能触发设备锁定；验证成功后自动同步账号、端口、登录方式和系统资料。') } catch { return }
+  try { await proxy.$modal.confirm('确认已核对所选主机指纹？使用密码池自动匹配，每账号最多' + task.value.attemptLimit + '个不同密码。错误密码可能触发设备锁定；完整验证成功后才自动同步。') } catch { return }
   busy.value = true; error.value = ''
   try { acceptTask((await confirmServerScan(task.value.taskId, { fingerprintsConfirmed: true, targets: selected.value.map(row => ({ address: row.address, port: chosenPorts[row.address] })) })).data) }
   catch (failure) { error.value = failure.message || '核验提交失败' }
@@ -243,26 +251,25 @@ async function closeDialog(done) {
 function clearCredential() {
   credentialFormOpen.value = false
   credentialBefore = ''
-  Object.assign(credential, { credentialId: null, name: '', mode: 'HIK_SU_ROOT', hikPassword: '', rootPassword: '', hikConfigured: false, rootConfigured: false })
+  Object.assign(credential, { credentialId: null, name: '', password: '', passwordConfigured: false })
 }
-function editCredential(row) { clearCredential(); if (row) Object.assign(credential, row); credentialBefore = JSON.stringify(credential); credentialFormOpen.value = true }
+function editCredential(row) { clearCredential(); if (row) Object.assign(credential, row); else credential.name = '候选密码' + (credentials.value.length + 1); credentialBefore = JSON.stringify(credential); credentialFormOpen.value = true }
 async function closePool(done) {
   if (savingCredential.value) return
   if (credentialFormOpen.value && credentialBefore !== JSON.stringify(credential)) {
-    try { await proxy.$modal.confirm('授权凭据有未保存修改，确认放弃？') } catch { return }
+    try { await proxy.$modal.confirm('密码池有未保存修改，确认放弃？') } catch { return }
   }
   done()
 }
 async function saveCredential() {
   if (savingCredential.value || !await credentialRef.value.validate().catch(() => false)) return
-  if ((!credential.rootPassword && !credential.rootConfigured) || (credential.mode === 'HIK_SU_ROOT' && !credential.hikPassword && !credential.hikConfigured)) { proxy.$modal.msgWarning('请补全当前路径所需密码'); return }
   savingCredential.value = true
-  try { await saveServerScanCredential({ credentialId: credential.credentialId, name: credential.name, mode: credential.mode,
-    hikPassword: credential.hikPassword, rootPassword: credential.rootPassword, siteId: Number(props.siteId) }); clearCredential(); await loadOptions(); proxy.$modal.msgSuccess('授权凭据已加密保存') }
+  try { await saveServerScanCredential({ credentialId: credential.credentialId, name: credential.name,
+    password: credential.password, siteId: Number(props.siteId) }); clearCredential(); await loadOptions(); proxy.$modal.msgSuccess('候选密码已加密保存') }
   finally { savingCredential.value = false }
 }
 async function removeCredential(row) {
-  try { await proxy.$modal.confirm('删除授权凭据“' + row.name + '”？后续验证将停止使用该凭据，已开始的单台操作可能完成。') } catch { return }
+  try { await proxy.$modal.confirm('删除候选密码“' + row.name + '”？后续验证将停止使用该密码，已经发送的登录请求无法撤回。') } catch { return }
   await deleteServerScanCredential(props.siteId, row.credentialId); await loadOptions()
 }
 </script>
