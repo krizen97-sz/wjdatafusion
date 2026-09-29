@@ -1,5 +1,19 @@
 export const releaseNotes = [
   {
+    version: 'v4.14.3',
+    submitTime: '2026-09-29 09:14:40',
+    level: 'patch', levelLabel: '修订版本', tagType: 'success',
+    title: '账号密码字段组补充SSH端口',
+    summary: '设备清单切换到账号密码字段组时，同步显示服务器登记的SSH端口。',
+    changes: [
+      '账号密码字段组复用现有SSH端口列，放在密码列前，便于同时查看地址、端口和登录信息。',
+      '保留端口在常用字段、基础档案中的显示及原有编辑校验；不修改已有端口值，不改变密码查看权限。'
+    ],
+    scope: ['现场融合管理', '设备清单'],
+    database: '仅调整前端列显示规则，无后端或数据库修改，不需要升级SQL。',
+    scripts: []
+  },
+  {
     version: 'v4.14.2',
     submitTime: '2026-09-27 10:42:17',
     level: 'patch', levelLabel: '修订版本', tagType: 'success',

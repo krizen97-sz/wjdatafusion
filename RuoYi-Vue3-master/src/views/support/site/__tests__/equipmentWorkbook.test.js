@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
 import { parse } from '@vue/compiler-sfc'
+import { parse as parseScript } from '@babel/parser'
 import { computed, reactive } from 'vue'
-import { setWorkbookValue, validateWorkbookDraft, workbookPayload, workbookRowChanges } from '../components/equipmentWorkbook.rules.js'
+import { LOCATION_FIELDS, SECRET_FIELDS, WORKBOOK_FIELDS, setWorkbookValue, validateWorkbookDraft, workbookPayload, workbookRowChanges } from '../components/equipmentWorkbook.rules.js'
 
 function fixture(sourceType = 'SERVER') {
   const original = {
@@ -16,6 +17,36 @@ function fixture(sourceType = 'SERVER') {
 }
 const options = { rooms: [{ roomId: 1 }], cabinets: [{ roomId: 1, cabinetId: 2, uCapacity: 45 }],
   platforms: [{ platformId: 10, platformLevel: 'SUB' }, { platformId: 11, platformLevel: 'MAIN' }] }
+
+test('credentials show the existing SSH column without changing other field groups or password permissions', () => {
+  const source = readFileSync(new URL('../components/EquipmentInventory.vue', import.meta.url), 'utf8')
+  const script = parse(source).descriptor.scriptSetup.content
+  let predicate
+  function visit(node) {
+    if (!node || typeof node !== 'object') return
+    if (node.type === 'CallExpression' && node.callee?.object?.name === 'WORKBOOK_FIELDS' && node.callee?.property?.name === 'filter') predicate = node.arguments[0]
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) value.forEach(visit)
+      else if (value && typeof value === 'object') visit(value)
+    }
+  }
+  visit(parseScript(script, { sourceType: 'module' }))
+  assert.ok(predicate)
+  const filter = new Function('visibleDevices', 'canViewPlain', 'editing', 'fieldGroup', 'SECRET_FIELDS', 'LOCATION_FIELDS',
+    'return (' + script.slice(predicate.start, predicate.end) + ')')
+  const fields = (group, type = 'SERVER', plain = true, editing = false) => WORKBOOK_FIELDS.filter(filter(
+    { value: [{ sourceType: type }] }, { value: plain }, { value: editing }, { value: group }, SECRET_FIELDS, LOCATION_FIELDS))
+  for (const group of ['CREDENTIAL', 'PROFILE', 'ALL']) assert.ok(fields(group).some(field => field.prop === 'sshPort'))
+  for (const group of ['LOCATION', 'EXTENDED']) assert.ok(!fields(group).some(field => field.prop === 'sshPort'))
+  assert.ok(!fields('CREDENTIAL', 'HARDWARE').some(field => field.prop === 'sshPort'))
+  assert.ok(fields('CREDENTIAL', 'SERVER', false).some(field => field.prop === 'sshPort'))
+  assert.ok(!fields('CREDENTIAL', 'SERVER', false).some(field => field.kind === 'password'))
+  assert.ok(fields('CREDENTIAL', 'SERVER', false, true).some(field => field.prop === 'sshPort'))
+  const port = fields('CREDENTIAL').find(field => field.prop === 'sshPort')
+  assert.equal(port.name, 'SSH端口')
+  assert.equal(port.kind, 'number')
+  assert.ok(WORKBOOK_FIELDS.indexOf(port) < WORKBOOK_FIELDS.findIndex(field => field.prop === 'hikPassword'))
+})
 
 test('root direct login is off by default, editable for servers only and sent as a boolean', () => {
   const { original, draft } = fixture()

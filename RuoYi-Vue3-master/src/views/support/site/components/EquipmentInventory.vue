@@ -115,7 +115,7 @@ const columns = computed(() => [
     if (fieldGroup.value === 'ALL') return true
     const location = field.prop === 'platformIds' || LOCATION_FIELDS.includes(field.prop)
     const credential = SECRET_FIELDS.includes(field.prop) || ['loginUsername', 'otherUsername', 'rootDirectLogin'].includes(field.prop)
-    return fieldGroup.value === 'LOCATION' ? location : fieldGroup.value === 'CREDENTIAL' ? credential : !location && !credential
+    return fieldGroup.value === 'LOCATION' ? location : fieldGroup.value === 'CREDENTIAL' ? (credential || field.prop === 'sshPort') : !location && !credential
   }).map(field => ({
     ...field, cellTemplate: valueCell,
     permission: field.prop === 'platformIds' ? '_canBind' : LOCATION_FIELDS.includes(field.prop) ? '_canPlace' : undefined,
