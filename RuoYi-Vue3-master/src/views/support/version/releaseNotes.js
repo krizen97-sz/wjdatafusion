@@ -1,6 +1,6 @@
 export const releaseNotes = [
   {
-    version: 'v4.16.0', submitTime: '2026-09-29 16:38:27',
+    version: 'v4.16.0', submitTime: '2026-09-29 16:47:51',
     level: 'minor', levelLabel: '小版本', tagType: 'primary',
     title: '网段服务器扫描与凭据版本同步',
     summary: '从设备层扫描授权网段，核验SSH主机和候选凭据后自动登记服务器、更新系统资料。',

@@ -110,6 +110,15 @@ class SupportServerScanServiceTest
         String id=begin(); await(id,"REVIEW"); service.confirm(id,1L,confirmation(55555)); await(id,"DONE");
         verify(sync).sync(eq(9L),eq(3L),eq("192.0.2.1"),eq(7L),eq("original-revision"),eq(55555),eq(true),anyString(),anyString(),any(),anyString(),anyString());
     }
+    @Test void cancellationStopsBeforeQueuingTheRestOfASubnet() throws Exception
+    {
+        var started=new java.util.concurrent.CountDownLatch(1);
+        when(probe.inspect(anyString(),anyInt())).thenAnswer(call -> { started.countDown(); Thread.sleep(80); return new SupportServerScanProbe.Port(call.getArgument(1),true,"READY",fingerprint,"ready"); });
+        String id=String.valueOf(service.start(new SupportServerScanBo.Start(9L,3L,"192.0.2.1-192.0.2.10",List.of(22,2343,55555),List.of(1L),1),1L,"operator").get("taskId"));
+        assertTrue(started.await(2,java.util.concurrent.TimeUnit.SECONDS));service.cancel(id,1L);
+        var stopped=await(id,"CANCELLED");assertTrue(((Number)stopped.get("done")).intValue()<10);
+        verifyNoInteractions(verifier,sync);
+    }
     private String begin() { return start(1); }
     private String start(int limit) { return String.valueOf(service.start(new SupportServerScanBo.Start(9L,3L,"192.0.2.1",List.of(22,2343,55555),pool.stream().map(row->(Long)row.get("credentialId")).toList(),limit),1L,"operator").get("taskId")); }
     private SupportServerScanBo.Confirm confirmation(int port) { return new SupportServerScanBo.Confirm(List.of(new SupportServerScanBo.Selection("192.0.2.1",port)),true); }

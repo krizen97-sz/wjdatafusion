@@ -206,16 +206,20 @@ public class SupportServerScanService
         coordinators.submit(() -> {
             try
             {
-                List<Future<?>> futures = new ArrayList<>();
-                for (Target target : targets)
+                // Bound queued work as well as active connections, so cancellation does not wait behind a whole subnet.
+                for (int offset = 0; offset < targets.size() && !job.cancelled; offset += 4)
                 {
-                    Runnable work = () -> {
-                        try { if (!job.cancelled) action.accept(target); }
-                        finally { synchronized (job) { job.done++; } }
-                    };
-                    futures.add(workers.submit(security == null ? work : new DelegatingSecurityContextRunnable(work, security)));
+                    List<Future<?>> futures = new ArrayList<>();
+                    for (Target target : targets.subList(offset, Math.min(offset + 4, targets.size())))
+                    {
+                        Runnable work = () -> {
+                            try { if (!job.cancelled) action.accept(target); }
+                            finally { synchronized (job) { job.done++; } }
+                        };
+                        futures.add(workers.submit(security == null ? work : new DelegatingSecurityContextRunnable(work, security)));
+                    }
+                    for (Future<?> future : futures) future.get();
                 }
-                for (Future<?> future : futures) future.get();
                 synchronized (job)
                 {
                     if (job.cancelled) for (Target target : targets)
