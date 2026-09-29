@@ -17,7 +17,8 @@
     </el-form>
 
     <el-row :gutter="10" class="mb8 support-table-toolbar">
-      <el-col :span="1.5"><el-button type="primary" icon="Plus" @click="openSiteSelector" v-hasPermi="['support:server:add', 'support:equipment:add']">新增设备</el-button></el-col>
+      <el-col :span="1.5"><el-button type="primary" icon="Plus" @click="openSiteSelector('create')" v-hasPermi="['support:server:add', 'support:equipment:add']">新增设备</el-button></el-col>
+      <el-col v-if="canScan" :span="1.5"><el-button icon="Search" @click="openSiteSelector('scan')">扫描同步</el-button></el-col>
       <el-col :span="1.5"><el-button type="warning" plain icon="Download" @click="handleExport" v-hasPermi="['support:server:export']">导出</el-button></el-col>
       <right-toolbar v-model:showSearch="showSearch" @queryTable="getList"></right-toolbar>
     </el-row>
@@ -30,8 +31,13 @@
       <el-table-column label="SSH端口" align="center" prop="sshPort" width="100">
         <template #default="scope">{{ scope.row.sshPort || 22 }}</template>
       </el-table-column>
-      <el-table-column label="系统账号" align="center" prop="osUsername" />
-      <el-table-column label="系统密码" align="center" prop="osPassword" />
+      <el-table-column label="登录账号" min-width="145" show-overflow-tooltip>
+        <template #default="{ row }">{{ serverAccounts(row) }}</template>
+      </el-table-column>
+      <el-table-column label="操作系统 / 版本" prop="osType" min-width="150" show-overflow-tooltip />
+      <el-table-column label="密码状态" width="100">
+        <template #default="{ row }">{{ row.hikCredentialConfigured || row.rootCredentialConfigured || row.otherCredentialConfigured ? '已登记' : '未登记' }}</template>
+      </el-table-column>
       <el-table-column label="操作" align="center" class-name="small-padding fixed-width" width="260">
         <template #default="scope">
           <div class="support-table-action">
@@ -61,10 +67,10 @@
       </el-form>
       <template #footer>
         <el-button @click="siteSelectorOpen = false">取消</el-button>
-        <el-button type="primary" :disabled="!intakeSiteId" @click="openCreateWorkspace">继续录入</el-button>
+        <el-button type="primary" :disabled="!intakeSiteId" @click="openCreateWorkspace">{{ workspaceAction === 'scan' ? '配置扫描' : '继续录入' }}</el-button>
       </template>
     </el-dialog>
-
+    <EquipmentServerScanDialog v-model="scanOpen" :site-id="intakeSiteId" @synced="getList" />
 
   </div>
 </template>
@@ -72,16 +78,20 @@
 <script setup name="SupportServer">
 import { listServer, listServerCredentialPlainSummaries } from '@/api/support/server'
 import { listSite } from '@/api/support/site'
+import EquipmentServerScanDialog from '../site/components/EquipmentServerScanDialog.vue'
 
 const { proxy } = getCurrentInstance()
 const router = useRouter()
+const workspaceAction = ref('create'), scanOpen = ref(false)
+const canScan = computed(() => proxy.$auth.hasPermi(['support:server:scan']) && proxy.$auth.hasPermi(['support:server:add', 'support:equipment:add']) && proxy.$auth.hasPermi(['support:server:edit', 'support:equipment:edit']))
 const siteSelectorOpen = ref(false)
 const intakeSites = ref([])
 const intakeSiteId = ref(null)
 const sitesLoading = ref(false)
 const siteLoadError = ref('')
 
-async function openSiteSelector() {
+async function openSiteSelector(action = 'create') {
+  workspaceAction.value = action
   siteSelectorOpen.value = true
   intakeSiteId.value = null
   sitesLoading.value = true
@@ -110,6 +120,7 @@ async function openSiteSelector() {
 function openCreateWorkspace() {
   if (!intakeSiteId.value) return
   siteSelectorOpen.value = false
+  if (workspaceAction.value === 'scan') { scanOpen.value = true; return }
   router.push({ path: '/support/site', query: { siteId: intakeSiteId.value, openConfig: '1', equipment: 'create' } })
 }
 function openDeviceWorkspace(server) {
@@ -135,6 +146,11 @@ async function getList() {
 
 function handleQuery() { queryParams.value.pageNum = 1; getList() }
 function resetQuery() { proxy.resetForm('queryRef'); handleQuery() }
+
+function serverAccounts(row) {
+  const names = [row.hikCredentialConfigured ? 'hik' : '', row.rootCredentialConfigured ? 'root' : '', row.otherCredentialConfigured ? row.otherUsername || '其他账号' : ''].filter(Boolean)
+  return names.length ? [...new Set(names)].join(' / ') : row.osUsername || '-'
+}
 
 function handleViewPlain(row) {
   listServerCredentialPlainSummaries([row.serverId]).then((res) => {

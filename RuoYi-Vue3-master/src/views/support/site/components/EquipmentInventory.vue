@@ -13,6 +13,7 @@
       </template>
       <template v-else>
         <el-button v-if="canEditAny" type="primary" icon="Edit" :loading="starting" :disabled="!visibleDevices.length" @click="startEditing()">编辑</el-button>
+        <el-button v-if="canScan" icon="Search" :disabled="starting" @click="scanOpen = true">扫描同步</el-button>
         <el-checkbox :model-value="allSelected" :indeterminate="partSelected" :disabled="!visibleDevices.length || starting" @change="selectAll">全选当前列表</el-checkbox>
         <el-text type="info">共 {{ visibleDevices.length }} 台，已选 {{ selectedKeys.length }} 台</el-text>
         <el-button v-if="canExport" icon="Download" data-motion-direction="down" :disabled="!visibleDevices.length || starting" @click="exportRows">导出设备</el-button>
@@ -21,6 +22,7 @@
       <el-select v-model="fieldGroup" class="inventory-field-group" aria-label="设备字段组" :disabled="saving || starting || confirming">
         <el-option label="常用字段" value="ALL" /><el-option label="基础档案" value="PROFILE" />
         <el-option label="平台与位置" value="LOCATION" /><el-option label="账号密码" value="CREDENTIAL" />
+        <el-option v-if="hasServers" label="扫描资料" value="SCAN" />
         <el-option v-if="hasHardware" label="硬件扩展属性" value="EXTENDED" />
       </el-select>
       <el-switch v-if="canViewPlain" v-model="showPasswords" active-text="全部明文显示" aria-label="全部明文显示" :disabled="saving || starting" :loading="passwordLoading" />
@@ -40,6 +42,7 @@
     <Pagination v-show="visibleDevices.length" :total="visibleDevices.length"
       v-model:page="page.pageNum" v-model:limit="page.pageSize"
       :page-sizes="[20, 50, 100]" :auto-scroll="false" :disabled="saving || starting || confirming" />
+    <EquipmentServerScanDialog v-model="scanOpen" :site-id="siteId" :targets="scanTargets" @synced="emit('saved')" />
   </section>
 </template>
 
@@ -50,7 +53,8 @@ import { useWindowSize } from '@vueuse/core'
 import Grid, { VGridVueEditor, VGridVueTemplate } from '@revolist/vue3-datagrid'
 import EquipmentInventoryCell from './EquipmentInventoryCell.vue'
 import EquipmentWorkbookCell from './EquipmentWorkbookCell.vue'
-import { getEquipmentWorkbook, readEquipmentPasswords, saveEquipmentWorkbook } from '@/api/support/equipment'
+import EquipmentServerScanDialog from './EquipmentServerScanDialog.vue'
+import { getEquipmentWorkbook, readEquipmentPasswords, saveEquipmentWorkbook, getServerScanProfiles } from '@/api/support/equipment'
 import { EQUIPMENT_GRID_THEMES, inventoryDeviceKey, inventoryPasswordCells } from './equipmentInventory.rules'
 import { LOCATION_FIELDS, SECRET_FIELDS, WORKBOOK_FIELDS, setWorkbookValue, validateWorkbookDraft, workbookPayload, workbookRowChanges } from './equipmentWorkbook.rules'
 import { canEditWorkbookCell, prepareWorkbookRange, workbookCopyValue, workbookEditValue } from './equipmentWorkbook.grid'
@@ -78,6 +82,8 @@ const editKeys = ref([])
 const options = ref({ rooms: [], cabinets: [], platforms: [] })
 const showPasswords = ref(false), passwordLoading = ref(false), passwordError = ref('')
 const passwordCache = ref({})
+const scanOpen = ref(false), scanProfiles = ref({})
+let profileRequest = 0
 const selection = ref(null)
 const cellEditing = ref(false)
 let activeEditor = null
@@ -95,6 +101,7 @@ const gridEditors = { equipment: (schema, save, close) => {
 } }
 let passwordRequest = 0, editRequest = 0
 const canViewPlain = computed(() => proxy.$auth.hasPermi(['support:credential:viewPlain']))
+const canScan = computed(() => proxy.$auth.hasPermi(['support:server:scan']) && proxy.$auth.hasPermi(['support:equipment:add', 'support:server:add']) && proxy.$auth.hasPermi(['support:equipment:edit', 'support:server:edit']))
 const canEditAny = computed(() => props.devices.some(device => mayEdit(device)))
 const canExport = computed(() => proxy.$auth.hasPermi(['support:equipment:export', 'support:server:export', 'support:hardwareAsset:export']))
 const canRemove = computed(() => proxy.$auth.hasPermi(['support:equipment:remove', 'support:server:remove', 'support:hardwareAsset:remove']))
@@ -106,16 +113,18 @@ const canBind = computed(() => proxy.$auth.hasPermi(['support:equipment:edit']))
 const visibleDevices = computed(() => editing.value ? editKeys.value.map(key => drafts.value.find(row => row.deviceKey === key)).filter(Boolean) : props.devices)
 const pageDevices = computed(() => visibleDevices.value.slice((page.pageNum - 1) * page.pageSize, page.pageNum * page.pageSize))
 const hasHardware = computed(() => visibleDevices.value.some(device => device.sourceType === 'HARDWARE'))
+const hasServers = computed(() => visibleDevices.value.some(device => device.sourceType === 'SERVER'))
 const allSelected = computed(() => visibleDevices.value.length > 0 && selectedKeys.value.length === visibleDevices.value.length)
 const partSelected = computed(() => selectedKeys.value.length > 0 && !allSelected.value)
 const dirtyCount = computed(() => editing.value ? workbookPayload(props.siteId, originals.value, drafts.value).rows.length : 0)
+const scanTargets = computed(() => props.devices.filter(device => device.sourceType === 'SERVER' && selectedKeys.value.includes(inventoryDeviceKey(device))).map(device => device.ipAddress).join(';'))
 const readOptions = computed(() => ({ rooms: props.rooms, cabinets: props.cabinets, platforms: props.platforms }))
 const gridRows = computed(() => {
-  if (editing.value) return pageDevices.value
+  if (editing.value) return pageDevices.value.map(device => ({ ...device, ...(device.sourceType === 'SERVER' ? scanProfiles.value[device.sourceId] : {}) }))
   return pageDevices.value.map(device => {
     const key = inventoryDeviceKey(device)
     return {
-      ...device, deviceKey: key, _selected: selectedKeys.value.includes(key), _editing: false,
+      ...device, ...(device.sourceType === 'SERVER' ? scanProfiles.value[device.sourceId] : {}), deviceKey: key, _selected: selectedKeys.value.includes(key), _editing: false,
       _options: readOptions.value, _platformLabels: platformLabels(props.platforms),
       ...inventoryPasswordCells(device, passwordCache.value[key], showPasswords.value && canViewPlain.value)
     }
@@ -131,6 +140,8 @@ const columns = computed(() => [
     if (field.source && !visibleDevices.value.some(device => device.sourceType === field.source)) return false
     if (field.kind === 'password' && !canViewPlain.value && !editing.value) return false
     if (['assetName', 'assetTypeLabel', 'ipAddress'].includes(field.prop)) return true
+    if (field.group === 'SCAN') return fieldGroup.value === 'SCAN'
+    if (fieldGroup.value === 'SCAN') return ['sshPort', 'osType'].includes(field.prop)
     if (field.group === 'EXTENDED') return fieldGroup.value === 'EXTENDED'
     if (fieldGroup.value === 'EXTENDED') return false
     if (fieldGroup.value === 'ALL') return true
@@ -250,7 +261,7 @@ async function startEditing(deviceKey, group = 'ALL') {
     clearPasswords()
     selectedKeys.value = []
     page.pageNum = 1
-    fieldGroup.value = ['ALL', 'PROFILE', 'LOCATION', 'CREDENTIAL', 'EXTENDED'].includes(group) ? group : 'ALL'
+    fieldGroup.value = ['ALL', 'PROFILE', 'LOCATION', 'CREDENTIAL', 'EXTENDED', 'SCAN'].includes(group) ? group : 'ALL'
     editing.value = true
     showPasswords.value = canViewPlain.value
   } catch (error) {
@@ -413,6 +424,7 @@ watch(() => props.contextKey, () => {
   clearPasswords()
 })
 watch(hasHardware, value => { if (!value && fieldGroup.value === 'EXTENDED') fieldGroup.value = 'ALL' })
+watch(hasServers, value => { if (!value && fieldGroup.value === 'SCAN') fieldGroup.value = 'ALL' })
 watch(() => props.devices.map(inventoryDeviceKey).join(','), () => {
   if (editing.value) return
   const available = new Set(visibleDevices.value.map(inventoryDeviceKey))
@@ -420,12 +432,21 @@ watch(() => props.devices.map(inventoryDeviceKey).join(','), () => {
   page.pageNum = 1
 })
 watch(() => props.siteId, finishEditing)
+watch([() => props.siteId, () => props.revision, hasServers], async () => {
+  const token = ++profileRequest
+  scanProfiles.value = {}
+  if (!props.siteId || !hasServers.value || !proxy.$auth.hasPermi(['support:equipment:query', 'support:server:query', 'support:server:list'])) return
+  try {
+    const response = await getServerScanProfiles(props.siteId)
+    if (token === profileRequest) scanProfiles.value = Object.fromEntries((response.data || []).map(row => [row.serverId, row]))
+  } catch { /* The rest of the inventory remains usable if scan metadata is unavailable. */ }
+}, { immediate: true })
 watch([fieldGroup, () => page.pageNum, () => page.pageSize], () => { selection.value = null })
 watch(() => props.revision, () => { if (!editing.value) { showPasswords.value = false; clearPasswords() } })
 watch([showPasswords, canViewPlain, editing, () => pageDevices.value.map(inventoryDeviceKey).join(',')], loadPasswords)
 onBeforeRouteLeave(confirmClose)
 onMounted(() => window.addEventListener('beforeunload', beforeUnload))
-onBeforeUnmount(() => { editRequest++; clearPasswords(); window.removeEventListener('beforeunload', beforeUnload) })
+onBeforeUnmount(() => { editRequest++; profileRequest++; clearPasswords(); window.removeEventListener('beforeunload', beforeUnload) })
 defineExpose({ confirmClose, startEditing, resetPage: () => { if (!editing.value) { page.pageNum = 1; selectedKeys.value = [] } } })
 </script>
 

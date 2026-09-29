@@ -2,10 +2,7 @@ package com.hm.manage.service.impl;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Semaphore;
 import org.springframework.stereotype.Service;
 import com.hm.common.exception.ServiceException;
 import com.hm.manage.domain.SupportServer;
@@ -16,6 +13,7 @@ import com.hm.manage.mapper.SupportServerMapper;
 import com.hm.manage.mapper.SupportServerCredentialMapper;
 import com.hm.manage.service.support.CredentialCryptoService;
 import com.hm.manage.service.support.SupportServerLoginVerifier;
+import com.hm.manage.service.support.SupportServerLoginGuard;
 
 @Service
 public class SupportServerLoginCheckService
@@ -24,14 +22,12 @@ public class SupportServerLoginCheckService
     private final SupportServerCredentialMapper credentials;
     private final CredentialCryptoService crypto;
     private final SupportServerLoginVerifier verifier;
-    private final Semaphore capacity = new Semaphore(4);
-    private final Map<Long, Long> nextAttempt = new ConcurrentHashMap<>();
-    private final java.util.Set<Long> running = ConcurrentHashMap.newKeySet();
+    private final SupportServerLoginGuard guard;
 
     public SupportServerLoginCheckService(SupportServerMapper servers, SupportServerCredentialMapper credentials,
-        CredentialCryptoService crypto, SupportServerLoginVerifier verifier)
+        CredentialCryptoService crypto, SupportServerLoginVerifier verifier, SupportServerLoginGuard guard)
     {
-        this.servers = servers; this.credentials = credentials; this.crypto = crypto; this.verifier = verifier;
+        this.servers = servers; this.credentials = credentials; this.crypto = crypto; this.verifier = verifier; this.guard = guard;
     }
 
     public SupportServerLoginCheckVo check(SupportServerLoginCheckBo command)
@@ -48,16 +44,8 @@ public class SupportServerLoginCheckService
             throw new ServiceException("请先配置正确的服务器地址和SSH端口");
         if (command.hostFingerprint() != null && !command.hostFingerprint().matches("SHA256:[A-Za-z0-9+/]{43}"))
             throw new ServiceException("SSH主机指纹格式无效");
-        if (!running.add(server.getServerId())) throw new ServiceException("该服务器正在校验，请勿重复提交");
-        boolean acquired = false;
-        try
+        try (SupportServerLoginGuard.Lease lease = guard.acquire(host))
         {
-            long now = System.currentTimeMillis();
-            nextAttempt.entrySet().removeIf(entry -> entry.getValue() < now);
-            if (nextAttempt.getOrDefault(server.getServerId(), 0L) > now)
-                throw new ServiceException("该服务器刚执行过登录校验，请等待60秒后再试，避免账号锁定");
-            acquired = capacity.tryAcquire();
-            if (!acquired) throw new ServiceException("登录校验任务繁忙，请稍后重试");
             List<SupportServerCredential> accounts = credentials.selectCredentialsByServerId(server.getServerId());
             Account root = account(server, accounts, "root");
             Account hik = Boolean.TRUE.equals(server.getRootDirectLogin()) ? null : account(server, accounts, "hik");
@@ -72,13 +60,8 @@ public class SupportServerLoginCheckService
             SupportServerLoginCheckVo result = verifier.verify(host, port, login.username, loginPassword,
                 rootPassword, direct, command.hostFingerprint());
             if (!List.of("HOST_KEY_REQUIRED", "HOST_KEY_CHANGED").contains(result.status()))
-                nextAttempt.put(server.getServerId(), System.currentTimeMillis() + 60000);
+                lease.attempted();
             return result;
-        }
-        finally
-        {
-            running.remove(server.getServerId());
-            if (acquired) capacity.release();
         }
     }
 

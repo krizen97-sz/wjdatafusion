@@ -27,6 +27,16 @@ class Server(paramiko.ServerInterface):
         return True
     def check_channel_exec_request(self, channel, command):
         text = command.decode("utf-8")
+        if "__RY_HOST__" in text and "cat /etc/os-release" in text:
+            def facts():
+                try:
+                    channel.send(b'__RY_HOST__\nfixture-server\n__RY_KERNEL__\n3.10.0-fixture\n__RY_OS__\nNAME="CentOS Linux"\nVERSION_ID="7"\n__RY_LEGACY__\n__RY_END__\n')
+                    channel.send_exit_status(0)
+                finally:
+                    time.sleep(0.05)
+                    channel.close()
+            threading.Thread(target=facts, daemon=True).start()
+            return True
         marker = re.search(r"__RY_[a-f0-9]+_", text)
         if not marker:
             return False

@@ -28,7 +28,8 @@ class SupportServerLoginCheckServiceTest
     {
         servers = mock(SupportServerMapper.class); accounts = mock(SupportServerCredentialMapper.class);
         crypto = mock(CredentialCryptoService.class); verifier = mock(SupportServerLoginVerifier.class);
-        service = new SupportServerLoginCheckService(servers, accounts, crypto, verifier);
+        service = new SupportServerLoginCheckService(servers, accounts, crypto, verifier,
+            new com.hm.manage.service.support.SupportServerLoginGuard());
         server = new SupportServer(); server.setServerId(1L); server.setSiteId(9L); server.setStatus("0");
         server.setServerAddress("192.0.2.1"); server.setSshPort(55555);
         when(servers.selectSupportServerByServerId(1L)).thenReturn(server);

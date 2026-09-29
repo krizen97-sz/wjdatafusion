@@ -1,5 +1,22 @@
 export const releaseNotes = [
   {
+    version: 'v4.16.0', submitTime: '2026-09-29 16:38:27',
+    level: 'minor', levelLabel: '小版本', tagType: 'primary',
+    title: '网段服务器扫描与凭据版本同步',
+    summary: '从设备层扫描授权网段，核验SSH主机和候选凭据后自动登记服务器、更新系统资料。',
+    changes: [
+      '支持IPv4、CIDR和起止IP段，默认探测22、2343、55555三个端口；每批最多512个地址，核验同步最多128台。',
+      '现场配置加密授权凭据池，每组选择root直登或hik登录后切换root；按指定顺序最多尝试3组，共用并发与60秒冷却限制。',
+      '先探测并确认主机指纹，再验证密码及root身份；仅同步成功凭据，错误、免密su、指纹变化不当作密码正确。',
+      '按现场及IPv4识别已有服务器，保留原平台归属；新服务器归属选定子平台，冲突或既有硬件设备不自动覆盖。',
+      '读取主机名、操作系统及内核版本，设备清单增加只读扫描资料字段组；采集不完整保留上次完整资料。',
+      '扫描进度、结果及停止操作统一使用Element Plus；日志和任务响应不包含密码。任务暂存于当前后端实例，重启不自动重试。'
+    ],
+    scope: ['现场融合管理', '服务器管理', '网段扫描', '凭据安全'],
+    database: '新增sup_server_scan_credential、sup_server_scan_profile及support:server:scan权限。旧密码、端口和角色授权不重写；前后端与SQL需配套更新。',
+    scripts: ['WDF100.0/sql/support_upgrade_20260929_server_credential_scan_v4_16_0.sql']
+  },
+  {
     version: 'v4.15.1',
     submitTime: '2026-09-29 09:54:00',
     level: 'patch', levelLabel: '修订版本', tagType: 'success',

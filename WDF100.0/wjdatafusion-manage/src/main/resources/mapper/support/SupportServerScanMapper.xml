@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hm.manage.mapper.SupportServerScanMapper">
+    <sql id="credentialFields">credential_id as credentialId, site_id as siteId, credential_name as name, login_mode as mode,
+        hik_password_cipher as hikCipher, root_password_cipher as rootCipher, update_time as updatedAt</sql>
+    <select id="selectCredentials" resultType="java.util.LinkedHashMap">
+        select <include refid="credentialFields" /> from sup_server_scan_credential where site_id = #{siteId} order by credential_id
+    </select>
+    <select id="selectCredential" resultType="java.util.LinkedHashMap">
+        select <include refid="credentialFields" /> from sup_server_scan_credential where site_id = #{siteId} and credential_id = #{id}
+    </select>
+    <insert id="insertCredential" useGeneratedKeys="true" keyProperty="credentialId">
+        insert into sup_server_scan_credential(site_id, credential_name, login_mode, hik_password_cipher, root_password_cipher, create_by, create_time, update_by, update_time)
+        values(#{siteId}, #{name}, #{mode}, #{hikCipher}, #{rootCipher}, #{actor}, now(), #{actor}, now())
+    </insert>
+    <update id="updateCredential">
+        update sup_server_scan_credential set credential_name=#{name}, login_mode=#{mode}, hik_password_cipher=#{hikCipher},
+        root_password_cipher=#{rootCipher}, update_by=#{actor}, update_time=now() where site_id=#{siteId} and credential_id=#{credentialId}
+    </update>
+    <delete id="deleteCredential">delete from sup_server_scan_credential where site_id=#{siteId} and credential_id=#{id}</delete>
+    <select id="selectProfiles" resultType="java.util.LinkedHashMap">
+        select p.server_id as serverId, p.host_name as scanHostName, p.os_name as scanOsName, p.os_version as scanOsVersion,
+            p.kernel_version as scanKernelVersion, p.detected_ports as scanPorts, date_format(p.scan_time, '%Y-%m-%d %H:%i:%s') as scanTime
+        from sup_server_scan_profile p join sup_server s on s.server_id=p.server_id and s.site_id=p.site_id where p.site_id=#{siteId}
+    </select>
+    <select id="countAddressOwners" resultType="int">
+        select (select count(*) from sup_server where site_id=#{siteId} and inet_aton(server_address)=inet_aton(#{address}))
+          + (select count(*) from sup_hardware_asset where site_id=#{siteId}
+              and (inet_aton(ip_address)=inet_aton(#{address}) or inet_aton(manage_ip)=inet_aton(#{address})))
+    </select>
+    <insert id="saveProfile">
+        insert into sup_server_scan_profile(server_id,site_id,host_name,os_name,os_version,kernel_version,detected_ports,scan_time)
+        values(#{serverId},#{siteId},#{hostName},#{osName},#{osVersion},#{kernelVersion},#{ports},now())
+        on duplicate key update site_id=values(site_id),host_name=coalesce(nullif(values(host_name),''),host_name),
+          os_name=coalesce(nullif(values(os_name),''),os_name), os_version=coalesce(nullif(values(os_version),''),os_version),
+          kernel_version=coalesce(nullif(values(kernel_version),''),kernel_version),detected_ports=values(detected_ports),scan_time=now()
+    </insert>
+</mapper>

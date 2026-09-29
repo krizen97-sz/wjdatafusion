@@ -1,5 +1,16 @@
 import request from '@/utils/request'
 
+const scanUrl = '/support/equipment/servers/scan'
+export function getServerScanOptions(siteId) { return request({ url: scanUrl + '/options/' + siteId, method: 'get' }) }
+export function saveServerScanCredential(data) { return request({ url: scanUrl + '/credentials', method: 'post', data, headers: { repeatSubmit: false } }) }
+export function deleteServerScanCredential(siteId, id) { return request({ url: scanUrl + '/credentials/' + siteId + '/' + id, method: 'delete' }) }
+export function startServerScan(data) { return request({ url: scanUrl + '/tasks', method: 'post', data, timeout: 30000, headers: { repeatSubmit: false } }) }
+export function getServerScan(id) { return request({ url: scanUrl + '/tasks/' + id, method: 'get' }) }
+export function getActiveServerScan(siteId) { return request({ url: scanUrl + '/active/' + siteId, method: 'get' }) }
+export function confirmServerScan(id, data) { return request({ url: scanUrl + '/tasks/' + id + '/confirm', method: 'post', data, headers: { repeatSubmit: false } }) }
+export function cancelServerScan(id) { return request({ url: scanUrl + '/tasks/' + id + '/cancel', method: 'post' }) }
+export function getServerScanProfiles(siteId) { return request({ url: scanUrl + '/profiles/' + siteId, method: 'get' }) }
+
 export function checkServerLogin(data) {
   return request({ url: '/support/equipment/servers/loginCheck', method: 'post', data,
     timeout: 90000, headers: { repeatSubmit: false } })

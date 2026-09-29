@@ -10,6 +10,23 @@ import org.junit.jupiter.api.Test;
 
 class SupportServerLoginProtocolTest
 {
+    @Test void scannerInspectsFingerprintAndCollectsRealSshFixtureVersions() throws Exception
+    {
+        assertTimeoutPreemptively(Duration.ofSeconds(25), () -> withFixture("normal", port -> {
+            var verifier = new SupportServerLoginVerifier();
+            var scanner = new SupportServerScanProbe(verifier);
+            var discovered = scanner.inspect("127.0.0.1", port);
+            assertEquals("READY", discovered.status());
+            var checked = verifier.verify("127.0.0.1", port, "hik", "hik-test", "root-test", false, discovered.fingerprint());
+            assertEquals("SUCCESS", checked.status());
+            var facts = scanner.collect("127.0.0.1", port, "hik", "hik-test", discovered.fingerprint());
+            assertEquals("CentOS Linux", facts.osName()); assertEquals("7", facts.osVersion());
+            assertEquals("fixture-server", facts.hostName()); assertEquals("3.10.0-fixture", facts.kernelVersion());
+            var direct = scanner.collect("127.0.0.1", port, "root", "root-test", discovered.fingerprint());
+            assertEquals(facts, direct);
+            assertThrows(Exception.class, () -> scanner.collect("127.0.0.1", port, "root", "root-test", "SHA256:" + "A".repeat(43)));
+        }));
+    }
     @Test void realSshHandshakePasswordAndSuExchange() throws Exception
     {
         assertTimeoutPreemptively(Duration.ofSeconds(35), () -> withFixture("normal", port -> {
