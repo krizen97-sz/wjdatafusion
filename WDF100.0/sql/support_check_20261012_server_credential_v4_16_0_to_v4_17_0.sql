@@ -14,7 +14,10 @@ FROM (SELECT 'sup_site' table_name UNION ALL SELECT 'sup_server' UNION ALL SELEC
 LEFT JOIN information_schema.tables actual ON actual.table_schema=DATABASE()
  AND actual.table_name=required.table_name AND actual.table_type='BASE TABLE';
 
-SELECT required.table_name,required.column_name,actual.column_type,actual.is_nullable,actual.column_default,
+SELECT required.table_name,required.column_name,actual.column_type,actual.is_nullable,
+ CASE WHEN required.column_name IN ('hik_password_cipher','root_password_cipher')
+ THEN CASE WHEN actual.column_default IS NULL THEN 'NULL' WHEN actual.column_default='' THEN 'EMPTY' ELSE 'NONEMPTY_REDACTED' END
+ ELSE actual.column_default END AS reported_default,
  CASE WHEN actual.column_name IS NULL THEN 'STOP: missing baseline column'
  WHEN actual.data_type<>required.data_type OR actual.is_nullable<>required.nullable
    OR (required.max_length>0 AND COALESCE(actual.character_maximum_length,0)<>required.max_length)
@@ -43,7 +46,10 @@ FROM (
 ) required LEFT JOIN information_schema.columns actual ON actual.table_schema=DATABASE()
  AND actual.table_name=required.table_name AND actual.column_name=required.column_name;
 
-SELECT column_name, column_type,column_default,extra,
+SELECT column_name, column_type,
+ CASE WHEN column_name IN ('hik_password_cipher','root_password_cipher')
+ THEN CASE WHEN column_default IS NULL THEN 'NULL' WHEN column_default='' THEN 'EMPTY' ELSE 'NONEMPTY_REDACTED' END
+ ELSE column_default END AS reported_default,extra,
  CASE WHEN column_name='credential_id' AND column_key='PRI' AND extra LIKE '%auto_increment%' THEN 'PASS'
  WHEN column_name IN ('hik_password_cipher','root_password_cipher') AND column_default='' THEN 'PASS'
  ELSE 'STOP: incompatible pool key or legacy cipher default' END AS result

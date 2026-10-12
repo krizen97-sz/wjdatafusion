@@ -52,6 +52,13 @@ VALUES(1,'pair','HIK_SU_ROOT','synthetic-hik','synthetic-root'),(1,'direct','ROO
     def test_check_reports_missing_scan_permission_without_repairing_it(self):
         self.q("DELETE FROM sys_menu WHERE perms='support:server:scan'")
         before=self.snapshot();self.assertIn('STOP: missing or incompatible v4.16 scan permission',self.q(CHECK));self.assertEqual(before,self.snapshot())
+    def test_abnormal_cipher_defaults_are_reported_without_values(self):
+        self.q("ALTER TABLE sup_server_scan_credential ALTER COLUMN hik_password_cipher SET DEFAULT 'synthetic-default-hik', ALTER COLUMN root_password_cipher SET DEFAULT 'synthetic-default-root'")
+        report=self.q(CHECK)
+        self.assertIn('NONEMPTY_REDACTED',report)
+        self.assertIn('STOP: incompatible pool key or legacy cipher default',report)
+        self.assertNotIn('synthetic-default-hik',report)
+        self.assertNotIn('synthetic-default-root',report)
     def test_missing_profile_rejects_upgrade(self):
         self.q('DROP TABLE sup_server_scan_profile')
         before=self.q('SELECT * FROM sup_server_scan_credential ORDER BY 1')
