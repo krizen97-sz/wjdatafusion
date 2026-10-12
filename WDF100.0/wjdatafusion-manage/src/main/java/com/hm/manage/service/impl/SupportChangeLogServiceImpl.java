@@ -4,6 +4,8 @@ import com.alibaba.fastjson2.JSON;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import com.hm.common.core.domain.entity.SysUser;
 import com.hm.common.core.domain.model.LoginUser;
 import com.hm.common.filter.PropertyPreExcludeFilter;
@@ -46,7 +48,10 @@ public class SupportChangeLogServiceImpl implements ISupportChangeLogService
         }
         if (StringUtils.isBlank(changeLog.getOperatorIp()))
         {
-            changeLog.setOperatorIp(IpUtils.getIpAddr());
+            // Async scans retain the security context, but do not have an HTTP request.
+            var attributes = RequestContextHolder.getRequestAttributes();
+            changeLog.setOperatorIp(IpUtils.getIpAddr(attributes instanceof ServletRequestAttributes servlet
+                ? servlet.getRequest() : null));
         }
         return changeLogMapper.insertSupportChangeLog(changeLog);
     }

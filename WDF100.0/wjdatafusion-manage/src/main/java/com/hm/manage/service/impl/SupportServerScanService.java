@@ -5,6 +5,8 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import jakarta.annotation.PreDestroy;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.concurrent.DelegatingSecurityContextRunnable;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -18,6 +20,7 @@ import com.hm.manage.service.support.*;
 @Service
 public class SupportServerScanService
 {
+    private static final Logger log = LoggerFactory.getLogger(SupportServerScanService.class);
     private static final Set<String> RUNNING = Set.of("DISCOVERING", "SCANNING", "STOPPING");
     private final Map<String, Job> jobs = new ConcurrentHashMap<>();
     private final ExecutorService coordinators = Executors.newFixedThreadPool(2, threads("server-scan-coordinator-"));
@@ -152,12 +155,15 @@ public class SupportServerScanService
     private void authenticate(Job job, Target target)
     {
         if (job.cancelled) return;
+        synchronized (job) { target.stage = ScanStage.CONFIGURATION; }
         try (SupportServerLoginGuard.Lease lease = guard.acquire(target.address))
         {
             ensureCurrent(job);
+            synchronized (job) { target.stage = ScanStage.DECRYPT; }
             var passwords = job.candidates.stream().map(row -> new SupportServerPasswordPoolMatcher.Password(
                 ((Number) row.get("credentialId")).longValue(), String.valueOf(row.get("name")),
                 crypto.decrypt(String.valueOf(row.get("passwordCipher"))))).toList();
+            synchronized (job) { target.stage = ScanStage.PASSWORD_POOL; }
             String strategy = "AUTO".equals(job.loginMode) && target.original != null
                 && Boolean.TRUE.equals(target.original.get("rootDirectLogin")) ? "ROOT_DIRECT" : job.loginMode;
             var match = SupportServerPasswordPoolMatcher.match(passwords, strategy, job.attemptLimit, (hikPassword, rootPassword) -> {
@@ -166,7 +172,7 @@ public class SupportServerScanService
                 boolean direct = hikPassword == null;
                 synchronized (job)
                 {
-                    target.state = "VERIFYING"; target.attempts++;
+                    target.state = "VERIFYING"; target.attempts++; target.stage = ScanStage.AUTHENTICATE;
                     target.candidate = direct ? "root: " + rootPassword.name() : "hik: " + hikPassword.name() + " / root: " + rootPassword.name();
                 }
                 var login = verifier.verify(target.address, target.chosen.port(), direct ? "root" : "hik",
@@ -177,12 +183,14 @@ public class SupportServerScanService
             });
             if (match.success())
             {
+                synchronized (job) { target.rootPasswordVerified = true; target.stage = ScanStage.COLLECT; }
                 ensureCurrent(job);
                 boolean direct = match.hik() == null;
                 String root = match.root().value(), hik = direct ? "" : match.hik().value();
                 var facts = probe.collect(target.address, target.chosen.port(), direct ? "root" : "hik", direct ? root : hik, target.chosen.fingerprint());
                 ensureCurrent(job);
                 Long previousId = target.original == null ? null : ((Number) target.original.get("sourceId")).longValue();
+                synchronized (job) { target.stage = ScanStage.SYNCHRONIZE; }
                 Long serverId = sync.sync(job.siteId, job.platformId, target.address, previousId,
                     target.original == null ? null : String.valueOf(target.original.get("revision")), target.chosen.port(), direct,
                     hik, root, facts, target.ports.stream().filter(SupportServerScanProbe.Port::open).map(port -> String.valueOf(port.port())).reduce((a, b) -> a + "," + b).orElse(""), job.actor);
@@ -197,6 +205,7 @@ public class SupportServerScanService
             synchronized (job)
             {
                 target.state = "FAILED";
+                target.errorCode = match.check().status();
                 if (Set.of("AUTH_REJECTED", "SU_REJECTED").contains(match.check().status()))
                     target.message += "；已达到每账号尝试上限或候选密码已用尽，未同步";
             }
@@ -207,8 +216,19 @@ public class SupportServerScanService
             synchronized (job)
             {
                 target.state = job.cancelled ? "SKIPPED" : "FAILED";
-                target.message = job.cancelled ? "任务已停止，本次未同步"
-                    : error instanceof ServiceException ? error.getMessage() : "验证或同步未完成，未写入本次结果，请检查服务配置后重试";
+                target.errorCode = job.cancelled ? "CANCELLED" : target.stage.errorCode;
+                target.message = job.cancelled ? "任务已停止，本次未同步" : target.stage.failureMessage;
+                if (!job.cancelled)
+                {
+                    target.diagnosticId = UUID.randomUUID().toString();
+                    target.message += "（" + target.errorCode + "，编号：" + target.diagnosticId + "）";
+                    // Exception messages/causes can contain SQL values or credentials; log metadata only.
+                    String location = Arrays.stream(error.getStackTrace())
+                        .filter(frame -> frame.getClassName().startsWith("com.hm."))
+                        .findFirst().map(StackTraceElement::toString).orElse("unavailable");
+                    log.warn("Server scan failed diagnostic={} task={} site={} stage={} type={} location={}",
+                        target.diagnosticId, job.id, job.siteId, target.stage, error.getClass().getName(), location);
+                }
             }
         }
     }
@@ -283,6 +303,20 @@ public class SupportServerScanService
     }
     @PreDestroy public void close() { jobs.values().forEach(job -> job.cancelled = true); coordinators.shutdownNow(); workers.shutdownNow(); }
 
+    private enum ScanStage
+    {
+        DISCOVERY("", ""),
+        CONFIGURATION("SCAN_CONFIGURATION_FAILED", "扫描配置核对未通过，请检查授权密码池、任务状态或登录冷却限制；未发送本次密码"),
+        DECRYPT("PASSWORD_DECRYPT_FAILED", "密码池解密失败，请核对原SUPPORT_AES_KEY及密码池数据；尚未尝试SSH登录"),
+        PASSWORD_POOL("PASSWORD_POOL_INVALID", "密码池校验失败，候选密码为空或包含不支持的字符；尚未尝试SSH登录"),
+        AUTHENTICATE("SSH_VERIFY_FAILED", "SSH登录或root核验执行异常，未同步数据，请按编号检查服务日志"),
+        COLLECT("SYSTEM_INFO_FAILED", "SSH登录及root密码已核验通过，但系统资料采集或同步前检查失败；未同步数据"),
+        SYNCHRONIZE("SERVER_SYNC_FAILED", "SSH登录及root密码已核验通过，但数据库同步失败；请检查数据库升级、写入权限及操作记录，本次同步未完成");
+
+        final String errorCode, failureMessage;
+        ScanStage(String errorCode, String failureMessage) { this.errorCode = errorCode; this.failureMessage = failureMessage; }
+    }
+
     private static final class Target
     {
         final String address;
@@ -290,6 +324,9 @@ public class SupportServerScanService
         List<SupportServerScanProbe.Port> ports = List.of();
         SupportServerScanProbe.Port chosen;
         String state = "PENDING", message = "等待探测", candidate = "", mode = "";
+        ScanStage stage = ScanStage.DISCOVERY;
+        String errorCode = "", diagnosticId = "";
+        boolean rootPasswordVerified;
         int attempts;
         Long serverId;
         Map<String, String> facts = Map.of();
@@ -302,6 +339,8 @@ public class SupportServerScanService
             result.put("serverName", original == null ? "" : original.get("assetName")); result.put("registeredPort", original == null ? null : original.get("sshPort"));
             result.put("state", state); result.put("message", message); result.put("attempts", attempts); result.put("candidate", candidate);
             result.put("mode", mode); result.put("facts", facts); result.put("port", chosen == null ? null : chosen.port());
+            result.put("stage", stage.name()); result.put("rootPasswordVerified", rootPasswordVerified);
+            result.put("errorCode", errorCode); result.put("diagnosticId", diagnosticId);
             return result;
         }
     }
