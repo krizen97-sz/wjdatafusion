@@ -60,7 +60,7 @@ final class NativeSaveAuthorizationProof {
         }
         EtlGroup group = new EtlGroup(); group.setId(901L); group.setEnableFlag(1); group.setProduct("iDataFusion HDI"); db.put(WorkspaceMapper.class, 901, group);
         for (long id : new long[]{21,22}) { EtlInstance instance = new EtlInstance(); instance.setId(id); instance.setGroupId(id == 21 ? 901L : 902L); instance.setEnableFlag(1); db.put(EtlInstanceDao.class, id, instance); }
-        for (long id : new long[]{11,12}) { EtlAdapter adapter = new EtlAdapter(); adapter.setId(id); adapter.setAdapterName(id == 11 ? "dataGeneratorInput" : "fileOutput"); adapter.setAdapterType(id == 11 ? "input" : "output"); adapter.setEnableFlag(1); db.put(EtlGroupAdapterDao.class, id, adapter); }
+        for (long id : new long[]{11,12,13}) { EtlAdapter adapter = new EtlAdapter(); adapter.setId(id); adapter.setAdapterName(id == 11 ? "dataGeneratorInput" : id == 12 ? "fileOutput" : "fieldMapping"); adapter.setAdapterType(id == 11 ? "input" : id == 12 ? "output" : "preproc"); adapter.setEnableFlag(1); db.put(EtlGroupAdapterDao.class, id, adapter); }
         SysFolder folder = new SysFolder(); folder.setId(31L); folder.setWorkspaceId(901L); folder.setProjectCode("project-a"); folder.setEnableFlag(1); db.put(SysFolderMapper.class, 31, folder);
         return db;
     }
@@ -124,6 +124,14 @@ final class NativeSaveAuthorizationProof {
         at(ignoredIds, "/nodes/1002").putArray("dstTableFieldVoList").addObject().put("id", 778);
         ignoredIds.putArray("paramVoList").addObject().put("id", 779).put("paramName", "bounded.literal").put("paramValue", "3");
         check(checkGraph(filter, ignoredIds, true).status == 200, "original batch-insert ignored field/param IDs are not mistaken for writable old PKs");
+        ObjectNode mappedFields = graph.deepCopy();
+        ObjectNode mappingNode = at(mappedFields, "/nodes").putObject("1003");
+        mappingNode.put("id", 1003).put("adapterName", "fieldMapping").put("adapterType", "preproc").put("stepType", "preproc").put("moduleAdapterId", 13);
+        mappingNode.putArray("moduleInstanceList").addObject().put("id", 21);
+        mappingNode.putArray("transformFieldVoList").addObject().put("id", 999).put("itemId", 402).put("fieldSrcName", "label").put("fieldDstName", "renamed");
+        check(checkGraph(filter, mappedFields, true).status == 200, "original fieldMapping uses current generated item and ignores copied field PK");
+        mappingNode.put("dbId", 22);
+        check(checkGraph(filter, mappedFields, true).status == 422, "fieldMapping cannot smuggle an unverified datasource reference");
         ObjectNode sourceParam = graph.deepCopy(); sourceParam.putArray("paramVoList").addObject().put("valueType", "el-select-source").put("paramValue", "{}");
         check(checkGraph(filter, sourceParam, true).status == 422, "typed parameter cannot introduce an unaudited datasource");
         ObjectNode upload = graph.deepCopy(); at(upload, "/nodes/1002").putArray("adapterParamVoList").addObject().put("paramName", "etl.file.isUpload").put("paramValue", "true");

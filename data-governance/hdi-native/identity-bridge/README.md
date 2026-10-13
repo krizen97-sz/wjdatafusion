@@ -111,7 +111,7 @@ mode仅允许save/push。原正文最多8MiB，整个envelope最多12MiB；普�
 
 执行资源另外校验：原EtlInstanceDao查询结果必须启用且groupId匹配工作区；原EtlGroupAdapterDao.getAdapterInGroupById查询实际启用绑定，结果名称/类型必须匹配节点；真实目录（除原默认-1）必须属于同工作区/项目且启用。相关原DAO缺失时整个启用配置失败，不回退成功。
 
-当前验证范围是原non-DFP工作区的空草稿、`dataGeneratorInput`与本地`fileOutput`，最多128节点/512个旧PK引用。外部dbId/source/lookup/SQL/上传参数、引用其他全局参数、FEL参数表达式、其他尚未核验插件返回HTTP422 `BRIDGE_UNSUPPORTED_GRAPH`和固定中文说明。它明确限定当前衔接范围；不代表已经覆盖全部原插件。原字段编辑、文件路径规则、业务许可和流程完整性仍由原程序验证。
+当前验证范围是原non-DFP工作区的空草稿、`dataGeneratorInput`、`fieldMapping`与本地`fileOutput`，最多128节点/512个旧PK引用。原字段映射保存强制使用当前生成的itemId，EtlTransformFieldDao.batchInsert不采用客户端字段PK；表达式处理仍由原插件执行，本桥不重写算法。外部dbId/source/lookup/SQL/上传参数、引用其他全局参数、FEL参数表达式、其他尚未核验插件返回HTTP422 `BRIDGE_UNSUPPORTED_GRAPH`和固定中文说明。它明确限定当前衔接范围；不代表已经覆盖全部原插件。原字段编辑、文件路径规则、业务许可和流程完整性仍由原程序验证。
 
 成功仍为HTTP200 `{"code":"0","data":{"authorized":true}}`，不返回原任务或归属字段到浏览器；归属/身份篡改返回403 BRIDGE_SCOPE_DENIED，格式或签名错误401，DAO/原转换器不可用503。业务结果只有原任务服务实际保存/发布响应能够确认，本桥通过不等于任务已保存或可运行。
 

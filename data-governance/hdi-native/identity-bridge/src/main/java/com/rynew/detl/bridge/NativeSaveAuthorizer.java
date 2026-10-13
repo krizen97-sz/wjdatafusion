@@ -132,6 +132,7 @@ final class NativeSaveAuthorizer {
             String type;
             if ("dataGeneratorInput".equals(node.getAdapterName())) type = "input";
             else if ("fileOutput".equals(node.getAdapterName())) type = "output";
+            else if ("fieldMapping".equals(node.getAdapterName())) type = "preproc";
             else throw new UnsupportedGraph();
             if (!type.equals(node.getAdapterType()) || !type.equals(node.getStepType())) throw new NativeFlowAuthorizer.ScopeDenied();
             if (node.getDbId() != null || !safe(node.getSrcTableUseVoList()).isEmpty() || present(node.getSqlStr())
