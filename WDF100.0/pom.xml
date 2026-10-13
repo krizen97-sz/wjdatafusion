@@ -209,6 +209,7 @@
     </dependencyManagement>
 
     <modules>
+        <module>../data-governance/compatibility/core</module>
         <module>wjdatafusion-admin</module>
         <module>wjdatafusion-framework</module>
         <module>wjdatafusion-system</module>
