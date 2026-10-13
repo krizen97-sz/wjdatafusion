@@ -33,3 +33,14 @@ ready只代表原TaskList/ProcessMain实例完成Vue挂载，不代表后端任�
 原HTTP模块通过同版本webpack运行时扩展接口取得；原JS字节、原store action、原参数/节点算法均未替换。没有发布动作的查询直接读取；发布失败、读取期间版本变化、iframe销毁都拒绝等待中的配置请求。
 
 本轮发布边界验证：10项宿主定向测试通过；`npm run verify:frontend`完整通过（UI Guard、303项Node测试、生产构建、167个JS产物兼容检查）。首次完整检查因独立树缺安装依赖停止；核对既有UI工作树依赖声明一致后复用其已安装依赖，再完成全检。验证不等同于真实浏览器执行验收。
+
+## 原组件装配补充
+
+| 页面需要 | 原实现 | 复用方式 | 证据 | 必需适配 |
+| --- | --- | --- | --- | --- |
+| 首次筛选数组 | TaskList.handleCachePreSearch | 只增加beforeMount调用原方法 | 原module16638 data在返回前展开this.searchForm，HUI multiple选项直接读value.length | 原render/methods不改，补正常初始生命周期 |
+| 自适应操作按钮 | 原AdaptiveButtonContainer | 注册原Plugins公开anchor暴露的组件对象 | TheDataStandardTransformerProcessPluginInfo.anchors[0].component=StandardConversion；其setup返回原共享组件 | 原Vue未挂载实例获取setup上下文后立即销毁，无HTTP、无业务运行、无新render |
+
+列表默认列取原EtlConstants.DFP_FLOW_COLUMN_DISPLAY_DEFAULT；目录iconStr引用同包、manifest校验的原默认SVG。字段映射使用原PROCESS_ADAPTER_TYPE未覆盖时的other分类。没有绘制或替换插件图标，也没有向页面注入伪全局枚举或空update。
+
+共享工具栏装配验证：13项宿主定向测试、完整前端verify（306项测试、UI Guard、构建、167个产物兼容检查）通过；原资源字节保持不变，实际原画布操作仍由集成浏览器另行验收。
