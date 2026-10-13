@@ -24,3 +24,11 @@ ready只代表原TaskList/ProcessMain实例完成Vue挂载，不代表后端任�
 - 随后仅在独立host增加元素节点检查，防止Vue渲染异常留下的注释节点被当作ready；7项宿主定向测试重新通过（含该场景）。
 - 只使用既有安装依赖，未改package.json、lockfile、全局样式或版本记录。
 - 未声称浏览器实际CRUD/执行通过；需要新平台兼容API后联合验收。
+
+## 原发布与运行配置的版本边界
+
+复用原Vuex `subscribeAction` 和原Axios `interceptors`，不新增页面、组件或视觉例外。原 `ProcessMain.startTask` 先打开配置再 `pushFlowTask`，因此宿主只在同一个iframe闭包内等待同任务的原发布动作（含原Visual回读）完成，再发送 `getStartConfig`。校验Visual的用户、工作区、任务ID以及发布前修订加一；响应修订再次校验，防止期间另一窗口改版。后台的版本比较保持严格，不从“当前最新版本”自动提升陈旧窗口权限。
+
+原HTTP模块通过同版本webpack运行时扩展接口取得；原JS字节、原store action、原参数/节点算法均未替换。没有发布动作的查询直接读取；发布失败、读取期间版本变化、iframe销毁都拒绝等待中的配置请求。
+
+本轮发布边界验证：10项宿主定向测试通过；`npm run verify:frontend`完整通过（UI Guard、303项Node测试、生产构建、167个JS产物兼容检查）。首次完整检查因独立树缺安装依赖停止；核对既有UI工作树依赖声明一致后复用其已安装依赖，再完成全检。验证不等同于真实浏览器执行验收。
