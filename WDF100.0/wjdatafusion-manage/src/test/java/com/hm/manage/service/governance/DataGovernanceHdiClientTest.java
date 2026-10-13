@@ -190,4 +190,46 @@ class DataGovernanceHdiClientTest
         assertEquals(0, redirected.get());
     }
 
+    @Test void saveAuthorizationSignsExactNativeBytesUnderItsOwnEndpoint() throws Exception {
+        byte[] original = "{\r\n  \"visualBase64\":\"e30=\",\"label\":\"原图\"\r\n}".getBytes(StandardCharsets.UTF_8);
+        AtomicReference<byte[]> receivedNative = new AtomicReference<>(); AtomicReference<Boolean> signed = new AtomicReference<>(false);
+        server.createContext(DataGovernanceHdiClient.AUTHORIZE_SAVE_PATH, exchange -> {
+            byte[] envelope = exchange.getRequestBody().readAllBytes();
+            var json = new com.fasterxml.jackson.databind.ObjectMapper().readTree(envelope);
+            assertEquals("rynew:user:7", json.path("subject").asText()); assertEquals("save", json.path("mode").asText());
+            assertEquals(3, json.size()); receivedNative.set(java.util.Base64.getDecoder().decode(json.path("nativeBodyBase64").asText()));
+            try {
+                signed.set(DataGovernanceHdiClient.sign(Files.readAllBytes(key), "POST", DataGovernanceHdiClient.AUTHORIZE_SAVE_PATH,
+                    exchange.getRequestHeaders().getFirst("X-RYNEW-Timestamp"), exchange.getRequestHeaders().getFirst("X-RYNEW-Nonce"), envelope)
+                    .equals(exchange.getRequestHeaders().getFirst("X-RYNEW-Signature")));
+            } catch (Exception error) { throw new IOException(error); }
+            assertNull(exchange.getRequestHeaders().getFirst("Cookie"));
+            byte[] response = "{\"code\":\"0\",\"data\":{\"authorized\":true}}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length); exchange.getResponseBody().write(response); exchange.close();
+        });
+        new DataGovernanceHdiClient(properties).authorizeSave(7, "save", original);
+        assertTrue(signed.get()); assertArrayEquals(original, receivedNative.get());
+    }
+
+    @Test void saveAuthorizationRejectsOversizedInvalidOrUnsupportedPayloadsWithoutEchoingNativeBody() throws Exception {
+        var client = new DataGovernanceHdiClient(properties);
+        assertThrows(IOException.class, () -> client.authorizeSave(7, "save", new byte[8 * 1024 * 1024 + 1]));
+        assertThrows(IOException.class, () -> client.authorizeSave(7, "arbitrary-mode", new byte[]{1}));
+        assertThrows(IOException.class, () -> client.authorizeSave(7, null, new byte[]{1}));
+        AtomicInteger status = new AtomicInteger(422); AtomicReference<String> result = new AtomicReference<>("private-native-secret");
+        server.createContext(DataGovernanceHdiClient.AUTHORIZE_SAVE_PATH, exchange -> {
+            exchange.getRequestBody().readAllBytes(); byte[] response = result.get().getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(status.get(), response.length); exchange.getResponseBody().write(response); exchange.close();
+        });
+        byte[] body = "{}".getBytes(StandardCharsets.UTF_8);
+        assertThrows(DataGovernanceHdiClient.UnsupportedGraph.class, () -> client.authorizeSave(7, "save", body));
+        status.set(403); assertThrows(DataGovernanceHdiClient.ScopeDenied.class, () -> client.authorizeSave(7, "save", body));
+        for (int code : List.of(401, 503, 307, 200)) {
+            status.set(code); var failure = assertThrows(IOException.class, () -> client.authorizeSave(7, "push", body));
+            assertFalse(failure.toString().contains("private-native-secret"));
+        }
+        result.set("{\"code\":\"0\",\"data\":{\"authorized\":false}}");
+        assertThrows(IOException.class, () -> client.authorizeSave(7, "save", body));
+    }
+
 }

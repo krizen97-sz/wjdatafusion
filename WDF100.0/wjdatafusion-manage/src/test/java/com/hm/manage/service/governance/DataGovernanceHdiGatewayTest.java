@@ -121,6 +121,26 @@ class DataGovernanceHdiGatewayTest {
         assertEquals("no-store", servletResponse.getHeader("Cache-Control")); verify(client).exchange(7L);
     }
 
+    @Test void sessionHttpEndpointParsesOptionalRenewJsonAndRejectsIdentityFields() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(user, null, user.getAuthorities()));
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(new DataGovernanceHdiController(sessions)).build();
+        var first = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/governance/hdi/session")
+            .header("Origin", properties.getPublicOrigin())).andReturn().getResponse();
+        assertEquals(200, first.getStatus()); String firstCookie = first.getHeader("Set-Cookie");
+        var reused = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/governance/hdi/session")
+            .header("Origin", properties.getPublicOrigin()).contentType("application/json").content("{\"renew\":false}"))
+            .andReturn().getResponse();
+        assertEquals(200, reused.getStatus()); assertEquals(firstCookie, reused.getHeader("Set-Cookie"));
+        var renewed = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/governance/hdi/session")
+            .header("Origin", properties.getPublicOrigin()).contentType("application/json").content("{\"renew\":true}"))
+            .andReturn().getResponse();
+        assertEquals(200, renewed.getStatus()); assertNotEquals(firstCookie, renewed.getHeader("Set-Cookie"));
+        var forged = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post("/governance/hdi/session")
+            .header("Origin", properties.getPublicOrigin()).contentType("application/json").content("{\"userId\":99}"))
+            .andReturn().getResponse();
+        assertEquals(400, forged.getStatus()); verify(client, times(2)).exchange(7L);
+    }
+
     @Test void standaloneEntryUsesOnlyPositiveServerMappedWorkspaceNotBrowserAppCode() throws Exception {
         SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(user, null, user.getAuthorities()));
         var request = request("POST", "/governance/hdi/session"); request.addParameter("appCode", "999999");
@@ -314,9 +334,55 @@ class DataGovernanceHdiGatewayTest {
             form.setContentType("application/x-www-form-urlencoded"); form.setContent("flowId=99".getBytes(StandardCharsets.UTF_8));
             assertEquals(400, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(form)).status());
         }
-        for (String path : List.of("/flow/saveFlowVisual/save", "/flow/saveFlowVisual/push", "/flow/deleteFlow", "/flow/anythingNew", "/flowtemplate/importFlow/17", "/flowlog/packageTaskLog"))
+        for (String path : List.of("/flow/deleteFlow", "/flow/anythingNew", "/flowtemplate/importFlow/17", "/flowlog/packageTaskLog"))
             assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(authenticated("POST", "/detl" + path, session))).status());
         assertEquals(3, calls.get()); verify(client, times(3)).authorize(7L, List.of("17"));
+    }
+
+    @Test void originalSaveBodyIsAuthorizedWithoutRewritingAndEditingDoesNotRequireExecution() throws Exception {
+        var session = session(); user.setPermissions(Set.of("governance:flow:list", "governance:flow:edit"));
+        byte[] original = "{ \"visualBase64\": \"JTdCJTIyZmxvd1ZvJTIyJTNBJTdCJTIyaWQlMjIlM0FudWxsJTdEJTdE\" }".getBytes(StandardCharsets.UTF_8);
+        var save = authenticated("POST", "/detl/flow/saveFlowVisual/save", session); save.addHeader("Workspace", "42");
+        save.setContentType("application/json; charset=UTF-8"); save.setContent(original);
+        assertEquals(nativeBody, forward(save).getContentAsString());
+        verify(client).authorizeSave(eq(7L), eq("save"), argThat(bytes -> java.util.Arrays.equals(original, bytes)));
+        assertArrayEquals(original, bodies.get(0)); assertEquals("p7", header(incoming.get(0), "projectCode"));
+        var publish = authenticated("POST", "/detl/flow/saveFlowVisual/push", session); publish.addHeader("Workspace", "42");
+        publish.setContentType("application/json"); publish.setContent(original);
+        assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(publish)).status());
+        user.setPermissions(Set.of("governance:flow:list", "governance:flow:edit", "governance:flow:test"));
+        assertEquals(nativeBody, forward(publish).getContentAsString());
+        verify(client).authorizeSave(eq(7L), eq("push"), argThat(bytes -> java.util.Arrays.equals(original, bytes)));
+        assertArrayEquals(original, bodies.get(1)); assertEquals(2, calls.get());
+    }
+
+    @Test void saveScopeFailureOrUnavailableAdapterNeverCallsOriginalMutation() throws Exception {
+        var session = session();
+        var save = authenticated("POST", "/detl/flow/saveFlowVisual/save", session); save.addHeader("Workspace", "42");
+        save.setContentType("application/json"); save.setContent("{\"flowVo\":{\"id\":99}}".getBytes(StandardCharsets.UTF_8));
+        doThrow(new DataGovernanceHdiClient.ScopeDenied()).when(client).authorizeSave(eq(7L), eq("save"), any(byte[].class));
+        assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(save)).status());
+        doThrow(new IOException("private-secret")).when(client).authorizeSave(eq(7L), eq("save"), any(byte[].class));
+        save.setContent("{\"flowVo\":{\"id\":17}}".getBytes(StandardCharsets.UTF_8));
+        var failure = assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(save));
+        assertEquals(502, failure.status()); assertFalse(failure.getMessage().contains("private-secret"));
+        doThrow(new DataGovernanceHdiClient.UnsupportedGraph()).when(client).authorizeSave(eq(7L), eq("save"), any(byte[].class));
+        save.setContent("{}".getBytes(StandardCharsets.UTF_8));
+        assertEquals(422, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(save)).status()); assertEquals(0, calls.get());
+    }
+
+    @Test void savingCannotSwitchProjectOmitWorkspaceOrUseUnverifiedEncoding() throws Exception {
+        var session = session();
+        for (String type : List.of("application/x-www-form-urlencoded", "text/plain", "application/json; charset=UTF-16")) {
+            var save = authenticated("POST", "/detl/flow/saveFlowVisual/save", session); save.addHeader("Workspace", "42");
+            save.setContentType(type); save.setContent("{}".getBytes(StandardCharsets.UTF_8));
+            assertEquals(400, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(save)).status());
+        }
+        var missing = authenticated("POST", "/detl/flow/saveFlowVisual/save", session); missing.setContentType("application/json"); missing.setContent("{}".getBytes(StandardCharsets.UTF_8));
+        assertEquals(400, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(missing)).status());
+        missing.addHeader("Workspace", "42"); missing.addHeader("projectCode", "p8");
+        assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(missing)).status());
+        verify(client, never()).authorizeSave(anyLong(), anyString(), any(byte[].class)); assertEquals(0, calls.get());
     }
 
     @Test void logoutAndPermissionRevocationInvalidateEveryOpaqueRequest() {

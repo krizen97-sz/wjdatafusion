@@ -26,6 +26,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
+import org.springframework.http.MediaType;
 import static com.hm.manage.service.governance.DataGovernanceHdiSessions.*;
 
 /** Same-origin transport boundary; original task responses are never rewritten as RuoYi responses. */
@@ -110,6 +111,11 @@ public class DataGovernanceHdiGateway {
         Matcher workspaceRead = READ_WORKSPACE_ID.matcher(path);
         if (workspaceRead.matches() && verb.equals(workspaceRead.group(1).startsWith("groupAdapterManage/") ? "POST" : "GET")) return;
         if (path.startsWith("/workspace/")) throw new Failure(403, "原工作区尚未完成受控初始化，不能自动授予权限");
+        if (verb.equals("POST") && (path.equals("/flow/saveFlowVisual/save") || path.equals("/flow/saveFlowVisual/push"))) {
+            require(user, "governance:flow:edit");
+            if (path.endsWith("/push")) require(user, "governance:flow:test");
+            return;
+        }
         Matcher mutation = WRITE_ID.matcher(path);
         if (!mutation.matches() || !verb.equals(Set.of("debugFlow", "pushFlowDataToZK").contains(mutation.group(1)) ? "POST" : "GET"))
             throw new Failure(403, "该原接口尚未纳入已核验的任务范围");
@@ -125,6 +131,13 @@ public class DataGovernanceHdiGateway {
         if (workspace != null && !workspace.equals(scopeValue(session.context().get("workspaceId"))))
             throw new Failure(403, "任务工作区与平台会话映射不一致");
         requireProject(singleHeader(request, "projectCode"), session);
+        if (isSave(path)) {
+            if (workspace == null) throw new Failure(400, "原任务保存需要已映射的工作区");
+            String project = singleHeader(request, "projectCode");
+            if (scopeValue(session.context().get("projectCode")) == null) throw new Failure(503, "原任务主项目映射不可用");
+            if (project != null && !project.equals(scopeValue(session.context().get("projectCode"))))
+                throw new Failure(403, "原任务保存必须使用映射的主项目");
+        }
         Matcher workspaceRead = READ_WORKSPACE_ID.matcher(path);
         if (workspaceRead.matches() && !workspaceRead.group(2).equals(scopeValue(session.context().get("workspaceId"))))
             throw new Failure(403, "任务接口工作区与平台会话映射不一致");
@@ -184,6 +197,22 @@ public class DataGovernanceHdiGateway {
         return value;
     }
 
+    private static boolean isSave(String path) { return path.equals("/flow/saveFlowVisual/save") || path.equals("/flow/saveFlowVisual/push"); }
+    private void authorizeSave(HttpServletRequest request, String path, byte[] body) {
+        try {
+            MediaType type = MediaType.parseMediaType(request.getContentType() == null ? "" : request.getContentType());
+            if (!type.getType().equalsIgnoreCase("application") || !type.getSubtype().equalsIgnoreCase("json")
+                    || (type.getCharset() != null && !StandardCharsets.UTF_8.equals(type.getCharset()))
+                    || request.getHeader("Content-Encoding") != null) throw new IllegalArgumentException();
+        } catch (IllegalArgumentException error) { throw new Failure(400, "原任务保存需要 UTF-8 JSON 请求"); }
+        if (body.length == 0) throw new Failure(400, "原任务保存请求不能为空");
+        LoginUser user = (LoginUser) request.getAttribute(REQUEST_USER);
+        try { client.authorizeSave(user.getUserId(), path.endsWith("/push") ? "push" : "save", body); }
+        catch (DataGovernanceHdiClient.ScopeDenied denied) { throw new Failure(403, "原任务保存包含未授权对象或身份字段"); }
+        catch (DataGovernanceHdiClient.UnsupportedGraph unsupported) { throw new Failure(422, "当前已验证的数据流程范围不包含此节点或数据源引用"); }
+        catch (IOException | RuntimeException unavailable) { throw new Failure(502, "暂时无法确认原任务保存范围"); }
+    }
+
     private void authorizeObjects(HttpServletRequest request, String path, byte[] body) {
         Matcher read = READ_ID.matcher(path), write = WRITE_ID.matcher(path);
         String id = null;
@@ -203,13 +232,15 @@ public class DataGovernanceHdiGateway {
 
     private void proxy(HttpServletRequest request, HttpServletResponse response, Session session, String path) throws IOException {
         int maxRequest = bounded(properties.getMaxRequestBytes(), 1024, 32 * 1024 * 1024);
+        if (isSave(path)) maxRequest = Math.min(maxRequest, 8 * 1024 * 1024);
         int maxResponse = bounded(properties.getMaxResponseBytes(), 1024, 64 * 1024 * 1024);
         if (request.getContentLengthLong() > maxRequest) throw new Failure(413, "任务请求或上传文件超过网关限制");
         byte[] body = request.getInputStream().readNBytes(maxRequest + 1);
         if (body.length > maxRequest) throw new Failure(413, "任务请求或上传文件超过网关限制");
         if (body.length > 0 && path.equals("/folder/findFolder")) throw new Failure(400, "任务目录查询仅接受原查询参数");
         if (body.length > 0 && Set.of("GET", "HEAD").contains(request.getMethod())) throw new Failure(400, "读取请求不能携带请求体");
-        authorizeObjects(request, path, body);
+        if (isSave(path)) authorizeSave(request, path, body);
+        else authorizeObjects(request, path, body);
         String query = request.getQueryString();
         if (query != null && (query.length() > 16384 || query.chars().anyMatch(Character::isISOControl) || query.contains("#")))
             throw new Failure(400, "任务查询参数无效");
@@ -226,6 +257,7 @@ public class DataGovernanceHdiGateway {
             upstream.setRequestMethod(request.getMethod());
             upstream.setUseCaches(false);
             for (String name : REQUEST_HEADERS) copyRequestHeader(request, upstream, name);
+            if (isSave(path)) upstream.setRequestProperty("projectCode", scopeValue(session.context().get("projectCode")));
             copyRequestHeader(request, upstream, session.csrfHeader());
             if (!session.csrfHeader().equalsIgnoreCase("X-XSRF-TOKEN")) copyRequestHeader(request, upstream, "X-XSRF-TOKEN");
             String nativeCookies = session.cookieHeader(target);

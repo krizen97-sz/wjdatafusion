@@ -35,6 +35,7 @@ public class DataGovernanceHdiClient
 {
     public static final String EXCHANGE_PATH = "/detl/_platform/session";
     public static final String AUTHORIZE_PATH = "/detl/_platform/authorize";
+    public static final String AUTHORIZE_SAVE_PATH = "/detl/_platform/authorize-save";
     private static final int MAX_RESPONSE = 256 * 1024;
     private final DataGovernanceHdiProperties properties;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -133,6 +134,10 @@ public class DataGovernanceHdiClient
         public ScopeDenied() { super("任务不在当前原工作区允许范围内"); }
     }
 
+    public static final class UnsupportedGraph extends IOException {
+        public UnsupportedGraph() { super("当前已验证的数据流程范围不包含此节点或数据源引用"); }
+    }
+
     /** Read-only ownership proof using the original mapper; no caller-controlled workspace or role. */
     public void authorize(long platformUserId, List<String> flowIds) throws IOException {
         if (!properties.isEnabled() || platformUserId <= 0) throw new IOException("原任务对象校验未启用或平台用户无效");
@@ -174,6 +179,45 @@ public class DataGovernanceHdiClient
                 throw new IOException("原任务对象校验未确认授权");
         } catch (IllegalArgumentException | GeneralSecurityException | JsonProcessingException error) {
             throw new IOException("原任务对象校验协议无效");
+        } finally { java.util.Arrays.fill(key, (byte) 0); connection.disconnect(); }
+    }
+
+    /** Original JSON bytes travel intact; the original adapter decodes its own DTO and validates old keys. */
+    public void authorizeSave(long platformUserId, String mode, byte[] nativeBody) throws IOException {
+        if (!properties.isEnabled() || platformUserId <= 0 || mode == null || !List.of("save", "push").contains(mode)
+                || nativeBody == null || nativeBody.length == 0 || nativeBody.length > 8 * 1024 * 1024)
+            throw new IOException("原任务保存校验参数无效");
+        URI base = localServiceUri(properties.getTaskServiceUrl());
+        byte[] key = privateKey(Path.of(properties.getIdentityKeyFile()));
+        Map<String, Object> payload = new LinkedHashMap<>(); payload.put("subject", "rynew:user:" + platformUserId);
+        payload.put("mode", mode); payload.put("nativeBodyBase64", Base64.getEncoder().encodeToString(nativeBody));
+        byte[] body = mapper.writeValueAsBytes(payload);
+        byte[] nonceBytes = new byte[32]; random.nextBytes(nonceBytes);
+        String nonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonceBytes), timestamp = Long.toString(clock.millis());
+        HttpURLConnection connection = (HttpURLConnection) base.resolve(AUTHORIZE_SAVE_PATH).toURL().openConnection(Proxy.NO_PROXY);
+        try {
+            connection.setConnectTimeout(5000); connection.setReadTimeout(15000); connection.setUseCaches(false);
+            connection.setInstanceFollowRedirects(false); connection.setRequestMethod("POST");
+            connection.setDoOutput(true); connection.setFixedLengthStreamingMode(body.length);
+            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8"); connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("X-RYNEW-Timestamp", timestamp); connection.setRequestProperty("X-RYNEW-Nonce", nonce);
+            connection.setRequestProperty("X-RYNEW-Signature", sign(key, "POST", AUTHORIZE_SAVE_PATH, timestamp, nonce, body));
+            try (var output = connection.getOutputStream()) { output.write(body); }
+            int status = connection.getResponseCode();
+            if (status == 403) throw new ScopeDenied();
+            if (status == 422) throw new UnsupportedGraph();
+            if (status != 200) throw new IOException("原任务保存校验暂不可用");
+            JsonNode result;
+            try (InputStream input = connection.getInputStream()) {
+                byte[] response = input.readNBytes(8193);
+                if (response.length > 8192) throw new IOException("原任务保存校验响应超过限制");
+                result = mapper.readTree(response);
+            }
+            if (result == null || !result.path("code").isTextual() || !"0".equals(result.path("code").asText())
+                    || !result.path("data").path("authorized").isBoolean() || !result.path("data").path("authorized").booleanValue())
+                throw new IOException("原任务保存校验未确认授权");
+        } catch (IllegalArgumentException | GeneralSecurityException | JsonProcessingException error) {
+            throw new IOException("原任务保存校验协议无效");
         } finally { java.util.Arrays.fill(key, (byte) 0); connection.disconnect(); }
     }
 
