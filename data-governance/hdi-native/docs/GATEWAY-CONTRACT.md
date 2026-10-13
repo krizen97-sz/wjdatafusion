@@ -18,9 +18,11 @@
 
 ## API 边界和当前前置缺口
 
-已核验查询名单为 `DataGovernanceHdiGateway.READ_ONLY`，以及绑定当前工作区 ID 的插件/实例查询。原 standalone 的 getLanguage/getEtlUserInfo、listWorkspace、许可状态、菜单扩展、字段类型字典和健康状态查询是逐项核验的精确 GET 例外，不放通其他 user/system 管理接口。菜单扩展使用原官方配置关闭时返回的真实 404 原样透传，由原页面自己的失败分支处理，不伪造权限成功。包括原 POST 查询，不能按 HTTP 动词猜测权限。其余已纳入的 flow/flowvisual/flowtemplate/flownode/flowlog 命名空间需要同时具备 `governance:flow:list`、`governance:flow:edit`、`governance:flow:test`。原 start/stop/lock/saveFlowFile 等 GET 变更同样受限制。未知命名空间，以及用户、认证、系统、许可、身份交换管理接口拒绝。
+已核验查询名单为 `DataGovernanceHdiGateway.READ_ONLY`，以及绑定当前工作区 ID 的插件/实例查询。原 standalone 的 getLanguage/getEtlUserInfo、listWorkspace、许可状态、菜单扩展、字段类型字典和健康状态查询是逐项核验的精确 GET 例外，不放通其他 user/system 管理接口。菜单扩展使用原官方配置关闭时返回的真实 404 原样透传，由原页面自己的失败分支处理，不伪造权限成功。原 POST 查询按实际方法处理，不能按 HTTP 动词猜测权限。
 
-**任务对象授权仍待完成。** 原 getFlowById/getFlowVisualById 和 mount/getMountFlowVisual 的 PK 读取不能单独证明对象属于当前 workspace，因此本提交明确拒绝这三个入口。其余任务写范围仍需逐项核验真实参数并增加原端对象归属授权；现有操作权限和 Workspace header 绑定不代表已完全防止对象越权。在该边界闭合前维持模块默认关闭，不把本地合成网关测试当多租户上线验收。
+任务接口采用明确的操作规则，**没有 flow/flowvisual/flowtemplate/flownode/flowlog 命名空间兜底放行**。既有任务的读取、状态、执行记录及启动/停止/锁定/调试/推送 ZK 均先通过本机原身份桥的只读对象授权：RYNEW 以服务端 LoginUser 生成 subject，使用与 session 交换相同的密钥/随机 nonce，对完整 `/detl/_platform/authorize` 路径和请求体签名，仅发送正十进制字符串 flowIds。原桥用原 EtlFlowMapper 按主键查询并将 groupId 与可信映射 workspaceId 比较，不向 RYNEW 返回对象内容。只有原 `code:"0", data.authorized:true` 才继续调用原任务 API；归属拒绝、验签失败、数据库不可用、协议错误均不会发出后续任务请求。
+
+操作范围详见 [TASK-OPERATION-CONTRACT.md](TASK-OPERATION-CONTRACT.md)。写操作还需同时具备 `governance:flow:list`、`governance:flow:edit`、`governance:flow:test`；GET 形式的原写操作也不例外。原任务权限、工作区权限、CSRF、状态、许可和 ZK 检查仍在原后端继续执行。当前 DTO 保存/发布、新建、批量、删除、日志打包等仍关闭，尚不能声称页面已完成创建到运行的闭环。
 
 **`/workspace/*` 只允许精确 GET listWorkspace，其余均拒绝。** 原 GET getByProduct 实际执行 getByProductAndInitPermission，按 product/default workspace 查找后可自动给当前用户增加原编辑权限，不能视为只读引导。原 addWorkspace 也不向浏览器开放。必须先完成受控的原工作区/权限初始化并验证授权边界，再针对已核验入口扩展策略。主入口采用原 non-DFP standalone TaskList，避免 DFP 专用 getByProduct 引导；网关测试成功不代表原任务页已完成真实业务闭环，也没有伪造 workspace 成功数据。
 
@@ -54,4 +56,4 @@ Java 17 下执行：
       -Dtest=DataGovernanceHdiClientTest,DataGovernanceHdiGatewayTest,DataGovernanceHdiSecurityConfigTest \
       -Dsurefire.failIfNoSpecifiedTests=false test
 
-35 项通过，覆盖身份签名、并发多窗口会话/CSRF 复用、显式 renew、注销不复活、原 Cookie 轮换与用户隔离、来源、注销与权限撤销、工作区自动授权拒绝、可信工作区原入口、精确 GET bootstrap、真实原 404、项目范围、原 CSRF、查询/GET 变更权限、原响应协议、上传/响应限额、禁止跳转、静态 manifest/hash/路径边界，以及真实 Spring Security chain 下匿名原 JS 被拒和关闭功能后平台链不受影响。HTTP 上游是本机隔离合成服务，不把该测试当作原生产后端或浏览器业务验收。
+40 项通过，覆盖身份签名、并发多窗口会话/CSRF 复用、显式 renew、注销不复活、对象签名授权失败不触发原操作、未知写接口拒绝、原 Cookie 轮换与用户隔离、来源、注销与权限撤销、工作区自动授权拒绝、可信工作区原入口、精确 GET bootstrap、真实原 404、项目范围、原 CSRF、查询/GET 变更权限、原响应协议、上传/响应限额、禁止跳转、静态 manifest/hash/路径边界，以及真实 Spring Security chain 下匿名原 JS 被拒和关闭功能后平台链不受影响。HTTP 上游是本机隔离合成服务，不把该测试当作原生产后端或浏览器业务验收。

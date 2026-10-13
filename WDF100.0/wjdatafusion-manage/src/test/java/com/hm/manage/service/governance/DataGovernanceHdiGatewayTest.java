@@ -87,7 +87,7 @@ class DataGovernanceHdiGatewayTest {
         when(cache.getCacheObject(CacheConstants.LOGIN_TOKEN_KEY + user.getToken())).thenAnswer(call -> user);
         when(client.exchange(anyLong())).thenAnswer(call -> new DataGovernanceHdiClient.NativeSession("JSESSIONID=native-" + call.getArgument(0),
             Map.of("user", Map.of("id", call.getArgument(0)), "projectCode", "p7", "projectList", List.of(Map.of("projectCode", "p7"), Map.of("projectCode", "p8")), "workspaceId", 42)));
-        sessions = new DataGovernanceHdiSessions(properties, client, cache, clock); gateway = new DataGovernanceHdiGateway(properties);
+        sessions = new DataGovernanceHdiSessions(properties, client, cache, clock); gateway = new DataGovernanceHdiGateway(properties, client);
     }
     @AfterEach void tearDown() { server.stop(0); SecurityContextHolder.clearContext(); }
     LoginUser login(long id, String token, Set<String> permissions) {
@@ -267,16 +267,39 @@ class DataGovernanceHdiGatewayTest {
         assertNotEquals(original.opaque(), replacement.opaque()); verify(client, times(2)).exchange(7L);
     }
 
-    @Test void nativeTaskObjectReadsStayClosedUntilOwnershipIsVerified() throws Exception {
+    @Test void taskObjectReadsAndExactControlOperationsRequireNativeOwnershipBeforeForwarding() throws Exception {
         var session = session();
-        for (String path : List.of("/flow/getFlowById/17", "/flow/getFlowVisualById/17", "/mount/getMountFlowVisual")) {
-            for (String method : List.of("GET", "POST")) {
-                var request = authenticated(method, "/detl" + path, session); request.setQueryString("flowId=17");
-                var failure = assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(request));
-                assertEquals(403, failure.status()); assertTrue(failure.getMessage().contains("归属"));
-            }
+        for (String path : List.of("/flow/getFlowById/17", "/flow/getFlowVisualById/17", "/mount/getMountFlowVisual", "/flow/startFlowV2/17")) {
+            var request = authenticated("GET", "/detl" + path, session); request.setQueryString("flowId=17");
+            assertEquals(nativeBody, forward(request).getContentAsString());
         }
-        assertEquals(0, calls.get());
+        verify(client, times(4)).authorize(7L, List.of("17")); assertEquals(4, calls.get());
+        doThrow(new DataGovernanceHdiClient.ScopeDenied()).when(client).authorize(7L, List.of("99"));
+        for (String path : List.of("/flow/getFlowVisualById/99", "/flow/startFlowV2/99", "/mount/getMountFlowVisual")) {
+            var request = authenticated("GET", "/detl" + path, session); request.setQueryString("flowId=99");
+            assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(request)).status());
+        }
+        doThrow(new IOException("private-native-error")).when(client).authorize(7L, List.of("88"));
+        var unavailable = authenticated("POST", "/detl/flow/debugFlow/88", session);
+        var failure = assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(unavailable));
+        assertEquals(502, failure.status()); assertFalse(failure.getMessage().contains("private-native-error"));
+        assertEquals(4, calls.get());
+    }
+
+    @Test void flowIdQueriesCannotUseRepeatedOrBodyOverrideIdsAndUnknownWritesAreDenied() throws Exception {
+        var session = session();
+        for (String path : List.of("/flow/getFlowVisualState", "/flow/findFlowExecRecordPage", "/flow/findFlowModuleExecRecordPage")) {
+            var valid = authenticated("POST", "/detl" + path, session); valid.setQueryString("flowId=17&nodeId=23&pageNo=1&pageSize=10");
+            assertEquals(nativeBody, forward(valid).getContentAsString());
+            var duplicate = authenticated("POST", "/detl" + path, session); duplicate.setQueryString("flowId=17&flowId=99");
+            assertEquals(400, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(duplicate)).status());
+            var form = authenticated("POST", "/detl" + path, session); form.setQueryString("flowId=17");
+            form.setContentType("application/x-www-form-urlencoded"); form.setContent("flowId=99".getBytes(StandardCharsets.UTF_8));
+            assertEquals(400, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(form)).status());
+        }
+        for (String path : List.of("/flow/saveFlowVisual/save", "/flow/saveFlowVisual/push", "/flow/deleteFlow", "/flow/anythingNew", "/flowtemplate/importFlow/17", "/flowlog/packageTaskLog"))
+            assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(authenticated("POST", "/detl" + path, session))).status());
+        assertEquals(3, calls.get()); verify(client, times(3)).authorize(7L, List.of("17"));
     }
 
     @Test void logoutAndPermissionRevocationInvalidateEveryOpaqueRequest() {
@@ -383,7 +406,7 @@ class DataGovernanceHdiGatewayTest {
 
     @Test void bodyLimitAndNonLoopbackTargetsFailBeforeHttpRequest() {
         var session = session(); properties.setMaxRequestBytes(1024);
-        var request = authenticated("POST", "/detl/flow/saveFlowVisual/save", session); request.setContent(new byte[1025]);
+        var request = authenticated("POST", "/detl/flow/debugFlow/17", session); request.setContent(new byte[1025]);
         assertEquals(413, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(request)).status()); assertEquals(0, calls.get());
         properties.setTaskServiceUrl("http://192.0.2.1:19312/detl");
         assertEquals(503, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(authenticated("GET", "/detl/flow/getFilterOperator", session))).status()); assertEquals(0, calls.get());

@@ -34,6 +34,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 public class DataGovernanceHdiClient
 {
     public static final String EXCHANGE_PATH = "/detl/_platform/session";
+    public static final String AUTHORIZE_PATH = "/detl/_platform/authorize";
     private static final int MAX_RESPONSE = 256 * 1024;
     private final DataGovernanceHdiProperties properties;
     private final ObjectMapper mapper = new ObjectMapper();
@@ -126,6 +127,54 @@ public class DataGovernanceHdiClient
         catch (JsonProcessingException ex)
         { throw new IOException("HDI 身份交换响应格式无效"); }
         finally { java.util.Arrays.fill(key, (byte) 0); connection.disconnect(); }
+    }
+
+    public static final class ScopeDenied extends IOException {
+        public ScopeDenied() { super("任务不在当前原工作区允许范围内"); }
+    }
+
+    /** Read-only ownership proof using the original mapper; no caller-controlled workspace or role. */
+    public void authorize(long platformUserId, List<String> flowIds) throws IOException {
+        if (!properties.isEnabled() || platformUserId <= 0) throw new IOException("原任务对象校验未启用或平台用户无效");
+        if (flowIds == null || flowIds.isEmpty() || flowIds.size() > 100) throw new IOException("原任务对象列表无效");
+        for (String id : flowIds) {
+            try {
+                if (id == null || !id.matches("[1-9][0-9]{0,18}") || Long.parseLong(id) <= 0) throw new NumberFormatException();
+            } catch (NumberFormatException error) { throw new IOException("原任务对象 ID 无效"); }
+        }
+        URI base = localServiceUri(properties.getTaskServiceUrl());
+        byte[] key = privateKey(Path.of(properties.getIdentityKeyFile()));
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("subject", "rynew:user:" + platformUserId); payload.put("flowIds", List.copyOf(flowIds));
+        byte[] body = mapper.writeValueAsBytes(payload);
+        byte[] nonceBytes = new byte[32]; random.nextBytes(nonceBytes);
+        String nonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonceBytes), timestamp = Long.toString(clock.millis());
+        HttpURLConnection connection = (HttpURLConnection) base.resolve(AUTHORIZE_PATH).toURL().openConnection(Proxy.NO_PROXY);
+        try {
+            connection.setConnectTimeout(5000); connection.setReadTimeout(15000); connection.setUseCaches(false);
+            connection.setInstanceFollowRedirects(false); connection.setRequestMethod("POST");
+            connection.setDoOutput(true); connection.setFixedLengthStreamingMode(body.length);
+            connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+            connection.setRequestProperty("Accept", "application/json");
+            connection.setRequestProperty("X-RYNEW-Timestamp", timestamp);
+            connection.setRequestProperty("X-RYNEW-Nonce", nonce);
+            connection.setRequestProperty("X-RYNEW-Signature", sign(key, "POST", AUTHORIZE_PATH, timestamp, nonce, body));
+            try (var output = connection.getOutputStream()) { output.write(body); }
+            int status = connection.getResponseCode();
+            if (status == 403) throw new ScopeDenied();
+            if (status != 200) throw new IOException("原任务对象校验暂不可用");
+            JsonNode result;
+            try (InputStream input = connection.getInputStream()) {
+                byte[] response = input.readNBytes(8193);
+                if (response.length > 8192) throw new IOException("原任务对象校验响应超过限制");
+                result = mapper.readTree(response);
+            }
+            if (result == null || !result.path("code").isTextual() || !"0".equals(result.path("code").asText())
+                    || !result.path("data").path("authorized").isBoolean() || !result.path("data").path("authorized").booleanValue())
+                throw new IOException("原任务对象校验未确认授权");
+        } catch (IllegalArgumentException | GeneralSecurityException | JsonProcessingException error) {
+            throw new IOException("原任务对象校验协议无效");
+        } finally { java.util.Arrays.fill(key, (byte) 0); connection.disconnect(); }
     }
 
     static URI localServiceUri(String value) throws IOException

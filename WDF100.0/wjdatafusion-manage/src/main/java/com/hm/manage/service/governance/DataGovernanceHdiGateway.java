@@ -39,27 +39,30 @@ public class DataGovernanceHdiGateway {
         "GET /system/environment/getLicenseInfo", "GET /system/environment/getLicenseExpire",
         "GET /user/security/privilege/info", "GET /code/codeConfig/getDataTypeList",
         "GET /globalConfig/runningConfig/healthStatus",
-        "GET /system/environment/getExpertMode", "GET /system/environment/getPortPool",
+        "GET /system/environment/getBase64VisualEnable", "GET /system/environment/getExpertMode", "GET /system/environment/getPortPool",
         "POST /globalConfig/felManager/query", "GET /globalConfig/dataSourceManage/getDataSourceExtendInfo",
         "GET /globalConfig/groupManage/findAllGroup", "GET /globalConfig/serverManage/findAllServers",
         "GET /globalConfig/tag/listTag", "GET /flow/getColumnDisplayName", "GET /flow/pageInterruptedFlow",
-        "POST /folder/findFolder", "POST /flow/valid/getAdapterReadWritePath", "GET /flow/getRunningStatus", "GET /flow/getFlowVisualState",
-        "GET /flow/getFilterOperator", "GET /flow/getFrequencyEnums", "GET /flow/getTaskRunningSchedule",
-        "POST /flow/findFlowPage", "POST /flow/findFlowExecRecordPage", "POST /flow/findFlowModuleExecRecordPage",
+        "POST /folder/findFolder", "POST /flow/valid/getAdapterReadWritePath",
+        "GET /flow/getFilterOperator", "GET /flow/getFrequencyEnums",
+        "POST /flow/findFlowPage",
         "GET /globalConfig/instanceManage/findAllInstance",
         "GET /globalConfig/instanceManage/findAvailableInstances",
         "GET /globalConfig/groupAdapterManage/getAdapterTypeOptions",
         "GET /globalConfig/groupAdapterManage/listAdapters", "POST /globalConfig/paramManage/listParams");
-    private static final Pattern READ_ID = Pattern.compile("^/flow/(?:getFlowById|getFlowVisualById)/[0-9]+$");
+    private static final Pattern READ_ID = Pattern.compile("^/flow/(?:getFlowById|getFlowVisualById)/([1-9][0-9]{0,18})$");
+    private static final Set<String> READ_FLOW_QUERY = Set.of("GET /mount/getMountFlowVisual", "GET /flow/getRunningStatus",
+        "POST /flow/getFlowVisualState", "POST /flow/findFlowExecRecordPage", "POST /flow/findFlowModuleExecRecordPage");
+    private static final Pattern WRITE_ID = Pattern.compile("^/flow/(startFlow|startFlowV2|stopFlow|stopFlowV2|lockFlow|unlockFlow|debugFlow|pushFlowDataToZK)/([1-9][0-9]{0,18})$");
     private static final Pattern READ_WORKSPACE_ID = Pattern.compile("^/globalConfig/(groupAdapterManage/getOrderedGroupAdapters|instanceManage/findByGroupId)/([1-9][0-9]{0,18})$");
-    private static final List<String> TASK_SCOPES = List.of("/flow/", "/flowvisual/", "/flowtemplate/", "/flownode/", "/flowlog/");
     private static final Set<String> REQUEST_HEADERS = Set.of("accept", "content-type", "accept-language", "range", "x-requested-with", "workspace", "projectcode", "origin", "referer");
     private static final Set<String> RESPONSE_HEADERS = Set.of("content-type", "content-disposition", "content-encoding", "content-range", "accept-ranges", "traceid", "bic-auth", "is-refresh", "in-login", "x-csrf-token", "x-xsrf-token");
     private static final Pattern CSRF_HEADER = Pattern.compile("<meta\\s+content=[\"']([^\"']+)[\"']\\s+name=[\"']_csrf_header[\"']\\s*/?>", Pattern.CASE_INSENSITIVE);
     private final DataGovernanceHdiProperties properties;
+    private final DataGovernanceHdiClient client;
     private volatile AssetIndex assetIndex;
 
-    public DataGovernanceHdiGateway(DataGovernanceHdiProperties properties) { this.properties = properties; }
+    public DataGovernanceHdiGateway(DataGovernanceHdiProperties properties, DataGovernanceHdiClient client) { this.properties = properties; this.client = client; }
 
     public void handle(HttpServletRequest request, HttpServletResponse response) throws IOException {
         Session session = (Session) request.getAttribute(REQUEST_SESSION);
@@ -102,21 +105,15 @@ public class DataGovernanceHdiGateway {
     static void authorizeApi(String method, String path, LoginUser user) {
         require(user, "governance:flow:list");
         String verb = method; // API methods are exact; only static resources accept a generic HEAD request.
-        // PK reads are not object authorization: keep them closed until the native ownership adapter is verified.
-        if (READ_ID.matcher(path).matches() || path.equals("/mount/getMountFlowVisual"))
-            throw new Failure(403, "原任务对象归属校验尚未完成");
-        if (READ_ONLY.contains(verb + " " + path)) return;
+        if (READ_ONLY.contains(verb + " " + path) || READ_FLOW_QUERY.contains(verb + " " + path)
+                || (verb.equals("GET") && READ_ID.matcher(path).matches())) return;
         Matcher workspaceRead = READ_WORKSPACE_ID.matcher(path);
         if (workspaceRead.matches() && verb.equals(workspaceRead.group(1).startsWith("groupAdapterManage/") ? "POST" : "GET")) return;
-        // getByProduct is a permission-initialization GET that grants native edit access.
-        // Only the verified listWorkspace query above is exposed; provisioning endpoints stay blocked.
         if (path.startsWith("/workspace/")) throw new Failure(403, "原工作区尚未完成受控初始化，不能自动授予权限");
-        String lower = path.toLowerCase(Locale.ROOT);
-        if (!Set.of("GET", "POST", "PUT", "DELETE").contains(verb)
-                || TASK_SCOPES.stream().noneMatch(path::startsWith)
-                || lower.matches(".*(?:/auth(?:/|$)|/user(?:/|$)|/system(?:/|$)|license|licence|/session(?:/|$)).*"))
+        Matcher mutation = WRITE_ID.matcher(path);
+        if (!mutation.matches() || !verb.equals(Set.of("debugFlow", "pushFlowDataToZK").contains(mutation.group(1)) ? "POST" : "GET"))
             throw new Failure(403, "该原接口尚未纳入已核验的任务范围");
-        // Several original mutations are GET (start/stop/lock/saveFlowFile). All need all three grants.
+        // Exact verified operations only. There is deliberately no task-namespace write fallback.
         require(user, "governance:flow:edit");
         require(user, "governance:flow:test");
     }
@@ -186,6 +183,23 @@ public class DataGovernanceHdiGateway {
         return value;
     }
 
+    private void authorizeObjects(HttpServletRequest request, String path, byte[] body) {
+        Matcher read = READ_ID.matcher(path), write = WRITE_ID.matcher(path);
+        String id = null;
+        if (read.matches()) id = read.group(1);
+        else if (write.matches()) id = write.group(2);
+        else if (READ_FLOW_QUERY.contains(request.getMethod() + " " + path)) id = queryValue(request, "flowId");
+        else return;
+        if (body.length != 0) throw new Failure(400, "该原任务操作仅接受路径或查询参数");
+        try {
+            if (id == null || !id.matches("[1-9][0-9]{0,18}") || Long.parseLong(id) <= 0) throw new NumberFormatException();
+        } catch (NumberFormatException error) { throw new Failure(400, "原任务操作需要有效任务 ID"); }
+        LoginUser user = (LoginUser) request.getAttribute(REQUEST_USER);
+        try { client.authorize(user.getUserId(), List.of(id)); }
+        catch (DataGovernanceHdiClient.ScopeDenied denied) { throw new Failure(403, "任务不在当前原工作区允许范围内"); }
+        catch (IOException | RuntimeException unavailable) { throw new Failure(502, "暂时无法确认原任务对象归属"); }
+    }
+
     private void proxy(HttpServletRequest request, HttpServletResponse response, Session session, String path) throws IOException {
         int maxRequest = bounded(properties.getMaxRequestBytes(), 1024, 32 * 1024 * 1024);
         int maxResponse = bounded(properties.getMaxResponseBytes(), 1024, 64 * 1024 * 1024);
@@ -194,6 +208,7 @@ public class DataGovernanceHdiGateway {
         if (body.length > maxRequest) throw new Failure(413, "任务请求或上传文件超过网关限制");
         if (body.length > 0 && path.equals("/folder/findFolder")) throw new Failure(400, "任务目录查询仅接受原查询参数");
         if (body.length > 0 && Set.of("GET", "HEAD").contains(request.getMethod())) throw new Failure(400, "读取请求不能携带请求体");
+        authorizeObjects(request, path, body);
         String query = request.getQueryString();
         if (query != null && (query.length() > 16384 || query.chars().anyMatch(Character::isISOControl) || query.contains("#")))
             throw new Failure(400, "任务查询参数无效");
