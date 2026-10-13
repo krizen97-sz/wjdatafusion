@@ -21,6 +21,8 @@ import org.springframework.stereotype.Component;
 @Component
 @ConditionalOnProperty(prefix = "data-governance-hdi-core", name = "enabled", havingValue = "true")
 public class HdiCoreApi {
+    // Original EtlConstants.DFP_FLOW_COLUMN_DISPLAY_DEFAULT, used only when this user has no saved preference.
+    private static final String DEFAULT_COLUMNS = "[\"folderPath\",\"flowStatus\",\"instanceStatus\",\"frequency\",\"execTime\",\"flowIncrStatus\",\"referrer\",\"userName\",\"createTime\",\"updateTime\",\"updateUser\",\"tableChangeStatus\"]";
     private final HdiCoreProperties properties;
     private final HdiTaskStore store;
     private final HdiCoreSessions sessions;
@@ -80,7 +82,7 @@ public class HdiCoreApi {
                 if (!query.path("typeId").isIntegralNumber()) throw bad("参数类型无效");
                 return catalog.listParams(query.path("typeId").intValue(), optionalText(query, "adapterName"), optionalText(query, "stepTypeName"));
             }
-            case "/flow/getColumnDisplayName": requireMethod(method, "GET"); return parse(store.getPreference(owner, "task-columns", "[]"));
+            case "/flow/getColumnDisplayName": requireMethod(method, "GET"); return parse(store.getPreference(owner, "task-columns", DEFAULT_COLUMNS));
             case "/flow/saveColumnDisplayName": {
                 requireMethod(method, "POST"); JsonNode columns = body(request);
                 if (!columns.isArray() || columns.size() > 64) throw bad("列设置无效");

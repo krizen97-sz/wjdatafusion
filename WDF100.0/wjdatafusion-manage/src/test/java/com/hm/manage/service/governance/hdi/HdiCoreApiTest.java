@@ -205,7 +205,7 @@ class HdiCoreApiTest {
     @Test void preferenceChangesArePersistedPerUserAndUnimplementedWritesNeverSucceed() throws Exception {
         json(request(post("/detl/flow/saveColumnDisplayName").contentType("application/json").content("[\"nodeSize\",\"createTime\"]"), editorSession, true), 200);
         JsonNode own = json(request(get("/detl/flow/getColumnDisplayName"), editorSession, false), 200).path("data"); assertEquals("nodeSize", own.get(0).asText());
-        assertTrue(json(request(get("/detl/flow/getColumnDisplayName"), otherSession, false), 200).path("data").isEmpty());
+        assertEquals("flowStatus", json(request(get("/detl/flow/getColumnDisplayName"), otherSession, false), 200).path("data").get(1).asText());
         json(request(post("/detl/flow/deleteSelected").contentType("application/json").content("[1]"), editorSession, true), 422);
         assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM dg_hdi_preference", Integer.class));
     }
@@ -311,6 +311,13 @@ class HdiCoreApiTest {
         json(submitStart(saveStart(id, config, 1), editorSession, true), 503);
         verify(runs).startRun(editor.getUserId(), id, 1);
         assertEquals(0, store.runs(editor.getUserId(), id).size()); assertFalse(store.getSchedule(editor.getUserId(), id).enabled());
+    }
+
+    @Test void firstVisitUsesOriginalDfpColumnDefaultsButExplicitEmptyPreferenceIsPreserved() throws Exception {
+        JsonNode defaults = json(request(get("/detl/flow/getColumnDisplayName"), editorSession, false), 200).path("data");
+        assertEquals(List.of("folderPath", "flowStatus", "instanceStatus", "frequency", "execTime", "flowIncrStatus", "referrer", "userName", "createTime", "updateTime", "updateUser", "tableChangeStatus"), HdiProtocol.JSON.convertValue(defaults, List.class));
+        json(request(post("/detl/flow/saveColumnDisplayName").contentType("application/json").content("[]"), editorSession, true), 200);
+        assertTrue(json(request(get("/detl/flow/getColumnDisplayName"), editorSession, false), 200).path("data").isEmpty());
     }
 
 }
