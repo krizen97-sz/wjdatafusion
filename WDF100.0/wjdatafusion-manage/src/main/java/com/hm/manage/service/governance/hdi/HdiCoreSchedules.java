@@ -23,6 +23,10 @@ import java.util.TimeZone;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import org.quartz.CronExpression;
+import org.quartz.CalendarIntervalScheduleBuilder;
+import org.quartz.CalendarIntervalTrigger;
+import org.quartz.DateBuilder;
+import org.quartz.TriggerBuilder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -54,14 +58,15 @@ public class HdiCoreSchedules {
         if (properties.isEnabled()) timer.scheduleWithFixedDelay(this::tickSafely, 1, 1, java.util.concurrent.TimeUnit.SECONDS);
     }
     public Map<String,Integer> supportedFrequencies() {
-        Map<String,Integer> values = new LinkedHashMap<>(); values.put("一次性", 0); values.put("每月", 2); values.put("每周", 3); values.put("每日", 4); return values;
+        Map<String,Integer> values = new LinkedHashMap<>(); values.put("一次性", 0); values.put("每月", 2); values.put("每周", 3); values.put("每日", 4); values.put("小时", 5); values.put("分钟", 6); return values;
     }
     public List<String> preview(JsonNode originalSchedule) {
         enabled(); JsonNode compiled = compiler.schedule(originalSchedule, ZONE.getId());
         if ("MANUAL".equals(compiled.path("mode").asText())) return List.of();
+        ObjectNode plan = planFromCompiled(compiled, 1);
         List<String> result = new ArrayList<>(); Instant cursor = clock.instant();
         for (int i = 0; i < 5; i++) {
-            cursor = next(compiled.path("cronExpressions"), ZONE, cursor);
+            cursor = nextPlan(plan, cursor);
             result.add(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss").withZone(ZONE).format(cursor));
         }
         return result;
@@ -74,11 +79,22 @@ public class HdiCoreSchedules {
     public JsonNode save(long owner, long taskId, long expectedRevision, JsonNode originalSchedule, boolean activate) {
         enabled(); store.get(owner, taskId);
         JsonNode compiled = compiler.schedule(originalSchedule, ZONE.getId());
-        if (!"CRON".equals(compiled.path("mode").asText())) throw new HdiTaskFault(422, "手动启动设置不能作为周期计划启用");
-        ObjectNode plan = HdiProtocol.JSON.createObjectNode().put("protocolVersion", 1).put("kind", "CRON").put("revision", Long.toString(expectedRevision)).put("zoneId", ZONE.getId());
-        plan.set("scheduleConfig", compiled.path("scheduleConfig")); plan.set("cronExpressions", compiled.path("cronExpressions"));
-        Instant fire = activate ? next(plan.path("cronExpressions"), ZONE, clock.instant()) : null;
+        if (!Set.of("CRON", "CALENDAR").contains(compiled.path("mode").asText())) throw new HdiTaskFault(422, "手动启动设置不能作为周期计划启用");
+        ObjectNode plan = planFromCompiled(compiled, expectedRevision);
+        Instant fire = activate ? nextPlan(plan, clock.instant()) : null;
         return view(store.saveSchedule(owner, taskId, expectedRevision, plan.toString(), activate, fire));
+    }
+    private ObjectNode planFromCompiled(JsonNode compiled, long revision) {
+        String kind = compiled.path("mode").asText();
+        ObjectNode plan = HdiProtocol.JSON.createObjectNode().put("protocolVersion", 1).put("kind", kind).put("revision", Long.toString(revision)).put("zoneId", ZONE.getId());
+        plan.set("scheduleConfig", compiled.path("scheduleConfig")); plan.set("cronExpressions", compiled.path("cronExpressions"));
+        if (kind.equals("CALENDAR")) {
+            plan.set("calendar", compiled.path("calendar")); plan.set("nativeExpression", compiled.path("nativeExpression"));
+            // First original calendar trigger is immediate; the platform's durable poll starts it on the next second.
+            // This persisted anchor is retained for later fires, instead of aligning to wall-clock Cron boundaries.
+            plan.put("anchorTime", clock.instant().plusSeconds(1).toString());
+        }
+        return plan;
     }
     public JsonNode saveManual(long owner, long taskId, long expectedRevision, JsonNode originalSchedule) {
         enabled(); store.get(owner, taskId);
@@ -107,8 +123,7 @@ public class HdiCoreSchedules {
             if (closed) return;
             JsonNode config = plan(plan); Instant expected = plan.nextFireAt();
             if (expected == null) continue;
-            ZoneId zone = ZoneId.of(config.path("zoneId").asText());
-            Instant next = next(config.path("cronExpressions"), zone, now);
+            Instant next = nextPlan(config, now);
             if (expected.isBefore(startedAt)) {
                 store.skipScheduledFire(plan, expected, next, "SKIPPED_RESTART"); continue;
             }
@@ -135,11 +150,34 @@ public class HdiCoreSchedules {
             JsonNode value = HdiProtocol.JSON.readTree(plan.planJson());
             if (!value.isObject() || value.path("protocolVersion").asInt(-1) != 1 || !Long.toString(plan.revision()).equals(value.path("revision").asText())
                 || !value.path("scheduleConfig").isObject() || !value.path("cronExpressions").isArray()) throw new IllegalArgumentException();
-            boolean manual = "MANUAL".equals(value.path("kind").asText("CRON"));
-            if (manual ? plan.enabled() || plan.nextFireAt() != null || !value.path("cronExpressions").isEmpty()
-                : !"CRON".equals(value.path("kind").asText("CRON")) || value.path("cronExpressions").isEmpty()) throw new IllegalArgumentException();
+            String kind = value.path("kind").asText("CRON");
+            if (kind.equals("MANUAL")) {
+                if (plan.enabled() || plan.nextFireAt() != null || !value.path("cronExpressions").isEmpty()) throw new IllegalArgumentException();
+            } else if (kind.equals("CALENDAR")) {
+                if (!value.path("cronExpressions").isEmpty()) throw new IllegalArgumentException();
+                calendar(value, ZoneId.of(value.path("zoneId").asText()));
+            } else if (!kind.equals("CRON") || value.path("cronExpressions").isEmpty()) throw new IllegalArgumentException();
             ZoneId.of(value.path("zoneId").asText()); return value;
         } catch (Exception error) { throw new HdiTaskFault(502, "持久化原调度计划无效，未执行该计划"); }
+    }
+    static Instant nextPlan(JsonNode plan, Instant after) {
+        ZoneId zone = ZoneId.of(plan.path("zoneId").asText());
+        if (!"CALENDAR".equals(plan.path("kind").asText("CRON"))) return next(plan.path("cronExpressions"), zone, after);
+        Date value = calendar(plan, zone).getFireTimeAfter(Date.from(after));
+        if (value == null || !value.toInstant().isAfter(after)) throw new HdiTaskFault(422, "原间隔调度没有后续执行时间");
+        return value.toInstant();
+    }
+    private static CalendarIntervalTrigger calendar(JsonNode plan, ZoneId zone) {
+        try {
+            JsonNode definition = plan.path("calendar");
+            if (!definition.path("interval").isInt() || definition.path("interval").intValue() < 1
+                || !Set.of("HOUR", "MINUTE").contains(definition.path("unit").asText())) throw new IllegalArgumentException();
+            DateBuilder.IntervalUnit unit = DateBuilder.IntervalUnit.valueOf(definition.path("unit").asText());
+            int count = definition.path("interval").intValue();
+            if (!(count + "#" + (unit == DateBuilder.IntervalUnit.HOUR ? "5" : "6")).equals(plan.path("nativeExpression").asText())) throw new IllegalArgumentException();
+            return TriggerBuilder.newTrigger().startAt(Date.from(Instant.parse(plan.path("anchorTime").asText())))
+                .withSchedule(CalendarIntervalScheduleBuilder.calendarIntervalSchedule().withInterval(count, unit).inTimeZone(TimeZone.getTimeZone(zone))).build();
+        } catch (Exception failure) { throw new HdiTaskFault(422, "原间隔调度定义无效"); }
     }
     static Instant next(JsonNode expressions, ZoneId zone, Instant after) {
         if (!expressions.isArray() || expressions.isEmpty() || expressions.size() > 32) throw new HdiTaskFault(422, "原调度未生成有效周期");

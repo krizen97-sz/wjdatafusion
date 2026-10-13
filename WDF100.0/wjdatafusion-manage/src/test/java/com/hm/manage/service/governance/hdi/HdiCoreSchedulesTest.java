@@ -46,7 +46,7 @@ class HdiCoreSchedulesTest {
         return new HdiTaskStore.SchedulePlan(17, 4, 2, 3, value.toString(), fire, true, "ENABLED");
     }
     @Test void onlyAdvertisesSupportedOriginalCycles() {
-        assertEquals(Map.of("一次性", 0, "每月", 2, "每周", 3, "每日", 4), schedules.supportedFrequencies());
+        assertEquals(Map.of("一次性", 0, "每月", 2, "每周", 3, "每日", 4, "小时", 5, "分钟", 6), schedules.supportedFrequencies());
     }
     @Test void previewUsesOriginalCompiledCronWithExplicitPlatformTimezone() {
         List<String> times = schedules.preview(config);
@@ -111,6 +111,30 @@ class HdiCoreSchedulesTest {
         JsonNode result = schedules.saveManual(4, 17, 2, manual);
         assertFalse(result.path("enabled").asBoolean()); assertEquals("MANUAL", result.path("kind").asText()); assertEquals(manual, result.path("schedule"));
         assertTrue(schedules.preview(manual).isEmpty()); verifyNoInteractions(runs);
+    }
+    @Test void calendarIntervalsUsePersistedAnchorAndDoNotBecomeWallClockCronOrCompletionDelay() {
+        ObjectNode plan = HdiProtocol.JSON.createObjectNode().put("kind", "CALENDAR").put("zoneId", "Asia/Shanghai")
+            .put("anchorTime", "2026-10-13T10:07:03Z").put("nativeExpression", "90#6");
+        plan.set("calendar", HdiProtocol.JSON.createObjectNode().put("interval", 90).put("unit", "MINUTE"));
+        assertEquals(Instant.parse("2026-10-13T11:37:03Z"), HdiCoreSchedules.nextPlan(plan, Instant.parse("2026-10-13T10:20:00Z")));
+        assertEquals(Instant.parse("2026-10-13T13:07:03Z"), HdiCoreSchedules.nextPlan(plan, Instant.parse("2026-10-13T12:00:00Z")));
+        plan.put("nativeExpression", "36#5"); plan.set("calendar", HdiProtocol.JSON.createObjectNode().put("interval", 36).put("unit", "HOUR"));
+        assertEquals(Instant.parse("2026-10-14T22:07:03Z"), HdiCoreSchedules.nextPlan(plan, Instant.parse("2026-10-13T10:20:00Z")));
+    }
+    @Test void enablingCalendarPersistsAnImmediateNextPollAnchorAndKeepsOriginalRule() {
+        ObjectNode original = HdiProtocol.JSON.createObjectNode().put("scheduleType", 2).put("unit", 6).put("timeInterval", "5").put("flowIncrStatus", 1);
+        ObjectNode compiled = HdiProtocol.JSON.createObjectNode().put("mode", "CALENDAR").put("nativeExpression", "5#6");
+        compiled.set("scheduleConfig", original); compiled.set("calendar", HdiProtocol.JSON.createObjectNode().put("interval", 5).put("unit", "MINUTE")); compiled.set("cronExpressions", HdiProtocol.JSON.createArrayNode());
+        when(compiler.schedule(eq(original), anyString())).thenReturn(compiled);
+        when(store.saveSchedule(eq(4L), eq(17L), eq(2L), anyString(), eq(true), any())).thenAnswer(call -> {
+            JsonNode value = HdiProtocol.JSON.readTree((String)call.getArgument(3));
+            assertEquals("CALENDAR", value.path("kind").asText()); assertEquals("5#6", value.path("nativeExpression").asText());
+            assertEquals(clock.instant().plusSeconds(1), call.getArgument(5));
+            return new HdiTaskStore.SchedulePlan(17, 4, 2, 1, value.toString(), call.getArgument(5), true, "ENABLED");
+        });
+        assertTrue(schedules.save(4, 17, 2, original, true).path("enabled").asBoolean());
+        assertEquals(List.of("2026-10-13 18:59:59", "2026-10-13 19:04:59", "2026-10-13 19:09:59", "2026-10-13 19:14:59", "2026-10-13 19:19:59"), schedules.preview(original));
+        verifyNoInteractions(runs);
     }
     @Test void malformedPersistedPlanIsNotExecuted() {
         var plan = new HdiTaskStore.SchedulePlan(17, 4, 2, 3, "{}", clock.instant(), true, "ENABLED");
