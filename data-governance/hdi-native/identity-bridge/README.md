@@ -81,11 +81,43 @@ flowIds必须是1–100个不重复的正Long十进制字符串，不能使用JS
 
 全部符合时返回HTTP200 `{"code":"0","data":{"authorized":true}}`，不会建立/更新session。这个结果只证明当前查询时的宿主工作区范围，后续原任务请求仍必须经过原业务许可、工作区及数据权限。网关必须在每次操作前校验原请求真正使用的任务ID（包括解码visualBase64后的flowVo.id），不能采信另附的客户端subject/workspace，也不能把此结果长期缓存为许可。
 
-启用本桥时原EtlFlowMapper必须可注入；没有原DAO则配置失败关闭，不用虚拟映射或成功回退。默认disabled时不创建这两个端点。专项测试的Mapper是原接口动态代理，只允许selectByPrimaryKey并拒绝任何写方法，用于验证控制流；它不代表实际数据库集成已通过。
+启用本桥时原EtlFlowMapper必须可注入；没有原DAO则配置失败关闭，不用虚拟映射或成功回退。默认disabled时不创建这些端点。专项测试的Mapper是原接口动态代理，只允许所需的原只读查询并拒绝任何写方法，用于验证控制流；它不代表实际数据库集成已通过。
+
+## 原保存正文的只读授权
+
+`POST /detl/_platform/authorize-save`复用相同签名规则，完整路径参与签名，nonce与其他桥端点共用。envelope严格只有：
+
+```json
+{"subject":"rynew:user:7","mode":"save","nativeBodyBase64":"<原保存HTTP JSON正文原字节的标准Base64>"}
+```
+
+mode仅允许save/push。原正文最多8MiB，整个envelope最多12MiB；普通session/authorize仍限4096字节。平台授权通过后应把**同一原正文原字节**转发到对应原`/flow/saveFlowVisual/save`或`/push`。本桥不修改正文、不调用原保存方法，也不解释或运行ETL算法。
+
+读取原服务同一个`base64.flow-visual.enable`配置（默认true）。true时先排除重复JSON键、非法UTF-8和非图配置的@type反序列化元数据，再调用原`ObjectUtils.getDecodeFlowVisual`：原Base64→UTF-8→URLDecoder(UTF-8)→原FlowVisualVo。false时使用原`RequestMappingHandlerAdapter`已注册的首个可读FlowVisualVo/application-json消息转换器；不会另选一个Fastjson/Jackson解析器，找不到原转换器返回503。
+
+对已有flow，先检查它在映射工作区；flowVo.userId/tenantCode/projectCode若提供，必须等于原持久值，允许共享编辑者省略这些字段，不把原owner自动改成当前编辑者。顶层flowId若提供，必须与flowVo.id一致。新建无flowVo.id时，原所有者/租户/项目须省略或匹配映射，并且不能携带旧数据库PK。原Controller仍会从平台控制的Workspace头覆盖groupId并执行原创建逻辑。
+
+已逐原service确认需要验证的内部PK只有以下有限集合，不递归猜所有id：
+
+| 原DTO路径 | 原只读父链 |
+| --- | --- |
+| streamVoList[].id | EtlStream.upNodeType=2、upNodeId=目标flow |
+| streamVoList[].streamNodeVoList[].stepId | EtlStep.nodeType=3、nodeId→stream→flow |
+| 同级itemId | EtlStepItem.stepId→step→stream→flow |
+| 同级streamNodeModuleVoList[].moduleId | EtlModule.flowId=目标flow，itemId父链也须一致 |
+| nodes.*.dstTableVo.id | EtlDstTable.streamId与itemId两条父链均须落到目标flow |
+
+这些PK只允许省略/null或正Long；原服务没有0/-1代表新记录的分支。NodeVo.id、streamId、streamNode.id等原画布自然键保留，允许新节点。原三个batchInsert XML已证实不采用流字段/输出字段/参数的id列，因此不会误把这些字段id当作可修改旧PK拒绝。
+
+执行资源另外校验：原EtlInstanceDao查询结果必须启用且groupId匹配工作区；原EtlGroupAdapterDao.getAdapterInGroupById查询实际启用绑定，结果名称/类型必须匹配节点；真实目录（除原默认-1）必须属于同工作区/项目且启用。相关原DAO缺失时整个启用配置失败，不回退成功。
+
+当前验证范围是原non-DFP工作区的空草稿、`dataGeneratorInput`与本地`fileOutput`，最多128节点/512个旧PK引用。外部dbId/source/lookup/SQL/上传参数、引用其他全局参数、FEL参数表达式、其他尚未核验插件返回HTTP422 `BRIDGE_UNSUPPORTED_GRAPH`和固定中文说明。它明确限定当前衔接范围；不代表已经覆盖全部原插件。原字段编辑、文件路径规则、业务许可和流程完整性仍由原程序验证。
+
+成功仍为HTTP200 `{"code":"0","data":{"authorized":true}}`，不返回原任务或归属字段到浏览器；归属/身份篡改返回403 BRIDGE_SCOPE_DENIED，格式或签名错误401，DAO/原转换器不可用503。业务结果只有原任务服务实际保存/发布响应能够确认，本桥通过不等于任务已保存或可运行。
 
 ## 原过滤器装配边界
 
-桥自身只接管精确`/_platform/session`和`/_platform/authorize`，使用HMAC提供这两个服务器端操作的认证；普通`/flow`等请求继续原过滤器链。原EtlFilter、UserDetermineFilter、CSRF、许可/能力与workspace检查必须保留。
+桥自身只接管精确`/_platform/session`、`/_platform/authorize`和`/_platform/authorize-save`，使用HMAC提供这三个服务器端操作的认证；普通`/flow`等请求继续原过滤器链。原EtlFilter、UserDetermineFilter、CSRF、许可/能力与workspace检查必须保留。
 
 原SSO的`CasClientAutoConfiguration`对`/*`注册认证/票据过滤器，且`AuthenticationFilter`还单列在spring.factories。切换由RYNEW承担入口身份验证时，应通过标准`spring.autoconfigure.exclude`对这些原CAS装配作**明确的部署适配**，不使用全路径ignore规则：
 
@@ -108,6 +140,6 @@ python3 build.py --task-service /path/to/original/task-service --output /path/to
 
 `--java-home`可指向实际JDK11。编译强制`--release 11`；生成扩展jar、独立测试jar和build-evidence.json（包含运行JDK与原SDK摘要）。每次用新的临时classes目录，避免旧class混入。原服务启动时在原classpath基础上加入该扩展jar，Spring读取本扩展META-INF/spring.factories，默认关闭。
 
-JDK测试入口`com.rynew.detl.bridge.IdentityBridgeProof`调用**实际原HttpUserSessionInfo/UserRole/UserDetails**，仅Servlet请求/响应使用接口代理；无数据库、服务器、BIC、许可或native初始化。覆盖跨语言HMAC固定向量、请求绑定、过期/未来票据、防重放/并发/重启、未知/越权字段映射、私有文件与软链拒绝、真实原session写入/旋转、上下文还原、普通任务路径保留过滤链、默认关闭。
+JDK测试入口`com.rynew.detl.bridge.IdentityBridgeProof`调用**实际原HttpUserSessionInfo/UserRole/UserDetails/ObjectUtils/FlowVisualVo**；Servlet接口与原Mapper接口使用只读代理，无实际数据库、服务器、BIC、许可或native初始化。覆盖跨语言HMAC固定向量、请求绑定、过期/未来票据、防重放/并发/重启、未知/越权字段映射、私有文件与软链拒绝、真实原session写入/旋转、上下文还原、普通任务路径保留过滤链、默认关闭、五类旧PK跨flow攻击、执行资源绑定、原Base64/URL解码、保存正文保真及请求大小上限。
 
 本模块完成不等于原管理服务已启动、许可已加载或真实浏览器完成SSO。原cookie生成、完整过滤器顺序、真实原用户/工程/权限、CSRF与前后端集成要在隔离完整服务中另行验收。
