@@ -78,6 +78,29 @@ public class HdiCoreApi {
                 requireMethod(method, "GET"); return catalog.getAdapterUiInfo(HdiProtocol.query(request, "adapterName"));
             case "/globalConfig/groupAdapterManage/listAdapters": requireMethod(method, "GET"); return catalog.getAdapters();
             case "/globalConfig/groupAdapterManage/getAdapterTypeOptions": requireMethod(method, "GET"); return catalog.getAdapterTypeOptions();
+            case "/globalConfig/felManager/getFelClassifyList": {
+                requireMethod(method, "GET");
+                for (String queryName : List.of("name", "targetFieldType")) { String value = HdiProtocol.query(request, queryName); if (value != null && value.length() > 256) throw bad("函数查询参数过长"); }
+                // The platform profile permits original move/keep mappings, but has registered no executable FEL functions.
+                return List.of();
+            }
+            case "/globalConfig/felManager/getFelFieldClassifyList":
+                requireMethod(method, "POST"); return fieldCategories(object(body(request)).get("fields"));
+            case "/globalConfig/dataSourceManage/getDatasourceOptions": {
+                requireMethod(method, "POST"); JsonNode query = object(body(request));
+                var fields = query.fieldNames(); while (fields.hasNext()) if (!Set.of("rdbmsFlag", "inOutFlags", "dbType").contains(fields.next())) throw bad("数据源查询字段无效");
+                // This profile has no registered external sources; local file output is a worker-owned path, not a datasource record.
+                return List.of();
+            }
+            case "/globalConfig/dataSourceManage/getDataSourceExtendInfo":
+                requireMethod(method, "GET"); return Map.of("previewTypes", "", "joinTypes", "", "testConnectionTypes", "", "compositeKeyTypes", "", "writeOperationTypes", "", "createTableTypes", "");
+            case "/globalConfig/dataSourceManage/getDataTypeList": {
+                requireMethod(method, "GET"); String type = HdiProtocol.query(request, "dbType"), version = HdiProtocol.query(request, "dbVersion");
+                if (type != null && !type.isEmpty() && !Set.of("18", "FTP", "-1").contains(type) || version != null && !version.isEmpty()) throw unsupported();
+                return catalog.getFileColumnTypes();
+            }
+            case "/globalConfig/dataSourceManage/getJdbcDbTypeList":
+                requireMethod(method, "POST"); emptyBody(request); return catalog.getJdbcDbTypes();
             case "/code/codeConfig/getDataTypeList": requireMethod(method, "GET"); return catalog.getDataTypes();
             case "/globalConfig/paramManage/listParams": {
                 requireMethod(method, "POST"); JsonNode query = object(body(request));
@@ -292,6 +315,22 @@ public class HdiCoreApi {
         if (task.scheduleJson() != null) flow.set("scheduleVo", parse(task.scheduleJson()).path("scheduleConfig"));
         else flow.set("scheduleVo", HdiProtocol.JSON.createObjectNode().put("flowIncrStatus", 1).putNull("enablePeriod"));
         return flow;
+    }
+
+    /** Original getFelFieldClassifyList is a pure grouping of the supplied field descriptions, never expression evaluation. */
+    private static List<Map<String, Object>> fieldCategories(JsonNode fields) {
+        if (fields == null || fields.isNull()) return List.of();
+        if (!fields.isArray() || fields.size() > 2048) throw bad("字段目录无效");
+        Map<String, List<String>> grouped = new java.util.TreeMap<>();
+        for (JsonNode field : fields) {
+            object(field); String name = optionalText(field, "fieldDstName"), type = optionalText(field, "fieldDstType");
+            if (name == null || name.isEmpty()) name = optionalText(field, "fieldSrcName");
+            if (type == null || type.isEmpty()) type = optionalText(field, "fieldSrcType");
+            if (type == null || type.isEmpty()) type = "other";
+            if (type.length() > 128 || name != null && name.length() > 512) throw bad("字段目录文本过长");
+            grouped.computeIfAbsent(type, key -> new ArrayList<>()).add(name);
+        }
+        return grouped.entrySet().stream().map(entry -> Map.<String, Object>of("fieldType", entry.getKey(), "fieldNames", entry.getValue(), "size", entry.getValue().size())).toList();
     }
 
     private ObjectNode startConfig(HdiTaskStore.Task task, boolean onlySelected) {

@@ -21,6 +21,10 @@ import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.springframework.stereotype.Component;
+import org.springframework.asm.ClassReader;
+import org.springframework.asm.ClassVisitor;
+import org.springframework.asm.MethodVisitor;
+import org.springframework.asm.Opcodes;
 
 /** Platform registry backed by the selected original plugin definitions, never fabricated defaults. */
 @Component
@@ -60,7 +64,7 @@ public final class HdiCoreCatalog {
             // The bundled seed has no fieldMapping override; a missing processType hides it from the original panel.
             if ("fieldMapping".equals(text(def, "adapterName"))) item.put("processType", "other");
             item.put("adapterClassName", text(def, "className")); item.put("languageType", 1); // Original LanguageType.JAVA=1.
-            item.put("languageTypeDesc", "java"); item.put("dbTypeId", scalar(def.get("adapterDatabaseType")));
+            item.put("languageTypeDesc", "java"); item.put("dbTypeId", "FTP".equals(scalar(def.get("adapterDatabaseType"))) ? 18 : null);
             item.put("addComment", scalar(def.get("adapterComment")));
             item.put("packageName", plugin.folder.substring(plugin.folder.lastIndexOf('/') + 1));
             for (String name : List.of("buildVersion", "pluginResourceType", "pluginFieldSyncMode", "referenceConfigAdapter", "adapterSubType"))
@@ -91,6 +95,102 @@ public final class HdiCoreCatalog {
         Plugin plugin = plugins().stream().filter(p -> adapterName.equals(text(p.definition, "adapterName"))).findFirst().orElseThrow(HdiCoreCatalog::unavailable);
         if (stepTypeName != null && !stepTypeName.isBlank() && !stepTypeName.equals(TYPES.get(adapterName))) throw badQuery();
         return params(plugin.definition.get("adapterParams"), typeId, plugin.id);
+    }
+
+    /** Read the vendor's literal type dictionary without loading its classes or opening a data source. */
+    public List<Integer> getJdbcDbTypes() {
+        String owner = "com/hikvision/idatafusion/detl/common/DataSourceConstants";
+        byte[] bytes = metadataClass("task-service/lib/dEtlv2-core-3.3.0.jar", owner);
+        Map<String, Integer> constants = new LinkedHashMap<>(); List<Integer> result = new ArrayList<>();
+        boolean[] valid = {true}, found = {false};
+        try {
+            new ClassReader(bytes).accept(new ClassVisitor(Opcodes.ASM9) {
+                @Override public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                    if (!name.equals("<clinit>")) return null;
+                    return new MethodVisitor(Opcodes.ASM9) {
+                        Integer literal; List<Integer> array; boolean constructed;
+                        @Override public void visitInsn(int opcode) {
+                            literal = opcode >= Opcodes.ICONST_M1 && opcode <= Opcodes.ICONST_5 ? opcode - Opcodes.ICONST_0 : null;
+                        }
+                        @Override public void visitIntInsn(int opcode, int operand) {
+                            literal = opcode == Opcodes.BIPUSH || opcode == Opcodes.SIPUSH ? operand : null;
+                        }
+                        @Override public void visitLdcInsn(Object value) { literal = value instanceof Integer ? (Integer)value : null; }
+                        @Override public void visitTypeInsn(int opcode, String type) {
+                            if (opcode == Opcodes.ANEWARRAY) { array = type.equals("java/lang/Integer") ? new ArrayList<>() : null; constructed = false; }
+                            literal = null;
+                        }
+                        @Override public void visitFieldInsn(int opcode, String type, String field, String desc) {
+                            if (!owner.equals(type)) { literal = null; return; }
+                            if (opcode == Opcodes.PUTSTATIC && desc.equals("Ljava/lang/Integer;")) {
+                                if (literal == null) valid[0] = false; else constants.put(field, literal);
+                            }
+                            if (opcode == Opcodes.GETSTATIC && array != null && desc.equals("Ljava/lang/Integer;")) {
+                                Integer value = constants.get(field); if (value == null) valid[0] = false; else array.add(value);
+                            }
+                            if (opcode == Opcodes.PUTSTATIC && field.equals("JDBC_DATASOURCE_TYPE_LIST")) {
+                                if (found[0] || !constructed || array == null) valid[0] = false;
+                                else { found[0] = true; result.addAll(array); }
+                            }
+                            literal = null;
+                        }
+                        @Override public void visitMethodInsn(int opcode, String type, String method, String desc, boolean isInterface) {
+                            if (opcode == Opcodes.INVOKESTATIC && type.equals("java/lang/Integer") && method.equals("valueOf") && desc.equals("(I)Ljava/lang/Integer;")) return;
+                            constructed = opcode == Opcodes.INVOKESTATIC && type.equals("com/google/common/collect/Sets") && method.equals("newHashSet")
+                                && desc.equals("([Ljava/lang/Object;)Ljava/util/HashSet;") && array != null;
+                            literal = null;
+                        }
+                        @Override public void visitJumpInsn(int opcode, org.springframework.asm.Label label) { valid[0] = false; }
+                        @Override public void visitTableSwitchInsn(int min, int max, org.springframework.asm.Label dflt, org.springframework.asm.Label... labels) { valid[0] = false; }
+                        @Override public void visitLookupSwitchInsn(org.springframework.asm.Label dflt, int[] keys, org.springframework.asm.Label[] labels) { valid[0] = false; }
+                    };
+                }
+            }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+        } catch (RuntimeException invalid) { throw unavailable(); }
+        if (!valid[0] || !found[0] || result.isEmpty() || result.size() > 256 || result.stream().anyMatch(value -> value <= 0)
+            || result.stream().distinct().count() != result.size()) throw unavailable();
+        return result.stream().sorted().toList();
+    }
+
+    /** Original non-database/file-field fallback from DataTypeUtils.DATA_TYPE_MAP keys. */
+    public List<Map<String, Object>> getFileColumnTypes() {
+        String owner = "com/hikvision/idatafusion/detl/utils/datasource/DataTypeUtils";
+        Set<String> names = new java.util.TreeSet<>(); boolean[] valid = {true};
+        try {
+            new ClassReader(metadataClass(DATA_JAR, owner)).accept(new ClassVisitor(Opcodes.ASM9) {
+                @Override public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                    if (!name.equals("<clinit>")) return null;
+                    return new MethodVisitor(Opcodes.ASM9) {
+                        List<String> values;
+                        @Override public void visitFieldInsn(int opcode, String type, String field, String desc) {
+                            values = opcode == Opcodes.GETSTATIC && owner.equals(type) && field.equals("DATA_TYPE_MAP") ? new ArrayList<>() : null;
+                        }
+                        @Override public void visitLdcInsn(Object value) { if (values != null) { if (value instanceof String) values.add((String)value); else valid[0] = false; } }
+                        @Override public void visitMethodInsn(int opcode, String type, String method, String desc, boolean isInterface) {
+                            if (values != null) {
+                                if (opcode != Opcodes.INVOKEINTERFACE || !type.equals("java/util/Map") || !method.equals("put") || values.size() != 2
+                                    || !values.get(0).matches("[a-z][a-z0-9_]*") || !names.add(values.get(0))) valid[0] = false;
+                                values = null;
+                            }
+                        }
+                        @Override public void visitJumpInsn(int opcode, org.springframework.asm.Label label) { valid[0] = false; }
+                    };
+                }
+            }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+        } catch (RuntimeException invalid) { throw unavailable(); }
+        if (!valid[0] || names.isEmpty() || names.size() > 256) throw unavailable();
+        return names.stream().map(name -> { Map<String, Object> row = new LinkedHashMap<>(); row.put("actualFieldTypeId", null); row.put("fieldType", name); row.put("columnType", name); return Collections.unmodifiableMap(row); }).toList();
+    }
+    private byte[] metadataClass(String jar, String owner) {
+        try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(assets.readOriginal(jar)))) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) if (entry.getName().equals(owner + ".class")) {
+                byte[] bytes = zip.readNBytes(128 * 1024 + 1);
+                if (bytes.length > 128 * 1024 || !new ClassReader(bytes).getClassName().equals(owner)) throw unavailable();
+                return bytes;
+            }
+        } catch (IOException | IllegalArgumentException invalid) { throw unavailable(); }
+        throw unavailable();
     }
 
     public List<Map<String, Object>> getAdapterTypeOptions() {
