@@ -22,7 +22,7 @@
 
 任务接口采用明确的操作规则，**没有 flow/flowvisual/flowtemplate/flownode/flowlog 命名空间兜底放行**。既有任务的读取、状态、执行记录及启动/停止/锁定/调试/推送 ZK 均先通过本机原身份桥的只读对象授权：RYNEW 以服务端 LoginUser 生成 subject，使用与 session 交换相同的密钥/随机 nonce，对完整 `/detl/_platform/authorize` 路径和请求体签名，仅发送正十进制字符串 flowIds。原桥用原 EtlFlowMapper 按主键查询并将 groupId 与可信映射 workspaceId 比较，不向 RYNEW 返回对象内容。只有原 `code:"0", data.authorized:true` 才继续调用原任务 API；归属拒绝、验签失败、数据库不可用、协议错误均不会发出后续任务请求。
 
-操作范围详见 [TASK-OPERATION-CONTRACT.md](TASK-OPERATION-CONTRACT.md)。读取需要 list，编辑需要 list+edit，测试/启动/停止需要 list+test，发布推送需要 list+edit+test；GET 形式的原写操作也按真实操作分类，不能只按动词或统一要求三项。原任务权限、工作区权限、CSRF、状态、许可和 ZK 检查仍在原后端继续执行。当前 DTO 保存/发布、新建、批量、删除、日志打包等仍关闭，尚不能声称页面已完成创建到运行的闭环。
+操作范围详见 [TASK-OPERATION-CONTRACT.md](TASK-OPERATION-CONTRACT.md)。读取需要 list，编辑需要 list+edit，测试/启动/停止需要 list+test，发布推送需要 list+edit+test；GET 形式的原写操作也按真实操作分类，不能只按动词或统一要求三项。原任务权限、工作区权限、CSRF、状态、许可和 ZK 检查仍在原后端继续执行。保存/新建/发布通过独立的原 DTO 保存授权入口进行校验，再原字节转发；依赖原身份桥提供匹配版本的 authorize-save，缺失该接口即失败关闭。当前已验证节点范围由原适配器明确限制，超范围返回 422。批量、删除、日志打包等仍关闭，尚不能声称页面已完成真实创建到运行的闭环。
 
 **`/workspace/*` 只允许精确 GET listWorkspace，其余均拒绝。** 原 GET getByProduct 实际执行 getByProductAndInitPermission，按 product/default workspace 查找后可自动给当前用户增加原编辑权限，不能视为只读引导。原 addWorkspace 也不向浏览器开放。必须先完成受控的原工作区/权限初始化并验证授权边界，再针对已核验入口扩展策略。主入口采用原 non-DFP standalone TaskList，避免 DFP 专用 getByProduct 引导；网关测试成功不代表原任务页已完成真实业务闭环，也没有伪造 workspace 成功数据。
 
@@ -56,4 +56,4 @@ Java 17 下执行：
       -Dtest=DataGovernanceHdiClientTest,DataGovernanceHdiGatewayTest,DataGovernanceHdiSecurityConfigTest \
       -Dsurefire.failIfNoSpecifiedTests=false test
 
-41 项通过，覆盖身份签名、并发多窗口会话/CSRF 复用、显式 renew、注销不复活、对象签名授权失败不触发原操作、未知写接口拒绝、原 Cookie 轮换与用户隔离、来源、注销与权限撤销、工作区自动授权拒绝、可信工作区原入口、精确 GET bootstrap、真实原 404、项目范围、原 CSRF、查询/GET 变更权限、原响应协议、上传/响应限额、禁止跳转、静态 manifest/hash/路径边界，以及真实 Spring Security chain 下匿名原 JS 被拒和关闭功能后平台链不受影响。HTTP 上游是本机隔离合成服务，不把该测试当作原生产后端或浏览器业务验收。
+47 项通过，覆盖身份签名、并发多窗口会话/CSRF 复用、显式 renew、注销不复活、对象及保存签名授权失败不触发原操作、原保存字节保持、未支持配置返回422、未知写接口拒绝、原 Cookie 轮换与用户隔离、来源、注销与权限撤销、工作区自动授权拒绝、可信工作区原入口、精确 GET bootstrap、真实原 404、项目范围、原 CSRF、查询/GET 变更权限、原响应协议、上传/响应限额、禁止跳转、静态 manifest/hash/路径边界，以及真实 Spring Security chain 下匿名原 JS 被拒和关闭功能后平台链不受影响。HTTP 上游是本机隔离合成服务，不把该测试当作原生产后端或浏览器业务验收。
