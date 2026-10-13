@@ -52,9 +52,13 @@ public class DataGovernanceHdiClient
     {
         private final String cookieHeader;
         private final Map<String, Object> context;
+        private final List<String> setCookies;
         NativeSession(String cookieHeader, Map<String, Object> context)
-        { this.cookieHeader = cookieHeader; this.context = context; }
+        { this(cookieHeader, context, List.of()); }
+        NativeSession(String cookieHeader, Map<String, Object> context, List<String> setCookies)
+        { this.cookieHeader = cookieHeader; this.context = context; this.setCookies = List.copyOf(setCookies); }
         public String cookieHeader() { return cookieHeader; }
+        List<String> setCookies() { return setCookies; }
         public Map<String, Object> context() { return context; }
         @Override public String toString() { return "HDI native session [private]"; }
     }
@@ -100,9 +104,12 @@ public class DataGovernanceHdiClient
             for (String name : List.of("user", "projectCode", "projectName", "projectList", "workspaceId", "locale"))
                 if (data.has(name)) context.put(name, mapper.convertValue(data.get(name), Object.class));
             List<String> cookies = new ArrayList<>();
+            List<String> originalSetCookies = new ArrayList<>();
             for (var header : connection.getHeaderFields().entrySet())
                 if ("Set-Cookie".equalsIgnoreCase(header.getKey()))
                     for (String value : header.getValue())
+                    {
+                        originalSetCookies.add(value);
                         for (HttpCookie cookie : HttpCookie.parse(value))
                         {
                             if (!List.of("SESSION", "JSESSIONID").contains(cookie.getName())) continue;
@@ -110,8 +117,9 @@ public class DataGovernanceHdiClient
                                 throw new IOException("HDI 原会话无效");
                             cookies.add(cookie.getName() + "=" + cookie.getValue());
                         }
+                    }
             if (cookies.isEmpty() || cookies.size() > 2) throw new IOException("HDI 未建立原会话");
-            return new NativeSession(String.join("; ", cookies), context);
+            return new NativeSession(String.join("; ", cookies), context, originalSetCookies);
         }
         catch (IllegalArgumentException | GeneralSecurityException ex)
         { throw new IOException("HDI 身份交换协议无效"); }

@@ -13,6 +13,24 @@ public class DataGovernanceHdiProperties
     private String identityKeyFile = "";
     private String bundleDir = "";
     private String publicOrigin = "";
+    private String hostDir = "";
+    private int sessionIdleSeconds = 1800;
+    private int maxRequestBytes = 8 * 1024 * 1024;
+    private int maxResponseBytes = 32 * 1024 * 1024;
+    private int connectTimeoutMs = 5000;
+    private int readTimeoutMs = 30000;
+    public String getHostDir() { return hostDir; }
+    public void setHostDir(String value) { hostDir = value; }
+    public int getSessionIdleSeconds() { return sessionIdleSeconds; }
+    public void setSessionIdleSeconds(int value) { sessionIdleSeconds = value; }
+    public int getMaxRequestBytes() { return maxRequestBytes; }
+    public void setMaxRequestBytes(int value) { maxRequestBytes = value; }
+    public int getMaxResponseBytes() { return maxResponseBytes; }
+    public void setMaxResponseBytes(int value) { maxResponseBytes = value; }
+    public int getConnectTimeoutMs() { return connectTimeoutMs; }
+    public void setConnectTimeoutMs(int value) { connectTimeoutMs = value; }
+    public int getReadTimeoutMs() { return readTimeoutMs; }
+    public void setReadTimeoutMs(int value) { readTimeoutMs = value; }
     public boolean isEnabled() { return enabled; }
     public void setEnabled(boolean value) { enabled = value; }
     public String getTaskServiceUrl() { return taskServiceUrl; }
