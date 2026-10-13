@@ -181,7 +181,22 @@ public final class OriginalTaskCompiler {
             return map("ok", true, "protocolVersion", 1, "operation", "schedule", "mode", "MANUAL", "scheduleConfig", raw, "zoneId", zone,
                 "cronExpressions", List.of(), "nativeSchedule", config.toScheduleVo(), "diagnostics", List.of());
         }
-        supported(Integer.valueOf(2).equals(config.getScheduleType()) && config.getUnit() != null && Set.of(2, 3, 4).contains(config.getUnit()), "Only original monthly, weekly and daily cycle schedules are supported");
+        supported(Integer.valueOf(2).equals(config.getScheduleType()) && config.getUnit() != null && Set.of(2, 3, 4, 5, 6).contains(config.getUnit()), "Only original monthly, weekly, daily, hourly and minute cycle schedules are supported");
+        if (Set.of(5, 6).contains(config.getUnit())) {
+            require(config.getTimeInterval() != null && config.getTimeInterval().matches("[1-9][0-9]{0,9}"), "Calendar interval must be a positive integer");
+            long interval = Long.parseLong(config.getTimeInterval()); require(interval <= Integer.MAX_VALUE, "Calendar interval exceeds original integer range");
+            ScheduleVo nativeSchedule = config.toScheduleVo();
+            EtlSchedule persisted = new EtlSchedule(); org.springframework.beans.BeanUtils.copyProperties(nativeSchedule, persisted);
+            String expression = com.hikvision.idatafusion.detl.utils.CronUtil.getExecExpr(persisted);
+            require(expression.equals(interval + "#" + config.getUnit()), "Unexpected original calendar expression");
+            // This original method only constructs the Quartz builder; it does not submit/start a scheduler or read ZK.
+            org.quartz.ScheduleBuilder<?> builder = com.hikvision.idatafusion.etl.core.schedule.JobManager.getInstance().getScheduleBuilder(
+                Map.of("scheduleType", Long.valueOf(com.hikvision.idatafusion.etl.core.schedule.ScheduleInfo.SCHEDULE_TYPE_INTERVAL), "interval", interval, "unit", config.getUnit().longValue()), expression);
+            org.quartz.CalendarIntervalTrigger trigger = (org.quartz.CalendarIntervalTrigger)org.quartz.TriggerBuilder.newTrigger().withSchedule(builder).startAt(new Date(0)).build();
+            return map("ok", true, "protocolVersion", 1, "operation", "schedule", "mode", "CALENDAR", "scheduleConfig", raw, "zoneId", zone,
+                "cronExpressions", List.of(), "nativeExpression", expression, "calendar", map("interval", trigger.getRepeatInterval(), "unit", trigger.getRepeatIntervalUnit().name()),
+                "nativeSchedule", nativeSchedule, "diagnostics", List.of());
+        }
         String interval = config.getTimeInterval(), time = config.getExecuteTime();
         require(time != null && time.matches("(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"), "Execution time must be HH:mm:ss");
         require(interval != null && interval.matches("[0-9]+(?:,[0-9]+){0,31}"), "Invalid original cycle selection");

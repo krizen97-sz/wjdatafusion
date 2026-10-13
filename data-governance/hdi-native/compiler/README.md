@@ -76,7 +76,9 @@ outputsDir 必须是 authorizedOutputRoot 下的独立子目录。二者只能�
 
 `scheduleType=1` 使用原 DTO 校验后返回 `mode=MANUAL`、空 cronExpressions，不生成自动触发；平台可以持久保存手动设置并原子禁用旧周期，立即运行仍是另一次明确操作。周期首批支持 `scheduleType=2`、`unit=2`（每月）、`3`（每周）、`4`（每日），返回 `mode=CRON`；`executeTime` 为 `HH:mm:ss`，`timeInterval` 为原选项字符串（月1–32，其中32为原月末；周1–7；每日1）。原表单无 exactDate 时仍携带的 executeTimeExactDate 默认值保留，它不参与这条 Cron 生成链。
 
-不开放实时、依赖、按完成时间间隔、排除窗口、自定义 Cron、立即首跑或增量连续状态；不能把未实现的频率显示为可用。原生成器若给出 Quartz 不接受的组合则明确拒绝。调度实际持久化、并发占用、触发去重及重启语义属于平台调度服务，不在本编译进程中执行。
+`scheduleType=2` 的小时（unit5）和分钟（unit6）返回 `mode=CALENDAR`、空 cronExpressions、原 `nativeExpression=N#unit` 与 `calendar:{interval,unit}`。编译器先用原 `CronUtil.getExecExpr`，再调用原 Core `JobManager.getScheduleBuilder` 构造原 Quartz CalendarIntervalScheduleBuilder，读取其 interval/unit；不会调用 submitTask、getStartTime 或启动 Quartz/ZK。36小时和90分钟属于合法日历间隔，不伪装成整点 Cron。
+
+不开放实时、依赖、秒级、按完成时间间隔、排除窗口、自定义 Cron、额外的立即全量首跑或增量连续状态；不能把未实现的频率显示为可用。原生成器若给出 Quartz 不接受的组合则明确拒绝。调度实际持久化、并发占用、触发去重及重启语义属于平台调度服务，不在本编译进程中执行。
 
 成功返回：
 
