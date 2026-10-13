@@ -29,11 +29,13 @@ public class HdiCoreApi {
     private final HdiCompilerClient compiler;
     private final ObjectProvider<HdiCoreKeys> keys;
     private final ObjectProvider<HdiCoreRuns> runs;
+    private final ObjectProvider<HdiCoreSchedules> schedules;
 
     public HdiCoreApi(HdiCoreProperties properties, HdiTaskStore store, HdiCoreSessions sessions, HdiCoreCatalog catalog,
-            HdiCoreAssets assets, HdiCompilerClient compiler, ObjectProvider<HdiCoreKeys> keys, ObjectProvider<HdiCoreRuns> runs) {
+            HdiCoreAssets assets, HdiCompilerClient compiler, ObjectProvider<HdiCoreKeys> keys, ObjectProvider<HdiCoreRuns> runs,
+            ObjectProvider<HdiCoreSchedules> schedules) {
         this.properties = properties; this.store = store; this.sessions = sessions; this.catalog = catalog;
-        this.assets = assets; this.compiler = compiler; this.keys = keys; this.runs = runs;
+        this.assets = assets; this.compiler = compiler; this.keys = keys; this.runs = runs; this.schedules = schedules;
     }
 
     public void handle(HttpServletRequest request, HttpServletResponse response) throws IOException {
@@ -96,7 +98,39 @@ public class HdiCoreApi {
                 return List.of();
             }
             case "/globalConfig/tag/listTag": requireMethod(method, "GET"); return List.of();
-            case "/flow/getFrequencyEnums": requireMethod(method, "GET"); return Map.of(); // No periodic schedule has been registered in this profile.
+            case "/flow/getFrequencyEnums": requireMethod(method, "GET"); return scheduler().supportedFrequencies();
+            case "/flow/getStartConfig": {
+                requireMethod(method, "GET"); HdiTaskStore.Task task = store.get(owner, queryId(request, "flowId"));
+                String only = HdiProtocol.query(request, "onlySelected");
+                if (only != null && !Set.of("true", "false").contains(only)) throw bad("参数选择范围无效");
+                return startConfig(task, "true".equals(only));
+            }
+            case "/flow/saveFlowStartConfig": return saveStartConfig(request, method, session, user);
+            case "/flow/getExecuteTimes": {
+                requireMethod(method, "POST"); return scheduler().preview(scheduleForPreview(object(body(request))));
+            }
+            case "/flow/generateCrontab": {
+                requireMethod(method, "POST"); JsonNode config = compiler.schedule(scheduleForPreview(object(body(request))), "Asia/Shanghai");
+                List<String> expressions = new ArrayList<>(); for (JsonNode expression : config.path("cronExpressions")) expressions.add(expression.asText());
+                return Map.of("enablePeriod", String.join(";", expressions));
+            }
+            case "/globalConfig/paramManage/getParamCategory": {
+                requireMethod(method, "POST"); JsonNode query = object(body(request));
+                if (query.path("typeId").asInt(-1) != 2) throw unsupported();
+                String keyword = optionalText(query, "keyword");
+                if (keyword != null && keyword.length() > 128) throw bad("参数搜索条件过长");
+                return parameterCategories(query.path("params"), query.path("onlySelected").asBoolean(false), keyword);
+            }
+            case "/flow/checkBeforeStart":
+            case "/flow/checkFlowIncrConfig": {
+                requireMethod(method, "POST"); emptyBody(request); HdiCoreSessions.require(user, "governance:flow:test");
+                HdiTaskStore.Task task = store.get(owner, queryId(request, "flowId"));
+                if (!"1".equals(HdiProtocol.query(request, "flowIncrStatus"))) throw new HdiTaskFault(422, "当前原节点任务仅支持全量运行");
+                // The supported generator/fieldMapping/file profile has no incremental source or shared checkpoint storage.
+                JsonNode visual = parse(store.revision(owner, task.id(), task.revision()).visualJson());
+                for (JsonNode node : visual.path("nodes")) if (!Set.of("dataGeneratorInput", "fieldMapping", "fileOutput").contains(node.path("adapterName").asText())) throw unsupported();
+                return path.endsWith("checkFlowIncrConfig") ? true : Map.of("incrConfigComplete", true, "storageDataBatchNum", 0);
+            }
             case "/flow/findFlowPage": return list(request, method, user);
             case "/flow/pageInterruptedFlow": {
                 requireMethod(method, "GET"); int page = page(request, "pageNo", 1, 100000), size = page(request, "pageSize", 20, 200);
@@ -155,9 +189,19 @@ public class HdiCoreApi {
             requireMethod(method, operation.equals("debugFlow") ? "POST" : "GET"); sessions.csrf(request, session);
             HdiCoreSessions.require(user, "governance:flow:test"); emptyBody(request);
             HdiTaskStore.Task task = store.get(owner, HdiProtocol.positive(path.substring(prefix.length()), "任务标识"));
-            if (operation.startsWith("stop")) { runtime().stop(owner, lastRun(task)); return flow(store.get(owner, task.id()), user); }
+            if (operation.startsWith("stop")) {
+                HdiCoreSessions.require(user, "governance:flow:edit"); scheduler().disable(owner, task.id());
+                if (task.lastRunId() != null && store.run(owner, task.lastRunId()).state().matches("QUEUED|PREPARING|COMPILING|STARTING|RUNNING|STOPPING|UNKNOWN")) runtime().stop(owner, task.lastRunId());
+                return flow(store.get(owner, task.id()), user);
+            }
             if (operation.equals("debugFlow")) { runtime().startDebug(owner, task.id(), task.revision()); return null; }
-            runtime().startRun(owner, task.id(), task.revision()); return flow(store.get(owner, task.id()), user);
+            JsonNode plan = scheduler().get(owner, task.id());
+            if (plan.path("configured").asBoolean() && plan.path("schedule").path("scheduleType").asInt() == 2) {
+                HdiCoreSessions.require(user, "governance:flow:edit");
+                long revision = nodeId(plan.path("revision"), "计划修订");
+                scheduler().save(owner, task.id(), revision, plan.path("schedule"), true);
+            } else runtime().startRun(owner, task.id(), task.revision());
+            return flow(store.get(owner, task.id()), user);
         }
         if (path.equals("/flow/getRunningStatus") || path.equals("/flow/getFlowVisualState")) {
             requireMethod(method, path.endsWith("getRunningStatus") ? "GET" : "POST"); emptyBody(request);
@@ -239,10 +283,118 @@ public class HdiCoreApi {
             .put("flowType", 0).put("flowStatus", state(task)).put("flowIncrStatus", 1).put("flowLock", 0)
             .put("nodeSize", canonical.path("nodes").size()).put("readOnly", !HdiCoreSessions.has(user, "governance:flow:edit"))
             .put("createTime", task.createdAt().toString()).put("updateTime", task.updatedAt().toString());
-        if (task.scheduleJson() != null) flow.set("scheduleVo", parse(task.scheduleJson()));
+        if (task.scheduleJson() != null) flow.set("scheduleVo", parse(task.scheduleJson()).path("scheduleConfig"));
         else flow.set("scheduleVo", HdiProtocol.JSON.createObjectNode().put("flowIncrStatus", 1).putNull("enablePeriod"));
         return flow;
     }
+
+    private ObjectNode startConfig(HdiTaskStore.Task task, boolean onlySelected) {
+        JsonNode plan = scheduler().get(task.ownerId(), task.id());
+        ObjectNode schedule = plan.path("configured").asBoolean() ? ((ObjectNode)plan.path("schedule")).deepCopy() : defaultSchedule();
+        schedule.put("_platformRevision", task.revision());
+        ObjectNode result = HdiProtocol.JSON.createObjectNode(); result.set("schedule", schedule);
+        JsonNode visual = parse(store.revision(task.ownerId(), task.id(), task.revision()).visualJson());
+        result.set("taskParams", parameterCategories(visual.path("paramVoList"), onlySelected, null));
+        result.set("platformSchedule", plan); return result;
+    }
+
+    private Object saveStartConfig(HttpServletRequest request, String method, HdiCoreSessions.Session session, LoginUser user) throws IOException {
+        requireMethod(method, "POST"); HdiCoreSessions.require(user, "governance:flow:edit"); HdiCoreSessions.require(user, "governance:flow:test");
+        JsonNode body = object(body(request)), condition = object(body.path("condition")), start = object(body.path("startConfig"));
+        JsonNode ids = condition.path("flowIds");
+        if (!ids.isArray() || ids.size() != 1) throw new HdiTaskFault(422, "请逐个任务保存运行配置");
+        HdiTaskStore.Task task = store.get(session.ownerId, nodeId(ids.get(0), "任务标识"));
+        var filters = condition.fields();
+        while (filters.hasNext()) {
+            var field = filters.next();
+            if (field.getKey().equals("flowIds") || empty(field.getValue())) continue;
+            if (field.getKey().equals("folderId")) { folder(field.getValue()); continue; }
+            throw new HdiTaskFault(422, "运行配置不接受批量筛选条件");
+        }
+        ObjectNode schedule = ((ObjectNode)object(start.path("schedule"))).deepCopy();
+        long revision = nodeId(schedule.path("_platformRevision"), "任务修订"); schedule.remove("_platformRevision");
+        if (revision != task.revision() || task.publishedRevision() == null || revision != task.publishedRevision()) throw new HdiTaskFault(409, "任务版本已变化，请重新发布并打开运行配置");
+        String nodeIds = optionalText(schedule, "nodeIds");
+        if (nodeIds != null && !nodeIds.isEmpty() && !Long.toString(task.id()).equals(nodeIds)) throw bad("运行配置任务范围不一致");
+        schedule.remove("nodeIds");
+        removeUiScheduleFields(schedule);
+        if (schedule.hasNonNull("id")) throw unsupported();
+        JsonNode original = parse(store.revision(task.ownerId(), task.id(), revision).visualJson()).path("paramVoList");
+        if (!selectedParameters(start.path("taskParams"), true).equals(selectedParameters(original, false)))
+            throw new HdiTaskFault(422, "运行参数已修改，请先在任务属性中保存并发布新版本");
+        int activate = schedule.path("start").asInt(-1);
+        if (!Set.of(0, 1).contains(activate)) throw bad("运行配置启用状态无效");
+        if (body.hasNonNull("dataReloadEnable") && !Set.of("0", "1").contains(body.get("dataReloadEnable").asText())) throw bad("运行数据选项无效");
+        if (schedule.path("scheduleType").asInt(-1) == 1) {
+            scheduler().saveManual(task.ownerId(), task.id(), revision, schedule);
+            if (activate == 1) runtime().startRun(task.ownerId(), task.id(), revision);
+        } else scheduler().save(task.ownerId(), task.id(), revision, schedule, activate == 1);
+        return null;
+    }
+
+    /** Original ParamCategoryVo/ParamSelectedVo presentation; execution values remain frozen in the revision. */
+    private ArrayNode parameterCategories(JsonNode params, boolean onlySelected, String keyword) {
+        Map<String, String> selected = selectedParameters(params, false);
+        Map<String, ObjectNode> groups = new LinkedHashMap<>(); Set<String> known = new java.util.HashSet<>();
+        for (Map<String, Object> config : catalog.listParams(2, null, null)) {
+            String name = (String)config.get("paramName"); known.add(name); boolean chosen = selected.containsKey(name);
+            if (onlySelected && !chosen) continue;
+            if (keyword != null && !keyword.isBlank() && !name.contains(keyword) && !String.valueOf(config.get("paramDisplayName")).contains(keyword)) continue;
+            String category = config.get("paramCategory") == null ? "默认参数" : config.get("paramCategory").toString();
+            ObjectNode group = groups.computeIfAbsent(category, key -> { ObjectNode value = HdiProtocol.JSON.createObjectNode().put("category", key); value.putArray("params"); value.putArray("subCategories"); return value; });
+            ObjectNode row = HdiProtocol.JSON.createObjectNode();
+            for (String field : List.of("paramName", "paramDisplayName", "valueType", "values", "addComment", "loadFlag")) row.set(field, HdiProtocol.JSON.valueToTree(config.get(field)));
+            row.set("defaultValue", HdiProtocol.JSON.valueToTree(config.get("paramDefaultValue")));
+            row.put("selected", chosen ? 1 : 0).put("errorType", 0); row.putNull("errorMsg");
+            if (chosen) row.set("paramValue", HdiProtocol.JSON.valueToTree(selected.get(name))); else row.putNull("paramValue");
+            String sub = config.get("paramSubCategory") == null ? "" : config.get("paramSubCategory").toString();
+            ArrayNode target = (ArrayNode)group.path("params");
+            if (!sub.isEmpty()) {
+                ObjectNode nested = null;
+                for (JsonNode value : group.path("subCategories")) if (sub.equals(value.path("subCategory").asText())) nested = (ObjectNode)value;
+                if (nested == null) { nested = HdiProtocol.JSON.createObjectNode().put("subCategory", sub); nested.putArray("params"); ((ArrayNode)group.path("subCategories")).add(nested); }
+                target = (ArrayNode)nested.path("params");
+            }
+            target.add(row);
+        }
+        if (!known.containsAll(selected.keySet())) throw new HdiTaskFault(422, "任务包含当前原参数目录之外的配置");
+        ArrayNode result = HdiProtocol.JSON.createArrayNode(); groups.values().forEach(result::add); return result;
+    }
+    private static Map<String, String> selectedParameters(JsonNode params, boolean categories) {
+        if (!params.isArray() || params.size() > 2048) throw bad("任务参数列表无效");
+        Map<String, String> values = new LinkedHashMap<>();
+        if (categories) {
+            for (JsonNode group : params) {
+                addSelected(values, group.path("params"), true);
+                JsonNode sub = group.path("subCategories");
+                if (sub.isMissingNode() || sub.isNull()) continue;
+                if (!sub.isArray() || sub.size() > 2048) throw bad("任务参数分组无效");
+                for (JsonNode nested : sub) addSelected(values, nested.path("params"), true);
+            }
+        } else addSelected(values, params, false);
+        return values;
+    }
+    private static void addSelected(Map<String, String> values, JsonNode params, boolean requireSelected) {
+        if (params.isMissingNode() || params.isNull()) return;
+        if (!params.isArray() || params.size() > 2048) throw bad("任务参数列表无效");
+        for (JsonNode param : params) {
+            if (requireSelected && !"1".equals(param.path("selected").asText())) continue;
+            String name = optionalText(param, "paramName"); JsonNode value = param.get("paramValue");
+            if (name == null || name.isBlank() || name.length() > 256 || values.containsKey(name)) throw bad("任务参数名称无效或重复");
+            if (value != null && !value.isNull() && !value.isValueNode()) throw bad("任务参数值无效");
+            if (!empty(param.get("globalParamKey"))) throw unsupported();
+            values.put(name, value == null || value.isNull() ? null : value.asText());
+        }
+    }
+    private static ObjectNode defaultSchedule() {
+        ObjectNode value = HdiProtocol.JSON.createObjectNode().put("scheduleType", 1).put("alarmEnable", 0).put("flowIncrStatus", 1)
+            .put("startFullImmediately", 0).put("unit", 7).put("intervalTime", 0).put("start", 0); value.putNull("execType");
+        for (String key : List.of("timeInterval", "executeTime", "exactDate", "executeTimeExactDate", "excludeDate", "excludeTimeType", "excludeStartTime", "excludeEndTime", "disablePeriod", "enablePeriod", "dependencyFlowId", "dependencyFlowStatus")) value.put(key, "");
+        return value;
+    }
+    private static ObjectNode scheduleForPreview(JsonNode source) { ObjectNode value = ((ObjectNode)source).deepCopy(); value.remove("_platformRevision"); value.remove("nodeIds"); removeUiScheduleFields(value); return value; }
+    private static void removeUiScheduleFields(ObjectNode value) { if (value.hasNonNull("execType") && !"1".equals(value.path("execType").asText())) throw unsupported(); value.remove("execType"); }
+    private HdiCoreSchedules scheduler() { HdiCoreSchedules service = schedules.getIfAvailable(); if (service == null) throw new HdiTaskFault(503, "任务运行配置服务尚未就绪"); return service; }
 
     private List<Map<String, Object>> resources(HdiCoreSessions.Session session) {
         JsonNode snapshot = runtime().resources();
@@ -264,6 +416,7 @@ public class HdiCoreApi {
     private HdiCoreRuns runtime() { HdiCoreRuns service = runs.getIfAvailable(); if (service == null) throw new HdiTaskFault(503, "原任务运行服务尚未就绪"); return service; }
     private static String lastRun(HdiTaskStore.Task task) { if (task.lastRunId() == null) throw new HdiTaskFault(404, "任务尚无执行记录"); return task.lastRunId(); }
     private static int state(HdiTaskStore.Task task) {
+        if (HdiTaskStore.isScheduleReady(task)) return 5;
         return switch (task.state()) {
             case "DRAFT" -> -1; case "READY" -> 0; case "QUEUED", "PREPARING", "COMPILING", "STARTING" -> 1;
             case "RUNNING" -> 2; case "SUCCEEDED" -> 3; case "FAILED", "UNKNOWN" -> 4; case "STOPPING" -> 10; case "CANCELLED" -> 0;
@@ -278,7 +431,7 @@ public class HdiCoreApi {
             case "-1" -> List.of("DRAFT"); case "0" -> List.of("READY", "CANCELLED");
             case "1" -> List.of("QUEUED", "PREPARING", "COMPILING", "STARTING"); case "2" -> List.of("RUNNING");
             case "3", "31" -> List.of("SUCCEEDED"); case "4" -> List.of("FAILED", "UNKNOWN");
-            case "10" -> List.of("STOPPING"); case "5", "6" -> List.of();
+            case "10" -> List.of("STOPPING"); case "5" -> List.of("SCHEDULE_READY"); case "6" -> List.of();
             default -> throw bad("运行状态筛选无效");
         });
         return List.copyOf(result);
