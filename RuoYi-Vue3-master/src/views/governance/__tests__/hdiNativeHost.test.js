@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mountOriginalTasks, withOriginalListDefaults } from '../../../../../data-governance/hdi-native/host/native-task-host.mjs'
+import { mountOriginalTasks, withOriginalListDefaults, registerOriginalToolbar } from '../../../../../data-governance/hdi-native/host/native-task-host.mjs'
 
 // Contract proof for our thin host only. The original vendor bundles are not simulated as execution evidence.
 async function withHost(options, run) {
@@ -21,6 +21,8 @@ async function withHost(options, run) {
     async $nextTick() { this.render() }
     $destroy() { this.destroyed = true }
     static use() {}
+    static component() {}
+    static extend() { return class { constructor() { this._setupState = { AdaptiveButtonContainer: { __name: 'AdaptiveButtonContainer', setup() {}, render() {} } } } $destroy() {} } }
     static observable(value) { return value }
     static delete(target, key) { delete target[key] }
     static set(target, key, value) { target[key] = value }
@@ -32,7 +34,13 @@ async function withHost(options, run) {
   }
   const http = { interceptors: { request: { use() { return 1 }, eject() {} }, response: { use() { return 1 }, eject() {} } } }
   const chunks = []
-  chunks.push = ([, , register]) => register(id => { assert.equal(id, 43620); return { A: http } })
+  const runtime = id => {
+    if (id === 43620) return { A: http }
+    assert.equal(id, 39136)
+    return { TheDataStandardTransformerProcessPluginInfo: { anchors: [{ component: { __name: 'StandardConversion', setup() {} } }] } }
+  }
+  runtime.e = async id => assert.equal(id, 136)
+  chunks.push = ([, , register]) => register(runtime)
   globalThis.window = {
     location: { origin: 'https://platform.example' }, webpackChunkdetl_web: chunks,
     GLOBAL_HUI: {},
@@ -119,4 +127,30 @@ test('host initializes the original cached filter before any multiple select ren
   assert.equal(wrapper.extends, original)
   assert.equal(wrapper.render, undefined)
   assert.equal(original.beforeMount, undefined)
+})
+
+
+test('host registers the exact original toolbar object and destroys its unmounted setup context', async () => {
+  let destroyed = 0, loads = 0, registered
+  const toolbar = { __name: 'AdaptiveButtonContainer', setup() {}, render() {} }
+  const anchor = { __name: 'StandardConversion', setup() {} }
+  const Vue = { extend(value) {
+    assert.equal(value, anchor)
+    return class { constructor(options) { assert.deepEqual(options.propsData.currentNode.transformFieldVoList, []); this._setupState = { AdaptiveButtonContainer: toolbar } }
+      $destroy() { destroyed++ } $mount() { assert.fail('The discovery context must never mount or run business UI') } }
+  }, component(name, component) { assert.equal(name, 'adaptive-button-container'); registered = component } }
+  const runtime = id => { assert.equal(id, 39136); return { TheDataStandardTransformerProcessPluginInfo: { anchors: [{ component: anchor }] } } }
+  runtime.e = async id => { assert.equal(id, 136); loads++ }
+  assert.equal(await registerOriginalToolbar(Vue, {}, runtime), toolbar)
+  assert.equal(registered, toolbar); assert.equal(destroyed, 1)
+  await registerOriginalToolbar(Vue, {}, runtime); assert.equal(loads, 1)
+})
+
+test('missing original toolbar export fails instead of registering a pretend update handler', async () => {
+  let destroyed = false
+  const Vue = { extend() { return class { constructor() { this._setupState = {} } $destroy() { destroyed = true } } }, component() { assert.fail('No substitute component') } }
+  const runtime = () => ({ TheDataStandardTransformerProcessPluginInfo: { anchors: [{ component: { __name: 'StandardConversion', setup() {} } }] } })
+  runtime.e = async () => {}
+  await assert.rejects(registerOriginalToolbar(Vue, {}, runtime), /共享工具栏/)
+  assert.equal(destroyed, true)
 })

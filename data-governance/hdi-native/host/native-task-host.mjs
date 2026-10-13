@@ -1,6 +1,7 @@
 /* Host original DETL exports without modifying vendor UI, store or task protocols. */
 const containers = new WeakMap()
-const requestClients = new WeakMap()
+const originalRuntimes = new WeakMap()
+const sharedUi = new WeakMap()
 
 export const originalVersions = Object.freeze({ vue: '2.7.16', 'vue-i18n': '7.8.1' })
 
@@ -36,16 +37,50 @@ export function loadOriginalModules(container = window.detlModule) {
 
 // The verified original build exposes this Axios module through its own webpack runtime.
 // Registration uses the runtime extension API; no vendor module/function is replaced.
-function originalRequestClient(surface = window) {
-  if (requestClients.has(surface)) return requestClients.get(surface)
+function originalRuntime(surface = window) {
+  if (originalRuntimes.has(surface)) return originalRuntimes.get(surface)
   let runtime
   const chunks = surface.webpackChunkdetl_web
   if (!Array.isArray(chunks)) throw new Error('原任务请求组件未加载')
   chunks.push([['rynew-platform-publish-boundary'], {}, require => { runtime = require }])
-  const client = runtime?.(43620)?.A
+  if (typeof runtime !== 'function') throw new Error('原任务运行时扩展接口不可用')
+  originalRuntimes.set(surface, runtime)
+  return runtime
+}
+
+function originalRequestClient(surface = window) {
+  const client = originalRuntime(surface)(43620)?.A
   if (!client?.interceptors?.request?.use || !client?.interceptors?.response?.use) throw new Error('原任务请求组件版本不匹配')
-  requestClients.set(surface, client)
   return client
+}
+
+/** The original exported anchor exposes the shared toolbar component; do not reconstruct its render/setup. */
+export function registerOriginalToolbar(Vue, i18n, runtime) {
+  if (sharedUi.has(Vue)) return sharedUi.get(Vue)
+  const loading = (async () => {
+    await runtime.e(136)
+    const exports = runtime(39136)
+    const plugins = exports.default || exports
+    const anchor = plugins.TheDataStandardTransformerProcessPluginInfo?.anchors?.[0]?.component
+    if (anchor?.__name !== 'StandardConversion' || typeof anchor.setup !== 'function' || typeof Vue.extend !== 'function') {
+      throw new Error('原共享工具栏组件导出版本不匹配')
+    }
+    // Normal Vue setup context, deliberately never mounted: this verified anchor initializes local fields only.
+    const Probe = Vue.extend(anchor)
+    const probe = new Probe({ i18n, propsData: { currentNode: { transformFieldVoList: [], runtimeJson: '' }, viewTask: true, flowId: null } })
+    let component
+    try {
+      component = probe._setupState?.AdaptiveButtonContainer
+      if (component?.__name !== 'AdaptiveButtonContainer' || typeof component.setup !== 'function' || typeof component.render !== 'function') {
+        throw new Error('原共享工具栏组件不可用')
+      }
+    } finally { probe.$destroy() }
+    Vue.component('adaptive-button-container', component)
+    return component
+  })()
+  sharedUi.set(Vue, loading)
+  loading.catch(() => sharedUi.delete(Vue))
+  return loading
 }
 
 /** Wait for this iframe's original publish action before reading its run settings. Never invent/rewrite a revision. */
@@ -156,6 +191,7 @@ export async function mountOriginalTasks(host, target) {
   if (!TaskList || !DagMain || !store || String(store.state.currentWorkspaceId) !== String(host.workspaceId)) {
     throw new Error('原任务组件未取得当前平台工作区')
   }
+  await registerOriginalToolbar(Vue, i18n, originalRuntime())
   const TaskListHost = withOriginalListDefaults(TaskList)
   store.commit('SET_USER', host.user)
   store.commit('SET_USER_INFO', host.user)
