@@ -118,15 +118,17 @@ class ByteBridge:
                 self.threads.discard(threading.current_thread())
             self.slots.release()
 
-    def close(self):
+    def close(self, deadline=None):
+        if deadline is None:
+            deadline = time.monotonic() + 5
         self.stopped.set()
         self.listener.close()
-        self.accept_thread.join(timeout=1)
+        self.accept_thread.join(timeout=max(0, min(1, deadline - time.monotonic())))
         with self.lock:
             sockets, threads = list(self.connections), list(self.threads)
         for connection in sockets:
             self._close(connection)
-        deadline = time.monotonic() + 4
+        deadline = min(deadline, time.monotonic() + 4)
         for thread in threads:
             thread.join(timeout=max(0, deadline - time.monotonic()))
         if self.family == socket.AF_UNIX:

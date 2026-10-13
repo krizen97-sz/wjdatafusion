@@ -6,7 +6,7 @@ import sys
 import tempfile
 import threading
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -28,6 +28,11 @@ class WorkerStateTests(unittest.TestCase):
         self.worker.max_runs = 1
         self.worker.config = {}
         self.worker.java_mode = 'normal'
+        self.worker.stop_timeout = 45
+        self.worker.shutdown_deadline = None
+        self.worker.closed_result = None
+        self.worker.coordinator = None
+        self.worker.lock_fd = None
         self.request = {'runId': str(uuid.uuid4()), 'ownerId': '1', 'businessTaskId': '17',
                         'revision': '2', 'nativeFlowId': '21001', 'nativeInstanceId': '21002',
                         'execId': '21003', 'workspaceId': '1', 'metadataIdBase': '22000', 'mode': 'test'}
@@ -92,6 +97,68 @@ class WorkerStateTests(unittest.TestCase):
         output.write_bytes(b'bbb')
         with self.assertRaisesRegex(ProtocolError, 'ARTIFACT_CHANGED'):
             self.worker.artifact(record, {'artifactId': public['artifacts'][0]['artifactId']})
+
+
+    def test_original_stop_default_and_bounds(self):
+        self.assertEqual(module.stop_timeout({}), 45)
+        self.assertEqual(module.stop_timeout({'stopTimeoutSeconds': 60}), 60)
+        for value in (44, 61, True, '45', 45.0):
+            with self.assertRaisesRegex(ProtocolError, 'INVALID_STOP_TIMEOUT'):
+                module.stop_timeout({'stopTimeoutSeconds': value})
+
+    def test_normal_cancel_retains_vendor_grace_but_shutdown_has_shared_budget(self):
+        task = module.NativeRun.__new__(module.NativeRun)
+        task.worker = self.worker
+        self.assertEqual(task.original_stop_deadline(100), 145)
+        self.worker.stop_timeout = 60
+        self.assertEqual(task.original_stop_deadline(100), 160)
+        self.worker.shutdown_deadline = 155
+        self.assertEqual(task.original_stop_deadline(100), 140)
+
+    def test_four_runs_share_one_shutdown_deadline(self):
+        clock = [100.0]
+        tasks = []
+        timeouts = []
+        for index in range(4):
+            task = Mock()
+            task.record = {'runId': str(index), 'finalized': True}
+            task.thread.is_alive.return_value = False
+            def join(timeout):
+                self.assertTrue(all(item.cancel.set.called for item in tasks))
+                timeouts.append(timeout)
+                clock[0] += min(45, timeout)
+            task.thread.join.side_effect = join
+            tasks.append(task)
+        self.worker.tasks = {str(i): task for i, task in enumerate(tasks)}
+        self.worker.coordinator = Mock()
+        with patch.object(module.time, 'monotonic', side_effect=lambda: clock[0]):
+            self.worker.close()
+        self.assertEqual(timeouts, [60, 15, 0, 0])
+        self.worker.coordinator.stop.assert_called_once_with(grace=5, deadline=170)
+        self.assertTrue(self.worker.closed_result)
+
+    def test_unconfirmed_shutdown_keeps_recovery_barrier(self):
+        task = Mock()
+        task.record = {'runId': 'unconfirmed', 'finalized': False}
+        task.thread.is_alive.return_value = True
+        self.worker.tasks = {'unconfirmed': task}
+        with self.assertRaisesRegex(ProtocolError, 'STOP_UNCONFIRMED'):
+            self.worker.close()
+        self.assertFalse(self.worker.closed_result)
+        self.assertEqual(json.loads((self.root / '.shutdown-unconfirmed.json').read_text())['runs'], ['unconfirmed'])
+
+
+    def test_failed_recovery_marker_write_does_not_release_memory_barrier(self):
+        task = Mock()
+        task.record = {'runId': 'unconfirmed', 'finalized': False}
+        task.thread.is_alive.return_value = True
+        self.worker.tasks = {'unconfirmed': task}
+        with patch.object(module, 'atomic_json', side_effect=OSError('test full disk')):
+            with self.assertRaises(OSError):
+                self.worker.close()
+        self.assertFalse(self.worker.closed_result)
+        with self.assertRaisesRegex(ProtocolError, 'STOP_UNCONFIRMED'):
+            self.worker.close()
 
 
 if __name__ == '__main__':
