@@ -8,6 +8,8 @@ import * as schemas from '../kettle/nodeSchemas.js'
 import * as runRules from '../kettle/runRules.js'
 import * as workbenchRules from '../kettle/workbenchRules.js'
 import * as interaction from '../kettle/workbenchInteraction.js'
+import * as runtimeRules from '../kettle/runtimePresentation.js'
+import * as starterFlow from '../kettle/starterFlow.js'
 import * as graphRules from '../graphRules.js'
 import * as workspaceRules from '../workspaceRules.js'
 
@@ -23,7 +25,7 @@ const deferred = () => {
 const detail = (id, revision = 1, name = id) => ({ id, revision, xmlBase64: JSON.stringify({ graph: { name, kind: 'transformation', nodes: [], connections: [] } }) })
 
 function setup(t, methods = {}, confirm = async () => {}) {
-  const calls = [], warnings = [], unmount = [], scope = effectScope()
+  const calls = [], warnings = [], successes = [], unmount = [], scope = effectScope()
   const api = new Proxy({}, { get: (_, name) => (...args) => {
     calls.push({ name, args })
     assert.equal(typeof methods[name], 'function', `Unexpected API call: ${name}`)
@@ -31,11 +33,11 @@ function setup(t, methods = {}, confirm = async () => {}) {
   } })
   const bindings = {
     computed, markRaw, nextTick, ref,
-    ...xmlModel, ...schemas, ...runRules, ...workbenchRules, ...interaction, ...graphRules, ...workspaceRules,
+    ...xmlModel, ...schemas, ...runRules, ...workbenchRules, ...interaction, ...graphRules, ...workspaceRules, ...runtimeRules, ...starterFlow,
     removeGraphConnection: xmlModel.removeConnection,
     parseXml: JSON.parse, xmlText: JSON.stringify, fromBase64: value => value, toBase64: value => value,
     graphFromXml: doc => doc.graph,
-    getCurrentInstance: () => ({ proxy: { $auth: { hasPermi: () => true }, $modal: { confirm, msgWarning: value => warnings.push(value), msgSuccess() {}, msgError() {} } } }),
+    getCurrentInstance: () => ({ proxy: { $auth: { hasPermi: () => true }, $modal: { confirm, msgWarning: value => warnings.push(value), msgSuccess: value => successes.push(value), msgError() {} } } }),
     useRoute: () => ({ query: {} }), useRouter: () => ({ replace: async () => {} }),
     onMounted() {}, onBeforeUnmount: callback => unmount.push(callback),
     localStorage: { getItem: () => null, removeItem() {} },
@@ -47,7 +49,7 @@ function setup(t, methods = {}, confirm = async () => {}) {
   scope.run(() => { view = component.setup({}, { expose() {} }) })
   t.after(() => { unmount.forEach(callback => callback()); scope.stop() })
   view.setDocument(detail('task-a'))
-  return { view, calls, warnings }
+  return { view, calls, warnings, successes }
 }
 
 test('removing an input captures its task, blocks concurrent editing, and ignores a late response after switching tasks', async t => {
@@ -177,4 +179,67 @@ test('a field-check response for an old document cannot become the current valid
   assert.equal(view.validation.value, null)
   assert.equal(view.validating.value, false)
   assert.deepEqual(calls.map(call => [call.name, ...call.args]), [['validateKettleDefinition', 'task-a']])
+})
+
+
+test('managed startup cannot enable execution from a stale reachable flag', async t => {
+  const { view, calls } = setup(t)
+  view.status.value = { enabled: true, executionAvailable: true, runtimeMode: 'managed', runtimeState: 'STARTING' }
+  assert.equal(view.engineReady.value, false)
+  await view.execute('run')
+  assert.equal(calls.length, 0)
+  view.status.value = { ...view.status.value, runtimeState: 'READY' }
+  assert.equal(view.engineReady.value, true)
+  view.status.value = { ...view.status.value, executionAvailable: false }
+  assert.equal(view.engineReady.value, false)
+})
+
+test('creating the starter saves native XML and attaches data without starting execution', async t => {
+  const upload = deferred()
+  const { view, calls, successes } = setup(t, {
+    createKettleDefinition: async data => {
+      assert.match(data.xmlBase64, /<type>SortRows<\/type>/)
+      return { data: detail('starter') }
+    },
+    uploadKettleInputFile: (id, form) => {
+      assert.equal(id, 'starter')
+      assert.equal(form.get('file').name, starterFlow.STARTER_FILENAME)
+      return upload.promise
+    }
+  })
+  await view.openNew('sample')
+  const creation = view.create()
+  await nextTick()
+  assert.equal(view.definition.value.id, 'starter')
+  assert.equal(view.newOpen.value, false)
+  assert.equal(view.saving.value, true)
+  assert.equal(successes.length, 0)
+  await view.create()
+  assert.equal(calls.filter(item => item.name === 'createKettleDefinition').length, 1)
+  upload.resolve({ data: { id: 'csv', name: starterFlow.STARTER_FILENAME, bytes: 24 } })
+  await creation
+  assert.equal(view.files.value[0].id, 'csv')
+  assert.equal(successes.length, 1)
+  assert.equal(view.saving.value, false)
+  assert.deepEqual(calls.map(item => item.name), ['createKettleDefinition', 'uploadKettleInputFile'])
+})
+
+test('an uncertain starter upload preserves the created task and reconciliation avoids duplicate upload', async t => {
+  const { view, calls, successes } = setup(t, {
+    createKettleDefinition: async () => ({ data: detail('starter') }),
+    uploadKettleInputFile: async () => { throw new Error('network timeout') },
+    kettleInputFiles: async () => ({ data: [{ id: 'already-uploaded', name: starterFlow.STARTER_FILENAME }] })
+  })
+  await view.openNew('sample')
+  await view.create()
+  assert.equal(view.definition.value.id, 'starter')
+  assert.equal(successes.length, 0)
+  assert.match(view.error.value, /无需重复创建任务/)
+  view.document.value.documentElement = { getAttribute: () => starterFlow.STARTER_ID }
+  view.document.value.graph.nodes = [{ pluginId: 'CsvInput', element: { children: [{ tagName: 'filename', textContent: '${INPUT_DIR}/' + starterFlow.STARTER_FILENAME }] } }]
+  view.version.value++
+  await view.restoreStarterInput()
+  assert.equal(view.files.value[0].id, 'already-uploaded')
+  assert.equal(calls.filter(item => item.name === 'uploadKettleInputFile').length, 1)
+  assert.equal(successes.length, 1)
 })
