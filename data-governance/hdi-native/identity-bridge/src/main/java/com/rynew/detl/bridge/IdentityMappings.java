@@ -33,7 +33,7 @@ final class IdentityMappings {
         }
         Map<String,Object> response() {
             return Map.of("user", Map.of("id", userId, "userId", userId, "userName", userName, "accountName", accountName, "realUserName", realUserName, "language", language),
-                "projectCode", projectCode, "projectName", projectName, "projectList", projectList);
+                "projectCode", projectCode, "projectName", projectName, "projectList", projectList, "workspaceId", workspaceId, "locale", language);
         }
     }
     private final Map<String, Identity> identities;
@@ -42,7 +42,13 @@ final class IdentityMappings {
             JsonNode document = parse(bytes); fields(document, Set.of("schemaVersion", "users"));
             if (!document.path("schemaVersion").isInt() || document.path("schemaVersion").intValue() != 1 || !document.path("users").isArray() || document.path("users").size() > 1000) throw TicketVerifier.denied();
             Map<String, Identity> result = new HashMap<>();
-            for (JsonNode user : document.path("users")) { Identity value = new Identity(user); if (result.put(value.subject, value) != null) throw TicketVerifier.denied(); }
+            Set<List<String>> nativeIds = new HashSet<>(), nativeAccounts = new HashSet<>();
+            for (JsonNode user : document.path("users")) {
+                Identity value = new Identity(user);
+                if (result.put(value.subject, value) != null
+                    || !nativeIds.add(List.of(value.tenantCode, Long.toString(value.userId)))
+                    || !nativeAccounts.add(List.of(value.tenantCode, value.accountName))) throw TicketVerifier.denied();
+            }
             identities = Map.copyOf(result);
         } catch (Exception ignored) { throw new IllegalArgumentException("Identity mapping configuration is invalid"); }
     }

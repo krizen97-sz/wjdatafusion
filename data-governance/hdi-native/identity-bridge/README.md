@@ -28,7 +28,7 @@ HMAC密钥是私有文件中的**原始二进制32–64字节**，两端不trim�
 
 nonce在模块私有目录原子持久化，防并发、同进程与重启后短窗口重放；目录带自身owner标记，不接管未知非空目录。保留未完成写入作为已消费记录，最多8192条未清理记录；过期记录可由该模块清除。目录应在同一个交换服务实例的持久卷，不能每次重启换空目录。
 
-成功HTTP200：`{"code":"0","data":{"user":{...原显示字段...},"projectCode":"...","projectName":"...","projectList":[...]}}`。原容器生成的Set-Cookie只由RYNEW后台保存，禁止转发给浏览器。失败HTTP401/503且响应不包含密钥、票据、映射内容或文件路径。失败不能创建新session；已消费票据遇到临时服务问题，调用方应重新签发新nonce。
+成功HTTP200：`{"code":"0","data":{"user":{...原显示字段...},"projectCode":"...","projectName":"...","projectList":[...],"workspaceId":901,"locale":"zh_CN"}}`。顶层locale直接采用明确映射的language，供原页面宿主选择语言。原容器生成的Set-Cookie只由RYNEW后台保存，禁止转发给浏览器。失败HTTP401/503且响应不包含密钥、票据、映射内容或文件路径。失败不能创建新session；已消费票据遇到临时服务问题，调用方应重新签发新nonce。
 
 ## 私有配置与明确映射
 
@@ -63,7 +63,7 @@ rynew.detl.identity-bridge.session-seconds=900
 }
 ```
 
-外层为`{"schemaVersion":1,"users":[...]}`。roleType必须明确填入原1–5编码，示例5为原开发者；不存在默认角色/用户/租户/项目。1–4为原管理角色，只有经授权的明确映射才能配置。未知subject、重复subject、缺失角色、非法字段均拒绝。配置只读载入，变更需受控重启；不会自动创建数据库用户或把任意RYNEW用户变成原管理员。完整服务验收必须验证原工作区权限仍有效。
+外层为`{"schemaVersion":1,"users":[...]}`。roleType必须明确填入原1–5编码，示例5为原开发者；不存在默认角色/用户/租户/项目。1–4为原管理角色，只有经授权的明确映射才能配置。未知subject、重复subject、缺失角色、非法字段均拒绝。同一tenantCode内的userId和accountName也必须各自唯一，不能把多个平台subject配置成同一个原任务拥有者或审计身份；不同租户按各自命名空间校验。配置只读载入，变更需受控重启；不会自动创建数据库用户或把任意RYNEW用户变成原管理员。完整服务验收必须验证原工作区权限仍有效。
 
 成功时先作废已有原session再建立新session，防止session固定；原UserRole和UserDetails由原方法写入。桥在调用时绑定真实ServletRequestAttributes，调用后恢复原上下文，不使用默认mock管理员。
 

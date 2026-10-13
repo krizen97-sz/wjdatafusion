@@ -69,12 +69,28 @@ public final class IdentityBridgeProof {
     static void mappingRules() throws Exception {
         IdentityMappings mappings = new IdentityMappings(mapping()); IdentityMappings.Identity identity = mappings.resolve(BODY);
         check(identity.userId == 73 && identity.roleType == 5 && identity.workspaceId == 901, "explicit mapped non-admin identity");
+        IdentityMappings.Identity english = new IdentityMappings(new String(mapping(), StandardCharsets.UTF_8).replace("zh_CN", "en_US").getBytes(StandardCharsets.UTF_8)).resolve(BODY);
+        check(english.response().get("locale").equals("en_US") && english.response().get("workspaceId").equals(901L), "host receives explicit language and workspace");
+        denied(() -> new IdentityMappings(twoMappings(true, false, true)), "two subjects cannot share a native user id in one tenant");
+        denied(() -> new IdentityMappings(twoMappings(false, true, true)), "two subjects cannot share a native account in one tenant");
+        check(new IdentityMappings(twoMappings(false, false, true)).resolve("{\"subject\":\"rynew:user:8\"}".getBytes(StandardCharsets.UTF_8)).userId == 74, "distinct native identities are accepted");
+        check(new IdentityMappings(twoMappings(true, true, false)).resolve("{\"subject\":\"rynew:user:8\"}".getBytes(StandardCharsets.UTF_8)).tenantCode.equals("tenant-b"), "native uniqueness is scoped to each tenant");
         for (String body : List.of("{\"subject\":\"rynew:user:8\"}", "{\"subject\":\"rynew:user:7\",\"roleType\":1}", "{\"subject\":\"rynew:user:7\",\"subject\":\"rynew:user:8\"}", "{\"subject\":\"rynew:user:7\"}{}")) denied(() -> mappings.resolve(body.getBytes(StandardCharsets.UTF_8)), "unknown identity or forged payload");
         denied(() -> mappings.resolve(new byte[]{(byte)0xc3, (byte)0x28}), "malformed UTF8");
         denied(() -> new IdentityMappings(new String(mapping(), StandardCharsets.UTF_8).replace("\"roleType\":5,", "").getBytes(StandardCharsets.UTF_8)), "no role default");
         denied(() -> new IdentityMappings(new String(mapping(), StandardCharsets.UTF_8).replace("\"roleType\":5", "\"roleType\":0").getBytes(StandardCharsets.UTF_8)), "unknown role rejected");
         IdentityMappings empty = new IdentityMappings("{\"schemaVersion\":1,\"users\":[]}".getBytes(StandardCharsets.UTF_8));
         denied(() -> empty.resolve(BODY), "empty map never grants admin");
+    }
+    static byte[] twoMappings(boolean sameId, boolean sameAccount, boolean sameTenant) throws Exception {
+        var document = IdentityMappings.JSON.readTree(mapping());
+        var users = (com.fasterxml.jackson.databind.node.ArrayNode)document.path("users");
+        var second = ((com.fasterxml.jackson.databind.node.ObjectNode)users.get(0)).deepCopy();
+        second.put("subject", "rynew:user:8");
+        if (!sameId) second.put("userId", 74);
+        if (!sameAccount) second.put("accountName", "another-native-user");
+        if (!sameTenant) second.put("tenantCode", "tenant-b");
+        users.add(second); return IdentityMappings.JSON.writeValueAsBytes(document);
     }
     static void privateFileRules(Path root) throws Exception {
         Path key = root.resolve("key"); Files.write(key, KEY); Files.setPosixFilePermissions(key, PosixFilePermissions.fromString("rw-------"));
