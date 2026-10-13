@@ -31,6 +31,17 @@ class HdiTaskStoreTest {
         return new HdiTaskStore.PreparedVisual(visual, snapshot, HdiTaskStore.sha256(snapshot.getBytes(StandardCharsets.UTF_8)), "[]");
     }
     HdiTaskStore.Task task() { return store.save(7, null, null, "真实存储用例", -1, (id, revision) -> prepared(id, revision, "first")); }
+    @Test void springWiringUsesPlatformMasterEvenWhenAnotherBusinessProvidesTheOnlyJdbcTemplate() {
+        var unrelated = org.mockito.Mockito.mock(JdbcTemplate.class);
+        try (var context = new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+            context.registerBean("masterDataSource", javax.sql.DataSource.class, () -> jdbc.getDataSource());
+            context.registerBean("whitelistPostgresJdbcTemplate", JdbcTemplate.class, () -> unrelated);
+            context.register(HdiTaskStore.class); context.refresh();
+            org.mockito.Mockito.clearInvocations(unrelated); // Ignore Spring's InitializingBean lifecycle, not database queries.
+            assertEquals(store.workspace(), context.getBean(HdiTaskStore.class).workspace());
+            org.mockito.Mockito.verifyNoInteractions(unrelated);
+        }
+    }
     @Test void savesImmutableRevisionsAndRejectsForeignOwnersAndStaleWindows() {
         var first = task(); var snapshot = store.revision(7, first.id(), 1);
         var second = store.save(7, first.id(), 1L, "修改后的任务", -1, (id, revision) -> prepared(id, revision, "second"));

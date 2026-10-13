@@ -11,6 +11,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import javax.sql.DataSource;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.stereotype.Repository;
@@ -51,6 +55,10 @@ public class HdiTaskStore {
         r.getLong("owner_id"), r.getInt("workspace_id"), r.getLong("native_flow_id"), r.getLong("native_instance_id"),
         r.getLong("metadata_id_base"), r.getString("definition_sha256"), r.getString("mode"), r.getString("state"),
         r.getString("worker_snapshot_json"), r.getString("error_message"), r.getTimestamp("created_at").toInstant(), r.getTimestamp("updated_at").toInstant());
+    /** A separate application's JdbcTemplate must never receive task metadata queries. */
+    @Autowired public HdiTaskStore(@Qualifier("masterDataSource") DataSource master) {
+        this(new JdbcTemplate(master), new DataSourceTransactionManager(master));
+    }
     public HdiTaskStore(JdbcTemplate jdbc, PlatformTransactionManager manager) {
         this.jdbc = jdbc; transactions = new TransactionTemplate(manager);
     }

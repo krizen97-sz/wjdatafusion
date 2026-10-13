@@ -2,8 +2,11 @@
   <div ref="workspace" class="app-container hdi-task-workspace">
     <div v-if="(taskId || warned) && !failed" class="mb8">
       <el-button v-if="taskId" icon="Back" @click="backToList">任务列表</el-button>
+      <el-button v-if="taskId" icon="Tickets" @click="historyOpen = true">运行记录</el-button>
       <el-button v-if="warned" icon="Refresh" @click="connect(true)">重新连接</el-button>
+      <el-text v-if="taskId" type="info" class="ml10">本地文件目录填写“/平台输出”，运行后可在记录中下载。</el-text>
     </div>
+    <HdiRunHistory v-model="historyOpen" :task-id="taskId" />
     <el-result v-if="failed" icon="warning" title="任务工作区暂不可用" sub-title="请重试；如果仍无法连接，请联系管理员。">
       <template #extra><el-button type="primary" @click="connect(true)">重新连接</el-button></template>
     </el-result>
@@ -21,6 +24,7 @@ import { ElMessage } from 'element-plus'
 import { createHdiSession } from '@/api/governance/hdi'
 import { getInfo } from '@/api/login'
 import { hdiFrameUrl, isHdiMessage, platformTaskUrl, validHdiTaskId } from './hdiHostBridge'
+import HdiRunHistory from './HdiRunHistory.vue'
 
 const route = useRoute(), router = useRouter()
 const workspace = ref(), frameHost = ref(), frame = ref()
@@ -29,6 +33,7 @@ const taskId = ref(route.query.hdiTask || null)
 const readonly = ref(route.query.hdiReadonly === 'true')
 const isNewCreate = ref(route.query.hdiNew === '1')
 const nativeContext = ref(null), warned = ref(false)
+const historyOpen = ref(false)
 const { height: viewportHeight } = useWindowSize()
 const { top } = useElementBounding(frameHost)
 const frameHeight = computed(() => {

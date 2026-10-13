@@ -9,6 +9,7 @@
 | 列表、画布、节点表单 | 原DFPModules / Plugins / TheComponents | 原Vue2/HUI组件 | host/native-task-host.mjs，原module16638/41843 | 只传真实平台context、原props和导航事件 |
 | 返回/刷新恢复/新窗口 | 原任务事件 + 现有hdiHostBridge | RuoYi路由query与标准浏览器窗口 | document/workspace模块拆分；hdiHostBridge.js | 严格host路径、精确ID、模式保留；弹窗被拦截时在当前原组件打开 |
 | 会话续期 | getInfo + 原有交互监听 | 保留用户操作驱动模式 | HdiTaskWorkspace已有实现 | GET平台/detl/_platform/context，不依赖原管理端用户接口 |
+| 平台运行记录与完整文件 | DeliveryWorkbench、ScheduleWorkbench详情抽屉 | el-drawer、el-table、el-tag、el-tabs、el-alert、共享download.saveAs | views/governance/components/DeliveryWorkbench.vue、ScheduleWorkbench.vue；components/RightToolbar | 原UI无平台文件归档入口，新增模块内HdiRunHistory；展示真实平台记录，不改变原画布/节点表单 |
 
 已读 DESIGN、COMPONENT-CATALOG、REFERENCE-PAGES，并核对 Vue 3.5 / Element Plus 2.13.1 / VueUse 已安装依赖。外层不引入新UI库，原Vue2/HUI留在独立iframe。没有复制普通CRUD新页面，没有新增图标/颜色/全局样式，没有新增UI Guard例外。
 
