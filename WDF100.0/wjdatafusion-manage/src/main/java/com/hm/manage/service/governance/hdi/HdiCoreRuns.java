@@ -60,8 +60,11 @@ public class HdiCoreRuns {
             ObjectNode binding = HdiProtocol.JSON.createObjectNode().put("id", hello.path("binding").path("id").asText())
                 .put("name", hello.path("binding").path("name").asText()).put("type", "original-detl").put("state", "CONFIGURED")
                 .put("nativeInstanceAllocatedPerRun", true);
-            return HdiProtocol.JSON.createObjectNode().put("available", true).put("workerState", "READY").put("metricsAvailable", false)
-                .set("bindings", HdiProtocol.JSON.createArrayNode().add(binding));
+            ObjectNode resource = HdiProtocol.JSON.createObjectNode().put("available", true).put("workerState", "READY").put("metricsAvailable", false);
+            resource.set("bindings", HdiProtocol.JSON.createArrayNode().add(binding));
+            if (hello.path("outputPolicy").isObject()) resource.set("outputPolicy", hello.path("outputPolicy"));
+            if (hello.path("capacity").isObject()) resource.set("capacity", hello.path("capacity"));
+            return resource;
         } catch (HdiWorkerClient.Failure failure) {
             return HdiProtocol.JSON.createObjectNode().put("available", false).put("workerState", failure.uncertain() ? "DISCONNECTED" : "UNAVAILABLE")
                 .put("metricsAvailable", false).set("bindings", HdiProtocol.JSON.createArrayNode());
@@ -98,6 +101,7 @@ public class HdiCoreRuns {
                 "nativeFlowId", Long.toString(run.nativeFlowId()), "nativeInstanceId", Long.toString(run.nativeInstanceId()),
                 "metadataIdBase", Long.toString(run.metadataIdBase()), "execId", run.execId(),
                 "outputsDir", reserved.path("outputsDir").asText(), "authorizedOutputRoot", reserved.path("authorizedOutputRoot").asText(),
+                "outputRootSource", "worker-reserve",
                 "mode", run.mode().equals("DEBUG") ? "test" : "run"));
             if (current.cancelled || closing) { cancelReserved(current); return; }
             // Persist submission intent before the transport call. A missing reply becomes UNKNOWN, never a retry.
