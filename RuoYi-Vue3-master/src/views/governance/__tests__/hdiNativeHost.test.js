@@ -7,7 +7,7 @@ async function withHost(options, run) {
   const previousWindow = globalThis.window, previousStorage = globalThis.localStorage
   const listeners = new Map(), instances = []
   const TaskList = { name: 'OriginalTaskList' }, DagMain = { name: 'OriginalDagMain' }
-  const store = { state: { currentWorkspaceId: options.workspace ?? '11' }, values: {}, commit(key, value) { this.values[key] = value } }
+  const store = { state: { currentWorkspaceId: options.workspace ?? '11' }, values: {}, subscribeAction() { return () => {} }, commit(key, value) { this.values[key] = value } }
   class Vue {
     constructor(config) {
       Object.assign(this, config.data())
@@ -30,7 +30,11 @@ async function withHost(options, run) {
     AsyncDagMain: async () => DagMain,
     AsyncDagMainForView() {}, AsyncAddBasicInfo() {}
   }
+  const http = { interceptors: { request: { use() { return 1 }, eject() {} }, response: { use() { return 1 }, eject() {} } } }
+  const chunks = []
+  chunks.push = ([, , register]) => register(id => { assert.equal(id, 43620); return { A: http } })
   globalThis.window = {
+    location: { origin: 'https://platform.example' }, webpackChunkdetl_web: chunks,
     GLOBAL_HUI: {},
     detlModule: {
       async init(scope) {
