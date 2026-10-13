@@ -35,7 +35,7 @@ class HdiCoreSchedulesTest {
         SysUser user = new SysUser(); user.setUserId(4L); user.setStatus("0"); user.setDelFlag("0");
         when(users.selectUserById(4L)).thenReturn(user);
         when(permissions.getMenuPermission(user)).thenReturn(Set.of("governance:flow:list", "governance:flow:test"));
-        ObjectNode compiled = HdiProtocol.JSON.createObjectNode(); compiled.set("scheduleConfig", config); compiled.set("cronExpressions", HdiProtocol.JSON.createArrayNode().add("0 0 19 * * ?"));
+        ObjectNode compiled = HdiProtocol.JSON.createObjectNode().put("mode", "CRON"); compiled.set("scheduleConfig", config); compiled.set("cronExpressions", HdiProtocol.JSON.createArrayNode().add("0 0 19 * * ?"));
         when(compiler.schedule(any(), eq("Asia/Shanghai"))).thenReturn(compiled);
         schedules = new HdiCoreSchedules(properties, store, compiler, runs, users, permissions, clock);
     }
@@ -46,7 +46,7 @@ class HdiCoreSchedulesTest {
         return new HdiTaskStore.SchedulePlan(17, 4, 2, 3, value.toString(), fire, true, "ENABLED");
     }
     @Test void onlyAdvertisesSupportedOriginalCycles() {
-        assertEquals(Map.of("每月", 2, "每周", 3, "每日", 4), schedules.supportedFrequencies());
+        assertEquals(Map.of("一次性", 0, "每月", 2, "每周", 3, "每日", 4), schedules.supportedFrequencies());
     }
     @Test void previewUsesOriginalCompiledCronWithExplicitPlatformTimezone() {
         List<String> times = schedules.preview(config);
@@ -101,6 +101,16 @@ class HdiCoreSchedulesTest {
     }
     @Test void disablesFutureTriggersWithoutInventingAStoppedCurrentRun() {
         schedules.disable(4, 17); verify(store).disableSchedule(4, 17); verifyNoInteractions(runs);
+    }
+    @Test void manualSettingsPersistAndAtomicallyDisablePriorCycleWithoutRunning() {
+        ObjectNode manual = HdiProtocol.JSON.createObjectNode().put("scheduleType", 1).put("flowIncrStatus", 1).put("start", 0);
+        ObjectNode compiled = HdiProtocol.JSON.createObjectNode().put("mode", "MANUAL"); compiled.set("scheduleConfig", manual); compiled.set("cronExpressions", HdiProtocol.JSON.createArrayNode());
+        when(compiler.schedule(eq(manual), anyString())).thenReturn(compiled);
+        when(store.saveSchedule(eq(4L), eq(17L), eq(2L), anyString(), eq(false), isNull())).thenAnswer(call ->
+            new HdiTaskStore.SchedulePlan(17, 4, 2, 4, call.getArgument(3), null, false, "DISABLED"));
+        JsonNode result = schedules.saveManual(4, 17, 2, manual);
+        assertFalse(result.path("enabled").asBoolean()); assertEquals("MANUAL", result.path("kind").asText()); assertEquals(manual, result.path("schedule"));
+        assertTrue(schedules.preview(manual).isEmpty()); verifyNoInteractions(runs);
     }
     @Test void malformedPersistedPlanIsNotExecuted() {
         var plan = new HdiTaskStore.SchedulePlan(17, 4, 2, 3, "{}", clock.instant(), true, "ENABLED");

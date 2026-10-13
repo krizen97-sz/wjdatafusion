@@ -22,6 +22,8 @@
 
 计划只绑定已发布且与预期版本相同的 immutable revision，后续编辑或发布不会暗中替换旧计划的数据定义。保存计划不执行数据任务；启用后由持久 due 时间触发。禁用只停止后续触发，当前运行另调用 stop。
 
+原手动 `scheduleType=1` 的设置也真实持久化：`kind=MANUAL`、空 cron、enabled=false、nextFireAt=null，并在同一 Store 事务中禁用旧周期/generation。回读返回保存的原手动配置；“立即启动”由 API 另行显式调用 startRun，不能把保存成功当执行成功，也不会由 timer 自动启动手动计划。
+
 Store 在同一事务中按 Task → Plan 顺序加锁，校验 generation / expectedFire，推进下一次时间并预留唯一触发 run。服务拿到已预留 run 后直接协调，不能再 reserve 一次。重叠运行和 `UNKNOWN` 屏障都会跳过本次触发并记录 `SKIPPED_OVERLAP`。
 
 后台触发重新核对用户数据库状态及当前 `governance:flow:list/test` 权限，无需保持浏览器登录。用户禁用、删除或权限撤销时记 `SKIPPED_PERMISSION`。权限数据库临时不可用时不冒充权限撤销，也不派发任务。
