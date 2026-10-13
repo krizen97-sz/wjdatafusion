@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mountOriginalTasks, withOriginalListDefaults, registerOriginalToolbar } from '../../../../../data-governance/hdi-native/host/native-task-host.mjs'
+import { mountOriginalTasks, withOriginalListDefaults, registerOriginalToolbar, registerOriginalAdapterDrawer } from '../../../../../data-governance/hdi-native/host/native-task-host.mjs'
 
 // Contract proof for our thin host only. The original vendor bundles are not simulated as execution evidence.
 async function withHost(options, run) {
@@ -36,6 +36,9 @@ async function withHost(options, run) {
   const chunks = []
   const runtime = id => {
     if (id === 43620) return { A: http }
+    if (id === 4780) return { Drawer: { render() {}, methods: {} } }
+    if (id === 54147) return { Go: value => ({ ...value, methods: { ...value.methods } }) }
+    if (id === 30930) return { Ay: { t: value => value } }
     assert.equal(id, 39136)
     return { TheDataStandardTransformerProcessPluginInfo: { anchors: [{ component: { __name: 'StandardConversion', setup() {} } }] } }
   }
@@ -153,4 +156,33 @@ test('missing original toolbar export fails instead of registering a pretend upd
   runtime.e = async () => {}
   await assert.rejects(registerOriginalToolbar(Vue, {}, runtime), /共享工具栏/)
   assert.equal(destroyed, true)
+})
+
+
+test('node drawer keeps original HUI render and factory resize behavior without starting the original app', () => {
+  const previousDocument = globalThis.document
+  globalThis.document = { body: { clientHeight: 600, clientWidth: 1000, style: {} } }
+  let registered, mounted = 0, title
+  const source = { render() {}, mounted() { mounted++ }, methods: { drag() {} } }, originalDrag = source.methods.drag
+  const runtime = id => {
+    if (id === 4780) return { Drawer: source }
+    if (id === 54147) return { Go: value => ({ ...value, methods: { ...value.methods } }) }
+    if (id === 30930) return { Ay: { t: key => { assert.equal(key, 'common.close'); return '关闭' } } }
+    assert.fail('Must not load the original management bootstrap')
+  }
+  try {
+    registerOriginalAdapterDrawer({ component(name, component) { assert.equal(name, 'TheAdapterDrawer'); registered = component } }, runtime)
+    assert.notEqual(registered, source); assert.equal(registered.render, source.render); assert.equal(source.methods.drag, originalDrag)
+    registered.mounted.call({ $nextTick(fn) { fn() }, $el: { querySelector() { return { setAttribute(name, value) { title = [name, value] } } } } })
+    assert.equal(mounted, 1); assert.deepEqual(title, ['title', '关闭'])
+    for (const [direction, axis, amount] of [['l', 'width', 900], ['r', 'width', 100], ['t', 'height', 450], ['b', 'height', 150]]) {
+      const sizes = [], events = [], instance = { $refs: { drag: {} }, dragDirection: direction,
+        calculateSize(...args) { sizes.push(args) }, $emit(...args) { events.push(args) } }
+      registered.methods.drag.call(instance); instance.$refs.drag.onmousedown()
+      document.onmousemove({ clientX: 100, clientY: 150 })
+      assert.deepEqual(sizes, [[axis, amount]]); assert.equal(events[0][0], 'drag')
+      document.onmouseup(); assert.equal(document.body.style.pointerEvents, null)
+      assert.equal(document.onmousemove, null)
+    }
+  } finally { globalThis.document = previousDocument }
 })

@@ -156,6 +156,15 @@ export function bindOriginalPublishBoundary(store, client, host, origin) {
   }
 }
 
+// Verbatim factory registration from static/js/188.15d552eb.js, module 25418.
+// SHA256: 3ed9bc64f696cb331efe748828880af980a483af0d61594744b99bffc465fd9a
+// Only this UI registration is copied; evaluating 25418 would start the retired management application.
+export function registerOriginalAdapterDrawer(Vue, runtime) {
+  const o = () => Vue, r = runtime(4780), p = runtime(54147), g = runtime(30930)
+  if (!r?.Drawer?.render || typeof p?.Go !== 'function' || !g?.Ay?.t) throw new Error('原节点抽屉组件不可用')
+  const f=(0,p.Go)(r.Drawer);f.name="TheAdapterDrawer";const b=f.mounted||null;f.mounted=function(){b&&b.call(this),this.$nextTick((()=>{const e=this.$el.querySelector(".el-drawer__close-btn");e&&e.setAttribute("title",g.Ay.t("common.close"))}))},f.methods.drag=function(){this.$refs.drag.onmousedown=()=>{const e=document.body.clientHeight,t=document.body.clientWidth;document.onmousemove=s=>{switch(document.body.style.pointerEvents="none",this.emitParams={},this.dragDirection){case"r":{const e=s.clientX;this.calculateSize("width",e);break}case"l":{const e=t-s.clientX;this.calculateSize("width",e);break}case"t":{const t=e-s.clientY;this.calculateSize("height",t);break}case"b":{const e=s.clientY;this.calculateSize("height",e);break}default:{const e=s.clientX;this.calculateSize("width",e)}}this.$emit("drag",this.emitParams),document.onmouseup=e=>{document.body.style.pointerEvents=null,document.onmousemove=null,document.onmouseup=null}}}},o().component("TheAdapterDrawer",f);
+}
+
 export function withOriginalListDefaults(TaskList) {
   const initialize = TaskList?.methods?.handleCachePreSearch
   if (typeof initialize !== 'function') throw new Error('原任务列表初始化接口版本不匹配')
@@ -191,6 +200,7 @@ export async function mountOriginalTasks(host, target) {
   if (!TaskList || !DagMain || !store || String(store.state.currentWorkspaceId) !== String(host.workspaceId)) {
     throw new Error('原任务组件未取得当前平台工作区')
   }
+  registerOriginalAdapterDrawer(Vue, originalRuntime())
   await registerOriginalToolbar(Vue, i18n, originalRuntime())
   const TaskListHost = withOriginalListDefaults(TaskList)
   store.commit('SET_USER', host.user)

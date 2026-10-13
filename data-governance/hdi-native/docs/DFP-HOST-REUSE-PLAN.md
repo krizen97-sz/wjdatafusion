@@ -44,3 +44,5 @@ ready只代表原TaskList/ProcessMain实例完成Vue挂载，不代表后端任�
 列表默认列取原EtlConstants.DFP_FLOW_COLUMN_DISPLAY_DEFAULT；目录iconStr引用同包、manifest校验的原默认SVG。字段映射使用原PROCESS_ADAPTER_TYPE未覆盖时的other分类。没有绘制或替换插件图标，也没有向页面注入伪全局枚举或空update。
 
 共享工具栏装配验证：13项宿主定向测试、完整前端verify（306项测试、UI Guard、构建、167个产物兼容检查）通过；原资源字节保持不变，实际原画布操作仍由集成浏览器另行验收。
+
+节点抽屉使用原188.15d552eb.js / module25418的982字节注册片段（SHA256 3ed9bc64f696cb331efe748828880af980a483af0d61594744b99bffc465fd9a），直接clone原HUI.Drawer并保留其render/CSS和原拖动计算。该宿主未求值整份25418，因为它会启动旧管理应用。14项定向测试、UI Guard以及完整前端verify（307项测试、生产构建、167个JS兼容检查）通过；真实抽屉显示需集成浏览器复测。
