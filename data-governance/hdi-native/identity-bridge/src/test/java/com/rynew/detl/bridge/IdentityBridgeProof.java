@@ -70,7 +70,15 @@ public final class IdentityBridgeProof {
         IdentityMappings mappings = new IdentityMappings(mapping()); IdentityMappings.Identity identity = mappings.resolve(BODY);
         check(identity.userId == 73 && identity.roleType == 5 && identity.workspaceId == 901, "explicit mapped non-admin identity");
         IdentityMappings.Identity english = new IdentityMappings(new String(mapping(), StandardCharsets.UTF_8).replace("zh_CN", "en_US").getBytes(StandardCharsets.UTF_8)).resolve(BODY);
-        check(english.response().get("locale").equals("en_US") && english.response().get("workspaceId").equals(901L), "host receives explicit language and workspace");
+        check(english.response().get("locale").equals("en_US") && english.response().get("workspaceId").equals("901"), "host receives explicit language and workspace");
+        var largeMapping = IdentityMappings.JSON.readTree(mapping());
+        var largeUser = (com.fasterxml.jackson.databind.node.ObjectNode)largeMapping.path("users").get(0);
+        largeUser.put("userId", 9_007_199_254_740_993L); largeUser.put("workspaceId", 9_007_199_254_740_993L);
+        var largeIdentity = new IdentityMappings(IdentityMappings.JSON.writeValueAsBytes(largeMapping)).resolve(BODY);
+        var serialized = IdentityMappings.JSON.readTree(IdentityMappings.JSON.writeValueAsBytes(largeIdentity.response()));
+        for (var id : List.of(serialized.path("workspaceId"), serialized.path("user").path("id"), serialized.path("user").path("userId")))
+            check(id.isTextual() && id.textValue().equals("9007199254740993"), "browser context preserves long id as exact decimal string");
+        check(largeIdentity.userId == 9_007_199_254_740_993L && largeIdentity.workspaceId == 9_007_199_254_740_993L, "native identity retains exact long values");
         denied(() -> new IdentityMappings(twoMappings(true, false, true)), "two subjects cannot share a native user id in one tenant");
         denied(() -> new IdentityMappings(twoMappings(false, true, true)), "two subjects cannot share a native account in one tenant");
         check(new IdentityMappings(twoMappings(false, false, true)).resolve("{\"subject\":\"rynew:user:8\"}".getBytes(StandardCharsets.UTF_8)).userId == 74, "distinct native identities are accepted");

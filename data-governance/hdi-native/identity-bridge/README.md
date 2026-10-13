@@ -28,7 +28,7 @@ HMAC密钥是私有文件中的**原始二进制32–64字节**，两端不trim�
 
 nonce在模块私有目录原子持久化，防并发、同进程与重启后短窗口重放；目录带自身owner标记，不接管未知非空目录。保留未完成写入作为已消费记录，最多8192条未清理记录；过期记录可由该模块清除。目录应在同一个交换服务实例的持久卷，不能每次重启换空目录。
 
-成功HTTP200：`{"code":"0","data":{"user":{...原显示字段...},"projectCode":"...","projectName":"...","projectList":[...],"workspaceId":901,"locale":"zh_CN"}}`。顶层locale直接采用明确映射的language，供原页面宿主选择语言。原容器生成的Set-Cookie只由RYNEW后台保存，禁止转发给浏览器。失败HTTP401/503且响应不包含密钥、票据、映射内容或文件路径。失败不能创建新session；已消费票据遇到临时服务问题，调用方应重新签发新nonce。
+成功HTTP200：`{"code":"0","data":{"user":{...原显示字段...},"projectCode":"...","projectName":"...","projectList":[...],"workspaceId":"901","locale":"zh_CN"}}`。workspaceId、user.id和user.userId以十进制字符串返回，避免大Long经过JavaScript Number丢失精度；原UserRole内部仍是Long。顶层locale直接采用明确映射的language，供原页面宿主选择语言。原容器生成的Set-Cookie只由RYNEW后台保存，禁止转发给浏览器。失败HTTP401/503且响应不包含密钥、票据、映射内容或文件路径。失败不能创建新session；已消费票据遇到临时服务问题，调用方应重新签发新nonce。
 
 ## 私有配置与明确映射
 
