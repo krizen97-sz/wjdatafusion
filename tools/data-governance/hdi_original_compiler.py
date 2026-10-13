@@ -53,7 +53,7 @@ def classpath(bundle: Path) -> list[Path]:
         if row['path'] in paths:
             raise ValueError('Duplicate bundle manifest entry')
         paths[row['path']] = row
-    selected = ['task-service/dEtlv2.jar', 'instance/etl-core-3.3.0.jar']
+    selected = ['task-service/dEtlv2.jar', 'instance/etl-core-3.3.0.jar', 'instance/conf/task_config.json']
     for folder in ('task-service/lib', 'task-service/ext/normal', 'instance/lib'):
         selected.extend(sorted(name for name in paths if str(Path(name).parent) == folder and name.endswith('.jar')))
     for plugin in ('dataGeneratorInput', 'fieldMapping', 'fileOutput'):

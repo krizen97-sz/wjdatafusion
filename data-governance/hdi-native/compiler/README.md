@@ -95,7 +95,9 @@ outputsDir 必须是 authorizedOutputRoot 下的独立子目录。二者只能�
 * 停止：同一 schedule 路径，使用本次编译返回的原 `stop` 字节。它由原 `FlowControlMessageDto.builder().flowId(nativeFlowId).type(0).build()` 生成，不自造 control 消息。
 * 终态：原 `/metadata/schedule/<flowId>/exec`，必须匹配本次 exec_id。实际输出成功、日志及产物校验属于 worker 的执行验收。
 
-元数据适配对原 DAO/service 方法进行精确绑定和 ID 检查，未知方法立即失败。当前 profile 的外部数据源、全局参数、第三方 FEL、共享扩展版本和运行配置表为空；本地原插件目录是唯一可用插件来源。没有通用空值/成功兜底，后续插件需先补真实元数据契约和执行验证。
+元数据适配对原 DAO/service 方法进行精确绑定和 ID 检查，未知方法立即失败。原 UI 的 `paramVoList` 从包内 `instance/conf/task_config.json` 的真实目录校验，并投影为本次 flowId / type2 的原 `EtlParam`，原生成器写入 `flow.flow_param`，不会清空 UI 默认任务参数。全部原默认值可保留；日志级别枚举、布尔开关和有限数值设置按原目录及当前资源边界校验。周期延展/强制周期、Kafka offset、失败数据自定义 Cron 和心跳等未接能力只允许原未启用默认值；未知、全局或外部 FEL 参数明确拒绝。
+
+当前 profile 的外部数据源、全局参数、第三方 FEL、共享扩展版本和运行配置表为空；本地原插件目录是唯一可用插件来源。没有通用空值/成功兜底，后续插件需先补真实元数据契约和执行验证。
 
 ## 验证
 

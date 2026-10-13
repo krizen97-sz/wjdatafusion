@@ -245,6 +245,41 @@ public final class OriginalTaskCompiler {
         }
         return result;
     }
+    static List<EtlParam> flowParams(Object raw, long flowId, Path bundle) throws IOException {
+        Map<String,Object> catalog = parse(Files.readString(bundle.resolve("instance/conf/task_config.json")));
+        Map<String,Map<String,Object>> definitions = new LinkedHashMap<>();
+        for (Object item : list(catalog.get("configParam"), "original task parameter catalog")) {
+            Map<String,Object> definition = object(item, "task parameter definition");
+            require(definitions.put(text(definition.get("name")), definition) == null, "Duplicate original task parameter definition");
+        }
+        List<EtlParam> result = new ArrayList<>(); Set<String> names = new HashSet<>();
+        Set<String> defaultOnly = Set.of("etl.task.schedule.expand.enable", "etl.task.input.kafka.offset.save.enable", "etl.task.failed.data.retry.cron", "etl.task.data.heartbeat.send.interval", "etl.task.schedule.periodic.enforcement");
+        for (Object item : list(raw, "flow parameters")) {
+            Map<String,Object> parameter = object(item, "flow parameter"); String name = text(parameter.get("paramName"));
+            Map<String,Object> definition = definitions.get(name);
+            supported(definition != null, "Task parameter is not present in the original catalog");
+            require(names.add(name), "Duplicate task parameter");
+            supported(empty(parameter.get("globalParamKey")) && !Set.of("el-select-source", "el-input-fel").contains(text(parameter.get("valueType"))), "External/global/FEL task parameters are not supported");
+            supported(empty(parameter.get("enableFlag")) || "1".equals(text(parameter.get("enableFlag"))), "Disabled task parameter metadata is not supported");
+            require(parameter.get("paramValue") != null && !(parameter.get("paramValue") instanceof Map) && !(parameter.get("paramValue") instanceof List), "Task parameter value is required");
+            String value = text(parameter.get("paramValue")), type = text(definition.get("type"));
+            if (defaultOnly.contains(name)) supported(value.equals(text(definition.get("defaultValue"))), "Task parameter requires a scheduling or external-source capability outside this profile");
+            else if (type.equals("el-switch")) require(Set.of("true", "false").contains(value), "Task switch must be true or false");
+            else if (type.equals("el-select")) {
+                Set<String> choices = new HashSet<>(); for (Object option : list(definition.get("allowableValues"), "task parameter options")) choices.add(text(object(option, "option").get("value")));
+                require(choices.contains(value), "Task parameter is not an original enumerated option");
+            } else {
+                require(value.matches("[1-9][0-9]{0,9}"), "Task numeric parameter must be a bounded positive integer");
+                long number = Long.parseLong(value), min = 1, max = Integer.MAX_VALUE;
+                if (definition.get("minValue") instanceof Number) min = ((Number)definition.get("minValue")).longValue();
+                if (definition.get("maxValue") instanceof Number) max = ((Number)definition.get("maxValue")).longValue();
+                if (name.equals("etl.task.data.clone.thread.num")) max = 16;
+                require(number >= min && number <= max, "Task numeric parameter is outside the supported original range");
+            }
+            result.add(bean(EtlParam.class, "paramName", name, "paramValue", value, "nodeId", flowId, "nodeType", 2, "enableFlag", 1));
+        }
+        return result;
+    }
     static void validateFields(List<Map<String,Object>> nodes) {
         Set<String> fields = new LinkedHashSet<>();
         for (Object raw : list(nodes.get(0).get("streamFieldVoList"), "stream fields")) {
@@ -383,7 +418,7 @@ public final class OriginalTaskCompiler {
         validateFields(nodes);
         Map<String,Object> logicalFlow = object(visual.get("flowVo"), "flowVo");
         supported(empty(logicalFlow.get("streamCombineType")) || "0".equals(text(logicalFlow.get("streamCombineType"))), "Combined streams are not supported in this profile");
-        supported(list(visual.get("paramVoList"), "flow parameters").isEmpty(), "Flow/global parameters are not supported in this profile");
+        List<EtlParam> flowParameters = flowParams(visual.get("paramVoList"), flowId, bundle);
         long streamId = base, scheduleId = base + 1;
         Map<String,Object> nativeFlow = new LinkedHashMap<>(object(visual.get("flowVo"), "flowVo"));
         nativeFlow.putAll(map("id", flowId, "groupId", groupId, "userId", wireId(ctx, "ownerId"), "projectCode", ctx.get("projectCode"), "streamCombineType", 0, "flowStatus", 1, "flowIncrStatus", 0, "enableFlag", 1));
@@ -435,7 +470,7 @@ public final class OriginalTaskCompiler {
         EtlSchedule schedule = bean(EtlSchedule.class, "id", scheduleId, "nodeId", flowId, "flowIncrStatus", 1, "execType", 1, "enableFlag", 1);
         Object adapterData = provider("service.task.AdapterDataService", Map.of("findAdapterDataByItemId", a -> lookup(dataByItem, a[0])));
         Object params = provider("service.globalconfig.ParamManageService", Map.of("getParamConfigByNode", a -> {
-            int type = Integer.parseInt(text(a[0])); if (type == 2) { key(a[1], flowId); return new ArrayList<EtlParam>(); }
+            int type = Integer.parseInt(text(a[0])); if (type == 2) { key(a[1], flowId); return new ArrayList<>(flowParameters); }
             if (type == 9) { lookup(paramByItem, a[1]); return new ArrayList<EtlParam>(); } // No datasource parameters in the local-file profile.
             require(type == 8, "Unsupported original parameter category"); return new ArrayList<>(lookup(paramByItem, a[1]));
         }));
