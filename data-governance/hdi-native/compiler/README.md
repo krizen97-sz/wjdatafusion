@@ -12,6 +12,8 @@
 
 原字段映射表单自带的未启用 Redis 占位值可以保留；只有与原目录默认值完全一致且当前映射没有外部函数的配置可进入本批执行。参数值改变时返回 `UNSUPPORTED_GRAPH`。
 
+文件名边界在执行前校验：原 `FileOutput.getAllFields` 会从流 schema 的主键取 `primaryFieldName`，`genFileName` 会直接把该字段值加入文件名。因此本 profile 拒绝输入/输出 `fieldKeyFlag!=0`，避免普通数据中的路径字符变成文件名。`fileNameFromFlow`、远程子目录、按字段文件名分组、动态路径等只能保持原空/false 默认；临时扩展名只能保持原默认，`customExtension` 仅允许 1–16 位字母数字、下划线或连字符。受信输出目录也不能含 `${...}` 动态占位符。合法草稿仍可保存，超范围能力在 compile 阶段明确拒绝。原 `flowName` 在已核 FileOutput 中仅参与日志上下文，没有加入此默认文件名生成链。
+
 ## 平台调用
 
 ```sh
