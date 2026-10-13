@@ -46,3 +46,11 @@ ready只代表原TaskList/ProcessMain实例完成Vue挂载，不代表后端任�
 共享工具栏装配验证：13项宿主定向测试、完整前端verify（306项测试、UI Guard、构建、167个产物兼容检查）通过；原资源字节保持不变，实际原画布操作仍由集成浏览器另行验收。
 
 节点抽屉使用原188.15d552eb.js / module25418的982字节注册片段（SHA256 3ed9bc64f696cb331efe748828880af980a483af0d61594744b99bffc465fd9a），直接clone原HUI.Drawer并保留其render/CSS和原拖动计算。该宿主未求值整份25418，因为它会启动旧管理应用。14项定向测试、UI Guard以及完整前端verify（307项测试、生产构建、167个JS兼容检查）通过；真实抽屉显示需集成浏览器复测。
+
+## 同窗口自动保存顺序
+
+复用原saveFlowTask/pushFlowTask动作，并在同版本原Vuex的store.dispatch与root.context.dispatch绑定处串行排队。入队时复制原Visual，前一条自己的timeStamp回读确认用户/工作区/任务及修订恰好+1后，才递交后续同窗口快照。保存回读只同步权威ID/版本/运行状态；当前nodes/links/params和业务flowVo草稿不被旧回读覆盖，显式打开/刷新仍走完整原initFlowDataByTaskId。
+
+原动作没有捕获内部回读promise的异常，宿主记录该失败并使公开排队动作拒绝，避免悬挂；失败队列不自动重试，使用原HUI错误提示保留草稿并请用户核对版本。后端CAS、发布和权限检查不变，其他窗口的版本从不自动提升。
+
+保存队列验证：20项宿主定向测试通过，完整前端verify通过（313项测试、UI Guard、构建、167个JS兼容检查）。原试运行成功提示按扁平locale key改为“试运行已提交”，不把排队受理称为执行成功。

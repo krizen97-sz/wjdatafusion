@@ -5,9 +5,10 @@ import { mountOriginalTasks, withOriginalListDefaults, registerOriginalToolbar, 
 // Contract proof for our thin host only. The original vendor bundles are not simulated as execution evidence.
 async function withHost(options, run) {
   const previousWindow = globalThis.window, previousStorage = globalThis.localStorage
-  const listeners = new Map(), instances = []
+  const listeners = new Map(), instances = [], localeMessages = []
   const TaskList = { name: 'OriginalTaskList', methods: { handleCachePreSearch() { this.popoverSearchForm = { ...this.searchForm } } } }, DagMain = { name: 'OriginalDagMain' }
-  const store = { state: { currentWorkspaceId: options.workspace ?? '11' }, values: {}, subscribeAction() { return () => {} }, commit(key, value) { this.values[key] = value } }
+  const store = { state: { currentWorkspaceId: options.workspace ?? '11' }, values: {}, dispatch() {}, subscribeAction() { return () => {} }, commit(key, value) { this.values[key] = value } }
+  store._modules = { root: { context: { dispatch: store.dispatch } } }
   class Vue {
     constructor(config) {
       Object.assign(this, config.data())
@@ -32,7 +33,7 @@ async function withHost(options, run) {
     AsyncDagMain: async () => DagMain,
     AsyncDagMainForView() {}, AsyncAddBasicInfo() {}
   }
-  const http = { interceptors: { request: { use() { return 1 }, eject() {} }, response: { use() { return 1 }, eject() {} } } }
+  const http = { get() {}, interceptors: { request: { use() { return 1 }, eject() {} }, response: { use() { return 1 }, eject() {} } } }
   const chunks = []
   const runtime = id => {
     if (id === 43620) return { A: http }
@@ -50,7 +51,7 @@ async function withHost(options, run) {
     detlModule: {
       async init(scope) {
         scope.vue = { '2.7.16': { get: async () => () => Vue } }
-        scope['vue-i18n'] = { '7.8.1': { get: async () => () => class I18n { t(value) { return value } } } }
+        scope['vue-i18n'] = { '7.8.1': { get: async () => () => class I18n { t(value) { return value } mergeLocaleMessage(locale, values) { localeMessages.push({ locale, values }) } } } }
       },
       async get(name) { assert.equal(name, './DFPModules'); return () => components }
     },
@@ -58,7 +59,7 @@ async function withHost(options, run) {
     removeEventListener(type, fn) { if (listeners.get(type) === fn) listeners.delete(type) }
   }
   globalThis.localStorage = { setItem() {} }
-  try { await run({ store, instances, listeners, TaskList, DagMain }) }
+  try { await run({ store, instances, listeners, TaskList, DagMain, localeMessages }) }
   finally { globalThis.window = previousWindow; globalThis.localStorage = previousStorage }
 }
 const context = { user: { id: '7' }, workspaceId: '11', projectCode: 'platform-project', projectList: [], router: {} }
@@ -185,4 +186,13 @@ test('node drawer keeps original HUI render and factory resize behavior without 
       assert.equal(document.onmousemove, null)
     }
   } finally { globalThis.document = previousDocument }
+})
+
+
+test('queued test submission uses the exact flat original locale key without claiming execution success', async () => {
+  await withHost({}, async ({ localeMessages }) => {
+    const host = await mountOriginalTasks(context, '#target')
+    assert.deepEqual(localeMessages.at(-1), { locale: 'zh_CN', values: { 'detl.testRunSuccess.name': '试运行已提交' } })
+    host.destroy()
+  })
 })
