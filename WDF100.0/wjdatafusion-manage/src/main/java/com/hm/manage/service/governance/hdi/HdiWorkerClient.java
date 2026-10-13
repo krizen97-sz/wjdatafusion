@@ -50,7 +50,10 @@ public class HdiWorkerClient implements AutoCloseable {
     HdiWorkerClient(HdiCoreProperties properties, Duration timeout) { this.properties = properties; this.timeout = timeout; }
 
     public synchronized JsonNode hello() {
-        ensureStarted(); return greeting.deepCopy();
+        boolean existing = process != null;
+        ensureStarted();
+        if (existing) greeting = checkedGreeting(exchange("hello", HdiProtocol.JSON.createObjectNode()));
+        return greeting.deepCopy();
     }
     public synchronized JsonNode reserve(HdiTaskStore.Run run) {
         ObjectNode body = owned(run); body.put("businessTaskId", Long.toString(run.taskId())).put("revision", Long.toString(run.revision()))
@@ -89,7 +92,7 @@ public class HdiWorkerClient implements AutoCloseable {
     private JsonNode bound(HdiTaskStore.Run run, JsonNode view) {
         for (Map.Entry<String,String> entry : Map.of("runId", run.id(), "ownerId", Long.toString(run.ownerId()), "businessTaskId", Long.toString(run.taskId()),
             "revision", Long.toString(run.revision()), "nativeFlowId", Long.toString(run.nativeFlowId()), "nativeInstanceId", Long.toString(run.nativeInstanceId()),
-            "workspaceId", Integer.toString(run.workspaceId()), "execId", run.execId()).entrySet()) {
+            "workspaceId", Integer.toString(run.workspaceId()), "execId", run.execId(), "metadataIdBase", Long.toString(run.metadataIdBase())).entrySet()) {
             if (!view.path(entry.getKey()).isTextual() || !entry.getValue().equals(view.path(entry.getKey()).textValue())) throw failed("RUN_BINDING_MISMATCH");
         }
         if (!view.path("state").isTextual() || !view.path("finalized").isBoolean()) throw failed("INVALID_RUN_VIEW");
@@ -113,13 +116,21 @@ public class HdiWorkerClient implements AutoCloseable {
             process = builder.start(); Process owned = process;
             pipes.submit(() -> readResponses(owned.getInputStream()));
             pipes.submit(() -> drainLog(owned.getErrorStream(), log));
-            greeting = exchange("hello", HdiProtocol.JSON.createObjectNode());
-            Set<String> required = Set.of("reserve", "submit", "status", "cancel", "logs", "artifact", "shutdown");
-            var capabilities = new java.util.HashSet<String>(); greeting.path("capabilities").forEach(value -> capabilities.add(value.asText()));
-            if (!"original-detl".equals(greeting.path("engine").asText()) || !greeting.path("ready").asBoolean(false)
-                || !capabilities.containsAll(required) || !greeting.path("binding").path("id").isTextual() || !greeting.path("binding").path("name").isTextual()) throw failed("WORKER_NOT_READY");
+            greeting = checkedGreeting(exchange("hello", HdiProtocol.JSON.createObjectNode()));
         } catch (Failure failure) { throw failure; }
         catch (IOException error) { broken = true; throw new Failure("WORKER_START_FAILED", process != null); }
+    }
+    private JsonNode checkedGreeting(JsonNode value) {
+        Set<String> required = Set.of("reserve", "submit", "status", "cancel", "logs", "artifact", "shutdown");
+        var capabilities = new java.util.HashSet<String>(); value.path("capabilities").forEach(item -> capabilities.add(item.asText()));
+        if (!"original-detl".equals(value.path("engine").asText()) || !value.path("ready").asBoolean(false)
+            || !capabilities.containsAll(required) || !value.path("binding").path("id").isTextual() || !value.path("binding").path("name").isTextual()) throw failed("WORKER_NOT_READY");
+        if (value.has("capacity")) {
+            JsonNode capacity = value.path("capacity");
+            if (!capacity.path("limit").isInt() || capacity.path("limit").intValue() < 1 || !capacity.path("active").isInt() || capacity.path("active").intValue() < 0
+                || !capacity.path("available").isInt() || capacity.path("available").intValue() != Math.max(0, capacity.path("limit").intValue()-capacity.path("active").intValue())) throw failed("INVALID_CAPACITY");
+        }
+        return value;
     }
     private JsonNode exchange(String operation, ObjectNode body) {
         if (closed || broken || process == null) throw new Failure("CHANNEL_DISCONNECTED", true);

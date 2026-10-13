@@ -68,6 +68,13 @@ class HdiWorkerClientTest {
             assertFalse(failure.toString().contains("private-secret"));
         }
     }
+    @Test void helloRefreshesActualCapacityInsteadOfReusingCachedCounts() {
+        try (HdiWorkerClient client = new HdiWorkerClient(properties)) {
+            assertEquals(0, client.hello().path("capacity").path("active").asInt());
+            client.reserve(run());
+            assertEquals(1, client.hello().path("capacity").path("active").asInt());
+        }
+    }
     @Test void requestTimeoutDoesNotAutomaticallyRetry() {
         mode("timeout");
         try (HdiWorkerClient client = new HdiWorkerClient(properties, Duration.ofMillis(500))) {
@@ -99,6 +106,7 @@ class HdiWorkerClientTest {
                         data.put("engine", "original-detl").put("ready", !mode.equals("not-ready"));
                         data.set("capabilities", HdiProtocol.JSON.valueToTree(List.of("reserve", "submit", "status", "cancel", "logs", "artifact", "shutdown")));
                         data.set("binding", HdiProtocol.JSON.createObjectNode().put("id", "1").put("name", "local-original"));
+                        data.set("capacity", HdiProtocol.JSON.createObjectNode().put("limit", 2).put("active", view == null ? 0 : 1).put("available", view == null ? 2 : 1));
                     } else if (op.equals("reserve")) {
                         view = ((ObjectNode)request).deepCopy(); view.remove(List.of("protocolVersion", "requestId", "op"));
                         view.put("state", "RESERVED").put("finalized", false).put("outputsDir", "/run/outputs").put("authorizedOutputRoot", "/run"); data = view;

@@ -63,7 +63,7 @@ class HdiCoreRunsTest {
         var order = inOrder(store, worker, compiler);
         order.verify(store).reserveRun(4, 17, 2, "DEBUG", null);
         order.verify(worker).reserve(any());
-        order.verify(compiler).compile(eq("frozen-original-snapshot"), eq("b".repeat(64)), argThat(context -> context.get("outputsDir").equals("/owned/run/outputs") && context.get("execId").equals("21003") && context.get("nativeFlowId").equals("21001")));
+        order.verify(compiler).compile(eq("frozen-original-snapshot"), eq("b".repeat(64)), argThat(context -> context.get("outputsDir").equals("/owned/run/outputs") && context.get("execId").equals("21003") && context.get("nativeFlowId").equals("21001") && context.get("outputRootSource").equals("worker-reserve")));
         order.verify(worker).submit(any(), any());
     }
     @Test void uncertainSubmitIsPersistedUnknownAndNeverResubmitted() throws Exception {
