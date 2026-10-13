@@ -23,6 +23,7 @@ import threading
 import time
 import uuid
 import zipfile
+import xml.etree.ElementTree as ET
 
 from hdi_core_network import ByteBridge
 from hdi_core_protocol import (ProtocolError, TERMINAL, atomic_json, atomic_bytes, below_output,
@@ -34,6 +35,7 @@ MAX_LINE = 48 * 1024 * 1024
 MAX_COMPILED = 32 * 1024 * 1024
 ROOT = Path(__file__).resolve().parent
 SHUTDOWN_SECONDS = 70
+CORE_FILE_LIMIT = 512 * 1024 * 1024
 
 
 def stop_timeout(config):
@@ -47,6 +49,109 @@ LOGGING = ('<configuration><appender name="STDERR" class="ch.qos.logback.core.Co
            '- %msg%n%ex</pattern></encoder></appender><logger name="org.apache.zookeeper" '
            'level="WARN"/><logger name="org.apache.curator" level="WARN"/>'
            '<root level="INFO"><appender-ref ref="STDERR"/></root></configuration>')
+
+
+def core_logging(bundle, run_root):
+    """Keep original SIFT writers; relocate only this run's log destinations."""
+    tree = ET.parse(bundle / 'instance/logback.xml')
+    configuration = tree.getroot()
+    properties = {item.get('name'): item for item in configuration.findall('property')}
+    appenders = {item.get('name'): item for item in configuration.findall('appender')}
+    if not {'LOG_HOME', 'DURABLE_LOG_HOME'} <= properties.keys() or not {'SIFT', 'STDOUT'} <= appenders.keys():
+        raise ProtocolError('ORIGINAL_LOGGING_CONFIG_REQUIRED')
+    properties['LOG_HOME'].set('value', str(run_root / 'logs'))
+    properties['DURABLE_LOG_HOME'].set('value', str(run_root / 'logs/durable'))
+    # The existing stdio sanitizer remains the platform log transport. Original
+    # file appenders/discriminators also run, for the Core's own history readers.
+    target = appenders['STDOUT'].find('target')
+    if target is None:
+        target = ET.SubElement(appenders['STDOUT'], 'target')
+    target.text = 'System.err'
+    for logger in [*configuration.findall('logger'), *configuration.findall('root')]:
+        if not any(ref.get('ref') == 'STDOUT' for ref in logger.findall('appender-ref')):
+            ET.SubElement(logger, 'appender-ref', {'ref': 'STDOUT'})
+    path = run_root / 'private/core-logback.xml'
+    tree.write(path, encoding='utf-8', xml_declaration=True)
+    return path
+
+
+class RunFileBudget:
+    """Independent polling, so a blocked metadata request cannot defer limits."""
+    LIMITS = (
+        ('OUTPUT', ('outputs',), 64 * 1024 * 1024, 128),
+        ('SCRATCH', ('store', 'tmp', 'work', 'fel', 'home'), 1024 * 1024 * 1024, 4096),
+        ('LOG', ('logs',), 64 * 1024 * 1024, 1024),
+    )
+
+    def __init__(self, root, halt, interval=.2):
+        self.root, self.halt, self.interval = Path(root), halt, interval
+        self.stopped = threading.Event()
+        self.error = None
+        self.thread = threading.Thread(target=self.watch, daemon=True)
+
+    def check(self):
+        for name, folders, maximum, maximum_files in self.LIMITS:
+            totals = [0, 0, 0]  # bytes, files, directories; logical size includes sparse mappings.
+
+            def scan(parent_fd, child_name, depth):
+                if depth > 64:
+                    raise ProtocolError(name + '_LIMIT')
+                try:
+                    fd = os.open(child_name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent_fd)
+                except FileNotFoundError:
+                    return  # A rotated/removed directory no longer consumes the quota.
+                except OSError:
+                    raise ProtocolError(name + '_PATH_REJECTED')
+                try:
+                    totals[2] += 1
+                    if totals[2] > 4096:
+                        raise ProtocolError(name + '_LIMIT')
+                    with os.scandir(fd) as entries:
+                        for entry in entries:
+                            try:
+                                info = entry.stat(follow_symlinks=False)
+                            except FileNotFoundError:
+                                continue
+                            if stat.S_ISDIR(info.st_mode):
+                                scan(fd, entry.name, depth + 1)
+                            elif stat.S_ISREG(info.st_mode) and info.st_nlink == 1:
+                                totals[0] += info.st_size
+                                totals[1] += 1
+                                if totals[0] > maximum or totals[1] > maximum_files:
+                                    raise ProtocolError(name + '_LIMIT')
+                            else:
+                                raise ProtocolError(name + '_PATH_REJECTED')
+                finally:
+                    os.close(fd)
+
+            fd = os.open(self.root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                for folder in folders:
+                    scan(fd, folder, 0)
+            finally:
+                os.close(fd)
+
+    def watch(self):
+        while not self.stopped.is_set():
+            try:
+                self.check()
+            except Exception as failure:
+                self.error = failure.code if isinstance(failure, ProtocolError) else 'RUNTIME_BUDGET_UNAVAILABLE'
+                # Callback only targets the still-held namespace supervisor, not a saved PID.
+                try:
+                    self.halt()
+                except ProcessLookupError:
+                    pass
+                return
+            self.stopped.wait(self.interval)
+
+    def close(self, deadline):
+        self.stopped.set()
+        if self.thread.ident is None:
+            return
+        self.thread.join(timeout=max(0, min(1, deadline - time.monotonic())))
+        if self.thread.is_alive():
+            raise ProtocolError('BUDGET_MONITOR_STOP_UNCONFIRMED')
 
 
 def private_directory(path):
@@ -628,12 +733,14 @@ class NativeRun:
         native = None
         outcome, error, confirmed = 'FAILED', None, True
         socket_dir = None
+        budget = None
         try:
             if self.cancel.is_set():
                 outcome = 'CANCELLED'
                 return
             engine = self.root / 'instance'
             shutil.copytree(self.worker.bundle / 'instance', engine)
+            core_log_config = core_logging(self.worker.bundle, self.root)
             password = self.worker.tls['password'] if self.worker.tls else secrets.token_urlsafe(32)
             zk_password = secrets.token_urlsafe(32)
             zk_user = 'run' + secrets.token_hex(8)
@@ -701,11 +808,12 @@ class NativeRun:
                 self.bridges.append(ByteBridge(socket.AF_UNIX, str(socket_dir / (name + '.sock')),
                                                socket.AF_INET, ('127.0.0.1', target)))
             isolated = {'parentNetworkNamespace': os.readlink('/proc/self/ns/net'),
+                'maximumFileBytes': CORE_FILE_LIMIT,
                 'dependencies': [{'port': 2181, 'unixSocket': str(socket_dir / 'zk.sock')},
                                  {'port': 2180, 'unixSocket': str(socket_dir / 'redis.sock')}],
                 'coreLog': str(self.root / 'logs/core.log'), 'corePorts': [2182, 2183], 'stopGraceSeconds': 10,
                 'cwd': str(engine), 'command': [self.worker.java, *self.worker.java_options, '-Xmx256m', '--add-opens=java.base/java.net=ALL-UNNAMED',
-                    '-Dlogback.configurationFile=' + str(self.worker.log_config), '-Djava.net.preferIPv4Stack=true',
+                    '-Dlogback.configurationFile=' + str(core_log_config), '-Djava.net.preferIPv4Stack=true',
                     '-Djava.io.tmpdir=' + str(self.root / 'tmp'), '-Duser.home=' + str(self.root / 'home'), '-cp',
                     ':'.join([str(engine), str(engine / 'etl-core-3.3.0.jar'), str(engine / 'lib/*')]),
                     'com.hikvision.idatafusion.etl.core.EtlInstance'],
@@ -719,12 +827,21 @@ class NativeRun:
                 '--kill-child=SIGKILL', sys.executable, str(ROOT / 'hdi_core_network.py'), '--namespace-config', str(namespace_path)],
                 self.root / 'logs/supervisor.log')
             self.children.append(core)
+            def halt_for_budget():
+                if core.process.poll() is None:
+                    # unshare --kill-child=SIGKILL plus the private PID namespace
+                    # closes this Core immediately; normal cancellation keeps its grace.
+                    core.process.kill()
+            budget = RunFileBudget(self.root, halt_for_budget)
+            budget.thread.start()
             self.update(process=core.record)
             started = core.receive(15)
             if started.get('event') != 'CORE_STARTED':
                 raise ProtocolError('CORE_START_FAILED')
             deadline = time.monotonic() + self.worker.config.get('startupTimeoutSeconds', 120)
             while time.monotonic() < deadline:
+                if budget.error:
+                    raise ProtocolError(budget.error)
                 if self.cancel.is_set():
                     outcome = 'CANCELLED'
                     return
@@ -755,6 +872,8 @@ class NativeRun:
             deadline = time.monotonic() + self.worker.config.get('executionTimeoutSeconds', 300)
             stop_deadline = None
             while True:
+                if budget.error:
+                    raise ProtocolError(budget.error)
                 if self.cancel.is_set() and stop_deadline is None:
                     self.update(state='STOPPING')
                     metadata.call('stop', stop=self.compiled['stop'])
@@ -809,6 +928,17 @@ class NativeRun:
             except Exception:
                 if confirmed:
                     outcome, error = 'FAILED', 'LOG_LIMIT'
+            if budget is not None:
+                try:
+                    budget.check()  # Include the terminal/close window and final safe-log append.
+                except Exception as failure:
+                    budget.error = failure.code if isinstance(failure, ProtocolError) else 'RUNTIME_BUDGET_UNAVAILABLE'
+                try:
+                    budget.close(cleanup_deadline)
+                except Exception:
+                    confirmed = False
+                if budget.error:
+                    outcome, error = 'FAILED', budget.error
             if outcome == 'SUCCEEDED' and confirmed:
                 try:
                     artifacts = results_manifest(self.record['outputsDir'])
