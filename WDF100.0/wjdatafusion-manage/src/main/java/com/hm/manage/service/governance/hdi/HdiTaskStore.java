@@ -168,10 +168,20 @@ public class HdiTaskStore {
             PreparedVisual prepared = visualWriter.write(taskId, next);
             String visual = prepared.visualJson(); String sha = sha256(visual.getBytes(StandardCharsets.UTF_8));
             if (!sha256(prepared.snapshotJson().getBytes(StandardCharsets.UTF_8)).equals(prepared.snapshotSha256())) throw new HdiTaskFault(502, "原任务编译快照校验不一致");
+            String editingState = editingState(visual);
             jdbc.update("INSERT INTO dg_hdi_revision(task_id,revision,owner_id,visual_json,definition_sha256,snapshot_json,snapshot_sha256,diagnostics_json,created_at) VALUES(?,?,?,?,?,?,?,?,?)", taskId, next, owner, visual, sha, prepared.snapshotJson(), prepared.snapshotSha256(), prepared.diagnosticsJson(), Timestamp.from(now));
-            jdbc.update("UPDATE dg_hdi_task SET task_name=?,folder_id=?,revision=?,updated_at=? WHERE task_id=? AND owner_id=?", name.trim(), folder, next, Timestamp.from(now), taskId, owner);
+            jdbc.update("UPDATE dg_hdi_task SET task_name=?,folder_id=?,revision=?,state=CASE WHEN state IN ('QUEUED','PREPARING','COMPILING','STARTING','RUNNING','STOPPING','UNKNOWN') THEN state ELSE ? END,updated_at=? WHERE task_id=? AND owner_id=?", name.trim(), folder, next, editingState, Timestamp.from(now), taskId, owner);
             return get(owner, taskId);
         });
+    }
+    private static String editingState(String visual) {
+        try {
+            var flag = HdiProtocol.JSON.readTree(visual).path("status");
+            if (!flag.isMissingNode() && !flag.isNull() && !flag.isBoolean()) throw new HdiTaskFault(502, "原任务保存状态无效");
+            // Original FlowServiceImpl.upsertFlowVisual uses visual.isStatus(), separately from save/push status.
+            // READY permits the original run button to publish; it does not set published_revision.
+            return flag.asBoolean(false) ? "READY" : "DRAFT";
+        } catch (java.io.IOException failure) { throw new HdiTaskFault(502, "原任务保存快照无效"); }
     }
     public Run reserveRun(long owner, long taskId, long revision, String mode, String triggerKey) {
         if (!List.of("DEBUG", "RUN", "SCHEDULE").contains(mode)) throw new HdiTaskFault(400, "运行方式无效");

@@ -31,6 +31,24 @@ class HdiTaskStoreTest {
         return new HdiTaskStore.PreparedVisual(visual, snapshot, HdiTaskStore.sha256(snapshot.getBytes(StandardCharsets.UTF_8)), "[]");
     }
     HdiTaskStore.Task task() { return store.save(7, null, null, "真实存储用例", -1, (id, revision) -> prepared(id, revision, "first")); }
+    HdiTaskStore.PreparedVisual validVisual(long id, long revision, boolean status) {
+        String visual = "{\"status\":" + status + ",\"flowVo\":{\"id\":" + id + "},\"nodes\":{}}";
+        String snapshot = "{\"revision\":" + revision + ",\"visual\":" + visual + "}";
+        return new HdiTaskStore.PreparedVisual(visual, snapshot, HdiTaskStore.sha256(snapshot.getBytes(StandardCharsets.UTF_8)), "[]");
+    }
+    @Test void originalVisualValidationControlsIdleEditingStateWithoutPublishingOrOverwritingRunHistory() {
+        var first = store.save(7, null, null, "原画布状态", -1, (id, revision) -> validVisual(id, revision, true));
+        assertEquals("READY", first.state()); assertNull(first.publishedRevision());
+        var draft = store.save(7, first.id(), 1L, first.name(), -1, (id, revision) -> validVisual(id, revision, false));
+        assertEquals("DRAFT", draft.state()); assertNull(draft.publishedRevision());
+        var ready = store.save(7, first.id(), 2L, first.name(), -1, (id, revision) -> validVisual(id, revision, true));
+        var run = store.reserveRun(7, first.id(), ready.revision(), "DEBUG", null);
+        var editing = store.save(7, first.id(), 3L, first.name(), -1, (id, revision) -> validVisual(id, revision, false));
+        assertEquals("QUEUED", editing.state()); assertEquals("QUEUED", store.run(7, run.id()).state());
+        store.transition(run, "SUCCEEDED", "{}", null);
+        var after = store.save(7, first.id(), 4L, first.name(), -1, (id, revision) -> validVisual(id, revision, false));
+        assertEquals("DRAFT", after.state()); assertEquals("SUCCEEDED", store.run(7, run.id()).state()); assertNull(after.publishedRevision());
+    }
     @Test void springWiringUsesPlatformMasterEvenWhenAnotherBusinessProvidesTheOnlyJdbcTemplate() {
         var unrelated = org.mockito.Mockito.mock(JdbcTemplate.class);
         try (var context = new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
