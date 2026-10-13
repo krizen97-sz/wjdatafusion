@@ -237,6 +237,24 @@ public final class HdiCoreCatalog {
         throw unavailable();
     }
 
+    /** Original SelectOption projection of DATASOURCE_TYPE, limited to types declared by this platform profile's plugins. */
+    public List<Map<String, Object>> getDatasourceTypeOptions() {
+        Set<String> required = new java.util.LinkedHashSet<>();
+        for (Plugin plugin : plugins()) {
+            String type = scalar(plugin.definition.get("adapterDatabaseType"));
+            if (type != null && !type.isEmpty()) required.add(type);
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Map<String, Object> row : seedRows(sqlResources().get(TYPE_SQL.get(0)), 54)) {
+            if (!required.remove(row.get("code"))) continue;
+            Map<String, Object> option = new LinkedHashMap<>();
+            option.put("name", row.get("name")); option.put("value", row.get("value")); option.put("code", row.get("code")); option.put("comment", null);
+            result.add(Collections.unmodifiableMap(option));
+        }
+        if (!required.isEmpty()) throw unavailable();
+        return List.copyOf(result);
+    }
+
     public List<Map<String, Object>> getAdapterTypeOptions() {
         String sql = sqlResources().get(TYPE_SQL.get(0));
         List<Map<String, Object>> result = new ArrayList<>();

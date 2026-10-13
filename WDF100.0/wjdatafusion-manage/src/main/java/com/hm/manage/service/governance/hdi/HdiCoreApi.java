@@ -57,6 +57,9 @@ public class HdiCoreApi {
         if (asset != null) { if (!Set.of("GET", "HEAD").contains(method)) throw new HdiTaskFault(405, "静态资源仅支持读取"); bytes(response, asset.bytes(), asset.contentType(), method.equals("HEAD")); return; }
         if ("POST".equals(method)) sessions.csrf(request, session);
         Object data = dispatch(path, method, request, session, user);
+        if (path.startsWith("/statistics/modulesSpeed/")) {
+            response.setHeader("X-HDI-Metrics-Available", "false"); response.setHeader("X-HDI-Metrics-Reason", "NOT_COLLECTED");
+        }
         HdiProtocol.send(response, data);
     }
 
@@ -92,6 +95,7 @@ public class HdiCoreApi {
             case "/globalConfig/felManager/getFelFieldClassifyList":
                 requireMethod(method, "POST"); return fieldCategories(object(body(request)).get("fields"));
             case "/globalConfig/dataSourceManage/getDatasourceOptions": {
+                if (method.equals("GET")) { emptyBody(request); return catalog.getDatasourceTypeOptions(); }
                 requireMethod(method, "POST"); JsonNode query = object(body(request));
                 var fields = query.fieldNames(); while (fields.hasNext()) if (!Set.of("rdbmsFlag", "inOutFlags", "dbType").contains(fields.next())) throw bad("数据源查询字段无效");
                 // This profile has no registered external sources; local file output is a worker-owned path, not a datasource record.
@@ -254,7 +258,14 @@ public class HdiCoreApi {
         }
         if (path.startsWith("/statistics/modulesSpeed/") || path.startsWith("/statistics/modulesSum/")) {
             requireMethod(method, "POST"); long id = HdiProtocol.positive(path.substring(path.lastIndexOf('/') + 1), "任务标识");
-            HdiTaskStore.Task task = store.get(owner, id); runtime().moduleMetrics(owner, lastRun(task));
+            HdiTaskStore.Task task = store.get(owner, id);
+            if (path.startsWith("/statistics/modulesSpeed/")) {
+                JsonNode nodes = body(request); if (!nodes.isArray() || nodes.size() > 32) throw bad("节点观测查询无效");
+                if (task.lastRunId() != null && runtime().moduleMetrics(owner, task.lastRunId()).path("available").asBoolean())
+                    throw new HdiTaskFault(503, "原节点观测协议尚待适配");
+                return List.of(); // No observed records. Do not manufacture node rows or counters with zero values.
+            }
+            runtime().moduleMetrics(owner, lastRun(task));
             throw new HdiTaskFault(503, "原引擎尚未提供节点吞吐量观测，不能显示推测指标");
         }
         throw unsupported();

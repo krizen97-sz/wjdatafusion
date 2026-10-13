@@ -109,6 +109,8 @@ class HdiCoreCatalogTest {
         assertEquals(20, real.listParams(2, null, null).size());
         assertEquals(3, real.getAdapterTypeOptions().size());
         assertEquals(18, real.getAdapters().get(2).get("dbTypeId"));
+        var options = real.getDatasourceTypeOptions(); assertEquals(1, options.size());
+        assertEquals("FTP", options.get(0).get("name")); assertEquals("18", options.get(0).get("value")); assertEquals("FTP", options.get(0).get("code"));
         assertTrue(real.listParams(6, "fileOutput", "output").stream().noneMatch(row -> "etl.file.fileType".equals(row.get("paramName"))));
         var selectedFileType = real.listParams(6, "fileOutput", "output", java.util.Set.of("etl.file.fileType")).stream()
             .filter(row -> "etl.file.fileType".equals(row.get("paramName"))).findFirst().orElseThrow();

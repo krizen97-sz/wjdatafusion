@@ -111,7 +111,7 @@ export function bindOriginalSaveQueue(store, client, host, origin, onFailure) {
     }
     // Original full readback would replace nodes/links/params and erase edits made while the request was running.
     // Keep the live editing draft; only an explicit original load/refresh replaces the diagram.
-    store.commit('setFlowVo', authoritative)
+    store.commit('setFlowVo', { ...originalFlowState(store).flowVo, ...authoritative })
     store.commit('setFlowVersion', visual.flowVersion)
     if (visual.visualVersion != null) store.commit('setVisualVersion', visual.visualVersion)
     record.acknowledged = String(next)
