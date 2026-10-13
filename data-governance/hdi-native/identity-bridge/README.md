@@ -67,9 +67,25 @@ rynew.detl.identity-bridge.session-seconds=900
 
 成功时先作废已有原session再建立新session，防止session固定；原UserRole和UserDetails由原方法写入。桥在调用时绑定真实ServletRequestAttributes，调用后恢复原上下文，不使用默认mock管理员。
 
+## 只读任务归属校验
+
+`POST /detl/_platform/authorize` 使用同一签名头和算法，canonical中的完整路径必须是`/detl/_platform/authorize`。它与session交换共用同一持久nonce池，不能跨接口重用票据。请求只允许：
+
+```json
+{"subject":"rynew:user:7","flowIds":["123","9007199254740993"]}
+```
+
+flowIds必须是1–100个不重复的正Long十进制字符串，不能使用JSON Number、前导零、负数或超出Long范围。workspace、role等字段不接受。subject只能来自可信RYNEW当前登录用户，原用户与工作区仍取本模块私有映射。
+
+扩展直接注入原`com.hikvision.idatafusion.detl.mapper.EtlFlowMapper`，逐项调用`selectByPrimaryKey(Long)`，要求每个原`EtlFlow.groupId`等于映射workspaceId；不修改原SQL、表、任务、成员或许可。任何一项不存在或越界统一HTTP403 `{"code":"BRIDGE_SCOPE_DENIED","msg":"任务范围未获授权"}`，不返回对象内容或指出哪一项不存在。鉴签、结构或未知映射失败仍为401 BRIDGE_DENIED，原DAO异常为503 BRIDGE_UNAVAILABLE。
+
+全部符合时返回HTTP200 `{"code":"0","data":{"authorized":true}}`，不会建立/更新session。这个结果只证明当前查询时的宿主工作区范围，后续原任务请求仍必须经过原业务许可、工作区及数据权限。网关必须在每次操作前校验原请求真正使用的任务ID（包括解码visualBase64后的flowVo.id），不能采信另附的客户端subject/workspace，也不能把此结果长期缓存为许可。
+
+启用本桥时原EtlFlowMapper必须可注入；没有原DAO则配置失败关闭，不用虚拟映射或成功回退。默认disabled时不创建这两个端点。专项测试的Mapper是原接口动态代理，只允许selectByPrimaryKey并拒绝任何写方法，用于验证控制流；它不代表实际数据库集成已通过。
+
 ## 原过滤器装配边界
 
-桥自身只接管精确`/_platform/session`，使用HMAC提供该服务器端交换的认证；普通`/flow`等请求继续原过滤器链。原EtlFilter、UserDetermineFilter、CSRF、许可/能力与workspace检查必须保留。
+桥自身只接管精确`/_platform/session`和`/_platform/authorize`，使用HMAC提供这两个服务器端操作的认证；普通`/flow`等请求继续原过滤器链。原EtlFilter、UserDetermineFilter、CSRF、许可/能力与workspace检查必须保留。
 
 原SSO的`CasClientAutoConfiguration`对`/*`注册认证/票据过滤器，且`AuthenticationFilter`还单列在spring.factories。切换由RYNEW承担入口身份验证时，应通过标准`spring.autoconfigure.exclude`对这些原CAS装配作**明确的部署适配**，不使用全路径ignore规则：
 

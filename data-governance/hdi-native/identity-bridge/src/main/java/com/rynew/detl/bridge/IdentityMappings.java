@@ -55,8 +55,13 @@ final class IdentityMappings {
     Identity resolve(byte[] body) {
         try {
             JsonNode request = parse(body); fields(request, Set.of("subject")); String subject = text(request, "subject", 48);
-            Identity identity = identities.get(subject); if (identity == null) throw TicketVerifier.denied(); return identity;
+            return resolveSubject(subject);
         } catch (Exception ignored) { throw TicketVerifier.denied(); }
+    }
+    Identity resolveSubject(String subject) {
+        Identity identity = identities.get(subject);
+        if (identity == null) throw TicketVerifier.denied();
+        return identity;
     }
     static JsonNode parse(byte[] bytes) throws Exception {
         String value = StandardCharsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT).onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString();

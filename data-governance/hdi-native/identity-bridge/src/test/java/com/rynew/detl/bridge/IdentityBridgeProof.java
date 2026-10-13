@@ -1,6 +1,8 @@
 package com.rynew.detl.bridge;
 
 import com.hikvision.idatafusion.detl.dto.user.UserDetails;
+import com.hikvision.idatafusion.detl.mapper.EtlFlowMapper;
+import com.hikvision.idatafusion.detl.model.EtlFlow;
 import com.hikvision.idatafusion.detl.utils.UserSessionUtils;
 import java.io.*;
 import java.lang.reflect.*;
@@ -40,7 +42,7 @@ public final class IdentityBridgeProof {
     public static void main(String[] args) throws Exception {
         Path root = Files.createTempDirectory("rynew-bridge-proof-").toRealPath();
         try {
-            cryptoAndReplay(root); mappingRules(); privateFileRules(root); nativeSessionAndFilter(root); defaultDisabled(); enabledConfiguration(root);
+            cryptoAndReplay(root); mappingRules(); privateFileRules(root); nativeSessionAndFilter(root); flowScopeAndFilter(root); defaultDisabled(); enabledConfiguration(root);
             System.out.println("IdentityBridgeProof: " + checks + " checks passed (real original session API; no server, database, license or native initialization)");
         } finally { try (var paths = Files.walk(root)) { for (Path path : paths.sorted(Comparator.reverseOrder()).toArray(Path[]::new)) Files.deleteIfExists(path); } }
     }
@@ -110,7 +112,7 @@ public final class IdentityBridgeProof {
         denied(() -> PrivateFiles.replayDirectory(unrelated.toString()), "unowned nonempty directory rejected"); check(Files.readString(file).equals("unchanged"), "unrelated file retained");
     }
     static void nativeSessionAndFilter(Path root) throws Exception {
-        IdentityBridgeFilter filter = new IdentityBridgeFilter(verifier(child(root, "http-replays")), new IdentityMappings(mapping()), new NativeSessionIssuer(900));
+        IdentityBridgeFilter filter = new IdentityBridgeFilter(verifier(child(root, "http-replays")), new IdentityMappings(mapping()), new NativeSessionIssuer(900), new NativeFlowAuthorizer(flowMapper(Map.of(), new AtomicInteger(), false)));
         Request request = new Request(BODY, nonce(20)); Response response = new Response(); Session previousSession = request.session = new Session(); previousSession.attrs.put("untrusted-old-role", "must disappear");
         Request previousRequest = new Request(BODY, nonce(40)); ServletRequestAttributes previousContext = new ServletRequestAttributes(previousRequest.proxy()); RequestContextHolder.setRequestAttributes(previousContext);
         filter.doFilter(request.proxy(), response.proxy(), (a,b) -> { throw new AssertionError("exchange entered ordinary task chain"); });
@@ -142,6 +144,79 @@ public final class IdentityBridgeProof {
         Request ordinary = new Request(BODY, nonce(50)); ordinary.servletPath = "/flow/findFlowPage"; ordinary.method = "GET"; Response passthrough = new Response(); AtomicInteger chained = new AtomicInteger();
         filter.doFilter(ordinary.proxy(), passthrough.proxy(), (a,b) -> chained.incrementAndGet()); check(chained.get() == 1 && passthrough.text.toString().isEmpty(), "normal original filters preserved");
     }
+    static EtlFlow flow(long id, long groupId) {
+        EtlFlow flow = new EtlFlow(); flow.setId(id); flow.setGroupId(groupId); return flow;
+    }
+    static EtlFlowMapper flowMapper(Map<Long,EtlFlow> flows, AtomicInteger reads, boolean unavailable) {
+        return (EtlFlowMapper)Proxy.newProxyInstance(IdentityBridgeProof.class.getClassLoader(), new Class[]{EtlFlowMapper.class}, (proxy, method, args) -> {
+            if (method.getDeclaringClass() == Object.class) {
+                if (method.getName().equals("toString")) return "ReadOnlyMapperProof";
+                if (method.getName().equals("hashCode")) return System.identityHashCode(proxy);
+                if (method.getName().equals("equals")) return proxy == args[0];
+            }
+            if (!method.getName().equals("selectByPrimaryKey") || args.length != 1 || !(args[0] instanceof Long))
+                throw new AssertionError("Only original mapper primary-key reads are allowed");
+            reads.incrementAndGet();
+            if (unavailable) throw new IllegalStateException("synthetic private database diagnostic must never be returned");
+            return flows.get(args[0]);
+        });
+    }
+    static Request scopeRequest(String body, int seed) { return new Request(body.getBytes(StandardCharsets.UTF_8), nonce(seed), IdentityBridgeFilter.AUTHORIZE_PATH); }
+    static Response exchange(IdentityBridgeFilter filter, Request request) throws Exception {
+        Response response = new Response();
+        filter.doFilter(request.proxy(), response.proxy(), (a,b) -> { throw new AssertionError("signed operation entered original task chain"); });
+        return response;
+    }
+    static void flowScopeAndFilter(Path root) throws Exception {
+        AtomicInteger reads = new AtomicInteger();
+        Map<Long,EtlFlow> flows = new HashMap<>();
+        for (long id = 1; id <= 100; id++) flows.put(id, flow(id, 901));
+        flows.put(101L, flow(101, 902)); flows.put(9_007_199_254_740_993L, flow(9_007_199_254_740_993L, 901));
+        TicketVerifier tickets = verifier(child(root, "scope-replays"));
+        IdentityBridgeFilter filter = new IdentityBridgeFilter(tickets, new IdentityMappings(mapping()), new NativeSessionIssuer(900), new NativeFlowAuthorizer(flowMapper(flows, reads, false)));
+        String allowed = "{\"subject\":\"rynew:user:7\",\"flowIds\":[\"1\",\"9007199254740993\"]}";
+        Request good = scopeRequest(allowed, 80); Response result = exchange(filter, good);
+        check(result.status == 200 && result.text.toString().equals("{\"code\":\"0\",\"data\":{\"authorized\":true}}"), "all mapped native flow scopes are accepted without returning objects");
+        check(reads.get() == 2 && good.session == null, "authorization only reads original mapper and creates no session");
+        check(exchange(filter, good).status == 401 && reads.get() == 2, "authorization replay is denied before another mapper read");
+        Request sharedNonce = new Request(BODY, nonce(80));
+        check(exchange(filter, sharedNonce).status == 401 && sharedNonce.session == null, "session and authorize share durable nonce consumption");
+        String deniedBody = null;
+        for (String ids : List.of("[\"101\"]", "[\"102\"]", "[\"1\",\"101\"]")) {
+            Request request = scopeRequest("{\"subject\":\"rynew:user:7\",\"flowIds\":" + ids + "}", 81 + reads.get());
+            Response response = exchange(filter, request);
+            check(response.status == 403 && request.session == null, "unknown or outside-workspace flow fails closed");
+            if (deniedBody == null) deniedBody = response.text.toString();
+            else check(deniedBody.equals(response.text.toString()), "scope denial does not reveal object existence");
+        }
+        int beforeInvalid = reads.get(), seed = 100;
+        for (String body : List.of(
+            "{\"subject\":\"rynew:user:8\",\"flowIds\":[\"1\"]}",
+            "{\"subject\":\"rynew:user:7\",\"flowIds\":[1]}",
+            "{\"subject\":\"rynew:user:7\",\"flowIds\":[\"0\"]}",
+            "{\"subject\":\"rynew:user:7\",\"flowIds\":[\"01\"]}",
+            "{\"subject\":\"rynew:user:7\",\"flowIds\":[\"9223372036854775808\"]}",
+            "{\"subject\":\"rynew:user:7\",\"flowIds\":[\"1\",\"1\"]}",
+            "{\"subject\":\"rynew:user:7\",\"flowIds\":[]}",
+            "{\"subject\":\"rynew:user:7\",\"flowIds\":[\"1\"],\"workspaceId\":902}",
+            "{\"subject\":\"rynew:user:7\",\"flowIds\":[\"1\"],\"roleType\":1}",
+            "{\"subject\":\"rynew:user:7\",\"flowIds\":[\"1\"],\"subject\":\"rynew:user:8\"}")) {
+            check(exchange(filter, scopeRequest(body, seed++)).status == 401, "invalid authorization request rejected");
+        }
+        check(reads.get() == beforeInvalid, "invalid or unknown subjects never touch the mapper");
+        List<String> ids = new ArrayList<>(); for (int id = 1; id <= 101; id++) ids.add(Integer.toString(id));
+        check(exchange(filter, scopeRequest(IdentityMappings.JSON.writeValueAsString(Map.of("subject", "rynew:user:7", "flowIds", ids)), 120)).status == 401, "more than 100 IDs rejected");
+        ids.remove(ids.size() - 1);
+        check(exchange(filter, scopeRequest(IdentityMappings.JSON.writeValueAsString(Map.of("subject", "rynew:user:7", "flowIds", ids)), 121)).status == 200, "100 distinct original flow reads supported");
+        Request wrongPath = new Request(allowed.getBytes(StandardCharsets.UTF_8), nonce(122)); wrongPath.servletPath = IdentityBridgeFilter.AUTHORIZE_PATH;
+        int beforePath = reads.get(); check(exchange(filter, wrongPath).status == 401 && reads.get() == beforePath, "session-path signature cannot authorize objects");
+        Request remote = scopeRequest(allowed, 123); remote.address = "192.0.2.20";
+        check(exchange(filter, remote).status == 401 && reads.get() == beforePath, "authorization also requires loopback");
+        IdentityBridgeFilter broken = new IdentityBridgeFilter(tickets, new IdentityMappings(mapping()), new NativeSessionIssuer(900), new NativeFlowAuthorizer(flowMapper(flows, reads, true)));
+        Request databaseFailure = scopeRequest(allowed, 124); Response failed = exchange(broken, databaseFailure);
+        check(failed.status == 503 && !failed.text.toString().contains("diagnostic") && databaseFailure.session == null, "mapper unavailable never grants scope or leaks diagnostics");
+        check(exchange(filter, databaseFailure).status == 401, "failed database read still consumes its one-time ticket");
+    }
     static void defaultDisabled() {
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.register(IdentityBridgeAutoConfiguration.class); context.refresh();
@@ -154,6 +229,7 @@ public final class IdentityBridgeProof {
         Files.write(key, KEY); Files.write(mapping, mapping());
         Files.setPosixFilePermissions(key, PosixFilePermissions.fromString("rw-------")); Files.setPosixFilePermissions(mapping, PosixFilePermissions.fromString("rw-------"));
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(EtlFlowMapper.class, () -> flowMapper(Map.of(), new AtomicInteger(), false));
             context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("synthetic-bridge", Map.of(
                 "rynew.detl.identity-bridge.enabled", "true", "rynew.detl.identity-bridge.secret-file", key.toString(),
                 "rynew.detl.identity-bridge.mapping-file", mapping.toString(), "rynew.detl.identity-bridge.replay-directory", root.resolve("configured-replays").toString())));
@@ -161,15 +237,25 @@ public final class IdentityBridgeProof {
             Map<String,FilterRegistrationBean> beans = context.getBeansOfType(FilterRegistrationBean.class);
             check(beans.size() == 1, "explicit enable creates exactly one exchange filter");
             FilterRegistrationBean registration = beans.values().iterator().next();
-            check(registration.getUrlPatterns().equals(Set.of("/_platform/session")), "filter registration is exact, never all paths");
+            check(registration.getUrlPatterns().equals(Set.of("/_platform/session", "/_platform/authorize")), "filter registration is exact, never all paths");
             check(registration.getFilter() instanceof IdentityBridgeFilter, "enabled factory uses checked bridge filter");
         }
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.registerBean(EtlFlowMapper.class, () -> flowMapper(Map.of(), new AtomicInteger(), false));
             context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("invalid-bridge", Map.of("rynew.detl.identity-bridge.enabled", "true")));
             context.register(IdentityBridgeAutoConfiguration.class);
             boolean rejected = false;
             try { context.refresh(); } catch (org.springframework.beans.BeansException expected) { rejected = true; }
             check(rejected, "enabled bridge with missing private configuration fails closed");
+        }
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("no-original-mapper", Map.of(
+                "rynew.detl.identity-bridge.enabled", "true", "rynew.detl.identity-bridge.secret-file", key.toString(),
+                "rynew.detl.identity-bridge.mapping-file", mapping.toString(), "rynew.detl.identity-bridge.replay-directory", root.resolve("no-mapper-replays").toString())));
+            context.register(IdentityBridgeAutoConfiguration.class);
+            boolean rejected = false;
+            try { context.refresh(); } catch (org.springframework.beans.BeansException expected) { rejected = true; }
+            check(rejected, "enabled bridge without original mapper has no success fallback");
         }
     }
     static Object value(Class<?> type) { if (!type.isPrimitive()) return null; if (type == boolean.class) return false; if (type == long.class) return 0L; if (type == int.class) return 0; return null; }
@@ -183,7 +269,8 @@ public final class IdentityBridgeProof {
     static class Request implements InvocationHandler {
         byte[] body; String address = "127.0.0.1", method = "POST", servletPath = "/_platform/session", query; Session session;
         final Map<String,List<String>> headers = new HashMap<>(); final Map<String,Object> attributes = new HashMap<>();
-        Request(byte[] body, String nonce) { this.body = body; headers.put("X-RYNEW-Timestamp", List.of(Long.toString(NOW))); headers.put("X-RYNEW-Nonce", List.of(nonce)); headers.put("X-RYNEW-Signature", List.of(signature("POST", "/detl/_platform/session", NOW, nonce, body))); }
+        Request(byte[] body, String nonce) { this(body, nonce, IdentityBridgeFilter.SERVLET_PATH); }
+        Request(byte[] body, String nonce, String path) { this.body = body; servletPath = path; headers.put("X-RYNEW-Timestamp", List.of(Long.toString(NOW))); headers.put("X-RYNEW-Nonce", List.of(nonce)); headers.put("X-RYNEW-Signature", List.of(signature("POST", "/detl" + path, NOW, nonce, body))); }
         HttpServletRequest proxy() { return (HttpServletRequest)Proxy.newProxyInstance(getClass().getClassLoader(), new Class[]{HttpServletRequest.class}, this); }
         public Object invoke(Object proxy, Method m, Object[] args) {
             switch(m.getName()) {
