@@ -226,7 +226,14 @@ public class HdiCompilerClient {
             if (!response.path("ok").booleanValue()) {
                 if (process.exitValue() == 0) throw protocol();
                 String code = response.path("code").asText();
-                if (code.equals("UNSUPPORTED_GRAPH")) throw new HdiTaskFault(422, "当前原引擎接入范围不支持此流程节点、连接或参数配置");
+                if (code.equals("UNSUPPORTED_GRAPH")) {
+                    // Only fixed platform-owned reason codes can influence user text.
+                    // Vendor messages/values may contain task data or secrets.
+                    String reason = response.path("reason").asText();
+                    if (reason.equals("LOCAL_OUTPUT_REQUIRED")) throw new HdiTaskFault(422, "仅支持本地文件输出，请关闭远程上传并取消残留的高级传输协议参数");
+                    if (reason.equals("FILE_FORMAT_CONFLICT")) throw new HdiTaskFault(422, "文件输出格式与高级参数中的文件格式不一致，请统一两处格式或取消残留的高级文件格式参数");
+                    throw new HdiTaskFault(422, "当前原引擎接入范围不支持此流程节点、连接或参数配置");
+                }
                 if (code.equals("INVALID_INPUT")) throw new HdiTaskFault(422, "流程配置不完整或参数超出当前执行范围，请检查节点配置");
                 if (code.equals("COMPILER_UNAVAILABLE")) throw new HdiTaskFault(503, "原任务编译器不可用，请检查本机运行环境");
                 throw new HdiTaskFault(502, "原任务配置生成失败，请查看私有诊断日志");

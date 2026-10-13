@@ -66,6 +66,18 @@ class HdiCompilerClientTest {
         }
     }
 
+    @Test void onlyWhitelistedCompilerReasonsReceiveSpecificSafeUserText() {
+        for (String reason : List.of("LOCAL_OUTPUT_REQUIRED", "FILE_FORMAT_CONFLICT", "credential-secret")) {
+            command("unsupported-reason-" + reason);
+            HdiTaskFault failure = assertThrows(HdiTaskFault.class, () -> client().prepare(context, visual()));
+            assertEquals(422, failure.status());
+            assertFalse(failure.getMessage().contains("credential-secret"));
+            if (reason.equals("LOCAL_OUTPUT_REQUIRED")) assertEquals("仅支持本地文件输出，请关闭远程上传并取消残留的高级传输协议参数", failure.getMessage());
+            else if (reason.equals("FILE_FORMAT_CONFLICT")) assertTrue(failure.getMessage().contains("文件输出格式与高级参数中的文件格式不一致"));
+            else assertEquals("当前原引擎接入范围不支持此流程节点、连接或参数配置", failure.getMessage());
+        }
+    }
+
     @Test void timesOutOwnedProcessAndReleasesConcurrencySlot() throws Exception {
         command("hang"); HdiCompilerClient client = new HdiCompilerClient(properties, Duration.ofMillis(600), 4096, 1);
         long started = System.nanoTime(); HdiTaskFault fault = assertThrows(HdiTaskFault.class, () -> client.prepare(context, visual()));
@@ -195,7 +207,7 @@ class HdiCompilerClientTest {
         assertEquals("13", compiled.path("revision").asText());
     }
 
-    @Test void optionalPersistedBrowserRunCompilesThroughJavaClientWithoutReserializingSnapshot() throws Exception {
+    @Test void optionalPersistedBrowserRunRejectsLegacyFtpBeforeWorkerSubmission() throws Exception {
         String bundle = System.getenv("HDI_ORIGINAL_BUNDLE"), javaHome = System.getenv("HDI_COMPILER_JAVA_HOME"), script = System.getenv("HDI_COMPILER_SCRIPT"), fixture = System.getenv("HDI_COMPILER_FROZEN_RUN");
         assumeTrue(bundle != null && javaHome != null && script != null && fixture != null, "persisted browser run integration not configured");
         Path runtime = root.resolve("persisted-compiler-state"); Files.createDirectory(runtime, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
@@ -206,8 +218,11 @@ class HdiCompilerClientTest {
         run.put("outputsDir", frozen.path("workerView").path("outputsDir").asText());
         run.put("authorizedOutputRoot", frozen.path("workerView").path("authorizedOutputRoot").asText());
         run.put("outputRootSource", "worker-reserve");
-        JsonNode compiled = client().compile(frozen.path("snapshotJson").asText(), frozen.path("snapshotSha256").asText(), run);
-        assertTrue(compiled.path("ok").asBoolean()); assertEquals(3, compiled.path("nodeMappings").size());
+        // This exact failed browser run was accepted by the original SDK but rejected
+        // by the worker's local-only profile. The compiler now reports it before submit.
+        HdiTaskFault failure = assertThrows(HdiTaskFault.class, () -> client().compile(frozen.path("snapshotJson").asText(), frozen.path("snapshotSha256").asText(), run));
+        assertEquals(422, failure.status());
+        assertEquals("仅支持本地文件输出，请关闭远程上传并取消残留的高级传输协议参数", failure.getMessage());
     }
 
     private record Fixture(String snapshot, Map<String,Object> run, ObjectNode response) { }
@@ -246,6 +261,10 @@ class HdiCompilerClientTest {
                 System.out.print(response); return;
             }
             if (mode.equals("overflow")) { System.out.print("x".repeat(1024 * 128)); return; }
+            if (mode.startsWith("unsupported-reason-")) {
+                System.out.print(JSON.createObjectNode().put("ok", false).put("protocolVersion", 1).put("code", "UNSUPPORTED_GRAPH")
+                    .put("reason", mode.substring("unsupported-reason-".length())).put("message", "credential-secret")); System.exit(2);
+            }
             if (mode.equals("unsupported")) {
                 System.err.print("credential-secret".repeat(10000));
                 System.out.print("{\"ok\":false,\"protocolVersion\":1,\"code\":\"UNSUPPORTED_GRAPH\",\"message\":\"credential-secret\"}"); System.exit(2);
