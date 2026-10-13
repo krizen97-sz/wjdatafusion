@@ -48,6 +48,7 @@ export async function mountOriginalTasks(host, target) {
   const i18n = new VueI18n({ locale, fallbackLocale: locale, messages: {} })
   Vue.use(hui, { i18n: (key, args) => i18n.t(key, args) })
   window.THE_DFP_PROJECT_CODE = host.projectCode
+  localStorage.setItem('languageId', locale)
   Vue.prototype.$router = host.router
   const route = Vue.observable({ ...(host.route || { query: {} }) })
   Object.defineProperty(Vue.prototype, '$route', { configurable: true, get: () => route })
