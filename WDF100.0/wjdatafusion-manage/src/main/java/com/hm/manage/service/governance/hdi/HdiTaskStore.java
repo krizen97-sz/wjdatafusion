@@ -35,6 +35,11 @@ public class HdiTaskStore {
                       String workerSnapshotJson, String errorMessage, Instant createdAt, Instant updatedAt) {
         public String execId() { return Long.toString(nativeFlowId + 2); }
     }
+    public record SchedulePlan(long taskId, long ownerId, long revision, long generation, String planJson,
+                               Instant nextFireAt, boolean enabled, String lastOutcome) { }
+    private static final RowMapper<SchedulePlan> PLAN = (r, n) -> new SchedulePlan(r.getLong("task_id"), r.getLong("owner_id"),
+        r.getLong("revision"), r.getLong("generation"), r.getString("plan_json"),
+        r.getTimestamp("next_fire_at") == null ? null : r.getTimestamp("next_fire_at").toInstant(), r.getBoolean("enabled"), r.getString("last_outcome"));
     private static final RowMapper<Task> TASK = (r, n) -> new Task(r.getLong("task_id"), r.getInt("workspace_id"), r.getLong("owner_id"),
         r.getString("project_code"), r.getString("task_name"), r.getLong("folder_id"), r.getLong("revision"),
         r.getObject("published_revision") == null ? null : r.getLong("published_revision"), r.getString("state"),
@@ -57,16 +62,35 @@ public class HdiTaskStore {
         if (rows.size() != 1) throw new HdiTaskFault(404, "任务不存在或无权访问");
         return rows.get(0);
     }
-    public List<Task> list(long owner, String keyword, Long folder, int page, int size) {
-        String filter = folder == null || folder < 0 ? "" : " AND folder_id=?";
-        if (filter.isEmpty()) return jdbc.query("SELECT " + TASK_COLUMNS + " FROM dg_hdi_task WHERE owner_id=? AND deleted=0 AND task_name LIKE ? ORDER BY updated_at DESC,task_id DESC LIMIT ? OFFSET ?", TASK, owner, like(keyword), size, (page - 1) * size);
-        return jdbc.query("SELECT " + TASK_COLUMNS + " FROM dg_hdi_task WHERE owner_id=? AND deleted=0 AND task_name LIKE ?" + filter + " ORDER BY updated_at DESC,task_id DESC LIMIT ? OFFSET ?", TASK, owner, like(keyword), folder, size, (page - 1) * size);
+    public List<Task> list(long owner, String keyword, Long folder, int page, int size) { return list(owner, keyword, folder, null, page, size); }
+    public long count(long owner, String keyword, Long folder) { return count(owner, keyword, folder, null); }
+    public List<Task> list(long owner, String keyword, Long folder, List<String> states, int page, int size) {
+        if (page < 1 || page > 100000 || size < 1 || size > 200) throw new HdiTaskFault(400, "分页范围无效");
+        TaskFilter filter = filter(owner, keyword, folder, states); var args = new java.util.ArrayList<>(filter.args());
+        args.add(size); args.add((long)(page - 1) * size);
+        return jdbc.query("SELECT " + TASK_COLUMNS + " FROM dg_hdi_task" + filter.sql() + " ORDER BY updated_at DESC,task_id DESC LIMIT ? OFFSET ?", TASK, args.toArray());
     }
-    public long count(long owner, String keyword, Long folder) {
-        Long count = folder == null || folder < 0
-            ? jdbc.queryForObject("SELECT COUNT(*) FROM dg_hdi_task WHERE owner_id=? AND deleted=0 AND task_name LIKE ?", Long.class, owner, like(keyword))
-            : jdbc.queryForObject("SELECT COUNT(*) FROM dg_hdi_task WHERE owner_id=? AND deleted=0 AND task_name LIKE ? AND folder_id=?", Long.class, owner, like(keyword), folder);
+    public long count(long owner, String keyword, Long folder, List<String> states) {
+        TaskFilter filter = filter(owner, keyword, folder, states);
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM dg_hdi_task" + filter.sql(), Long.class, filter.args().toArray()); return count == null ? 0 : count;
+    }
+    public long countActiveRuns(long owner) {
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM dg_hdi_run WHERE owner_id=? AND state NOT IN ('SUCCEEDED','FAILED','CANCELLED')", Long.class, owner);
         return count == null ? 0 : count;
+    }
+    private record TaskFilter(String sql, List<Object> args) { }
+    private static TaskFilter filter(long owner, String keyword, Long folder, List<String> states) {
+        String sql = " WHERE owner_id=? AND deleted=0 AND task_name LIKE ?";
+        var args = new java.util.ArrayList<Object>(List.of(owner, like(keyword)));
+        if (folder != null && folder >= 0) { sql += " AND folder_id=?"; args.add(folder); }
+        if (states != null) {
+            if (states.isEmpty()) sql += " AND 1=0";
+            else {
+                if (states.size() > 12 || !List.of("DRAFT","READY","QUEUED","PREPARING","COMPILING","STARTING","RUNNING","STOPPING","SUCCEEDED","FAILED","CANCELLED","UNKNOWN").containsAll(states)) throw new HdiTaskFault(400, "任务状态筛选无效");
+                sql += " AND state IN (" + String.join(",", java.util.Collections.nCopies(states.size(), "?")) + ")"; args.addAll(states);
+            }
+        }
+        return new TaskFilter(sql, args);
     }
     private static String like(String keyword) { return "%" + (keyword == null ? "" : keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")) + "%"; }
     public boolean nameAvailable(long owner, String name, Long excludeId) {
@@ -157,11 +181,82 @@ public class HdiTaskStore {
         if (!List.of("QUEUED", "PREPARING", "COMPILING", "STARTING", "RUNNING", "STOPPING", "SUCCEEDED", "FAILED", "CANCELLED", "UNKNOWN").contains(state)) throw new IllegalArgumentException("Unknown run state");
         transactions.executeWithoutResult(status -> {
             Timestamp now = Timestamp.from(Instant.now()); boolean terminal = List.of("SUCCEEDED", "FAILED", "CANCELLED").contains(state);
-            int changed = jdbc.update("UPDATE dg_hdi_run SET state=?,worker_snapshot_json=?,error_message=?,updated_at=?,finished_at=? WHERE run_id=? AND owner_id=? AND state NOT IN ('SUCCEEDED','FAILED','CANCELLED')", state, snapshot, error, now, terminal ? now : null, run.id(), run.ownerId());
+            int changed = jdbc.update("UPDATE dg_hdi_run SET state=?,worker_snapshot_json=?,error_message=?,updated_at=?,finished_at=? WHERE run_id=? AND owner_id=? AND state NOT IN ('SUCCEEDED','FAILED','CANCELLED') AND (state<>'STOPPING' OR ? IN ('STOPPING','SUCCEEDED','FAILED','CANCELLED','UNKNOWN'))", state, snapshot, error, now, terminal ? now : null, run.id(), run.ownerId(), state);
             if (changed == 1) jdbc.update("UPDATE dg_hdi_task SET state=? WHERE task_id=? AND owner_id=? AND last_run_id=?", state, run.taskId(), run.ownerId(), run.id());
         });
     }
     public List<Run> unfinished() { return jdbc.query("SELECT * FROM dg_hdi_run WHERE state NOT IN ('SUCCEEDED','FAILED','CANCELLED') ORDER BY created_at", RUN); }
+    public SchedulePlan getSchedule(long owner, long taskId) {
+        get(owner, taskId);
+        List<SchedulePlan> plans = jdbc.query("SELECT * FROM dg_hdi_schedule WHERE task_id=? AND owner_id=?", PLAN, taskId, owner);
+        return plans.isEmpty() ? null : plans.get(0);
+    }
+    public SchedulePlan saveSchedule(long owner, long taskId, long expectedTaskRevision, String planJson, boolean enabled, Instant nextFireAt) {
+        if (enabled && (nextFireAt == null || !nextFireAt.isAfter(Instant.now()))) throw new HdiTaskFault(400, "计划的下次执行时间无效");
+        return transactions.execute(status -> {
+            Task task = lockedTask(owner, taskId);
+            if (task.revision() != expectedTaskRevision || task.publishedRevision() == null || task.publishedRevision() != expectedTaskRevision) throw new HdiTaskFault(409, "请先发布当前修订，再设置定时计划");
+            SchedulePlan old = lockedPlan(taskId, owner);
+            long generation = old == null ? 1 : old.generation() + 1; Timestamp now = Timestamp.from(Instant.now());
+            if (old == null) jdbc.update("INSERT INTO dg_hdi_schedule(task_id,owner_id,revision,generation,plan_json,enabled,next_fire_at,last_outcome,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)", taskId, owner, expectedTaskRevision, generation, planJson, enabled, timestamp(nextFireAt), enabled ? "ENABLED" : "DISABLED", now, now);
+            else jdbc.update("UPDATE dg_hdi_schedule SET revision=?,generation=?,plan_json=?,enabled=?,next_fire_at=?,last_outcome=?,updated_at=? WHERE task_id=? AND owner_id=?", expectedTaskRevision, generation, planJson, enabled, timestamp(nextFireAt), enabled ? "ENABLED" : "DISABLED", now, taskId, owner);
+            jdbc.update("UPDATE dg_hdi_task SET schedule_json=?,schedule_enabled=?,next_fire_at=? WHERE task_id=? AND owner_id=?", planJson, enabled, timestamp(nextFireAt), taskId, owner);
+            return getSchedule(owner, taskId);
+        });
+    }
+    public List<SchedulePlan> dueSchedules(Instant now, int limit) {
+        if (limit < 1 || limit > 100) throw new IllegalArgumentException("Schedule batch limit");
+        return jdbc.query("SELECT * FROM dg_hdi_schedule WHERE enabled=1 AND next_fire_at<=? ORDER BY next_fire_at,task_id LIMIT ?", PLAN, timestamp(now), limit);
+    }
+    public Run claimScheduledRun(SchedulePlan expected, Instant expectedFire, Instant nextFire, String triggerKey) {
+        validateNext(expectedFire, nextFire);
+        if (triggerKey == null || triggerKey.length() > 128 || triggerKey.isBlank()) throw new IllegalArgumentException("Schedule trigger key");
+        return transactions.execute(status -> {
+            lockedTask(expected.ownerId(), expected.taskId());
+            SchedulePlan actual = lockedPlan(expected.taskId(), expected.ownerId());
+            if (!samePlan(actual, expected, expectedFire)) return null;
+            Long overlap = jdbc.queryForObject("SELECT COUNT(*) FROM dg_hdi_run WHERE task_id=? AND state NOT IN ('SUCCEEDED','FAILED','CANCELLED')", Long.class, expected.taskId());
+            if (overlap != null && overlap > 0) { advancePlan(actual, nextFire, "SKIPPED_OVERLAP"); return null; }
+            Run run = reserveRun(actual.ownerId(), actual.taskId(), actual.revision(), "SCHEDULE", triggerKey);
+            advancePlan(actual, nextFire, "QUEUED:" + run.id()); return run;
+        });
+    }
+    public boolean skipScheduledFire(SchedulePlan expected, Instant expectedFire, Instant nextFire, String outcome) {
+        validateNext(expectedFire, nextFire);
+        if (!List.of("SKIPPED_RESTART", "SKIPPED_MISFIRE", "SKIPPED_PERMISSION").contains(outcome)) throw new IllegalArgumentException("Schedule outcome");
+        return Boolean.TRUE.equals(transactions.execute(status -> {
+            lockedTask(expected.ownerId(), expected.taskId()); SchedulePlan actual = lockedPlan(expected.taskId(), expected.ownerId());
+            if (!samePlan(actual, expected, expectedFire)) return false;
+            advancePlan(actual, nextFire, outcome); return true;
+        }));
+    }
+    public void disableSchedule(long owner, long taskId) {
+        transactions.executeWithoutResult(status -> {
+            lockedTask(owner, taskId); SchedulePlan actual = lockedPlan(taskId, owner); if (actual == null) return;
+            jdbc.update("UPDATE dg_hdi_schedule SET enabled=0,next_fire_at=NULL,generation=generation+1,last_outcome='DISABLED',updated_at=? WHERE task_id=? AND owner_id=?", Timestamp.from(Instant.now()), taskId, owner);
+            jdbc.update("UPDATE dg_hdi_task SET schedule_enabled=0,next_fire_at=NULL WHERE task_id=? AND owner_id=?", taskId, owner);
+        });
+    }
+    private Task lockedTask(long owner, long taskId) {
+        List<Task> rows = jdbc.query("SELECT " + TASK_COLUMNS + " FROM dg_hdi_task WHERE task_id=? AND owner_id=? AND deleted=0 FOR UPDATE", TASK, taskId, owner);
+        if (rows.size() != 1) throw new HdiTaskFault(404, "任务不存在或无权访问"); return rows.get(0);
+    }
+    private SchedulePlan lockedPlan(long taskId, long owner) {
+        List<SchedulePlan> rows = jdbc.query("SELECT * FROM dg_hdi_schedule WHERE task_id=? AND owner_id=? FOR UPDATE", PLAN, taskId, owner);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+    private static boolean samePlan(SchedulePlan actual, SchedulePlan expected, Instant fire) {
+        return actual != null && actual.enabled() && actual.generation() == expected.generation() && actual.revision() == expected.revision()
+            && actual.nextFireAt() != null && actual.nextFireAt().equals(fire);
+    }
+    private static void validateNext(Instant fire, Instant next) {
+        if (fire == null || next == null || !next.isAfter(fire)) throw new IllegalArgumentException("Next schedule time must advance");
+    }
+    private void advancePlan(SchedulePlan plan, Instant next, String outcome) {
+        jdbc.update("UPDATE dg_hdi_schedule SET next_fire_at=?,last_outcome=?,updated_at=? WHERE task_id=? AND owner_id=? AND generation=?", timestamp(next), outcome, timestamp(Instant.now()), plan.taskId(), plan.ownerId(), plan.generation());
+        jdbc.update("UPDATE dg_hdi_task SET next_fire_at=? WHERE task_id=? AND owner_id=?", timestamp(next), plan.taskId(), plan.ownerId());
+    }
+    private static Timestamp timestamp(Instant value) { return value == null ? null : Timestamp.from(value); }
     public String getPreference(long owner, String key, String fallback) {
         List<String> rows = jdbc.query("SELECT preference_json FROM dg_hdi_preference WHERE owner_id=? AND preference_key=?", (r, n) -> r.getString(1), owner, key);
         return rows.isEmpty() ? fallback : rows.get(0);
