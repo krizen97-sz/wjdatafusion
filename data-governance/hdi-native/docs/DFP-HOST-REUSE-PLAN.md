@@ -49,8 +49,12 @@ ready只代表原TaskList/ProcessMain实例完成Vue挂载，不代表后端任�
 
 ## 同窗口自动保存顺序
 
-复用原saveFlowTask/pushFlowTask动作，并在同版本原Vuex的store.dispatch与root.context.dispatch绑定处串行排队。入队时复制原Visual，前一条自己的timeStamp回读确认用户/工作区/任务及修订恰好+1后，才递交后续同窗口快照。保存回读只同步权威ID/版本/运行状态；当前nodes/links/params和业务flowVo草稿不被旧回读覆盖，显式打开/刷新仍走完整原initFlowDataByTaskId。
+复用原saveFlowTask/pushFlowTask动作，并在同版本原Vuex的store.dispatch与flowData模块context.dispatch绑定处串行排队。入队时复制原Visual，前一条自己的timeStamp回读确认用户/工作区/任务及修订恰好+1后，才递交后续同窗口快照。保存回读只同步权威ID/版本/运行状态；当前nodes/links/params和业务flowVo草稿不被旧回读覆盖，显式打开/刷新仍走完整原initFlowDataByTaskId。
 
 原动作没有捕获内部回读promise的异常，宿主记录该失败并使公开排队动作拒绝，避免悬挂；失败队列不自动重试，使用原HUI错误提示保留草稿并请用户核对版本。后端CAS、发布和权限检查不变，其他窗口的版本从不自动提升。
 
 保存队列验证：20项宿主定向测试通过，完整前端verify通过（313项测试、UI Guard、构建、167个JS兼容检查）。原试运行成功提示按扁平locale key改为“试运行已提交”，不把排队受理称为执行成功。
+
+原store集成修正：flowVo/loadTemplate位于root.flowData，动作context属于非命名空间flowData模块。测试现以原包SHA校验后的Vue 2.7.16、Vuex 3.6.2、module54098构建真实Store执行save/save/push及回读失败路径，替代此前错误的平面状态假设。真实原Store测试通过；网络与无关展示集成仍为受控依赖，不宣称引擎运行验证。
+
+本修正完整verify使用HDI_CORE_BUNDLE_DIR启用真实原Store用例，共315项测试通过、0跳过，UI Guard/构建/167个JS兼容检查通过。

@@ -83,10 +83,16 @@ export function registerOriginalToolbar(Vue, i18n, runtime) {
   return loading
 }
 
+function originalFlowState(store) {
+  const state = store?.state?.flowData
+  if (!state || typeof state !== 'object') throw new Error('原任务flowData模块不可用')
+  return state
+}
+
 /** Serialize this iframe's original save actions; never replay a failed or foreign revision. */
 export function bindOriginalSaveQueue(store, client, host, origin, onFailure) {
-  const dispatch = store.dispatch, rootContext = store._modules?.root?.context
-  if (rootContext?.dispatch !== dispatch) throw new Error('原任务动作上下文版本不匹配')
+  const dispatch = store.dispatch, module = store._modules?.get?.(['flowData']), flowContext = module?.context
+  if (module?.state !== originalFlowState(store) || flowContext?.dispatch !== dispatch) throw new Error('原任务动作上下文版本不匹配')
   if (typeof dispatch !== 'function' || typeof store.commit !== 'function' || typeof client.get !== 'function') throw new Error('原任务保存接口不可用')
   const queues = new Map(), running = new Map()
   let closed = false
@@ -98,7 +104,7 @@ export function bindOriginalSaveQueue(store, client, host, origin, onFailure) {
     const response = await client.get(`/detl/flow/getFlowVisualById/${record.id}`, { params: { timeStamp: payload.timeStamp }, timeStamp: payload.timeStamp })
     const visual = response?.data, flow = visual?.flowVo, next = Number(record.revision) + 1
     if (closed || response?.code !== '0' || !Number.isSafeInteger(next) || decimal(flow?.id) !== record.id
-        || decimal(flow?._platformRevision) !== String(next) || decimal(visual?.flowVersion) !== String(next) || !matches(flow) || decimal(store.state.flowVo?.id) !== record.id) throw fail()
+        || decimal(flow?._platformRevision) !== String(next) || decimal(visual?.flowVersion) !== String(next) || !matches(flow) || decimal(originalFlowState(store).flowVo?.id) !== record.id) throw fail()
     const authoritative = {}
     for (const field of ['id', 'groupId', 'userId', 'projectCode', '_platformRevision', 'flowStatus', 'flowLock', 'readOnly', 'createTime', 'updateTime']) {
       if (Object.prototype.hasOwnProperty.call(flow, field)) authoritative[field] = flow[field]
@@ -122,14 +128,14 @@ export function bindOriginalSaveQueue(store, client, host, origin, onFailure) {
       const queue = queues.get(id)
       // Explicit loads still run the complete original action, after in-flight writes have settled.
       return Promise.resolve(queue?.tail).then(() => original(type, payload)).then(result => {
-        if (queue && queue.pending === 0 && decimal(store.state.flowVo?.id) === id && matches(store.state.flowVo)) queues.delete(id)
+        if (queue && queue.pending === 0 && decimal(originalFlowState(store).flowVo?.id) === id && matches(originalFlowState(store).flowVo)) queues.delete(id)
         return result
       })
     }
     if (!['saveFlowTask', 'pushFlowTask'].includes(type)) return original(type, payload)
     if (closed) return Promise.reject(fail())
     const id = decimal(payload?.flowVo?.id), revision = decimal(payload?.flowVo?._platformRevision)
-    if (!id || !revision || payload.flowVo.readOnly || store.state.loadTemplate) return original(type, payload)
+    if (!id || !revision || payload.flowVo.readOnly || originalFlowState(store).loadTemplate) return original(type, payload)
     let snapshot
     try { snapshot = JSON.parse(JSON.stringify(payload)) } catch { return Promise.reject(fail()) }
     let queue = queues.get(id)
@@ -137,8 +143,8 @@ export function bindOriginalSaveQueue(store, client, host, origin, onFailure) {
     if (queue.error || queue.pending >= 128) return Promise.reject(fail())
     queue.pending++; if (type === 'pushFlowTask') queue.pushes++
     const work = queue.tail.then(async () => {
-      if (closed || queue.error || !queue.accepted.has(revision) || decimal(store.state.flowVo?.id) !== id
-          || decimal(store.state.flowVo?._platformRevision) !== queue.revision) throw fail()
+      if (closed || queue.error || !queue.accepted.has(revision) || decimal(originalFlowState(store).flowVo?.id) !== id
+          || decimal(originalFlowState(store).flowVo?._platformRevision) !== queue.revision) throw fail()
       snapshot.flowVo._platformRevision = Number(queue.revision)
       const record = { id, revision: queue.revision, type, timeStamp: null, acknowledged: null }
       running.set(id, record)
@@ -160,7 +166,7 @@ export function bindOriginalSaveQueue(store, client, host, origin, onFailure) {
     return work
   }
   const wrapped = store.dispatch
-  rootContext.dispatch = wrapped
+  flowContext.dispatch = wrapped
   const requestId = client.interceptors.request.use(async config => {
     let url
     try { url = new URL(config.url, origin) } catch { return config }
@@ -196,7 +202,7 @@ export function bindOriginalSaveQueue(store, client, host, origin, onFailure) {
   return () => {
     closed = true
     if (store.dispatch === wrapped) store.dispatch = dispatch
-    if (rootContext.dispatch === wrapped) rootContext.dispatch = dispatch
+    if (flowContext.dispatch === wrapped) flowContext.dispatch = dispatch
     client.interceptors.request.eject(requestId)
     for (const queue of queues.values()) queue.error = fail()
   }
@@ -212,7 +218,7 @@ export function bindOriginalPublishBoundary(store, client, host, origin) {
     const text = String(value ?? ''), number = Number(text)
     return /^[1-9]\d*$/.test(text) && Number.isSafeInteger(number) ? text : null
   }
-  const current = () => store.state.flowVo
+  const current = () => originalFlowState(store).flowVo
   const forgetSettled = record => setTimeout(() => {
     if (byTask.get(record.id) === record) byTask.delete(record.id)
   }, 0) // Keep only the current action turn; an earlier toolbar publish cannot bind a later pure read.
