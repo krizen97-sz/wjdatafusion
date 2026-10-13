@@ -167,14 +167,20 @@ def sandbox_profile(runtime, operation, java_home, ftp_test_ports=()):
 
 
 class Worker:
-    def __init__(self, runtime, timeout=120, ftp_test_policy=None, network_policy=None, allow_endpoints=(), linux_config=None):
+    def __init__(self, runtime, timeout=120, ftp_test_policy=None, network_policy=None, allow_endpoints=(), linux_config=None, local_sandbox=None):
         if type(timeout) is not int or not 1 <= timeout <= 3600:
             raise ValueError('Operation timeout must be an integer from 1 to 3600 seconds')
         self.runtime = Path(runtime).resolve()
         self.linux_runtime = None
         self.artifacts_root = self.runtime
         self.runtime_kind = 'macos-seatbelt'
-        if sys.platform == 'linux':
+        self.local_sandbox = local_sandbox
+        self.closing = False
+        if local_sandbox is not None:
+            if sys.platform != 'linux' or local_sandbox.kind != 'linux-bubblewrap' or linux_config or ftp_test_policy or network_policy or allow_endpoints:
+                raise ValueError('Bundled local isolation is Linux-only, deny-network, and cannot mix runtime policies')
+            self.runtime_kind = local_sandbox.kind
+        elif sys.platform == 'linux':
             if not linux_config:
                 raise RuntimeError('Linux requires an explicit trusted --linux-config; refusing sandbox-exec or unisolated Java')
             if ftp_test_policy or network_policy or allow_endpoints:
@@ -417,6 +423,8 @@ class Worker:
 
     def launch(self, *args, **kwargs):
         with self.launch_lock:
+            if self.closing:
+                raise RuntimeError('Worker is shutting down; new operations are refused')
             before = set(self.runs)
             try:
                 return self._launch(*args, **kwargs)
@@ -507,6 +515,8 @@ class Worker:
                 ftp_ports.extend(fixture_ports)
             profile.write_text(sandbox_profile(self.runtime, directory, self.java_home, ftp_ports))
             cmd = ['/usr/bin/sandbox-exec', '-f', str(profile), str(self.java_home / 'bin/java'), '-Xmx384m', '-XX:+PerfDisableSharedMem', '-Dgovernance.worker.launch.id=' + nonce, '-Dgovernance.job.timeout.seconds=' + str(run['executionTimeoutSeconds']), '-Djava.awt.headless=true', '-Djava.net.preferIPv4Stack=true', '-Duser.timezone=' + time_zone, '-DKETTLE_SYSTEM_HOSTNAME=isolated-kettle-worker', '-Duser.home=' + str(directory / 'home'), '-DKETTLE_HOME=' + str(directory / 'home'), '-DKETTLE_JNDI_ROOT=' + str(directory / 'home'), '-DKETTLE_PLUGIN_BASE_FOLDERS=' + str(directory / 'home/empty-plugins'), '-Djava.io.tmpdir=' + str(directory / 'tmp'), '-cp', self.manifest['classpath'], 'KettleWorker', str(directory), operation, preview_step, str(row_limit)]
+            if self.local_sandbox is not None:
+                cmd = self.local_sandbox.command(cmd[3:], directory)
             run['commandSha256'] = hashlib.sha256(json.dumps(cmd).encode()).hexdigest()
         run['state'] = 'STARTING'
         self._persist(run)
@@ -769,7 +779,37 @@ class Worker:
         return {'id': identifier, 'sha256': hashlib.sha256(xml.encode()).hexdigest(), 'validation': validation}
 
 
-def serve(worker, port):
+    def close_owned(self, grace_seconds=12):
+        """Stop only live children held by this broker; never signal recovered PIDs."""
+        with self.launch_lock:
+            self.closing = True
+            owned = [run for run in self.runs.values() if run.get('process') is not None and (run['process'].poll() is None or not run.get('finalized'))]
+            for run in owned:
+                if run['process'].poll() is None:
+                    try:
+                        self.stop(run['id'])
+                    except Exception as error:
+                        # One missing operation directory must not abandon other owned children.
+                        run['shutdownControlError'] = type(error).__name__
+                        run['forcedStop'] = True
+                        try:
+                            self._request_control(run, 'HALT')
+                        except Exception:
+                            pass  # The held pipe may still deliver HALT before a file error.
+        deadline = time.monotonic() + grace_seconds
+        for run in owned:
+            while time.monotonic() < deadline and (run['process'].poll() is None or not run.get('finalized')):
+                time.sleep(0.05)
+            if run['process'].poll() is None or not run.get('finalized'):
+                run.update(state=RECOVERY_REQUIRED, recoveryReason='Parent closed before owned worker termination and durable finalization were confirmed; automatic replay is forbidden')
+                try:
+                    self._persist(run, finalized=False)
+                except Exception as error:
+                    run['shutdownPersistError'] = type(error).__name__
+        return all(run['process'].poll() is not None and run.get('finalized') for run in owned)
+
+
+def serve(worker, port, ready=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass
@@ -869,8 +909,13 @@ def serve(worker, port):
             self.wfile.write(data)
         do_GET = do_POST = do_PUT = handle_request
     server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
+    if ready is not None:
+        ready(server)
     print(json.dumps({'url': 'http://127.0.0.1:' + str(server.server_port), 'engine': 'original-kettle', 'sandbox': worker.runtime_kind}), flush=True)
-    server.serve_forever()
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
 
 
 def main():
