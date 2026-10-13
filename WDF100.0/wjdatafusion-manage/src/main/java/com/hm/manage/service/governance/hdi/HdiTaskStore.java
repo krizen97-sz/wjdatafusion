@@ -22,6 +22,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class HdiTaskStore {
     public static final long MAX_BROWSER_ID = 9007199254740991L;
     private static final long RUNTIME_ID_BLOCK = 100000L;
+    private static final List<String> ACTIVE_STATES = List.of("QUEUED", "PREPARING", "COMPILING", "STARTING", "RUNNING", "STOPPING", "UNKNOWN");
+    private static final String SCHEDULE_READY_SQL = "(schedule_enabled=1 AND state NOT IN ('QUEUED','PREPARING','COMPILING','STARTING','RUNNING','STOPPING','UNKNOWN'))";
     private static final String TASK_COLUMNS = "task_id,workspace_id,owner_id,project_code,task_name,folder_id,revision,published_revision,state,last_run_id,schedule_json,schedule_enabled,created_at,updated_at";
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transactions;
@@ -79,6 +81,8 @@ public class HdiTaskStore {
         return count == null ? 0 : count;
     }
     private record TaskFilter(String sql, List<Object> args) { }
+    /** Display-only projection; the most recent run's persisted state remains unchanged. */
+    public static boolean isScheduleReady(Task task) { return task.scheduleEnabled() && !ACTIVE_STATES.contains(task.state()); }
     private static TaskFilter filter(long owner, String keyword, Long folder, List<String> states) {
         String sql = " WHERE owner_id=? AND deleted=0 AND task_name LIKE ?";
         var args = new java.util.ArrayList<Object>(List.of(owner, like(keyword)));
@@ -86,8 +90,15 @@ public class HdiTaskStore {
         if (states != null) {
             if (states.isEmpty()) sql += " AND 1=0";
             else {
-                if (states.size() > 12 || !List.of("DRAFT","READY","QUEUED","PREPARING","COMPILING","STARTING","RUNNING","STOPPING","SUCCEEDED","FAILED","CANCELLED","UNKNOWN").containsAll(states)) throw new HdiTaskFault(400, "任务状态筛选无效");
-                sql += " AND state IN (" + String.join(",", java.util.Collections.nCopies(states.size(), "?")) + ")"; args.addAll(states);
+                if (states.size() > 13 || !List.of("DRAFT","READY","QUEUED","PREPARING","COMPILING","STARTING","RUNNING","STOPPING","SUCCEEDED","FAILED","CANCELLED","UNKNOWN","SCHEDULE_READY").containsAll(states)) throw new HdiTaskFault(400, "任务状态筛选无效");
+                var rawStates = states.stream().filter(state -> !state.equals("SCHEDULE_READY")).distinct().toList();
+                var alternatives = new java.util.ArrayList<String>();
+                if (states.contains("SCHEDULE_READY")) alternatives.add(SCHEDULE_READY_SQL);
+                if (!rawStates.isEmpty()) {
+                    alternatives.add("(NOT " + SCHEDULE_READY_SQL + " AND state IN (" + String.join(",", java.util.Collections.nCopies(rawStates.size(), "?")) + "))");
+                    args.addAll(rawStates);
+                }
+                sql += " AND (" + String.join(" OR ", alternatives) + ")";
             }
         }
         return new TaskFilter(sql, args);

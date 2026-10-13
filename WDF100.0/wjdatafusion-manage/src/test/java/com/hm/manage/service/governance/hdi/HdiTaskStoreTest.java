@@ -86,4 +86,22 @@ class HdiTaskStoreTest {
         assertTrue(store.skipScheduledFire(plan, fire, fire.plusSeconds(86400), "SKIPPED_RESTART"));
         assertEquals(0, store.runs(7, task.id()).size()); assertEquals("SKIPPED_RESTART", store.getSchedule(7, task.id()).lastOutcome());
     }
+    @Test void enabledScheduleProjectsReadyOnlyWhileIdleAndFiltersMatchTheDisplayedState() {
+        var task = task(); store.publish(7, task.id(), 1);
+        store.saveSchedule(7, task.id(), 1, "{}", true, Instant.now().plusSeconds(60));
+        assertTrue(HdiTaskStore.isScheduleReady(store.get(7, task.id())));
+        assertEquals(1, store.count(7, null, null, List.of("SCHEDULE_READY")));
+        assertEquals(0, store.count(7, null, null, List.of("READY")));
+        var run = store.reserveRun(7, task.id(), 1, "RUN", null);
+        assertFalse(HdiTaskStore.isScheduleReady(store.get(7, task.id())));
+        assertEquals(0, store.count(7, null, null, List.of("SCHEDULE_READY")));
+        assertEquals(1, store.count(7, null, null, List.of("SCHEDULE_READY", "QUEUED")));
+        store.transition(run, "SUCCEEDED", "{}", null);
+        assertEquals("SUCCEEDED", store.run(7, run.id()).state());
+        assertEquals(1, store.list(7, null, null, List.of("SCHEDULE_READY"), 1, 10).size());
+        assertEquals(0, store.count(7, null, null, List.of("SUCCEEDED")));
+        store.disableSchedule(7, task.id());
+        assertFalse(HdiTaskStore.isScheduleReady(store.get(7, task.id())));
+        assertEquals(1, store.count(7, null, null, List.of("SUCCEEDED")));
+    }
 }
