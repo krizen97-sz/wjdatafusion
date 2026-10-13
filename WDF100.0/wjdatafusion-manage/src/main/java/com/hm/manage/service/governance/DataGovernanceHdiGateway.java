@@ -141,7 +141,7 @@ public class DataGovernanceHdiGateway {
         Matcher workspaceRead = READ_WORKSPACE_ID.matcher(path);
         if (workspaceRead.matches() && !workspaceRead.group(2).equals(scopeValue(session.context().get("workspaceId"))))
             throw new Failure(403, "任务接口工作区与平台会话映射不一致");
-        if (path.equals("/globalConfig/instanceManage/findAllInstance")) {
+        if (Set.of("/globalConfig/instanceManage/findAllInstance", "/globalConfig/instanceManage/findAvailableInstances").contains(path)) {
             String group = queryValue(request, "groupId");
             if (group != null && !group.isBlank() && !group.equals(scopeValue(session.context().get("workspaceId"))))
                 throw new Failure(403, "任务实例工作区与平台会话映射不一致");
@@ -257,7 +257,15 @@ public class DataGovernanceHdiGateway {
             upstream.setRequestMethod(request.getMethod());
             upstream.setUseCaches(false);
             for (String name : REQUEST_HEADERS) copyRequestHeader(request, upstream, name);
-            if (isSave(path)) upstream.setRequestProperty("projectCode", scopeValue(session.context().get("projectCode")));
+            // Native handlers may skip scope checks when Workspace is absent and
+            // default a missing projectCode to "0". The platform always supplies
+            // the trusted mapping, even when the browser omits these headers.
+            String workspace = scopeValue(session.context().get("workspaceId"));
+            String project = isSave(path) ? null : singleHeader(request, "projectCode");
+            if (project == null) project = scopeValue(session.context().get("projectCode"));
+            if (workspace == null || project == null) throw new Failure(503, "原任务工作区或项目映射不可用");
+            upstream.setRequestProperty("Workspace", workspace);
+            upstream.setRequestProperty("projectCode", project);
             copyRequestHeader(request, upstream, session.csrfHeader());
             if (!session.csrfHeader().equalsIgnoreCase("X-XSRF-TOKEN")) copyRequestHeader(request, upstream, "X-XSRF-TOKEN");
             String nativeCookies = session.cookieHeader(target);
@@ -278,6 +286,10 @@ public class DataGovernanceHdiGateway {
                 bytes = input == null ? new byte[0] : input.readNBytes(maxResponse + 1);
             }
             if (bytes.length > maxResponse) throw new Failure(502, "原任务服务响应超过网关限制");
+            if (Set.of("/workspace/listWorkspace", "/globalConfig/groupManage/findAllGroup").contains(path) && status >= 200 && status < 300) {
+                if (upstream.getHeaderField("Content-Encoding") != null) throw new Failure(502, "原工作区响应编码不可核验");
+                bytes = scopedWorkspaces(bytes, session, path.equals("/workspace/listWorkspace") ? "workspaceId" : "id");
+            }
             if (path.equals("/") && status == 200 && upstream.getHeaderField("Content-Encoding") == null) {
                 Matcher match = CSRF_HEADER.matcher(new String(bytes, StandardCharsets.UTF_8));
                 if (match.find()) session.csrfHeader(match.group(1)); // Forward only what the original bootstrap declares.
@@ -294,6 +306,26 @@ public class DataGovernanceHdiGateway {
         } catch (Failure failure) { throw failure; }
         catch (IOException | IllegalArgumentException error) { throw new Failure(502, "原任务服务请求失败"); }
         finally { upstream.disconnect(); }
+    }
+
+    /** Filter genuine native memberships; never synthesize a workspace or turn a failure into success. */
+    private static byte[] scopedWorkspaces(byte[] bytes, Session session, String idField) throws IOException {
+        JsonNode result;
+        try { result = JSON.readTree(bytes); }
+        catch (IOException error) { throw new Failure(502, "原工作区响应格式不可核验"); }
+        if (result == null || !result.isObject()) throw new Failure(502, "原工作区响应格式不可核验");
+        if (!"0".equals(result.path("code").asText()) || result.path("success").isBoolean() && !result.path("success").asBoolean()) return bytes;
+        JsonNode rows = result.get("data");
+        if (rows == null || !rows.isArray()) throw new Failure(502, "原工作区列表格式不可核验");
+        var allowed = JSON.createArrayNode();
+        String workspace = scopeValue(session.context().get("workspaceId"));
+        for (JsonNode row : rows) {
+            JsonNode id = row.get(idField);
+            if (!row.isObject() || id == null || !(id.isIntegralNumber() || id.isTextual())) throw new Failure(502, "原工作区标识不可核验");
+            if (id.asText().equals(workspace)) allowed.add(row);
+        }
+        ((com.fasterxml.jackson.databind.node.ObjectNode) result).set("data", allowed);
+        return JSON.writeValueAsBytes(result);
     }
     private static void copyRequestHeader(HttpServletRequest request, HttpURLConnection target, String name) {
         String value = request.getHeader(name);

@@ -1,3 +1,5 @@
+> 研究保留：原管理服务代理路线不属于当前交付。用户已选择原任务核心 + 平台管理；此文件保留已验证的协议与安全边界，后续新适配仍须满足等价权限约束。
+
 # 原 HDI 任务同源网关契约
 
 此模块只适配 RYNEW 身份、同源传输和原资源，不修改原任务算法、插件、工作区校验或许可校验。默认 `data-governance-hdi.enabled=false`，此时不注册 `/detl` 专用安全链和控制器。
@@ -14,7 +16,7 @@
 
 每个资源/API 请求均检查来源。存在 Origin 必须匹配配置的完整 origin；缺失时只接受 `Sec-Fetch-Site: same-origin` 或有效同源 Referer。`same-site`、`cross-site` 拒绝，`none` 且无 Referer 拒绝。
 
-浏览器的 Workspace 必须等于原交换上下文的 workspaceId；projectCode 仅允许上下文 projectCode 或 projectList[].projectCode。插件/实例 URL 的 groupId 和实例查询的非空 groupId 必须匹配工作区；目录的 projectCode/userId 查询参数也校验映射和重复项，该原 params-only POST 不接受 request body。缺失的服务端映射不从浏览器补齐。原 `/detl/` HTML 及其中真实 CSRF meta 原样传递，原声明的 CSRF header 原值透传；不会生成 token、关闭原 CSRF 或替换原权限检查。
+代理始终从可信上下文注入 Workspace；projectCode 缺失时使用主项目，不能让原 SDK 因缺省头跳过限制。浏览器提供的 Workspace 必须等于原交换上下文的 workspaceId；projectCode 仅允许上下文 projectCode 或 projectList[].projectCode。插件/实例 URL 的 groupId 和findAllInstance/findAvailableInstances 两个实例查询的非空 groupId 必须匹配工作区；目录的 projectCode/userId 查询参数也校验映射和重复项，该原 params-only POST 不接受 request body。缺失的服务端映射不从浏览器补齐。原 `/detl/` HTML 及其中真实 CSRF meta 原样传递，原声明的 CSRF header 原值透传；不会生成 token、关闭原 CSRF 或替换原权限检查。
 
 ## API 边界和当前前置缺口
 
@@ -46,7 +48,7 @@
 
 bundle-manifest.json 必须为 engine=original-detl，资源仅来自 files 中 public/ 下明确列出且 SHA-256 匹配的文件。host/bundle 路径及子路径禁止符号链接与路径穿越。不会暴露 task-service/config、JAR、证书或未列出文件。
 
-上游请求强制 `Proxy.NO_PROXY`、不跟随重定向；不转发浏览器 Authorization/Cookie/Forwarded/X-Forwarded 或身份交换签名头。响应保持原 HTTP 状态和原 `code:"0"` 字节；Set-Cookie 仅更新后端 CookieJar。响应禁止缓存，错误不包含任意原响应正文或密钥。
+上游请求强制 `Proxy.NO_PROXY`、不跟随重定向；不转发浏览器 Authorization/Cookie/Forwarded/X-Forwarded 或身份交换签名头。响应保持原 HTTP 状态和原 `code:"0"` 协议；仅 workspace/listWorkspace 的 workspaceId 和 groupManage/findAllGroup 的 id 按可信工作区过滤真实上游数组，保留原失败并拒绝异常成功结构，不伪造记录。其他正文按原字节保留；Set-Cookie 仅更新后端 CookieJar。响应禁止缓存，错误不包含任意原响应正文或密钥。
 
 ## 验证
 
@@ -56,4 +58,4 @@ Java 17 下执行：
       -Dtest=DataGovernanceHdiClientTest,DataGovernanceHdiGatewayTest,DataGovernanceHdiSecurityConfigTest \
       -Dsurefire.failIfNoSpecifiedTests=false test
 
-47 项通过，覆盖身份签名、并发多窗口会话/CSRF 复用、显式 renew、注销不复活、对象及保存签名授权失败不触发原操作、原保存字节保持、未支持配置返回422、未知写接口拒绝、原 Cookie 轮换与用户隔离、来源、注销与权限撤销、工作区自动授权拒绝、可信工作区原入口、精确 GET bootstrap、真实原 404、项目范围、原 CSRF、查询/GET 变更权限、原响应协议、上传/响应限额、禁止跳转、静态 manifest/hash/路径边界，以及真实 Spring Security chain 下匿名原 JS 被拒和关闭功能后平台链不受影响。HTTP 上游是本机隔离合成服务，不把该测试当作原生产后端或浏览器业务验收。
+50 项通过，覆盖身份签名、并发多窗口会话/CSRF 复用、显式 renew、注销不复活、对象及保存签名授权失败不触发原操作、原保存字节保持、未支持配置返回422、未知写接口拒绝、原 Cookie 轮换与用户隔离、来源、注销与权限撤销、工作区自动授权拒绝、可信工作区原入口、精确 GET bootstrap、真实原 404、项目范围、原 CSRF、查询/GET 变更权限、原响应协议、上传/响应限额、禁止跳转、静态 manifest/hash/路径边界，以及真实 Spring Security chain 下匿名原 JS 被拒和关闭功能后平台链不受影响。HTTP 上游是本机隔离合成服务，不把该测试当作原生产后端或浏览器业务验收。

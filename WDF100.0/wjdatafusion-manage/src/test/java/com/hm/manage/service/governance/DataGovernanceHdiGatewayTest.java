@@ -163,6 +163,7 @@ class DataGovernanceHdiGatewayTest {
             "/system/environment/getLicenseInfo", "/system/environment/getLicenseExpire",
             "/user/security/privilege/info", "/code/codeConfig/getDataTypeList", "/globalConfig/runningConfig/healthStatus");
         for (String path : paths) {
+            nativeBody = path.equals("/workspace/listWorkspace") ? "{\"code\":\"0\",\"data\":[]}" : "{\"code\":\"0\",\"data\":{\"rows\":[]}}";
             assertEquals(nativeBody, forward(authenticated("GET", "/detl" + path, session)).getContentAsString());
             for (String verb : List.of("POST", "PUT", "DELETE", "HEAD"))
                 assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(authenticated(verb, "/detl" + path, session))).status());
@@ -188,6 +189,7 @@ class DataGovernanceHdiGatewayTest {
             Map.entry("/globalConfig/groupAdapterManage/listAdapters", "GET"), Map.entry("/globalConfig/paramManage/listParams", "POST"),
             Map.entry("/globalConfig/groupAdapterManage/getOrderedGroupAdapters/42", "POST"), Map.entry("/globalConfig/instanceManage/findByGroupId/42", "GET"));
         for (var route : routes.entrySet()) {
+            nativeBody = route.getKey().equals("/globalConfig/groupManage/findAllGroup") ? "{\"code\":\"0\",\"data\":[]}" : "{\"code\":\"0\",\"data\":{\"rows\":[]}}";
             var request = authenticated(route.getValue(), "/detl" + route.getKey(), session); request.addHeader("Workspace", "42");
             if (route.getValue().equals("POST")) { request.setContent("{}".getBytes(StandardCharsets.UTF_8)); request.setContentType("application/json"); }
             assertEquals(nativeBody, forward(request).getContentAsString());
@@ -458,7 +460,7 @@ class DataGovernanceHdiGatewayTest {
     }
 
     @Test void csrfAndOtherNativeSetCookiesRemainServerSide() throws Exception {
-        when(client.exchange(7L)).thenReturn(new DataGovernanceHdiClient.NativeSession("JSESSIONID=private", Map.of("user", Map.of("id", 7), "workspaceId", 42),
+        when(client.exchange(7L)).thenReturn(new DataGovernanceHdiClient.NativeSession("JSESSIONID=private", Map.of("user", Map.of("id", 7), "workspaceId", 42, "projectCode", "p7"),
             List.of("JSESSIONID=private; Path=/detl; HttpOnly", "XSRF-TOKEN=original-xsrf; Path=/detl")));
         var session = session(); forward(authenticated("GET", "/detl/flow/getFilterOperator", session));
         assertTrue(header(incoming.get(0), "Cookie").contains("XSRF-TOKEN=original-xsrf"));
@@ -506,6 +508,45 @@ class DataGovernanceHdiGatewayTest {
             }
         }
         assertEquals(0, calls.get());
+    }
+
+    @Test void omittedScopeHeadersStillBindOriginalQueriesToTrustedWorkspaceAndProject() throws Exception {
+        var session = session();
+        for (String path : List.of("/globalConfig/instanceManage/findAllInstance", "/globalConfig/instanceManage/findAvailableInstances", "/getEtlUserInfo")) {
+            forward(authenticated("GET", "/detl" + path, session));
+            var sent = incoming.get(incoming.size() - 1);
+            assertEquals("42", header(sent, "Workspace"));
+            assertEquals("p7", header(sent, "projectCode"));
+        }
+    }
+
+    @Test void instanceQueryCannotOverrideWorkspaceEvenWhenBrowserOmitsScopeHeader() throws Exception {
+        var session = session();
+        for (String path : List.of("/globalConfig/instanceManage/findAllInstance", "/globalConfig/instanceManage/findAvailableInstances")) {
+            for (String query : List.of("groupId=99", "groupId=42&groupId=99", "%67roupId=99")) {
+                var request = authenticated("GET", "/detl" + path, session); request.setQueryString(query);
+                assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(request));
+            }
+        }
+        assertEquals(0, calls.get());
+    }
+
+    @Test void originalWorkspaceListOnlyExposesGenuineMembershipForMappedWorkspace() throws Exception {
+        var session = session();
+        nativeBody = "{\"code\":\"0\",\"success\":true,\"msg\":\"original\",\"data\":[{\"workspaceId\":41,\"workspaceName\":\"other\"},{\"workspaceId\":\"42\",\"permissionType\":2,\"workspaceName\":\"actual\"}]}";
+        var result = json.readTree(forward(authenticated("GET", "/detl/workspace/listWorkspace", session)).getContentAsByteArray());
+        assertEquals("original", result.path("msg").asText()); assertTrue(result.path("success").asBoolean());
+        assertEquals(1, result.path("data").size()); assertEquals("actual", result.path("data").get(0).path("workspaceName").asText());
+        assertEquals(2, result.path("data").get(0).path("permissionType").asInt());
+        nativeBody = "{\"code\":\"0\",\"success\":true,\"data\":[{\"workspaceId\":9007199254740993}]}";
+        assertEquals(0, json.readTree(forward(authenticated("GET", "/detl/workspace/listWorkspace", session)).getContentAsByteArray()).path("data").size());
+        nativeBody = "{\"code\":\"0\",\"data\":[{\"id\":41},{\"id\":42,\"groupName\":\"actual group\"}]}";
+        var groups = json.readTree(forward(authenticated("GET", "/detl/globalConfig/groupManage/findAllGroup", session)).getContentAsByteArray()).path("data");
+        assertEquals(1, groups.size()); assertEquals("actual group", groups.get(0).path("groupName").asText());
+        nativeBody = "{\"code\":\"denied\",\"success\":false,\"data\":null}";
+        assertEquals(nativeBody, forward(authenticated("GET", "/detl/workspace/listWorkspace", session)).getContentAsString());
+        nativeBody = "{\"code\":\"0\",\"success\":true,\"data\":{\"rows\":[]}}";
+        assertEquals(502, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(authenticated("GET", "/detl/workspace/listWorkspace", session))).status());
     }
 
     @Test void nativeScopeHeadersCanOnlySelectServerMappedWorkspaceAndProjects() throws Exception {
