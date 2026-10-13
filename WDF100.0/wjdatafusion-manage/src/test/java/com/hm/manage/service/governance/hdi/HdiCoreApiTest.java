@@ -384,4 +384,22 @@ class HdiCoreApiTest {
         verifyNoInteractions(runs);
     }
 
+    @Test void datasourceGetReturnsTypeOptionsWhilePostReturnsTheSeparateEmptyConnectionRegistry() throws Exception {
+        when(catalog.getDatasourceTypeOptions()).thenReturn(List.of(Map.of("name", "FTP", "value", "18", "code", "FTP")));
+        JsonNode options = json(request(get("/detl/globalConfig/dataSourceManage/getDatasourceOptions"), editorSession, false), 200).path("data");
+        assertEquals("FTP", options.get(0).path("name").asText()); assertEquals("18", options.get(0).path("value").asText());
+        assertTrue(json(request(post("/detl/globalConfig/dataSourceManage/getDatasourceOptions").contentType("application/json").content("{\"dbType\":18}"), editorSession, true), 200).path("data").isEmpty());
+        json(request(post("/detl/globalConfig/dataSourceManage/getDatasourceOptions").contentType("application/json").content("{}"), editorSession, false), 403);
+        verifyNoInteractions(runs);
+    }
+    @Test void missingNodeObservationsAreAnEmptySetWithExplicitUnavailableHeadersAndOwnerChecks() throws Exception {
+        long id = create("无观测草稿");
+        MvcResult result = request(post("/detl/statistics/modulesSpeed/" + id).contentType("application/json").content("[]"), editorSession, true);
+        assertTrue(json(result, 200).path("data").isEmpty());
+        assertEquals("false", result.getResponse().getHeader("X-HDI-Metrics-Available")); assertEquals("NOT_COLLECTED", result.getResponse().getHeader("X-HDI-Metrics-Reason"));
+        json(request(post("/detl/statistics/modulesSpeed/" + id).contentType("application/json").content("[]"), otherSession, true), 404);
+        json(request(post("/detl/statistics/modulesSpeed/" + id).contentType("application/json").content("[]"), editorSession, false), 403);
+        verifyNoInteractions(runs);
+    }
+
 }

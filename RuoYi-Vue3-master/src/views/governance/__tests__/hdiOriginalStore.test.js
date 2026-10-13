@@ -74,18 +74,28 @@ test('original module 54098 in original Vuex flowData saves twice and publishes 
   const stopPublish = bindOriginalPublishBoundary(f.store, f.client, host, origin)
   assert.equal(f.store._modules.root.context.dispatch, rootDispatch)
   assert.equal(f.store._modules.get(['flowData']).context.dispatch, f.store.dispatch)
+  f.store.state.flowData.flowVo.autoArrange = { direction: 'LR', spacing: 120 }
   f.store.state.flowData.nodesMap['101'].nodeName = 'first'
   const first = f.store.dispatch('saveFlowTask', f.payload())
   f.store.state.flowData.nodesMap['101'].nodeName = 'second'
   const second = f.store.dispatch('saveFlowTask', f.payload())
   f.store.state.flowData.nodesMap['101'].nodeName = 'third'
   const third = f.store.dispatch('pushFlowTask', f.payload())
+  f.store.state.flowData.flowVo.flowDisplayName = '正在编辑的名称'
+  f.store.state.flowData.flowVo.autoArrange = { direction: 'TB', spacing: 180 }
   let settingsSent = false
   const settings = f.request({ method: 'get', url: '/detl/flow/getStartConfig?flowId=42' }).then(value => { settingsSent = true; return value })
   await turn(); assert.equal(f.requests.length, 1); assert.equal(settingsSent, false)
   f.gates[0].resolve(); await first; await turn(); assert.equal(f.store.state.flowData.nodesMap['101'].nodeName, 'third')
+  assert.equal(f.store.state.flowData.flowVo.folderId, -1)
+  assert.equal(f.store.state.flowData.flowVo.flowDisplayName, '正在编辑的名称')
+  assert.deepEqual(copy(f.store.state.flowData.flowVo.autoArrange), { direction: 'TB', spacing: 180 })
   f.gates[1].resolve(); await second; await turn(); f.gates[2].resolve(); await third
   assert.deepEqual(f.requests.map(row => row.flowVo._platformRevision), [1, 2, 3])
+  assert.deepEqual(f.requests.map(row => row.flowVo.folderId), [-1, -1, -1])
+  assert.equal(f.store.state.flowData.flowVo.folderId, -1)
+  assert.equal(f.store.state.flowData.flowVo.flowDisplayName, '正在编辑的名称')
+  assert.deepEqual(copy(f.store.state.flowData.flowVo.autoArrange), { direction: 'TB', spacing: 180 })
   assert.deepEqual(f.requests.map(row => row.nodes['101'].nodeName), ['first', 'second', 'third'])
   assert.equal(f.store.state.flowData.flowVo._platformRevision, 4); assert.equal(f.ordinaryReads(), 1)
   assert.deepEqual((await settings)._rynewPublishBoundary, { taskId: '42', revision: '4' }); assert.deepEqual(f.notices, [])
