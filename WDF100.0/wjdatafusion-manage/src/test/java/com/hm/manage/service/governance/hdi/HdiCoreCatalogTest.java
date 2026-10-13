@@ -31,12 +31,17 @@ class HdiCoreCatalogTest {
                 + "\nversion=2.0.0\nclassName=vendor.Original\nadapterLanguage=java\npluginResourceType=external\n").getBytes(StandardCharsets.ISO_8859_1));
         }
         fixture.put("instance/conf/task_config.json", "{\"configParam\":[{\"name\":\"retry\",\"displayName\":\"重试\",\"defaultValue\":\"true\",\"required\":1,\"type\":\"el-switch\",\"allowableValues\":[]}]}".getBytes(StandardCharsets.UTF_8));
+        for (String icon : List.of("defaultinput.e71f57a7.svg", "defaultpreproc.26462e9c.svg", "defaultoutput.bfb8531e.svg"))
+            fixture.put("public/static/img/" + icon, "<svg xmlns=\"http://www.w3.org/2000/svg\"/>".getBytes(StandardCharsets.UTF_8));
         fixture.manifest(); catalog = new HdiCoreCatalog(fixture.properties, new HdiCoreAssets(fixture.properties));
     }
 
     @Test void parsesFactoryDefaultsControlTypesRequiredFlagsAndNamedChoices() {
         assertEquals(List.of("dataGeneratorInput", "fieldMapping", "fileOutput"), catalog.getAdapters().stream().map(row -> row.get("adapterName")).toList());
         assertEquals(List.of(1L, 2L, 3L), catalog.getAdapters().stream().map(row -> row.get("id")).toList());
+        assertEquals(List.of("/static/img/defaultinput.e71f57a7.svg", "/static/img/defaultpreproc.26462e9c.svg", "/static/img/defaultoutput.bfb8531e.svg"),
+            catalog.getAdapters().stream().map(row -> row.get("iconStr")).toList());
+        assertEquals("other", catalog.getAdapters().get(1).get("processType"));
         var rows = catalog.listParams(9, "dataGeneratorInput", "input");
         assertEquals("100000", rows.get(0).get("paramDefaultValue")); assertEquals(1, rows.get(0).get("loadFlag"));
         assertEquals("el-input", rows.get(0).get("valueType")); assertEquals("false", rows.get(1).get("paramDefaultValue"));
@@ -98,4 +103,9 @@ class HdiCoreCatalogTest {
         assertTrue(real.getDataTypes().stream().anyMatch(row -> "external_file".equals(row.get("name"))));
         assertTrue(real.getDataTypes().stream().anyMatch(row -> "float4".equals(row.get("name"))));
     }
+    @Test void originalIconMustMatchThePublicManifest() throws Exception {
+        Files.writeString(fixture.bundle.resolve("public/static/img/defaultinput.e71f57a7.svg"), "tampered");
+        assertEquals(503, assertThrows(HdiTaskFault.class, () -> catalog.getAdapters()).status());
+    }
+
 }

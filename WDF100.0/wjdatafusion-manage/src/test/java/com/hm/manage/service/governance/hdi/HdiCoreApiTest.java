@@ -278,7 +278,7 @@ class HdiCoreApiTest {
         JsonNode cron = json(request(post("/detl/flow/generateCrontab").contentType("application/json").content(schedule.toString()), editorSession, true), 200).path("data");
         assertEquals("0 0 19 * * ?", cron.path("enablePeriod").asText());
         JsonNode frequencies = json(request(get("/detl/flow/getFrequencyEnums"), editorSession, false), 200).path("data");
-        assertEquals(4, frequencies.size()); assertEquals(4, frequencies.path("每日").intValue());
+        assertEquals(schedules.supportedFrequencies(), HdiProtocol.JSON.convertValue(frequencies, Map.class)); assertEquals(4, frequencies.path("每日").intValue());
     }
 
     @Test void scheduleWritesRequireCsrfOwnerAndCurrentPublishedRevision() throws Exception {
