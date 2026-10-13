@@ -26,6 +26,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import com.hm.framework.web.service.SysPermissionService;
+import com.hm.system.service.ISysUserService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.beans.factory.ObjectProvider;
@@ -44,7 +50,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class HdiCoreApiTest {
     @TempDir Path temp;
     JdbcTemplate jdbc; HdiTaskStore store; HdiCoreSessions sessions; HdiCoreProperties properties;
-    HdiCompilerClient compiler; HdiCoreRuns runs; HdiCoreCatalog catalog; HdiCoreAssets assets; MockMvc mvc;
+    HdiCompilerClient compiler; HdiCoreSchedules schedules; HdiCoreRuns runs; HdiCoreCatalog catalog; HdiCoreAssets assets; MockMvc mvc;
     final Map<String, LoginUser> logins = new HashMap<>();
     final AtomicReference<JsonNode> submitted = new AtomicReference<>();
     LoginUser editor, other; HdiCoreSessions.Session editorSession, otherSession;
@@ -82,9 +88,22 @@ class HdiCoreApiTest {
         @SuppressWarnings("unchecked") ObjectProvider<HdiCoreRuns> runProvider = mock(ObjectProvider.class);
         @SuppressWarnings("unchecked") ObjectProvider<HdiCoreKeys> keyProvider = mock(ObjectProvider.class);
         when(runProvider.getIfAvailable()).thenReturn(runs); when(keyProvider.getIfAvailable()).thenReturn(new HdiCoreKeys(properties));
-        HdiCoreApi api = new HdiCoreApi(properties, store, sessions, catalog, assets, compiler, keyProvider, runProvider);
+        when(compiler.schedule(any(), eq("Asia/Shanghai"))).thenAnswer(call -> {
+            JsonNode config = call.getArgument(0);
+            if (!Set.of(1, 2).contains(config.path("scheduleType").asInt())) throw new HdiTaskFault(422, "Unsupported test schedule");
+            ObjectNode result = HdiProtocol.JSON.createObjectNode(); result.set("scheduleConfig", config.deepCopy());
+            if (config.path("scheduleType").asInt() == 1) { result.put("mode", "MANUAL"); result.putArray("cronExpressions"); }
+            else { result.put("mode", "CRON"); result.putArray("cronExpressions").add("0 0 19 * * ?"); } return result;
+        });
+        schedules = new HdiCoreSchedules(properties, store, compiler, runs, mock(ISysUserService.class), mock(SysPermissionService.class),
+            Clock.fixed(Instant.parse("2099-10-13T10:59:58Z"), ZoneOffset.UTC));
+        @SuppressWarnings("unchecked") ObjectProvider<HdiCoreSchedules> scheduleProvider = mock(ObjectProvider.class);
+        when(scheduleProvider.getIfAvailable()).thenReturn(schedules);
+        HdiCoreApi api = new HdiCoreApi(properties, store, sessions, catalog, assets, compiler, keyProvider, runProvider, scheduleProvider);
         mvc = MockMvcBuilders.standaloneSetup(new DataGovernanceHdiCoreController(api)).addFilters(new CoreSessionFilter(sessions)).build();
     }
+
+    @AfterEach void closeSchedules() { if (schedules != null) schedules.close(); }
 
     private LoginUser login(long id, String name) {
         var account = new SysUser(); account.setUserId(id); account.setUserName(name); account.setNickName(name);
@@ -201,4 +220,97 @@ class HdiCoreApiTest {
         logins.remove(CacheConstants.LOGIN_TOKEN_KEY + editor.getToken());
         assertEquals(401, request(get("/detl/host.mjs"), editorSession, false).getResponse().getStatus());
     }
+    private long published(String name) throws Exception {
+        long id = create(name); store.publish(editor.getUserId(), id, 1); return id;
+    }
+    private ObjectNode runConfig(long id) throws Exception {
+        return (ObjectNode)json(request(get("/detl/flow/getStartConfig").param("flowId", Long.toString(id)), editorSession, false), 200).path("data");
+    }
+    private ObjectNode saveStart(long id, ObjectNode config, int start) {
+        ((ObjectNode)config.path("schedule")).put("start", start).put("nodeIds", Long.toString(id));
+        ObjectNode body = HdiProtocol.JSON.createObjectNode(); body.putObject("condition").putArray("flowIds").add(id); body.set("startConfig", config); return body;
+    }
+    private MvcResult submitStart(ObjectNode body, HdiCoreSessions.Session session, boolean csrf) throws Exception {
+        return request(post("/detl/flow/saveFlowStartConfig").contentType("application/json").content(body.toString()), session, csrf);
+    }
+    @Test void originalRunDialogGetsSelectedParametersFromTheStoredRevision() throws Exception {
+        when(catalog.listParams(2, null, null)).thenReturn(List.of(Map.of("paramName", "etl.task.log.level", "paramDisplayName", "日志级别",
+            "paramDefaultValue", "INFO", "loadFlag", 1, "valueType", "select", "values", List.of(Map.of("configName", "INFO", "configValue", "INFO")))));
+        ObjectNode draft = draft("原任务属性"); draft.withArray("paramVoList").addObject().put("paramName", "etl.task.log.level").put("paramValue", "DEBUG");
+        long id = json(request(post("/detl/flow/saveFlowVisual/push").contentType("application/json").content(encoded(draft)), editorSession, true), 200).path("data").longValue();
+        ObjectNode config = runConfig(id); JsonNode parameter = config.path("taskParams").get(0).path("params").get(0);
+        assertEquals("DEBUG", parameter.path("paramValue").asText()); assertEquals("INFO", parameter.path("defaultValue").asText()); assertEquals(1, parameter.path("selected").intValue());
+        assertEquals(1, config.path("schedule").path("_platformRevision").intValue());
+        assertFalse(config.path("platformSchedule").path("configured").asBoolean());
+        ObjectNode query = HdiProtocol.JSON.createObjectNode().put("typeId", 2).put("onlySelected", true);
+        query.putArray("params").add(parameter.deepCopy());
+        assertEquals("DEBUG", json(request(post("/detl/globalConfig/paramManage/getParamCategory").contentType("application/json").content(query.toString()), editorSession, true), 200).path("data").get(0).path("params").get(0).path("paramValue").asText());
+        ((ObjectNode)parameter).put("paramValue", "WARN");
+        json(submitStart(saveStart(id, config, 1), editorSession, true), 422);
+        assertNull(store.getSchedule(editor.getUserId(), id)); verify(runs, never()).startRun(anyLong(), anyLong(), anyLong());
+    }
+
+    @Test void cycleConfigurationUsesRealDurablePlanAndStopDisablesWithoutInventingARun() throws Exception {
+        long id = published("每日运行"); ObjectNode config = runConfig(id);
+        ((ObjectNode)config.path("schedule")).put("scheduleType", 2).put("unit", 4).put("timeInterval", "1").put("executeTime", "19:00:00");
+        json(submitStart(saveStart(id, config, 1), editorSession, true), 200);
+        HdiTaskStore.SchedulePlan plan = store.getSchedule(editor.getUserId(), id); assertTrue(plan.enabled()); assertEquals(1, plan.revision());
+        assertEquals(Instant.parse("2099-10-13T11:00:00Z"), plan.nextFireAt());
+        assertEquals(2, runConfig(id).path("schedule").path("scheduleType").intValue());
+        assertEquals(5, read(id).path("flowVo").path("flowStatus").intValue());
+        JsonNode scheduled = json(request(post("/detl/flow/findFlowPage").contentType("application/json").content("{\"flowStatus\":\"5\"}"), editorSession, true), 200).path("data");
+        assertEquals(1, scheduled.path("total").intValue());
+        JsonNode idle = json(request(post("/detl/flow/findFlowPage").contentType("application/json").content("{\"flowStatus\":\"0\"}"), editorSession, true), 200).path("data");
+        assertEquals(0, idle.path("total").intValue());
+        assertEquals(4, read(id).path("flowVo").path("scheduleVo").path("unit").intValue());
+        json(request(get("/detl/flow/stopFlow/" + id), editorSession, true), 200);
+        assertFalse(store.getSchedule(editor.getUserId(), id).enabled()); assertNull(store.getSchedule(editor.getUserId(), id).nextFireAt());
+        assertEquals(0, store.runs(editor.getUserId(), id).size()); verify(runs, never()).startRun(anyLong(), anyLong(), anyLong()); verify(runs, never()).stop(anyLong(), anyString());
+    }
+
+    @Test void cycleSaveOnlyStaysPausedAndPreviewUsesTheOriginalCompilerResponse() throws Exception {
+        long id = published("暂停计划"); ObjectNode config = runConfig(id);
+        ObjectNode schedule = (ObjectNode)config.path("schedule"); schedule.put("scheduleType", 2).put("unit", 4).put("timeInterval", "1").put("executeTime", "19:00:00");
+        json(submitStart(saveStart(id, config, 0), editorSession, true), 200);
+        assertFalse(store.getSchedule(editor.getUserId(), id).enabled()); assertNull(store.getSchedule(editor.getUserId(), id).nextFireAt());
+        JsonNode times = json(request(post("/detl/flow/getExecuteTimes").contentType("application/json").content(schedule.toString()), editorSession, true), 200).path("data");
+        assertEquals("2099-10-13 19:00:00", times.get(0).asText()); assertEquals(5, times.size());
+        JsonNode cron = json(request(post("/detl/flow/generateCrontab").contentType("application/json").content(schedule.toString()), editorSession, true), 200).path("data");
+        assertEquals("0 0 19 * * ?", cron.path("enablePeriod").asText());
+        JsonNode frequencies = json(request(get("/detl/flow/getFrequencyEnums"), editorSession, false), 200).path("data");
+        assertEquals(4, frequencies.size()); assertEquals(4, frequencies.path("每日").intValue());
+    }
+
+    @Test void scheduleWritesRequireCsrfOwnerAndCurrentPublishedRevision() throws Exception {
+        long id = published("权限计划"); ObjectNode body = saveStart(id, runConfig(id), 1);
+        json(submitStart(body, editorSession, false), 403); json(submitStart(body, otherSession, true), 404);
+        ObjectNode visual = (ObjectNode)read(id); json(request(post("/detl/flow/saveFlowVisual/save").contentType("application/json").content(encoded(visual)), editorSession, true), 200);
+        json(submitStart(body, editorSession, true), 409); assertNull(store.getSchedule(editor.getUserId(), id));
+        editor.setPermissions(Set.of("governance:flow:list", "governance:flow:test"));
+        json(submitStart(body, editorSession, true), 403); verify(runs, never()).startRun(anyLong(), anyLong(), anyLong());
+    }
+
+    @Test void unsupportedBatchOrChangedScopeNeverSavesOrStarts() throws Exception {
+        long id = published("单任务"); ObjectNode body = saveStart(id, runConfig(id), 1);
+        body.withObject("condition").withArray("flowIds").add(id + 1);
+        json(submitStart(body, editorSession, true), 422);
+        body = saveStart(id, runConfig(id), 1); body.withObject("condition").put("groupId", 999);
+        json(submitStart(body, editorSession, true), 422); assertNull(store.getSchedule(editor.getUserId(), id));
+        body = saveStart(id, runConfig(id), 1); ((ObjectNode)body.path("startConfig").path("schedule")).put("scheduleType", 3);
+        json(submitStart(body, editorSession, true), 422); verify(runs, never()).startRun(anyLong(), anyLong(), anyLong());
+    }
+
+    @Test void manualSaveIsDurableAndRunFailureDoesNotBecomeSuccess() throws Exception {
+        long id = published("一次性运行"); ObjectNode config = runConfig(id);
+        json(submitStart(saveStart(id, config, 0), editorSession, true), 200);
+        HdiTaskStore.SchedulePlan plan = store.getSchedule(editor.getUserId(), id);
+        assertFalse(plan.enabled()); assertNull(plan.nextFireAt()); assertEquals("MANUAL", HdiProtocol.JSON.readTree(plan.planJson()).path("kind").asText());
+        assertEquals(1, runConfig(id).path("schedule").path("scheduleType").intValue());
+        verify(runs, never()).startRun(anyLong(), anyLong(), anyLong());
+        when(runs.startRun(editor.getUserId(), id, 1)).thenThrow(new HdiTaskFault(503, "执行目标离线"));
+        json(submitStart(saveStart(id, config, 1), editorSession, true), 503);
+        verify(runs).startRun(editor.getUserId(), id, 1);
+        assertEquals(0, store.runs(editor.getUserId(), id).size()); assertFalse(store.getSchedule(editor.getUserId(), id).enabled());
+    }
+
 }
