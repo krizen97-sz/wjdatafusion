@@ -14,7 +14,13 @@ ROOT = Path(__file__).resolve().parents[2]
 SOURCE_MANIFEST = ROOT / 'data-governance/hdi-native/manifest.detl-3.3.0.json'
 INSTANCE = 'bin/instance/'
 PUBLIC = 'bin/detl/config/public/'
-CORE = {'adapter.properties', 'etl-core-3.3.0.jar', 'version.txt', 'felfunction/etl_fel_capability_set.json'}
+TASK_SERVICE = 'bin/detl/'
+TASK_SERVICE_RESOURCES = {
+    'dEtlv2.jar', 'config/mybatis-config.xml', 'config/adapter-mirror.json',
+    'config/adapter-param-mapping.json', 'config/templates/index.ftlh',
+    'config/signverify/CodeSignRoot.crt',
+}
+CORE = {'adapter.properties', 'etl-core-3.3.0.jar', 'version.txt', 'felfunction/etl_fel_capability_set.json', 'logback.xml'}
 PUBLIC_SUFFIXES = {'.js', '.css', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.icns', '.woff', '.woff2', '.ttf', '.eot', '.json', '.txt'}
 PLUGIN_META = {'adapter.properties', 'etl_plugin.json', 'version.txt', 'mybatis-config.xml', 'script.template'}
 NOTICE = 'META-INF/Open Source Software Licenses.txt'
@@ -126,7 +132,7 @@ def plugin_file(plugin, tail):
             or tail == 'META-INF/services/javax.servlet.ServletContainerInitializer')
 
 
-def select_files(entries, plugins, task):
+def select_files(entries, plugins, task, include_task_service=False, include_coordinator=False):
     selected = {}
     skipped = []
     def select(source, destination, role, expected=None):
@@ -162,12 +168,30 @@ def select_files(entries, plugins, task):
                 raise ValueError('Incomplete original plugin: ' + plugin)
     for record in task['files']:
         select(PUBLIC + record['path'], 'public/' + record['path'], 'original-task-ui', record)
+    if include_task_service:
+        for tail in sorted(TASK_SERVICE_RESOURCES):
+            select(TASK_SERVICE + tail, 'task-service/' + tail, 'original-task-service')
+        libraries = [source for source, info in entries.items()
+                     if not info.is_dir() and source.startswith((TASK_SERVICE + 'lib/', TASK_SERVICE + 'ext/normal/'))
+                     and source.endswith('.jar')]
+        if not any(source.startswith(TASK_SERVICE + 'lib/') for source in libraries):
+            raise ValueError('Original task service libraries are missing')
+        for source in libraries:
+            select(source, 'task-service/' + source[len(TASK_SERVICE):], 'original-task-service')
+    if include_coordinator:
+        libraries = [source for source, info in entries.items()
+                     if not info.is_dir() and source.startswith('bin/zookeeper/lib/') and source.endswith('.jar')]
+        if 'bin/zookeeper/lib/zookeeper-3.8.4.jar' not in libraries:
+            raise ValueError('Original coordinator libraries are missing')
+        for source in libraries:
+            select(source, source[len('bin/'):], 'original-coordinator')
     if NOTICE in entries:
         select(NOTICE, 'notices/Open Source Software Licenses.txt', 'copyright-notice')
     return selected, sorted(skipped)
 
 
-def package(archive_path, output, plugins=(), all_plugins=False, source_manifest=SOURCE_MANIFEST):
+def package(archive_path, output, plugins=(), all_plugins=False, source_manifest=SOURCE_MANIFEST,
+            include_task_service=False, include_coordinator=False):
     policy, task = load_policy(source_manifest)
     output = Path(output).absolute()
     if output.exists() or output.is_symlink():
@@ -201,7 +225,7 @@ def package(archive_path, output, plugins=(), all_plugins=False, source_manifest
             selected_plugins = available if all_plugins else sorted(plugins)
             if not set(selected_plugins) <= set(available):
                 raise ValueError('Requested plugin is absent from the original ZIP')
-            selected, skipped = select_files(entries, selected_plugins, task)
+            selected, skipped = select_files(entries, selected_plugins, task, include_task_service, include_coordinator)
             parent = real_directory(output.parent, create=True)
             with tempfile.TemporaryDirectory(prefix='.hdi-original-', dir=parent) as temporary:
                 staging = Path(temporary) / 'bundle'; staging.mkdir(mode=0o755)
@@ -227,6 +251,8 @@ def package(archive_path, output, plugins=(), all_plugins=False, source_manifest
                 manifest = {'schemaVersion': 1, 'engine': 'original-detl', 'sourceArchiveSha256': checksum,
                             'sourceArchiveBytes': initial.st_size, 'frontendVersion': task['sourceVersion'],
                             'taskManifestSha256': policy['taskStaticManifestSha256'], 'plugins': selected_plugins,
+                            'taskServiceIncluded': include_task_service,
+                            'coordinatorIncluded': include_coordinator,
                             'runtimeConfigurationIncluded': False, 'activationLicenseIncluded': False, 'executionVerified': False,
                             'excludedSelectedPluginFiles': skipped, 'files': records}
                 (staging / 'bundle-manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
@@ -270,16 +296,21 @@ def main():
     parser.add_argument('--output', type=Path)
     parser.add_argument('--plugin', action='append', default=[])
     parser.add_argument('--all-plugins', action='store_true')
+    parser.add_argument('--include-task-service', action='store_true',
+                        help='Include original task API JARs/resources; still excludes site configuration and certificates')
+    parser.add_argument('--include-coordinator', action='store_true',
+                        help='Include original ZooKeeper libraries, without any site configuration or data')
     parser.add_argument('--verify', type=Path)
     args = parser.parse_args()
     if args.verify:
-        if args.archive or args.output or args.plugin or args.all_plugins:
+        if args.archive or args.output or args.plugin or args.all_plugins or args.include_task_service or args.include_coordinator:
             parser.error('--verify cannot be mixed with packaging arguments')
         result = verify(args.verify)
     else:
         if not args.archive or not args.output:
             parser.error('--archive and --output are required')
-        result = package(args.archive, args.output, args.plugin, args.all_plugins)
+        result = package(args.archive, args.output, args.plugin, args.all_plugins,
+                         include_task_service=args.include_task_service, include_coordinator=args.include_coordinator)
     print(json.dumps(result, ensure_ascii=False))
 
 

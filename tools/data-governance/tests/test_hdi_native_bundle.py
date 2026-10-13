@@ -35,6 +35,18 @@ class NativeBundleTest(unittest.TestCase):
             bundle.INSTANCE + 'certs/server.keystore': b'must never copy',
             'conf/license.lic': b'must never copy',
             'bin/detl/dEtlv2.jar': b'not the selected engine',
+            **{bundle.TASK_SERVICE + name: ('task-service:' + name).encode()
+               for name in bundle.TASK_SERVICE_RESOURCES},
+            'bin/detl/lib/original-task-service.jar': b'original-task-service-dependency',
+            'bin/detl/ext/normal/original-kafka.jar': b'original-x86-extension',
+            'bin/detl/ext/huawei/arm-library.jar': b'not an x86 dependency',
+            'bin/detl/config/application.properties': b'private or site configuration',
+            'bin/detl/config/bootstrap.properties': b'private or site configuration',
+            'bin/detl/config/certs/server.keystore': b'must never copy private keys',
+            'bin/gateway/gateway.jar': b'not the task service',
+            'bin/zookeeper/lib/zookeeper-3.8.4.jar': b'original-coordinator-library',
+            'bin/zookeeper/conf/zoo.cfg': b'must not reuse site configuration',
+            'bin/zookeeper/data/snapshot.1': b'must not reuse state',
             bundle.PUBLIC + 'detlModuleEntry.js': self.front,
             bundle.NOTICE: b'original copyright notice',
         }
@@ -162,6 +174,42 @@ class NativeBundleTest(unittest.TestCase):
         del self.contents[bundle.INSTANCE + self.plugin + '/etl_plugin.json']
         self.build_zip(); self.allow_current_zip(); self.package()
         self.assertFalse((self.root / 'out' / 'instance' / self.plugin / 'etl_plugin.json').exists())
+
+    def test_task_service_is_explicit_and_does_not_include_product_stack_or_site_secrets(self):
+        self.package(include_task_service=True)
+        root = self.root / 'out'
+        manifest = json.loads((root / 'bundle-manifest.json').read_text())
+        self.assertTrue(manifest['taskServiceIncluded'])
+        self.assertFalse(manifest['executionVerified'])
+        for name in bundle.TASK_SERVICE_RESOURCES:
+            self.assertEqual(self.contents[bundle.TASK_SERVICE + name], (root / 'task-service' / name).read_bytes())
+        self.assertEqual(b'original-task-service-dependency', (root / 'task-service/lib/original-task-service.jar').read_bytes())
+        self.assertEqual(b'original-x86-extension', (root / 'task-service/ext/normal/original-kafka.jar').read_bytes())
+        self.assertFalse((root / 'task-service/ext/huawei/arm-library.jar').exists())
+        for name in ['config/application.properties', 'config/bootstrap.properties', 'config/certs/server.keystore']:
+            self.assertFalse((root / 'task-service' / name).exists())
+        self.assertFalse((root / 'bin/gateway/gateway.jar').exists())
+        self.assertTrue(bundle.verify(root)['verified'])
+
+    def test_incomplete_task_service_is_rejected_before_publishing_any_bundle(self):
+        for missing in ['bin/detl/dEtlv2.jar', 'bin/detl/lib/original-task-service.jar']:
+            with self.subTest(missing=missing):
+                value = self.contents.pop(missing)
+                self.build_zip(); self.allow_current_zip()
+                with self.assertRaises(ValueError):
+                    self.package(include_task_service=True)
+                self.assertFalse((self.root / 'out').exists())
+                self.contents[missing] = value
+
+    def test_coordinator_is_explicit_and_excludes_configuration_and_data(self):
+        self.package(name='without')
+        self.assertFalse((self.root / 'without/zookeeper').exists())
+        self.package(include_coordinator=True)
+        root = self.root / 'out'
+        self.assertEqual(b'original-coordinator-library', (root / 'zookeeper/lib/zookeeper-3.8.4.jar').read_bytes())
+        self.assertFalse((root / 'zookeeper/conf').exists())
+        self.assertFalse((root / 'zookeeper/data').exists())
+        self.assertTrue(json.loads((root / 'bundle-manifest.json').read_text())['coordinatorIncluded'])
 
 
 if __name__ == '__main__':
