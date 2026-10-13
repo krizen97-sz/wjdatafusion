@@ -1,0 +1,22 @@
+import request from '@/utils/request'
+import { localDefinitionPayload } from './localPayload'
+const root = '/governance/local'
+const id = value => encodeURIComponent(String(value))
+export const localStatus = () => request({ url: `${root}/status` })
+export const localDefinitions = () => request({ url: `${root}/definitions` })
+export const localDefinition = value => request({ url: `${root}/definitions/${id(value)}` })
+export const createLocalDefinition = data => request({ url: `${root}/definitions`, method: 'post', data: localDefinitionPayload(data) })
+export const saveLocalDefinition = (value, data) => request({ url: `${root}/definitions/${id(value)}`, method: 'put', data: localDefinitionPayload(data) })
+export const validateLocalDefinition = value => request({ url: `${root}/definitions/${id(value)}/validate`, method: 'post', data: {} })
+export const runLocalDefinition = (value, data) => request({ url: `${root}/definitions/${id(value)}/runs`, method: 'post', data, headers: { repeatSubmit: false } })
+export const localRun = value => request({ url: `${root}/runs/${id(value)}` })
+export const localRunHistory = value => request({ url: `${root}/definitions/${id(value)}/runs` })
+export const stopLocalRun = value => request({ url: `${root}/runs/${id(value)}/stop`, method: 'post' })
+export const downloadLocalOutput = (run, file) => request({ url: `${root}/runs/${id(run)}/files/${id(file)}`, responseType: 'blob', timeout: 60000 })
+export const localRunByRequest = (definition, requestId) => request({ url: `${root}/definitions/${id(definition)}/runs/request/${id(requestId)}` })
+export const localSchedules = value => request({ url: `${root}/definitions/${id(value)}/schedules` })
+export const createLocalSchedule = (value, data) => request({ url: `${root}/definitions/${id(value)}/schedules`, method: 'post', data })
+export const updateLocalSchedule = (value, data) => request({ url: `${root}/schedules/${id(value)}`, method: 'put', data })
+export const setLocalScheduleState = (value, data) => request({ url: `${root}/schedules/${id(value)}/state`, method: 'post', data })
+export const runLocalSchedule = value => request({ url: `${root}/schedules/${id(value)}/run`, method: 'post', headers: { repeatSubmit: false } })
+export const recoverLocalSchedule = value => request({ url: `${root}/schedules/${id(value)}/recover`, method: 'post' })
