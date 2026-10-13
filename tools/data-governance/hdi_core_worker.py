@@ -33,6 +33,15 @@ from hdi_original_execution_proof import verify_bundle
 MAX_LINE = 48 * 1024 * 1024
 MAX_COMPILED = 32 * 1024 * 1024
 ROOT = Path(__file__).resolve().parent
+SHUTDOWN_SECONDS = 70
+
+
+def stop_timeout(config):
+    value = config.get('stopTimeoutSeconds', 45)
+    if type(value) is not int or not 45 <= value <= 60:
+        raise ProtocolError('INVALID_STOP_TIMEOUT')
+    return value
+
 LOGGING = ('<configuration><appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">'
            '<target>System.err</target><encoder><pattern>%date %-5level [%thread] %logger '
            '- %msg%n%ex</pattern></encoder></appender><logger name="org.apache.zookeeper" '
@@ -108,25 +117,30 @@ class JsonChild:
                 raise ProtocolError('ORIGINAL_CONTROL_REJECTED')
             return response['data']
 
-    def stop(self, grace=20):
+    def stop(self, grace=20, deadline=None):
+        if deadline is None:
+            deadline = time.monotonic() + grace + 10
         with self.lock:
             if self.closed:
                 return
             self.closed = True
             if self.process.poll() is None:
                 try:
-                    self.process.stdin.close()  # EOF is the namespace supervisor's ownership lease.
+                    self.process.stdin.close()
                 except OSError:
                     pass
         try:
-            self.process.wait(timeout=grace)
+            self.process.wait(timeout=max(0, min(grace, deadline - time.monotonic() - 2)))
         except subprocess.TimeoutExpired:
             self.process.terminate()
             try:
-                self.process.wait(timeout=5)
+                self.process.wait(timeout=max(0, min(5, deadline - time.monotonic() - 1)))
             except subprocess.TimeoutExpired:
                 self.process.kill()
-                self.process.wait(timeout=5)
+                try:
+                    self.process.wait(timeout=max(0, deadline - time.monotonic()))
+                except subprocess.TimeoutExpired:
+                    raise ProtocolError('STOP_UNCONFIRMED') from None
         finally:
             self.stream.close()
         if self.process.poll() is None:
@@ -139,6 +153,7 @@ class Worker:
         self.records, self.tasks = {}, {}
         self.closing = False
         self.closed_result = None
+        self.shutdown_deadline = None
         self.lock_fd = None
         self.coordinator = self.coordinator_stream = None
         try:
@@ -154,6 +169,7 @@ class Worker:
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         os.umask(0o077)
         self.config = config
+        self.stop_timeout = stop_timeout(config)
         self.root = private_directory(config['stateDir'])
         self.runs_root = private_directory(self.root / 'runs')
         self.lock_fd = os.open(self.root / '.worker.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
@@ -438,6 +454,7 @@ class Worker:
                     'capabilities': ['reserve', 'submit', 'status', 'cancel', 'logs', 'artifact', 'shutdown'],
                     'binding': {'id': str(self.config.get('bindingId', '1')), 'name': '平台内置原Core'},
                     'javaRuntimeMode': self.java_mode,
+                    'stopTimeoutSeconds': self.stop_timeout, 'shutdownTimeoutSeconds': SHUTDOWN_SECONDS,
                     'capacity': {'limit': self.max_runs, 'active': active, 'available': max(0, self.max_runs - active)},
                     'outputPolicy': {'mode': 'managed', 'logicalRoot': '/平台输出',
                                      'description': '每次写执行器私有运行目录，完整产物通过平台下载'}}
@@ -525,19 +542,23 @@ class Worker:
         if self.closed_result is False:
             raise ProtocolError('STOP_UNCONFIRMED')
         self.closing = True
+        deadline = time.monotonic() + SHUTDOWN_SECONDS
+        self.shutdown_deadline = deadline - 10
         with self.guard:
             tasks = list(self.tasks.values())
         for task in tasks:
             task.cancel.set()
-        deadline = time.monotonic() + 55
         for task in tasks:
-            task.thread.join(timeout=max(0, deadline - time.monotonic()))
+            task.thread.join(timeout=max(0, self.shutdown_deadline - time.monotonic()))
         unfinished = [task.record['runId'] for task in tasks if task.thread.is_alive() or not task.record.get('finalized')]
         if self.coordinator is not None:
-            self.coordinator.stop(grace=5)
+            try:
+                self.coordinator.stop(grace=5, deadline=deadline)
+            except Exception:
+                unfinished.append('bundled-coordinator')
         if unfinished:
-            atomic_json(self.root / '.shutdown-unconfirmed.json', {'runs': unfinished})
             self.closed_result = False
+            atomic_json(self.root / '.shutdown-unconfirmed.json', {'runs': unfinished})
             raise ProtocolError('STOP_UNCONFIRMED')
         if self.lock_fd is not None:
             os.close(self.lock_fd)
@@ -557,6 +578,13 @@ class NativeRun:
 
     def update(self, **changes):
         self.worker.persist(self.record, **changes)
+
+    def original_stop_deadline(self, now):
+        deadline = now + self.worker.stop_timeout
+        if self.worker.shutdown_deadline is not None:
+            # Shutdown is a process ownership deadline shared by all parallel runs.
+            deadline = min(deadline, self.worker.shutdown_deadline - 15)
+        return deadline
 
     def output_budget(self):
         total, count = 0, 0
@@ -730,7 +758,9 @@ class NativeRun:
                 if self.cancel.is_set() and stop_deadline is None:
                     self.update(state='STOPPING')
                     metadata.call('stop', stop=self.compiled['stop'])
-                    stop_deadline = time.monotonic() + 15
+                    stop_deadline = self.original_stop_deadline(time.monotonic())
+                if stop_deadline is not None and self.worker.shutdown_deadline is not None:
+                    stop_deadline = min(stop_deadline, self.worker.shutdown_deadline - 15)
                 observed = metadata.call('status')
                 value = strict_json(observed.get('execution') or '{}')
                 self.log_progress()
@@ -755,14 +785,17 @@ class NativeRun:
             if self.record['state'] in ('SUBMITTING', 'RUNNING', 'STOPPING'):
                 outcome = 'INTERRUPTED'
         finally:
+            cleanup_deadline = time.monotonic() + 25
+            if self.worker.shutdown_deadline is not None:
+                cleanup_deadline = min(cleanup_deadline, self.worker.shutdown_deadline)
             for child in reversed(self.children):
                 try:
-                    child.stop()
+                    child.stop(deadline=cleanup_deadline - 3)
                 except Exception:
                     confirmed = False
             for bridge in reversed(self.bridges):
                 try:
-                    bridge.close()
+                    bridge.close(deadline=cleanup_deadline)
                 except Exception:
                     confirmed = False
             if socket_dir:

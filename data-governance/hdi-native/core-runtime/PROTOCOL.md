@@ -60,7 +60,10 @@ Linux 必须支持 unprivileged user/network/PID namespaces。Core namespace 只
 
 `tls` 可指向管理员为该模块新建的私有 `serverKeystore/clientKeystore/passwordFile`；省略时为每次运行生成新 JKS。测试证书的短有效期不能当作正式部署配置。`javaRuntimeMode` 默认 `normal`；`interpreted-validation` 仅用于 QEMU TCG 上 Java 11 C1 不稳定的本机验证，会显式出现在 hello 中。正式原生 Linux 不应照抄该测试模式。
 
-本次验证包括真实原 DataGenerator → FieldMapping → FileOutput 的原生 finish、3 行 CSV 的内容/完整 SHA、分块产物、跨 owner 拒绝、重复 submit 幂等以及 held 子进程退出。运行取消已验证发布原 stop 后安全关闭本次进程；原生 stop 终态在 15 秒窗口未观察到时明确返回 `ORIGINAL_STOP_TIMEOUT_PROCESS_CLOSED`，不会把中间文件作为成功产物。当前 namespace 隔离的是网络与 PID，不是完整文件系统沙箱；只接受受平台编译器约束的三个已选插件。
+本次验证包括真实原 DataGenerator → FieldMapping → FileOutput 的原生 finish、3 行 CSV 的内容/完整 SHA、分块产物、跨 owner 拒绝、重复 submit 幂等以及 held 子进程退出。运行取消已在 45 秒等待配置下验证本次 exec_id 的原生 stop 终态，随后确认进程退出且不返回中间产物；若其他运行在停止窗口未观察到原生终态则明确返回 `ORIGINAL_STOP_TIMEOUT_PROCESS_CLOSED`，不会把中间文件作为成功产物。当前 namespace 隔离的是网络与 PID，不是完整文件系统沙箱；只接受受平台编译器约束的三个已选插件。
 
 
-内置协调器追加验收：无 `zookeeper` 配置时，原 bundle 的 ZooKeeper 独立启动，完整三节点 stdio 验收通过；关闭后 held supervisor 与 JVM 均结束，预先存在的实验协调器保持运行。协调 JVM 通过 stdin 租约和 Linux parent-death signal 双重约束；worker 断连正常清理，supervisor 被强制结束时只终止其 held JVM。启动保存 PID、启动 tick、argv 哈希，发现旧记录对应进程仍存活时拒绝接管。Linux 实测 23 项组件测试通过，包含 stdin EOF 与 supervisor SIGKILL 后原子进程不遗留两项；macOS 上这两项 Linux 专有测试明确跳过。
+内置协调器追加验收：无 `zookeeper` 配置时，原 bundle 的 ZooKeeper 独立启动，完整三节点 stdio 验收通过；关闭后 held supervisor 与 JVM 均结束，预先存在的实验协调器保持运行。协调 JVM 通过 stdin 租约和 Linux parent-death signal 双重约束；worker 断连正常清理，supervisor 被强制结束时只终止其 held JVM。启动保存 PID、启动 tick、argv 哈希，发现旧记录对应进程仍存活时拒绝接管。Linux 实测 28 项组件测试通过，包含 stdin EOF 与 supervisor SIGKILL 后原子进程不遗留两项；macOS 上这两项 Linux 专有测试明确跳过。
+
+
+`stopTimeoutSeconds` 默认 45 秒，可设置为 45–60 的整数，覆盖原普通任务 30 秒的停止等待。普通取消等待这个窗口，再关闭本次 held 进程；未确认关闭保持 UNKNOWN。`shutdown` 为所有运行共享 70 秒总预算：先同时提出取消，运行线程并行在前 60 秒完成或留下恢复屏障，最后最多 10 秒关闭内置协调器。进入 shutdown 后原 stop 的等待会缩短到共享截止前 15 秒，为进程确认与代理关闭留时间；不会按四个运行逐个等待 45 秒。该预算由 hello 的 `shutdownTimeoutSeconds` 返回，平台 stdio 超时应至少 80 秒。文件系统故障或无法确认退出会持久化 `.shutdown-unconfirmed.json` 并拒绝自动重启。
