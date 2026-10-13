@@ -200,11 +200,18 @@ class OriginalSdkTests(unittest.TestCase):
 
     def test_original_month_week_day_schedule_compiler(self):
         for unit, interval, cron in [(2, '15', '6 5 4 15 * ?'), (3, '2,4', '6 5 4 ? * 2,4'), (4, '1', '6 5 4 * * ?')]:
-            config = dict(scheduleType=2, unit=unit, timeInterval=interval, executeTime='04:05:06', flowIncrStatus=1, startFullImmediately=0)
+            config = dict(scheduleType=2, unit=unit, timeInterval=interval, executeTime='04:05:06', executeTimeExactDate='12:00:00', flowIncrStatus=1, startFullImmediately=0)
             response = self.invoke(dict(operation='schedule', scheduleConfig=config, zoneId='Asia/Shanghai'))
             self.assertTrue(response['ok'], response)
             self.assertEqual(config, response['scheduleConfig'])
             self.assertEqual([cron], response['cronExpressions'])
+
+    def test_original_manual_schedule_has_no_automatic_trigger(self):
+        config = dict(scheduleType=1, flowIncrStatus=1, start=0, startFullImmediately=0)
+        response = self.invoke(dict(operation='schedule', scheduleConfig=config, zoneId='Asia/Shanghai'))
+        self.assertTrue(response['ok'], response)
+        self.assertEqual('MANUAL', response['mode']); self.assertEqual([], response['cronExpressions'])
+        self.assertEqual(1, response['nativeSchedule']['execType']); self.assertEqual(1, response['nativeSchedule']['flowIncrStatus'])
 
     def test_unimplemented_schedule_semantics_are_rejected(self):
         base = dict(scheduleType=2, unit=4, timeInterval='1', executeTime='04:05:06', flowIncrStatus=1, startFullImmediately=0)

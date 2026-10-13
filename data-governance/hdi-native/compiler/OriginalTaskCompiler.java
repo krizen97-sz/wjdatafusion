@@ -170,12 +170,18 @@ public final class OriginalTaskCompiler {
         Set<String> fields = Set.of("id", "nodeIds", "scheduleType", "intervalTime", "flowIncrStatus", "dependencyFlowId", "dependencyFlowStatus", "unit", "timeInterval", "executeTime", "exactDate", "executeTimeExactDate", "excludeTimeType", "enablePeriod", "excludeDate", "excludeStartTime", "excludeEndTime", "disablePeriod", "startFullImmediately", "start", "alarmEnable");
         supported(fields.containsAll(raw.keySet()), "Unknown original schedule field");
         var config = bean(com.hikvision.idatafusion.detl.dto.task.schedule.ScheduleConfigVo.class, raw);
-        supported(Integer.valueOf(2).equals(config.getScheduleType()) && config.getUnit() != null && Set.of(2, 3, 4).contains(config.getUnit()), "Only original monthly, weekly and daily cycle schedules are supported");
         supported(config.getFlowIncrStatus() == null || config.getFlowIncrStatus() == 1, "This profile schedules independent full batches only");
         supported(config.getStartFullImmediately() == null || config.getStartFullImmediately() == 0, "Immediate initial execution is not supported by a periodic plan");
         supported(config.getAlarmEnable() == null || config.getAlarmEnable() == 0, "Original external alarm delivery is not supported");
-        for (String key : List.of("exactDate", "executeTimeExactDate", "enablePeriod", "excludeDate", "excludeStartTime", "excludeEndTime", "disablePeriod"))
+        // executeTimeExactDate is an inactive original form default when exactDate is empty.
+        // The original Cron generator consumes exactDate, not this standalone time field.
+        for (String key : List.of("exactDate", "enablePeriod", "excludeDate", "excludeStartTime", "excludeEndTime", "disablePeriod"))
             supported(empty(raw.get(key)), "Exact dates, custom cron and exclusion windows are not supported in this schedule profile");
+        if (Integer.valueOf(1).equals(config.getScheduleType())) {
+            return map("ok", true, "protocolVersion", 1, "operation", "schedule", "mode", "MANUAL", "scheduleConfig", raw, "zoneId", zone,
+                "cronExpressions", List.of(), "nativeSchedule", config.toScheduleVo(), "diagnostics", List.of());
+        }
+        supported(Integer.valueOf(2).equals(config.getScheduleType()) && config.getUnit() != null && Set.of(2, 3, 4).contains(config.getUnit()), "Only original monthly, weekly and daily cycle schedules are supported");
         String interval = config.getTimeInterval(), time = config.getExecuteTime();
         require(time != null && time.matches("(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"), "Execution time must be HH:mm:ss");
         require(interval != null && interval.matches("[0-9]+(?:,[0-9]+){0,31}"), "Invalid original cycle selection");
@@ -193,7 +199,7 @@ public final class OriginalTaskCompiler {
             expressions.add(expression);
         }
         require(!expressions.isEmpty(), "Original schedule has no trigger");
-        return map("ok", true, "protocolVersion", 1, "operation", "schedule", "scheduleConfig", raw, "zoneId", zone,
+        return map("ok", true, "protocolVersion", 1, "operation", "schedule", "mode", "CRON", "scheduleConfig", raw, "zoneId", zone,
             "cronExpressions", expressions, "nativeSchedule", nativeSchedule, "diagnostics", List.of());
     }
 

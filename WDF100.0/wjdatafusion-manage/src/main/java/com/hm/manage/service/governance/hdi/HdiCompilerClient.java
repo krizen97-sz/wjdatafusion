@@ -81,7 +81,10 @@ public class HdiCompilerClient {
         ObjectNode request = json.createObjectNode().put("operation", "schedule").put("zoneId", zoneId); request.set("scheduleConfig", scheduleConfig);
         JsonNode result = invoke(request);
         require("schedule".equals(result.path("operation").asText()) && zoneId.equals(result.path("zoneId").asText()) && scheduleConfig.equals(result.path("scheduleConfig")), "schedule binding");
-        require(result.path("cronExpressions").isArray() && !result.path("cronExpressions").isEmpty() && result.path("cronExpressions").size() <= 32, "schedule expressions");
+        boolean manual = scheduleConfig.path("scheduleType").asInt(-1) == 1;
+        require(result.path("cronExpressions").isArray() && result.path("cronExpressions").size() <= 32
+            && (manual ? "MANUAL".equals(result.path("mode").asText()) && result.path("cronExpressions").isEmpty()
+                : "CRON".equals(result.path("mode").asText()) && !result.path("cronExpressions").isEmpty()), "schedule expressions");
         for (JsonNode expression : result.path("cronExpressions")) require(expression.isTextual() && expression.asText().length() <= 256 && org.quartz.CronExpression.isValidExpression(expression.asText()), "schedule cron");
         return result;
     }
