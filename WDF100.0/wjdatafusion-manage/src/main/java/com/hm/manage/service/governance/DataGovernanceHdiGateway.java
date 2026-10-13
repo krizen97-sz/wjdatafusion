@@ -10,6 +10,7 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.Proxy;
 import java.net.URI;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -34,13 +35,23 @@ public class DataGovernanceHdiGateway {
     private static final Set<String> HOST_FILES = Set.of("task-host.html", "host.mjs", "native-task-host.mjs");
     /** Verified original task API call sites and matching FlowController query methods, not verb heuristics. */
     private static final Set<String> READ_ONLY = Set.of(
-        "GET /", "GET /flow/getRunningStatus", "GET /flow/getFlowVisualState",
+        "GET /", "GET /getLanguage", "GET /getPublicKey", "GET /getEtlUserInfo", "GET /workspace/listWorkspace",
+        "GET /system/environment/getLicenseInfo", "GET /system/environment/getLicenseExpire",
+        "GET /user/security/privilege/info", "GET /code/codeConfig/getDataTypeList",
+        "GET /globalConfig/runningConfig/healthStatus",
+        "GET /system/environment/getExpertMode", "GET /system/environment/getPortPool",
+        "POST /globalConfig/felManager/query", "GET /globalConfig/dataSourceManage/getDataSourceExtendInfo",
+        "GET /globalConfig/groupManage/findAllGroup", "GET /globalConfig/serverManage/findAllServers",
+        "GET /globalConfig/tag/listTag", "GET /flow/getColumnDisplayName", "GET /flow/pageInterruptedFlow",
+        "POST /folder/findFolder", "POST /flow/valid/getAdapterReadWritePath", "GET /flow/getRunningStatus", "GET /flow/getFlowVisualState",
         "GET /flow/getFilterOperator", "GET /flow/getFrequencyEnums", "GET /flow/getTaskRunningSchedule",
         "POST /flow/findFlowPage", "POST /flow/findFlowExecRecordPage", "POST /flow/findFlowModuleExecRecordPage",
         "GET /globalConfig/instanceManage/findAllInstance",
         "GET /globalConfig/instanceManage/findAvailableInstances",
-        "GET /globalConfig/groupAdapterManage/getAdapterTypeOptions");
+        "GET /globalConfig/groupAdapterManage/getAdapterTypeOptions",
+        "GET /globalConfig/groupAdapterManage/listAdapters", "POST /globalConfig/paramManage/listParams");
     private static final Pattern READ_ID = Pattern.compile("^/flow/(?:getFlowById|getFlowVisualById)/[0-9]+$");
+    private static final Pattern READ_WORKSPACE_ID = Pattern.compile("^/globalConfig/(groupAdapterManage/getOrderedGroupAdapters|instanceManage/findByGroupId)/([1-9][0-9]{0,18})$");
     private static final List<String> TASK_SCOPES = List.of("/flow/", "/flowvisual/", "/flowtemplate/", "/flownode/", "/flowlog/");
     private static final Set<String> REQUEST_HEADERS = Set.of("accept", "content-type", "accept-language", "range", "x-requested-with", "workspace", "projectcode", "origin", "referer");
     private static final Set<String> RESPONSE_HEADERS = Set.of("content-type", "content-disposition", "content-encoding", "content-range", "accept-ranges", "traceid", "bic-auth", "is-refresh", "in-login", "x-csrf-token", "x-xsrf-token");
@@ -71,7 +82,7 @@ public class DataGovernanceHdiGateway {
             return;
         }
         authorizeApi(request.getMethod(), path, user);
-        bindNativeScope(request, session);
+        bindNativeScope(request, session, path);
         proxy(request, response, session, path);
     }
 
@@ -90,10 +101,15 @@ public class DataGovernanceHdiGateway {
 
     static void authorizeApi(String method, String path, LoginUser user) {
         require(user, "governance:flow:list");
-        String verb = method.equals("HEAD") ? "GET" : method;
-        if (READ_ONLY.contains(verb + " " + path) || (verb.equals("GET") && READ_ID.matcher(path).matches())) return;
+        String verb = method; // API methods are exact; only static resources accept a generic HEAD request.
+        // PK reads are not object authorization: keep them closed until the native ownership adapter is verified.
+        if (READ_ID.matcher(path).matches() || path.equals("/mount/getMountFlowVisual"))
+            throw new Failure(403, "原任务对象归属校验尚未完成");
+        if (READ_ONLY.contains(verb + " " + path)) return;
+        Matcher workspaceRead = READ_WORKSPACE_ID.matcher(path);
+        if (workspaceRead.matches() && verb.equals(workspaceRead.group(1).startsWith("groupAdapterManage/") ? "POST" : "GET")) return;
         // getByProduct is a permission-initialization GET that grants native edit access.
-        // No workspace endpoint is exposed until original workspace/permission provisioning is verified.
+        // Only the verified listWorkspace query above is exposed; provisioning endpoints stay blocked.
         if (path.startsWith("/workspace/")) throw new Failure(403, "原工作区尚未完成受控初始化，不能自动授予权限");
         String lower = path.toLowerCase(Locale.ROOT);
         if (!Set.of("GET", "POST", "PUT", "DELETE").contains(verb)
@@ -106,11 +122,31 @@ public class DataGovernanceHdiGateway {
     }
 
     /** Scope comes only from the signed server exchange. Browser headers never expand that scope. */
-    private static void bindNativeScope(HttpServletRequest request, Session session) {
+    private static void bindNativeScope(HttpServletRequest request, Session session, String path) {
         String workspace = singleHeader(request, "Workspace");
         if (workspace != null && !workspace.equals(scopeValue(session.context().get("workspaceId"))))
             throw new Failure(403, "任务工作区与平台会话映射不一致");
-        String project = singleHeader(request, "projectCode");
+        requireProject(singleHeader(request, "projectCode"), session);
+        Matcher workspaceRead = READ_WORKSPACE_ID.matcher(path);
+        if (workspaceRead.matches() && !workspaceRead.group(2).equals(scopeValue(session.context().get("workspaceId"))))
+            throw new Failure(403, "任务接口工作区与平台会话映射不一致");
+        if (path.equals("/globalConfig/instanceManage/findAllInstance")) {
+            String group = queryValue(request, "groupId");
+            if (group != null && !group.isBlank() && !group.equals(scopeValue(session.context().get("workspaceId"))))
+                throw new Failure(403, "任务实例工作区与平台会话映射不一致");
+        }
+        if (path.equals("/folder/findFolder")) {
+            // Original controller accepts projectCode in the query; a valid header alone cannot constrain it.
+            String project = queryValue(request, "projectCode");
+            if (project != null && !project.isBlank()) requireProject(project, session);
+            String user = queryValue(request, "userId");
+            Object nativeUser = session.context().get("user");
+            String nativeId = nativeUser instanceof Map<?, ?> map ? scopeValue(map.get("id")) : null;
+            if (user != null && !user.isBlank() && !user.equals(nativeId))
+                throw new Failure(403, "任务目录用户与平台会话映射不一致");
+        }
+    }
+    private static void requireProject(String project, Session session) {
         if (project == null) return;
         boolean allowed = project.equals(scopeValue(session.context().get("projectCode")));
         Object projects = session.context().get("projectList");
@@ -119,6 +155,22 @@ public class DataGovernanceHdiGateway {
                     && project.equals(scopeValue(map.get("projectCode")))) { allowed = true; break; }
         }
         if (!allowed) throw new Failure(403, "任务项目不在平台会话允许范围内");
+    }
+    private static String queryValue(HttpServletRequest request, String name) {
+        String raw = request.getQueryString();
+        if (raw == null) return null;
+        if (raw.length() > 16384) throw new Failure(400, "任务查询参数无效");
+        String found = null;
+        try {
+            for (String parameter : raw.split("&", -1)) {
+                String[] parts = parameter.split("=", 2);
+                if (!URLDecoder.decode(parts[0], StandardCharsets.UTF_8).equals(name)) continue;
+                if (found != null) throw new Failure(400, "任务范围参数不能重复");
+                found = parts.length < 2 ? "" : URLDecoder.decode(parts[1], StandardCharsets.UTF_8);
+                if (found.length() > 256 || !safeHeader(found)) throw new Failure(400, "任务范围参数无效");
+            }
+        } catch (IllegalArgumentException error) { throw new Failure(400, "任务查询参数编码无效"); }
+        return found;
     }
     private static String scopeValue(Object value) {
         if (!(value instanceof String || value instanceof Number)) return null;
@@ -140,6 +192,7 @@ public class DataGovernanceHdiGateway {
         if (request.getContentLengthLong() > maxRequest) throw new Failure(413, "任务请求或上传文件超过网关限制");
         byte[] body = request.getInputStream().readNBytes(maxRequest + 1);
         if (body.length > maxRequest) throw new Failure(413, "任务请求或上传文件超过网关限制");
+        if (body.length > 0 && path.equals("/folder/findFolder")) throw new Failure(400, "任务目录查询仅接受原查询参数");
         if (body.length > 0 && Set.of("GET", "HEAD").contains(request.getMethod())) throw new Failure(400, "读取请求不能携带请求体");
         String query = request.getQueryString();
         if (query != null && (query.length() > 16384 || query.chars().anyMatch(Character::isISOControl) || query.contains("#")))

@@ -14,20 +14,30 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestBody;
 
 @RestController
 public class DataGovernanceHdiController {
     private final DataGovernanceHdiSessions sessions;
     public DataGovernanceHdiController(DataGovernanceHdiSessions sessions) { this.sessions = sessions; }
 
+    public ResponseEntity<AjaxResult> session(HttpServletRequest request, HttpServletResponse response) {
+        return session(request, response, null);
+    }
+
     @PostMapping("/governance/hdi/session")
     @PreAuthorize("@ss.hasPermi('governance:flow:list')")
-    public ResponseEntity<AjaxResult> session(HttpServletRequest request, HttpServletResponse response) {
+    public ResponseEntity<AjaxResult> session(HttpServletRequest request, HttpServletResponse response,
+            @RequestBody(required = false) Map<String, Object> options) {
         DataGovernanceHdiGateway.noCache(response);
         try {
-            var nativeSession = sessions.create(SecurityUtils.getLoginUser(), request);
+            if (options != null && (options.keySet().stream().anyMatch(key -> !"renew".equals(key))
+                    || (options.containsKey("renew") && !(options.get("renew") instanceof Boolean))))
+                throw new DataGovernanceHdiSessions.Failure(400, "会话请求仅支持布尔值 renew");
+            boolean renew = options != null && Boolean.TRUE.equals(options.get("renew"));
+            var nativeSession = sessions.create(SecurityUtils.getLoginUser(), request, renew);
             Map<String, Object> data = new LinkedHashMap<>(nativeSession.context());
-            data.put("frameUrl", "/detl/task-host.html");
+            data.put("frameUrl", nativeSession.frameUrl());
             String cookie = ResponseCookie.from(DataGovernanceHdiSessions.COOKIE, nativeSession.opaque())
                 .httpOnly(true).secure(sessions.secureCookie()).sameSite("Strict").path("/detl").build().toString();
             return ResponseEntity.ok().header(HttpHeaders.SET_COOKIE, cookie).body(AjaxResult.success(data));

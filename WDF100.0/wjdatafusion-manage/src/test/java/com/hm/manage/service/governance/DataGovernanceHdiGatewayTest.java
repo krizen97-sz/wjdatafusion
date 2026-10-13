@@ -28,6 +28,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -114,8 +117,166 @@ class DataGovernanceHdiGatewayTest {
         String cookie = response.getHeaders().getFirst("Set-Cookie");
         assertTrue(cookie.startsWith("RYNEW_HDI_SESSION=")); assertTrue(cookie.contains("HttpOnly")); assertTrue(cookie.contains("SameSite=Strict"));
         assertTrue(cookie.contains("Path=/detl")); assertTrue(cookie.contains("Secure")); assertFalse(cookie.contains("native-7"));
-        String body = json.writeValueAsString(response.getBody()); assertTrue(body.contains("/detl/task-host.html")); assertFalse(body.contains("native-7")); assertFalse(body.contains("login-seven"));
+        String body = json.writeValueAsString(response.getBody()); assertTrue(body.contains("/detl/#/task/taskList?appCode=42&flag=1&menuflag=1")); assertFalse(body.contains("native-7")); assertFalse(body.contains("login-seven"));
         assertEquals("no-store", servletResponse.getHeader("Cache-Control")); verify(client).exchange(7L);
+    }
+
+    @Test void standaloneEntryUsesOnlyPositiveServerMappedWorkspaceNotBrowserAppCode() throws Exception {
+        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(user, null, user.getAuthorities()));
+        var request = request("POST", "/governance/hdi/session"); request.addParameter("appCode", "999999");
+        request.setContent("{\"appCode\":\"999999\",\"workspaceId\":999999}".getBytes(StandardCharsets.UTF_8));
+        var controller = new DataGovernanceHdiController(sessions);
+        var result = controller.session(request, new MockHttpServletResponse());
+        assertTrue(json.writeValueAsString(result.getBody()).contains("appCode=42&flag=1&menuflag=1"));
+        for (Object invalid : List.of("0", "-1", "1.0", "01", "9223372036854775808", "42&appName=iDataFusion DFP", "42%26flag=0", List.of(42))) {
+            when(client.exchange(7L)).thenReturn(new DataGovernanceHdiClient.NativeSession("JSESSIONID=private", Map.of("workspaceId", invalid)));
+            var failure = controller.session(request, new MockHttpServletResponse(), Map.of("renew", true));
+            assertEquals(502, failure.getStatusCode().value()); assertNull(failure.getHeaders().getFirst("Set-Cookie"));
+        }
+        when(client.exchange(7L)).thenReturn(new DataGovernanceHdiClient.NativeSession("JSESSIONID=private", Map.of()));
+        assertEquals(502, controller.session(request, new MockHttpServletResponse(), Map.of("renew", true)).getStatusCode().value());
+    }
+
+    @Test void standaloneBootstrapAllowsOnlyExactVerifiedGetsAndPreservesNative404() throws Exception {
+        var session = session(); user.setPermissions(Set.of("governance:flow:list"));
+        List<String> paths = List.of("/getLanguage", "/getEtlUserInfo", "/workspace/listWorkspace",
+            "/system/environment/getLicenseInfo", "/system/environment/getLicenseExpire",
+            "/user/security/privilege/info", "/code/codeConfig/getDataTypeList", "/globalConfig/runningConfig/healthStatus");
+        for (String path : paths) {
+            assertEquals(nativeBody, forward(authenticated("GET", "/detl" + path, session)).getContentAsString());
+            for (String verb : List.of("POST", "PUT", "DELETE", "HEAD"))
+                assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(authenticated(verb, "/detl" + path, session))).status());
+        }
+        assertEquals(paths.size(), calls.get());
+        nativeStatus = 404; nativeBody = "{\"status\":404,\"error\":\"Not Found\"}";
+        var missing = forward(authenticated("GET", "/detl/user/security/privilege/info", session));
+        assertEquals(404, missing.getStatus()); assertEquals(nativeBody, missing.getContentAsString());
+        assertFalse(missing.getContentAsString().contains("\"code\":\"0\""));
+        for (String path : List.of("/user/list", "/user/security/privilege/update", "/system/environment/updateLicense", "/system/users"))
+            assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(authenticated("GET", "/detl" + path, session))).status());
+        assertEquals(paths.size() + 1, calls.get());
+    }
+
+    @Test void originalTaskListAndDesignerQueriesNeedOnlyViewerGrantAndKeepExactMethods() throws Exception {
+        var session = session(); user.setPermissions(Set.of("governance:flow:list"));
+        Map<String, String> routes = Map.ofEntries(
+            Map.entry("/getPublicKey", "GET"), Map.entry("/system/environment/getExpertMode", "GET"), Map.entry("/system/environment/getPortPool", "GET"),
+            Map.entry("/globalConfig/felManager/query", "POST"), Map.entry("/globalConfig/dataSourceManage/getDataSourceExtendInfo", "GET"),
+            Map.entry("/globalConfig/groupManage/findAllGroup", "GET"), Map.entry("/globalConfig/serverManage/findAllServers", "GET"),
+            Map.entry("/globalConfig/tag/listTag", "GET"), Map.entry("/flow/getColumnDisplayName", "GET"),
+            Map.entry("/flow/pageInterruptedFlow", "GET"), Map.entry("/flow/valid/getAdapterReadWritePath", "POST"),
+            Map.entry("/globalConfig/groupAdapterManage/listAdapters", "GET"), Map.entry("/globalConfig/paramManage/listParams", "POST"),
+            Map.entry("/globalConfig/groupAdapterManage/getOrderedGroupAdapters/42", "POST"), Map.entry("/globalConfig/instanceManage/findByGroupId/42", "GET"));
+        for (var route : routes.entrySet()) {
+            var request = authenticated(route.getValue(), "/detl" + route.getKey(), session); request.addHeader("Workspace", "42");
+            if (route.getValue().equals("POST")) { request.setContent("{}".getBytes(StandardCharsets.UTF_8)); request.setContentType("application/json"); }
+            assertEquals(nativeBody, forward(request).getContentAsString());
+            String wrongMethod = route.getValue().equals("POST") ? "GET" : "POST";
+            assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(authenticated(wrongMethod, "/detl" + route.getKey(), session))).status());
+        }
+        assertEquals(routes.size(), calls.get());
+        for (String path : List.of("/globalConfig/groupAdapterManage/getOrderedGroupAdapters/99", "/globalConfig/instanceManage/findByGroupId/99")) {
+            String method = path.contains("getOrderedGroupAdapters") ? "POST" : "GET";
+            assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(authenticated(method, "/detl" + path, session))).status());
+        }
+        assertEquals(routes.size(), calls.get());
+        var instances = authenticated("GET", "/detl/globalConfig/instanceManage/findAllInstance", session);
+        instances.setQueryString("groupId=99");
+        assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(instances)).status());
+        instances.setQueryString("groupId=42&groupId=99");
+        assertEquals(400, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(instances)).status());
+        assertEquals(routes.size(), calls.get());
+    }
+
+    @Test void originalFolderQueryCannotOverrideServerMappedProjectOrUser() throws Exception {
+        var session = session(); user.setPermissions(Set.of("governance:flow:list"));
+        for (String query : List.of("folderType=1&projectCode=p7&userId=7&pid=-1", "folderType=1&projectCode=&userId=", "folderType=1&projectCode=p8")) {
+            var request = authenticated("POST", "/detl/folder/findFolder", session); request.setQueryString(query);
+            assertEquals(nativeBody, forward(request).getContentAsString());
+        }
+        assertEquals(3, calls.get());
+        for (String query : List.of("projectCode=foreign", "%70rojectCode=foreign", "userId=8", "projectCode=p7&projectCode=foreign", "projectCode=&projectCode=p7", "userId=7&userId=8")) {
+            var request = authenticated("POST", "/detl/folder/findFolder", session); request.setQueryString(query);
+            var failure = assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(request));
+            assertTrue(failure.status() == 400 || failure.status() == 403);
+        }
+        var form = authenticated("POST", "/detl/folder/findFolder", session); form.setContentType("application/x-www-form-urlencoded");
+        form.setContent("projectCode=foreign".getBytes(StandardCharsets.UTF_8));
+        assertEquals(400, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(form)).status());
+        assertEquals(3, calls.get());
+    }
+
+    @Test void originalWindowsShareNativeSessionCookiesAndCsrfUntilExplicitRenewal() throws Exception {
+        var first = session();
+        nativeBody = "<html><meta content=\"X-ETL-CSRF-TOKEN\" name=\"_csrf_header\"/><meta content=\"original-csrf\" name=\"_csrf\"/></html>";
+        forward(authenticated("GET", "/detl/", first));
+        var second = session(); assertSame(first, second); assertEquals(first.opaque(), second.opaque());
+        nativeBody = "{\"code\":\"0\"}";
+        for (var tab : List.of(first, second)) {
+            var query = authenticated("POST", "/detl/flow/findFlowPage", tab); query.addHeader("X-ETL-CSRF-TOKEN", "original-csrf");
+            forward(query);
+        }
+        verify(client, times(1)).exchange(7L);
+        assertEquals(header(incoming.get(1), "Cookie"), header(incoming.get(2), "Cookie"));
+        assertEquals("original-csrf", header(incoming.get(1), "X-ETL-CSRF-TOKEN"));
+        assertEquals("original-csrf", header(incoming.get(2), "X-ETL-CSRF-TOKEN"));
+        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(user, null, user.getAuthorities()));
+        var controller = new DataGovernanceHdiController(sessions);
+        var normal = controller.session(request("POST", "/governance/hdi/session"), new MockHttpServletResponse(), Map.of("renew", false));
+        assertTrue(normal.getHeaders().getFirst("Set-Cookie").contains(first.opaque()));
+        var renewed = controller.session(request("POST", "/governance/hdi/session"), new MockHttpServletResponse(), Map.of("renew", true));
+        assertEquals(200, renewed.getStatusCode().value()); assertFalse(renewed.getHeaders().getFirst("Set-Cookie").contains(first.opaque()));
+        verify(client, times(2)).exchange(7L);
+        assertEquals(401, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> authenticated("GET", "/detl/", first)).status());
+    }
+
+    @Test void simultaneousNewTabsPerformOneNativeExchange() throws Exception {
+        var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
+        when(client.exchange(7L)).thenAnswer(call -> {
+            entered.countDown(); if (!release.await(3, TimeUnit.SECONDS)) throw new IOException("test timeout");
+            return new DataGovernanceHdiClient.NativeSession("JSESSIONID=one-native", Map.of("workspaceId", "42"));
+        });
+        var pool = Executors.newFixedThreadPool(2);
+        try {
+            var first = pool.submit(this::session); assertTrue(entered.await(3, TimeUnit.SECONDS));
+            var second = pool.submit(this::session); release.countDown();
+            assertSame(first.get(3, TimeUnit.SECONDS), second.get(3, TimeUnit.SECONDS));
+            verify(client, times(1)).exchange(7L);
+        } finally { release.countDown(); pool.shutdownNow(); }
+    }
+
+    @Test void reuseAndRenewCannotReviveLoggedOutPlatformLoginOrAcceptCallerIdentity() throws Exception {
+        var original = session();
+        SecurityContextHolder.getContext().setAuthentication(UsernamePasswordAuthenticationToken.authenticated(user, null, user.getAuthorities()));
+        var controller = new DataGovernanceHdiController(sessions);
+        for (Map<String, Object> input : List.<Map<String, Object>>of(Map.of("subject", "rynew:user:99"), Map.of("userId", 99), Map.of("renew", "true"), Map.of("renew", true, "workspaceId", 99))) {
+            var result = controller.session(request("POST", "/governance/hdi/session"), new MockHttpServletResponse(), input);
+            assertEquals(400, result.getStatusCode().value()); assertNull(result.getHeaders().getFirst("Set-Cookie"));
+        }
+        when(cache.getCacheObject(CacheConstants.LOGIN_TOKEN_KEY + user.getToken())).thenReturn(null);
+        for (boolean renew : List.of(false, true)) {
+            var result = controller.session(request("POST", "/governance/hdi/session"), new MockHttpServletResponse(), Map.of("renew", renew));
+            assertEquals(401, result.getStatusCode().value()); assertNull(result.getHeaders().getFirst("Set-Cookie"));
+        }
+        when(cache.getCacheObject(CacheConstants.LOGIN_TOKEN_KEY + user.getToken())).thenReturn(user);
+        assertEquals(401, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> authenticated("GET", "/detl/", original)).status());
+        verify(client, times(1)).exchange(7L);
+        var newLogin = login(7L, "new-platform-login", user.getPermissions());
+        when(cache.getCacheObject(CacheConstants.LOGIN_TOKEN_KEY + newLogin.getToken())).thenReturn(newLogin);
+        var replacement = sessions.create(newLogin, request("POST", "/governance/hdi/session"));
+        assertNotEquals(original.opaque(), replacement.opaque()); verify(client, times(2)).exchange(7L);
+    }
+
+    @Test void nativeTaskObjectReadsStayClosedUntilOwnershipIsVerified() throws Exception {
+        var session = session();
+        for (String path : List.of("/flow/getFlowById/17", "/flow/getFlowVisualById/17", "/mount/getMountFlowVisual")) {
+            for (String method : List.of("GET", "POST")) {
+                var request = authenticated(method, "/detl" + path, session); request.setQueryString("flowId=17");
+                var failure = assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(request));
+                assertEquals(403, failure.status()); assertTrue(failure.getMessage().contains("归属"));
+            }
+        }
+        assertEquals(0, calls.get());
     }
 
     @Test void logoutAndPermissionRevocationInvalidateEveryOpaqueRequest() {
@@ -191,7 +352,7 @@ class DataGovernanceHdiGatewayTest {
     }
 
     @Test void csrfAndOtherNativeSetCookiesRemainServerSide() throws Exception {
-        when(client.exchange(7L)).thenReturn(new DataGovernanceHdiClient.NativeSession("JSESSIONID=private", Map.of("user", Map.of("id", 7)),
+        when(client.exchange(7L)).thenReturn(new DataGovernanceHdiClient.NativeSession("JSESSIONID=private", Map.of("user", Map.of("id", 7), "workspaceId", 42),
             List.of("JSESSIONID=private; Path=/detl; HttpOnly", "XSRF-TOKEN=original-xsrf; Path=/detl")));
         var session = session(); forward(authenticated("GET", "/detl/flow/getFilterOperator", session));
         assertTrue(header(incoming.get(0), "Cookie").contains("XSRF-TOKEN=original-xsrf"));
@@ -254,8 +415,7 @@ class DataGovernanceHdiGatewayTest {
         }
         assertEquals(1, calls.get());
         when(client.exchange(7L)).thenReturn(new DataGovernanceHdiClient.NativeSession("JSESSIONID=private", Map.of("projectCode", "p7")));
-        var missing = session(); var unbound = authenticated("GET", "/detl/flow/getFilterOperator", missing); unbound.addHeader("Workspace", "42");
-        assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(unbound)).status());
+        assertEquals(502, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> sessions.create(user, request("POST", "/governance/hdi/session"), true)).status());
         assertEquals(1, calls.get());
     }
 
