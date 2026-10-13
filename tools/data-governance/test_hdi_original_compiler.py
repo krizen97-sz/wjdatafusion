@@ -264,6 +264,31 @@ class OriginalSdkTests(unittest.TestCase):
         visual['nodes']['120']['adapterParamVoList'][0]['paramValue'] = 'redis://external:6379/0'
         self.assertEqual('UNSUPPORTED_GRAPH', self.invoke(self.compile_request(self.prepare(visual)))['code'])
 
+    def test_original_ui_task_defaults_and_explicit_changes_reach_flow_parameters(self):
+        catalog = json.loads((self.bundle / 'instance/conf/task_config.json').read_text())['configParam']
+        visual = fixture_visual()
+        visual['paramVoList'] = [{'paramName': row['name'], 'paramValue': str(row['defaultValue']), 'valueType': row['type']}
+                               for row in catalog]
+        prepared = self.prepare(visual); compiled = self.invoke(self.compile_request(prepared))
+        self.assertTrue(compiled['ok'], compiled)
+        graph = json.loads(base64.b64decode(compiled['flowjson']['base64']))
+        parameters = {row['param_name']: row['param_value'] for row in graph['flow']['flow_param']}
+        self.assertEqual({row['name']: str(row['defaultValue']) for row in catalog}, parameters)
+        for row in visual['paramVoList']:
+            if row['paramName'] == 'etl.task.log.level': row['paramValue'] = 'DEBUG'
+        changed = self.invoke(self.compile_request(self.prepare(visual)))
+        self.assertTrue(changed['ok'], changed)
+        changed_graph = json.loads(base64.b64decode(changed['flowjson']['base64']))
+        self.assertEqual('DEBUG', {row['param_name']: row['param_value'] for row in changed_graph['flow']['flow_param']}['etl.task.log.level'])
+
+    def test_task_parameter_external_expression_and_unimplemented_trigger_rejected(self):
+        for parameter in [dict(paramName='etl.task.log.level', paramValue='INFO', globalParamKey='remote-value'),
+                          dict(paramName='etl.task.retry.interval', paramValue='10', valueType='el-input-fel'),
+                          dict(paramName='etl.task.failed.data.retry.cron', paramValue='0 * * * * ?'),
+                          dict(paramName='unknown-task-parameter', paramValue='1')]:
+            visual = fixture_visual(); visual['paramVoList'] = [parameter]
+            self.assertEqual('UNSUPPORTED_GRAPH', self.invoke(self.compile_request(self.prepare(visual)))['code'])
+
 
 if __name__ == '__main__':
     unittest.main()
