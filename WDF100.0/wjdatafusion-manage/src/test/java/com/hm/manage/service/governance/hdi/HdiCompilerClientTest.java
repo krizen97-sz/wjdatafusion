@@ -175,6 +175,24 @@ class HdiCompilerClientTest {
         assertTrue(compiled.path("ok").asBoolean()); assertEquals(3, compiled.path("nodeMappings").size());
     }
 
+    @Test void optionalRealBrowserVisualCompilesThroughJavaClientForForeignWorker() throws Exception {
+        String bundle = System.getenv("HDI_ORIGINAL_BUNDLE"), javaHome = System.getenv("HDI_COMPILER_JAVA_HOME"), script = System.getenv("HDI_COMPILER_SCRIPT"), fixture = System.getenv("HDI_COMPILER_BROWSER_VISUAL");
+        assumeTrue(bundle != null && javaHome != null && script != null && fixture != null, "original browser CLI integration not configured");
+        Path runtime = root.resolve("browser-compiler-state"); Files.createDirectory(runtime, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+        properties.setCompilerCommand(List.of("/usr/bin/python3", script, "--bundle", bundle, "--java-home", javaHome, "--runtime", runtime.toString()));
+        HdiCompilerClient client = client();
+        Map<String,Object> browserContext = Map.of("businessTaskId", "1", "revision", "13", "ownerId", "1", "workspaceId", "1", "projectCode", "rynew-user-1");
+        JsonNode prepared = client.prepare(browserContext, JSON.readTree(Files.readAllBytes(Path.of(fixture))));
+        Map<String,Object> run = Map.of("businessTaskId", "1", "revision", "13", "nativeFlowId", "9100001", "nativeInstanceId", "9100002",
+            "metadataIdBase", "9100100", "execId", "9100003", "outputsDir", "/home/hdi/owned/runs/client-proof/outputs",
+            "authorizedOutputRoot", "/home/hdi/owned/runs/client-proof", "outputRootSource", "worker-reserve", "mode", "test");
+        JsonNode compiled = client.compile(prepared.path("snapshotJson").asText(), prepared.path("snapshotSha256").asText(), run);
+        assertTrue(compiled.path("ok").asBoolean()); assertEquals(3, compiled.path("nodeMappings").size());
+        JsonNode flow = JSON.readTree(Base64.getDecoder().decode(compiled.path("flowjson").path("base64").asText()));
+        assertEquals("mapped_message", flow.path("streams").get(0).path("modules").get(1).path("config").path("fields").get(0).path("field_target_name").asText());
+        assertEquals("13", compiled.path("revision").asText());
+    }
+
     private record Fixture(String snapshot, Map<String,Object> run, ObjectNode response) { }
     private Fixture fixture() throws Exception {
         JsonNode visual = JSON.valueToTree(Map.of("nodes", Map.of("110", Map.of("id", 110), "130", Map.of("id", 130))));
