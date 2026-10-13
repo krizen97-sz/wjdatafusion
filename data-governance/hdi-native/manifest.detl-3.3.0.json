@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "distribution": "detl-3.3.0-original-task-module",
+  "archives": {
+    "3bd2ef065255e9e19119b1e2ade294b32b59d47c051a0a10981496766f052859": {
+      "filename": "detl_3.3.0.20260310110148.zip",
+      "bytes": 1583500438,
+      "frontendVersion": "V3.3.0_20260310_9fa7b9356a"
+    }
+  },
+  "taskStaticManifestSha256": "6d49a4bcd97baa74ca2a64f016bdcbbdbfdfcf5eeafba8a89670752c12ce16b9",
+  "taskStaticManifest": "manifest.task-static.json",
+  "notes": [
+    "Original source artifacts only; no runtime configuration, credentials, private keys or product activation licenses.",
+    "Task UI candidate inventory requires browser acceptance; this bundle does not claim an executable standalone server.",
+    "Copyright and open-source notice text files are retained; they are not product activation licenses."
+  ]
+}
