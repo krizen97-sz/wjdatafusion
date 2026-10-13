@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synthetic acceptance only: unmodified DETL generators, core and two original plugins.
+"""Synthetic acceptance only: unmodified DETL generators, core and original input/processing/output plugins.
 
 No production service or general graph compiler is implemented here. macOS only; the
 process-specific bind shim is a test adapter, never a Linux deployment prescription.
@@ -68,6 +68,9 @@ def run(args):
         raise ValueError('State directory must not traverse symbolic links')
     bundle = args.bundle.resolve(strict=True)
     verify_bundle(bundle)
+    with_mapping = getattr(args, 'field_mapping', False)
+    if with_mapping and not (bundle / 'instance/etl-fieldMapping-2.0.0/adapter.properties').is_file():
+        raise ValueError('The field mapping proof requires the original fieldMapping plugin')
     java_home = args.java_home.resolve(strict=True)
     java, keytool, javac = [str(java_home / 'bin' / name) for name in ('java', 'keytool', 'javac')]
     for path in (java, keytool, javac):
@@ -102,7 +105,7 @@ def run(args):
     immutable = {str(p.relative_to(engine)): digest(p) for p in engine.rglob('*.jar')}
     (state / 'original-jars.json').write_text(json.dumps(immutable, indent=2))
     build = state / 'build'
-    proof = {'kind': 'original-detl-synthetic-acceptance', 'productionService': False,
+    proof = {'kind': 'original-detl-synthetic-acceptance', 'productionService': False, 'fieldMapping': with_mapping,
              'sourceArchiveSha256': ARCHIVE_SHA, 'network': 'only-owned-loopback-services',
              'ports': {'redis': base, 'zk': base + 1, 'data': base + 2, 'rpc': base + 3}, 'cases': []}
     children = []
@@ -201,7 +204,10 @@ def run(args):
                               str(bundle / 'task-service/ext/normal/*'), str(engine / 'etl-core-3.3.0.jar'), str(engine / 'lib/*')])
         command([javac, '-encoding', 'UTF-8', '-cp', cp, '-d', str(build),
                  str(SOURCES / 'OriginalFlowCompiler.java'), str(SOURCES / 'OriginalMetadataClient.java')], 'compile.log')
-        client = [java, '-cp', cp, 'OriginalMetadataClient']
+        # This fixture talks to the core's control channel. Use that core's original
+        # client library, not the management service's different Java 11 extension.
+        client_cp = os.pathsep.join([str(engine / 'lib/zookeeper-hw-hw-ei.jar'), cp])
+        client = [java, '-cp', client_cp, 'OriginalMetadataClient']
         def metadata(action):
             command(client + [action, str(state), str(base), overrides['resource.connect.namespace']], 'metadata.log')
         redis = spawn('redis', [redis_bin, str(state / 'private/redis.conf')])
@@ -223,7 +229,7 @@ def run(args):
         profile.write_text('\n'.join(rules))
         process = None
         for index, (constant, format_name, expected_status) in enumerate([('原生执行验收', 'csv', 'finish'), ('原生配置变更', 'csv', 'finish'), ('无效配置不应输出', 'line', 'error')], 1):
-            command([java, '-cp', cp, 'OriginalFlowCompiler', str(state / 'fixture'), constant, format_name], 'generator.log')
+            command([java, '-cp', cp, 'OriginalFlowCompiler', str(state / 'fixture'), constant, format_name] + (['fieldMapping'] if with_mapping else []), 'generator.log')
             metadata('seed')
             if process is None:
                 env = {'PATH': '/usr/bin:/bin', 'HOME': str(state / 'home'), 'LANG': 'en_US.UTF-8',
@@ -251,7 +257,7 @@ def run(args):
             if status.get('status') != expected_status:
                 raise AssertionError('Original task status did not match: ' + status.get('status', 'missing'))
             if expected_status == 'finish':
-                if len(outputs) != 1 or outputs[0]['content'].splitlines() != ['message'] + [constant] * 3:
+                if len(outputs) != 1 or outputs[0]['content'].splitlines() != ['mapped_message' if with_mapping else 'message'] + [constant] * 3:
                     raise AssertionError('Original plugin output does not match all three configured rows')
             elif outputs:
                 raise AssertionError('Original rejected configuration published a new artifact')
@@ -294,6 +300,7 @@ def main():
     parser.add_argument('--zookeeper-home', type=Path)
     parser.add_argument('--logback-config', type=Path)
     parser.add_argument('--self-address', help='Nonloopback address owned by this Mac; defaults to active en0 address')
+    parser.add_argument('--field-mapping', action='store_true', help='Exercise original fieldMapping rename between input and output')
     parser.add_argument('--port-base', type=int, default=19080)
     run(parser.parse_args())
 

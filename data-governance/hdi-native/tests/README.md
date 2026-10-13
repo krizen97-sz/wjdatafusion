@@ -2,7 +2,7 @@
 
 这是一组验收工具，不是通用编排后端或生产部署服务。它不改写原 ETL 算法，也不使用本项目另建的 Kettle/Java 数据流引擎。
 
-工具装配原 DTO 和明确的内存元数据接口，调用原 ZookeeperServiceImpl.forcePushFlowDataToZk、DataGeneratorInputServiceImpl、FileOutputServiceImpl 生成流图；原 FlowControlMessageDto.scheduleOnce 生成一次执行消息；原 EtlInstance、原 dataGeneratorInput 和 fileOutput 完成实际执行。
+工具装配原 DTO 和明确的内存元数据接口，调用原 ZookeeperServiceImpl.forcePushFlowDataToZk、DataGeneratorInputServiceImpl、FileOutputServiceImpl 生成流图；原 FlowControlMessageDto.scheduleOnce 生成一次执行消息；原 EtlInstance、原 dataGeneratorInput 和 fileOutput 完成实际执行。可选 `--field-mapping` 在两者之间加入原 `FieldMappingServiceImpl` 和原 fieldMapping 插件，验证字段重命名，不改写处理逻辑。
 
 执行前需要：
 
@@ -21,6 +21,8 @@
       --redis-executable /absolute/redis-server \
       --port-base 19180
 
+追加 `--field-mapping` 时，bundle 还必须含 `etl-fieldMapping-2.0.0`。此模式会把 `message` 重命名为 `mapped_message`，并要求实际 CSV 表头和三条内容完全匹配。2026-10-13 实测三节点模式两次 finish（各 72 字节、不同摘要），一次无效输出配置 error 且无产物；原 JAR 不变，所有测试子进程停止。它只覆盖基础字段重命名，不代表 FEL、自定义函数或所有类型转换已验收。
+
 流程：
 
 1. 校验原件，先验证仅本测试进程加载的 bind 适配库：回环连接成功、本机LAN地址连接失败、未授权端口被拒。
@@ -29,6 +31,8 @@
 4. 在同一原引擎进程中运行常量A三条，更新原DTO后运行常量B三条，最后提交 line 输出缺少 customExtension 的配置。
 5. 校验两次真实文件内容不同、原状态分别finish；无效配置应由原插件拒绝、状态error且不生成新文件。
 6. 只停止当前持有的子进程；不能确认停止时保留证据并失败，不按保存PID杀进程。结果位于state-dir/proof.json。
+
+控制消息验收客户端沿用原 core 的 `zookeeper-hw-hw-ei.jar`；不以管理服务 `ext/normal/zookeeper.jar` 覆盖它。两个原运行组件本来使用不同客户端库，混用会导致 Java 17 地址解析失败。
 
 原Java17插件加载需要 --add-opens=java.base/java.net=ALL-UNNAMED，这是旧URLClassLoader反射的JVM兼容参数。原Java11/Linux发布需单独验收。mac bind适配只用于此合成验收，不能当作Linux发布隔离方案；Linux部署应使用受控网络命名空间等原生隔离方式。
 
