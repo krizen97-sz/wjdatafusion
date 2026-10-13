@@ -98,7 +98,9 @@ class NativeBundleTest(unittest.TestCase):
         self.assertTrue((output / f'instance/{self.plugin}/plugin-web-config/config.json').is_file())
         self.assertTrue((output / f'instance/{self.plugin}/config/i18n/messages_zh_CN.properties').is_file())
         self.assertTrue((output / 'notices/Open Source Software Licenses.txt').is_file())
-        for forbidden in ['instance/conf', 'instance/certs', f'instance/{self.plugin}/keystore.p12', f'instance/{self.plugin}/config/credentials.properties']:
+        for name in ['bin/etl.sh', 'conf/instance_config.json', 'conf/task_config.json']:
+            self.assertEqual(self.contents[bundle.INSTANCE + name], (output / 'instance' / name).read_bytes())
+        for forbidden in ['instance/conf/etl_instance.properties', 'instance/certs', f'instance/{self.plugin}/keystore.p12', f'instance/{self.plugin}/config/credentials.properties']:
             self.assertFalse((output / forbidden).exists())
         self.assertTrue(bundle.verify(output)['verified'])
 

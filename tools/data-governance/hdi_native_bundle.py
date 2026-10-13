@@ -23,7 +23,8 @@ TASK_SERVICE_RESOURCES = {
 }
 COMPONENT_DESCRIPTORS = {'component.xml', 'config.xml', 'installation.xml', 'versioninfo.xml', 'properties.xml'}
 AGENT_RESOURCES = {'dEtlv2-agent.jar', 'config/logback-spring.xml'}
-CORE = {'adapter.properties', 'etl-core-3.3.0.jar', 'version.txt', 'felfunction/etl_fel_capability_set.json', 'logback.xml'}
+CORE = {'adapter.properties', 'etl-core-3.3.0.jar', 'version.txt', 'felfunction/etl_fel_capability_set.json', 'logback.xml',
+        'bin/etl.sh', 'conf/instance_config.json', 'conf/task_config.json'}
 PUBLIC_SUFFIXES = {'.js', '.css', '.svg', '.png', '.jpg', '.jpeg', '.gif', '.ico', '.icns', '.woff', '.woff2', '.ttf', '.eot', '.json', '.txt'}
 PLUGIN_META = {'adapter.properties', 'etl_plugin.json', 'version.txt', 'mybatis-config.xml', 'script.template'}
 NOTICE = 'META-INF/Open Source Software Licenses.txt'
