@@ -36,6 +36,7 @@ public class DataGovernanceHdiSessions {
     private final SecureRandom random = new SecureRandom();
     private final ConcurrentHashMap<String, Session> sessions = new ConcurrentHashMap<>();
     private final Map<String, String> byLogin = new LinkedHashMap<>();
+    private final Object[] creationLocks = java.util.stream.IntStream.range(0, 64).mapToObj(i -> new Object()).toArray();
 
     public static final class Failure extends RuntimeException {
         private final int status;
@@ -57,6 +58,14 @@ public class DataGovernanceHdiSessions {
         }
         public String opaque() { return opaque; }
         public Map<String, Object> context() { return context; }
+        public String frameUrl() {
+            Object workspace = context.get("workspaceId");
+            String value = workspace instanceof String || workspace instanceof Number ? workspace.toString() : "";
+            try {
+                if (!value.matches("[1-9][0-9]{0,18}") || Long.parseLong(value) <= 0) throw new NumberFormatException();
+            } catch (NumberFormatException error) { throw new Failure(502, "原任务服务未映射有效工作区"); }
+            return "/detl/#/task/taskList?appCode=" + value + "&flag=1&menuflag=1";
+        }
         synchronized void initialCookies(URI target, DataGovernanceHdiClient.NativeSession nativeSession) throws IOException {
             if (!nativeSession.setCookies().isEmpty()) {
                 updateCookies(target, Map.of("Set-Cookie", nativeSession.setCookies()));
@@ -99,11 +108,44 @@ public class DataGovernanceHdiSessions {
         this.properties = properties; this.client = client; this.cache = cache; this.clock = clock;
     }
 
-    public Session create(LoginUser principal, HttpServletRequest request) {
+    public Session create(LoginUser principal, HttpServletRequest request) { return create(principal, request, false); }
+
+    /** New tabs share genuine native CSRF/session state. Only an explicit reconnect rotates it. */
+    public Session create(LoginUser principal, HttpServletRequest request, boolean renew) {
         checkOrigin(request);
         if (principal == null || principal.getUserId() == null) throw new Failure(401, "平台登录已失效");
-        LoginUser current = live(principal.getToken(), principal.getUserId());
-        require(current, "governance:flow:list");
+        try {
+            LoginUser verified = live(principal.getToken(), principal.getUserId());
+            require(verified, "governance:flow:list");
+            // Bounded lock striping prevents simultaneous tabs from creating competing native sessions.
+            Object lock = creationLocks[Math.floorMod(verified.getToken().hashCode(), creationLocks.length)];
+            synchronized (lock) {
+                LoginUser current = live(verified.getToken(), verified.getUserId());
+                require(current, "governance:flow:list");
+                synchronized (byLogin) {
+                    prune();
+                    String opaque = byLogin.get(current.getToken());
+                    Session existing = opaque == null ? null : sessions.get(opaque);
+                    if (!renew && existing != null && existing.userId == current.getUserId()) {
+                        existing.accessedAt = clock.millis();
+                        return existing;
+                    }
+                }
+                return createFresh(current);
+            }
+        } catch (Failure error) {
+            if (error.status() == 401 || error.status() == 403) {
+                synchronized (byLogin) {
+                    String opaque = byLogin.get(principal.getToken());
+                    Session existing = opaque == null ? null : sessions.get(opaque);
+                    if (existing != null && existing.userId == principal.getUserId()) revoke(opaque);
+                }
+            }
+            throw error;
+        }
+    }
+
+    private Session createFresh(LoginUser current) {
         DataGovernanceHdiClient.NativeSession nativeSession;
         try { nativeSession = client.exchange(current.getUserId()); }
         catch (IOException | RuntimeException error) { throw new Failure(502, "原任务服务暂不能建立用户会话"); }
@@ -111,6 +153,7 @@ public class DataGovernanceHdiSessions {
         require(afterExchange, "governance:flow:list"); // Logout or revoked permission during exchange cannot mint a usable session.
         byte[] bytes = new byte[32]; random.nextBytes(bytes);
         Session session = new Session(Base64.getUrlEncoder().withoutPadding().encodeToString(bytes), current, nativeSession.context(), clock.millis());
+        session.frameUrl(); // A real mapped native workspace is required before issuing any browser session.
         try { session.initialCookies(DataGovernanceHdiClient.localServiceUri(properties.getTaskServiceUrl()), nativeSession); }
         catch (IOException error) { throw new Failure(502, "原任务服务会话格式无效"); }
         synchronized (byLogin) {

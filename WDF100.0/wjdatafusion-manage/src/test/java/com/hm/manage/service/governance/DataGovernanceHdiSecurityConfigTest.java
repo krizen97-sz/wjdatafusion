@@ -77,7 +77,7 @@ class DataGovernanceHdiSecurityConfigTest {
             var principal = new LoginUser(9L, 1L, user, Set.of("governance:flow:list")); principal.setToken("actual-platform-login"); principal.setExpireTime(System.currentTimeMillis() + 600000);
             RedisCache cache = context.getBean(RedisCache.class);
             when(cache.getCacheObject(CacheConstants.LOGIN_TOKEN_KEY + principal.getToken())).thenReturn(principal);
-            when(context.getBean(DataGovernanceHdiClient.class).exchange(9L)).thenReturn(new DataGovernanceHdiClient.NativeSession("JSESSIONID=private-native", Map.of("user", Map.of("id", 9), "projectCode", "project", "projectList", List.of())));
+            when(context.getBean(DataGovernanceHdiClient.class).exchange(9L)).thenReturn(new DataGovernanceHdiClient.NativeSession("JSESSIONID=private-native", Map.of("user", Map.of("id", 9), "projectCode", "project", "projectList", List.of(), "workspaceId", 9)));
             var req = new MockHttpServletRequest("POST", "/governance/hdi/session"); req.addHeader("Origin", props.getPublicOrigin());
             var session = context.getBean(DataGovernanceHdiSessions.class).create(principal, req);
             Cookie cookie = new Cookie(DataGovernanceHdiSessions.COOKIE, session.opaque());
