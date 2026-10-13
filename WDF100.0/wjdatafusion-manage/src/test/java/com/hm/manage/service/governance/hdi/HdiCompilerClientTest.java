@@ -205,7 +205,7 @@ class HdiCompilerClientTest {
             if (mode.equals("hang") || mode.equals("hold")) { Thread.sleep(10000); return; }
             JsonNode request = JSON.readTree(System.in.readAllBytes());
             if (request.path("operation").asText().equals("schedule")) {
-                ObjectNode response = JSON.createObjectNode().put("ok", true).put("protocolVersion", 1).put("operation", "schedule").put("zoneId", request.path("zoneId").asText());
+                ObjectNode response = JSON.createObjectNode().put("ok", true).put("protocolVersion", 1).put("operation", "schedule").put("mode", "CRON").put("zoneId", request.path("zoneId").asText());
                 response.set("scheduleConfig", request.path("scheduleConfig")); response.set("diagnostics", JSON.createArrayNode());
                 response.set("cronExpressions", JSON.createArrayNode().add(mode.equals("schedule-tamper") ? "invalid cron" : "6 5 4 * * ?"));
                 System.out.print(response); return;
