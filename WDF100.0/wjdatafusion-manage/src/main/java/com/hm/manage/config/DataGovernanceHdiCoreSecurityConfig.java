@@ -22,8 +22,8 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 @Configuration
 @ConditionalOnProperty(prefix = "data-governance-hdi-core", name = "enabled", havingValue = "true")
-public class HdiCoreSecurityConfig {
-    public HdiCoreSecurityConfig(DataGovernanceHdiProperties legacy) {
+public class DataGovernanceHdiCoreSecurityConfig {
+    public DataGovernanceHdiCoreSecurityConfig(DataGovernanceHdiProperties legacy) {
         if (legacy.isEnabled()) throw new IllegalStateException("Choose platform task core management; the original server proxy must be disabled");
     }
     @Bean @Order(0)

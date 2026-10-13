@@ -14,9 +14,9 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @ConditionalOnProperty(prefix = "data-governance-hdi-core", name = "enabled", havingValue = "true")
-public class HdiCoreSessionController {
+public class DataGovernanceHdiCoreSessionController {
     private final HdiCoreSessions sessions;
-    public HdiCoreSessionController(HdiCoreSessions sessions) { this.sessions = sessions; }
+    public DataGovernanceHdiCoreSessionController(HdiCoreSessions sessions) { this.sessions = sessions; }
     @PostMapping("/governance/hdi/session")
     @PreAuthorize("@ss.hasPermi('governance:flow:list')")
     public ResponseEntity<AjaxResult> create(HttpServletRequest request, HttpServletResponse response, @RequestBody(required = false) Map<String, Object> options) {
