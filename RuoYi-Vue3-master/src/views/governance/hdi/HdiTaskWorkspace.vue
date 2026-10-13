@@ -1,7 +1,8 @@
 <template>
   <div ref="workspace" class="app-container hdi-task-workspace">
-    <div v-if="taskId && !failed" class="mb8">
-      <el-button icon="Back" @click="backToList">任务列表</el-button>
+    <div v-if="(taskId || warned) && !failed" class="mb8">
+      <el-button v-if="taskId" icon="Back" @click="backToList">任务列表</el-button>
+      <el-button v-if="warned" icon="Refresh" @click="connect(true)">重新连接</el-button>
     </div>
     <el-result v-if="failed" icon="warning" title="任务工作区暂不可用" sub-title="请重试；如果仍无法连接，请联系管理员。">
       <template #extra><el-button type="primary" @click="connect(true)">重新连接</el-button></template>
@@ -13,13 +14,13 @@
 </template>
 
 <script setup>
-import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useElementBounding, useWindowSize } from '@vueuse/core'
 import { ElMessage } from 'element-plus'
 import { createHdiSession } from '@/api/governance/hdi'
 import { getInfo } from '@/api/login'
-import { hdiFrameUrl, platformTaskUrl } from './hdiHostBridge'
+import { hdiFrameUrl, isHdiMessage, platformTaskUrl, validHdiTaskId } from './hdiHostBridge'
 
 const route = useRoute(), router = useRouter()
 const workspace = ref(), frameHost = ref(), frame = ref()
@@ -27,7 +28,7 @@ const frameUrl = ref(''), loading = ref(true), failed = ref(false)
 const taskId = ref(route.query.hdiTask || null)
 const readonly = ref(route.query.hdiReadonly === 'true')
 const isNewCreate = ref(route.query.hdiNew === '1')
-const nativeContext = ref(null)
+const nativeContext = ref(null), warned = ref(false)
 const { height: viewportHeight } = useWindowSize()
 const { top } = useElementBounding(frameHost)
 const frameHeight = computed(() => {
@@ -35,7 +36,7 @@ const frameHeight = computed(() => {
   const bottomPadding = main ? Number.parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0
   return Math.max(360, viewportHeight.value - top.value - bottomPadding)
 })
-let attempt = 0, timeout, active = true, frameCleanup = () => {}, lastActivityRefresh = 0, refreshing = false, warned = false
+let attempt = 0, timeout, active = true, frameCleanup = () => {}, lastActivityRefresh = 0, refreshing = false
 function fail() {
   frameCleanup()
   clearTimeout(timeout)
@@ -54,26 +55,47 @@ async function connect(renew = false) {
     const response = await createHdiSession(renew)
     if (current !== attempt) return
     nativeContext.value = response.data
-    warned = false
+    warned.value = false
     frameUrl.value = hdiFrameUrl(response.data?.frameUrl, window.location.origin, taskId.value, readonly.value, isNewCreate.value)
     timeout = setTimeout(() => { if (current === attempt) fail() }, 45000)
   } catch { if (current === attempt) fail() }
 }
-function backToList() {
-  taskId.value = null
-  readonly.value = false
-  isNewCreate.value = false
+function syncTaskRoute(id, viewOnly = false, created = false) {
+  taskId.value = id == null ? null : String(id)
+  readonly.value = viewOnly
+  isNewCreate.value = created
   const query = { ...route.query }
   delete query.hdiTask
   delete query.hdiReadonly
   delete query.hdiNew
+  if (taskId.value) query.hdiTask = taskId.value
+  if (taskId.value && viewOnly) query.hdiReadonly = 'true'
+  else if (taskId.value && created) query.hdiNew = '1'
   router.replace({ query })
-  if (nativeContext.value) {
-    frameCleanup()
+}
+function backToList() {
+  if (!frame.value?.contentWindow) return
+  clearTimeout(timeout)
+  loading.value = true
+  frame.value.contentWindow.postMessage({ type: 'rynew-hdi:back' }, window.location.origin)
+  timeout = setTimeout(fail, 45000)
+}
+function receiveHost(event) {
+  if (!isHdiMessage(event, frame.value?.contentWindow, window.location.origin)) return
+  const data = event.data
+  if (data.type === 'rynew-hdi:error') return fail()
+  if (data.type === 'rynew-hdi:ready') {
+    // Readiness means the actual vendor component mounted, never that a task ran.
+    if (frame.value?.contentDocument?.documentElement.dataset.hdiHostState !== 'ready') return
     clearTimeout(timeout)
-    loading.value = true
-    frameUrl.value = hdiFrameUrl(nativeContext.value.frameUrl, window.location.origin)
-    timeout = setTimeout(fail, 45000)
+    loading.value = false
+  } else if (data.type === 'rynew-hdi:task') {
+    if (data.taskId !== null && !validHdiTaskId(data.taskId)) return
+    syncTaskRoute(data.taskId, data.readonly === true, data.isNewCreate === true)
+  } else if (data.type === 'rynew-hdi:navigate') {
+    const url = platformTaskUrl(data.href, window.location.origin, nativeContext.value?.workspaceId)
+    if (url) router.push(url)
+    else ElMessage.info('此操作尚未接入平台，请先使用任务编排、保存和测试。')
   }
 }
 async function refreshWhileEditing() {
@@ -86,20 +108,20 @@ async function refreshWhileEditing() {
     // Only user interaction triggers this; an abandoned background tab cannot keep a login alive.
     await getInfo()
     if (current !== attempt || !active) return
-    const response = await fetch('/detl/getEtlUserInfo', {
+    const response = await fetch('/detl/_platform/context', {
       credentials: 'same-origin', cache: 'no-store',
       headers: { Workspace: String(nativeContext.value.workspaceId), 'X-Requested-With': 'XMLHttpRequest' }
     })
     if (!response.ok) throw new Error('Native session is unavailable')
     const native = await response.json()
-    if (String(native?.code) !== '0') throw new Error('Native session was not confirmed')
+    if (native?.code !== '0' || !native.data?.user) throw new Error('Native session was not confirmed')
     if (current !== attempt || !active) return
-    warned = false
+    warned.value = false
   } catch {
     if (current !== attempt || !active) return
     // Preserve the frame so the user can recover unsaved text before reconnecting.
-    if (!warned) ElMessage.warning('任务会话需要重新连接，请先保留尚未保存的内容。')
-    warned = true
+    if (!warned.value) ElMessage.warning('任务会话需要重新连接，请先保留尚未保存的内容。')
+    warned.value = true
   } finally { refreshing = false }
 }
 function frameLoaded() {
@@ -124,13 +146,13 @@ function frameLoaded() {
     child.close = closeTask
     document.addEventListener('pointerdown', refreshWhileEditing, true)
     document.addEventListener('keydown', refreshWhileEditing, true)
-    // This is the original application's mounted shell, not an invented task-success signal.
-    // Native table/canvas loaders and API failures continue to be displayed by the original UI.
     const mounted = () => {
-      if (document.querySelector('main#app')) { clearTimeout(timeout); loading.value = false; observer.disconnect() }
+      const state = document.documentElement.dataset.hdiHostState
+      if (state === 'error') return fail()
+      if (state === 'ready') { clearTimeout(timeout); loading.value = false; observer.disconnect() }
     }
     const observer = new MutationObserver(mounted)
-    observer.observe(document.documentElement, { childList: true, subtree: true })
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-hdi-host-state'] })
     frameCleanup = () => {
       observer.disconnect()
       document.removeEventListener('pointerdown', refreshWhileEditing, true)
@@ -142,7 +164,22 @@ function frameLoaded() {
     mounted()
   } catch { fail() }
 }
-onMounted(connect)
+watch(() => [route.query.hdiTask, route.query.hdiReadonly, route.query.hdiNew], ([id, viewOnly, created]) => {
+  const nextId = id || null, nextReadonly = viewOnly === 'true', nextNew = created === '1'
+  if (String(nextId) === String(taskId.value) && nextReadonly === readonly.value && nextNew === isNewCreate.value) return
+  taskId.value = nextId
+  readonly.value = nextReadonly
+  isNewCreate.value = nextNew
+  if (nativeContext.value) {
+    frameCleanup()
+    clearTimeout(timeout)
+    loading.value = true
+    try { frameUrl.value = hdiFrameUrl(nativeContext.value.frameUrl, window.location.origin, nextId, nextReadonly, nextNew) }
+    catch { return fail() }
+    timeout = setTimeout(fail, 45000)
+  }
+})
+onMounted(() => { window.addEventListener('message', receiveHost); connect() })
 onActivated(() => { active = true })
 onDeactivated(() => { active = false })
 onBeforeUnmount(() => {
@@ -150,6 +187,7 @@ onBeforeUnmount(() => {
   ++attempt
   clearTimeout(timeout)
   frameCleanup()
+  window.removeEventListener('message', receiveHost)
 })
 </script>
 
