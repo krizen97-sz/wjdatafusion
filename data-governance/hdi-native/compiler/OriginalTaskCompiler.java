@@ -43,8 +43,9 @@ public final class OriginalTaskCompiler {
         "cloudStoreVo", "kettleInputVo", "kettleProcessVo", "variableSettingVoList", "strackVoList");
 
     static final class Rejected extends RuntimeException {
-        final String code;
-        Rejected(String code, String message) { super(message); this.code = code; }
+        final String code, reason;
+        Rejected(String code, String message) { this(code, message, null); }
+        Rejected(String code, String message, String reason) { super(message); this.code = code; this.reason = reason; }
     }
     static void require(boolean condition, String message) { if (!condition) throw new Rejected("INVALID_INPUT", message); }
     static void supported(boolean condition, String message) { if (!condition) throw new Rejected("UNSUPPORTED_GRAPH", message); }
@@ -254,6 +255,9 @@ public final class OriginalTaskCompiler {
                 value = output.toString();
             } else if (plugin.equals("fileOutput") && name.equals("etl.file.fileType")) {
                 supported(Set.of("csv", "line").contains(value), "Only original csv/line file output is supported");
+            } else if (plugin.equals("fileOutput") && name.equals("etl.file.serverType") && value.equals("local")) {
+                // Explicitly consistent local metadata is allowed. Legacy catalog Ftp
+                // remains untouched and is rejected after the original merge below.
             } else {
                 // Inactive placeholders from the actual original plugin form are legitimate.
                 // Changed external/FEL settings require a separately audited execution profile.
@@ -375,7 +379,8 @@ public final class OriginalTaskCompiler {
                     managedSelected |= MANAGED_OUTPUT.equals(parameter.get("paramValue"));
                 }
                 if ("etl.file.fileType".equals(parameter.get("paramName")))
-                    supported(Objects.equals(config.get("fileType"), parameter.get("paramValue")), "File format parameter conflicts with the original file output form");
+                    if (!Objects.equals(config.get("fileType"), parameter.get("paramValue")))
+                        throw new Rejected("UNSUPPORTED_GRAPH", "File format parameter conflicts with the original file output form", "FILE_FORMAT_CONFLICT");
             }
             supported(managedSelected, "Select /平台输出 before testing or running this flow");
             supported(Set.of("csv", "line").contains(text(config.get("fileType"))), "Only original csv/line file output is supported");
@@ -440,6 +445,26 @@ public final class OriginalTaskCompiler {
         try (InputStream in = Files.newInputStream(bundle.resolve("instance/etl-" + plugin + "-2.0.0/adapter.properties"))) { value.load(in); }
         require(plugin.equals(value.getProperty("adapterName")) && "2.0.0".equals(value.getProperty("version")) && TYPES.get(plugin).equals(value.getProperty("adapterType")) && CLASSES.get(plugin).equals(value.getProperty("className")) && "java".equals(value.getProperty("adapterLanguage")), "Original plugin catalog does not match this verified profile");
         return value;
+    }
+
+    static void validateOriginalLocalOutputs(byte[] flowBytes) {
+        Map<String,Object> generated = parse(new String(flowBytes, StandardCharsets.UTF_8));
+        for (Object rawStream : list(generated.get("streams"), "original streams")) {
+            Map<String,Object> stream = object(rawStream, "original stream");
+            for (Object rawModule : list(stream.get("modules"), "original modules")) {
+                Map<String,Object> module = object(rawModule, "original module");
+                if (!"fileOutput".equals(object(module.get("adapter"), "original adapter").get("adapter_name"))) continue;
+                Map<String,String> values = new LinkedHashMap<>();
+                for (Object rawParam : list(object(module.get("config"), "original output config").get("adapter_param"), "original output parameters")) {
+                    Map<String,Object> parameter = object(rawParam, "original output parameter");
+                    require(values.put(text(parameter.get("param_name")), text(parameter.get("param_value"))) == null, "Duplicate generated output parameter");
+                }
+                // Same strict local-file profile as the worker. Inspect the ORIGINAL
+                // merged parameters; never silently replace an advanced parameter.
+                if (!"local".equals(values.get("etl.file.serverType")) || !"false".equals(values.get("etl.file.isUpload")))
+                    throw new Rejected("UNSUPPORTED_GRAPH", "Original fileOutput parameters must resolve to serverType=local and isUpload=false; remove conflicting legacy FTP/SFTP advanced parameters in the node form", "LOCAL_OUTPUT_REQUIRED");
+            }
+        }
     }
 
     static Map<String,Object> compile(Map<String,Object> request, Path bundle) throws Exception {
@@ -546,6 +571,7 @@ public final class OriginalTaskCompiler {
         inject(compiler, "flowService", provider("service.task.FlowService", Map.of("updatePushStatus", a -> { key(a[0], flowId); sink.publishIntent = true; return null; })));
         compiler.forcePushFlowDataToZk(flowId);
         require(sink.bytes != null && sink.publishIntent, "Original compiler did not emit the expected metadata");
+        validateOriginalLocalOutputs(sink.bytes);
         flow.setFlowIncrStatus(1);
         Object start = com.hikvision.idatafusion.detl.dto.task.control.FlowControlMessageDto.builder().flowId(flowId).type(1).scheduleOnce(schedule).flow(flow).offset(List.of()).execId(text(run.get("execId"))).build();
         byte[] scheduleBytes = com.hikvision.idatafusion.detl.utils.ObjectUtils.toUnderlineJsonString(start).getBytes(StandardCharsets.UTF_8);
@@ -571,8 +597,10 @@ public final class OriginalTaskCompiler {
         } catch (Throwable failure) {
             // Do not expose vendor exception messages or stack traces: these may contain task data.
             Rejected rejected = failure instanceof Rejected ? (Rejected)failure : null;
-            protocol.println(json(map("ok", false, "protocolVersion", 1, "code", rejected == null ? "ORIGINAL_COMPILER_FAILED" : rejected.code,
-                "message", rejected == null ? "Original configuration generator failed" : rejected.getMessage())));
+            Map<String,Object> response = map("ok", false, "protocolVersion", 1, "code", rejected == null ? "ORIGINAL_COMPILER_FAILED" : rejected.code,
+                "message", rejected == null ? "Original configuration generator failed" : rejected.getMessage());
+            if (rejected != null && rejected.reason != null) response.put("reason", rejected.reason);
+            protocol.println(json(response));
             System.err.println("compiler failure type=" + failure.getClass().getName());
             System.exit(2);
         }

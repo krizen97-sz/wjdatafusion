@@ -68,7 +68,7 @@ def original_ui_visual():
                                       fieldType='varchar', fieldPrecision='', isNew=None, isUpdate=None, fieldKeyFlag=0)]
     node['adapterParamVoList'] = [dict(paramName=name, paramValue=value, valueType=control, minValue=None, maxValue=None)
                                  for name, value, control in [
-        ('etl.file.isUpload', 'false', 'el-switch'), ('etl.file.serverType', 'Ftp', 'el-select'),
+        ('etl.file.isUpload', 'false', 'el-switch'),
         ('etl.file.rowSplitChar', ',', 'el-input'), ('etl.file.retrytimes', '5', 'el-input'),
         ('etl.file.maxRow', '100', 'el-input'), ('etl.file.flushTime', '10000', 'el-input')]]
     visual.update(status=True, saveFlowStatus=0)
@@ -186,6 +186,7 @@ class OriginalSdkTests(unittest.TestCase):
         params = {p['param_name']: p['param_value'] for p in modules['fileOutput']['adapter_param']}
         self.assertEqual('csv', params['etl.file.fileType'])
         self.assertEqual('false', params['etl.file.isUpload'])
+        self.assertEqual('local', params['etl.file.serverType'])
         original = prepared['canonicalVisual']['nodes']
         self.assertNotIn('processType', original['120']['transformFieldVoList'][0])
         self.assertNotIn('enableFlag', original['130']['dstTableFieldVoList'][0])
@@ -223,6 +224,7 @@ class OriginalSdkTests(unittest.TestCase):
         rejected = self.invoke(self.compile_request(self.prepare(visual)))
         self.assertFalse(rejected['ok'])
         self.assertEqual('UNSUPPORTED_GRAPH', rejected['code'])
+        self.assertEqual('FILE_FORMAT_CONFLICT', rejected['reason'])
         visual['nodes']['130']['adapterParamVoList'][-1]['paramValue'] = 'csv'
         result = self.invoke(self.compile_request(self.prepare(visual)))
         self.assertTrue(result['ok'], result)
@@ -234,6 +236,25 @@ class OriginalSdkTests(unittest.TestCase):
         visual = original_ui_visual()
         visual['nodes']['130']['dstTableFieldVoList'][0]['fieldExpression'] = 'runtime.exec()'
         self.assertFalse(self.invoke(self.compile_request(self.prepare(visual)))['ok'])
+
+    def test_original_merged_output_rejects_legacy_ftp_before_worker_submission(self):
+        visual = original_ui_visual()
+        visual['nodes']['130']['adapterParamVoList'].append(dict(paramName='etl.file.serverType', paramValue='Ftp', valueType='el-select'))
+        prepared = self.prepare(visual)
+        self.assertTrue(prepared['ok'])  # Valid editable draft, never rewritten to local.
+        self.assertEqual('Ftp', prepared['canonicalVisual']['nodes']['130']['adapterParamVoList'][-1]['paramValue'])
+        result = self.invoke(self.compile_request(prepared))
+        self.assertFalse(result['ok'])
+        self.assertEqual('UNSUPPORTED_GRAPH', result['code'])
+        self.assertEqual('LOCAL_OUTPUT_REQUIRED', result['reason'])
+        self.assertNotIn('flowjson', result)
+        visual['nodes']['130']['adapterParamVoList'][-1]['paramValue'] = 'local'
+        compiled = self.invoke(self.compile_request(self.prepare(visual)))
+        self.assertTrue(compiled['ok'], compiled)
+        native = json.loads(base64.b64decode(compiled['flowjson']['base64']))
+        params = {p['param_name']: p['param_value'] for p in native['streams'][0]['modules'][2]['config']['adapter_param']}
+        self.assertEqual('local', params['etl.file.serverType'])
+        self.assertEqual('false', params['etl.file.isUpload'])
 
     def test_snapshot_tampering_and_identity_mismatch_rejected(self):
         request = self.compile_request()

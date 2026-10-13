@@ -14,6 +14,8 @@
 
 原 `el-input` / `el-switch` / `el-select` 参数 DTO 可以保留。原文件生成器优先采用 `adapterParamVoList` 中已有参数，再从 `adapterData` 补缺；因此若历史参数 `etl.file.fileType=txt` 与表单 `adapterData.fileType=csv` 冲突，草稿可保存，但编译明确拒绝，不能静默输出另一种格式。受支持的显式格式参数须与表单一致。目录适配应遵循原参数表单的过滤契约，不把已由专属节点表单接管的旧默认值重新注入。
 
+编译完成后还检查原 `flowjson` 的实际合并结果，与 worker 的本地文件 profile 使用相同规则：`etl.file.serverType` 必须为 `local`，`etl.file.isUpload` 必须为 `false`。即使结构化表单已选本地，残留的高级 `serverType=Ftp` 仍会按原优先级覆盖，因此返回 `UNSUPPORTED_GRAPH` / `reason=LOCAL_OUTPUT_REQUIRED`，由用户在原表单取消冲突参数；不改写草稿或生成结果。文件格式冲突返回固定 `FILE_FORMAT_CONFLICT` reason。平台仅对白名单 reason 映射固定说明，不能展示任意原异常消息或参数值。
+
 保存允许空草稿、不完整链、未配置完的节点和原无限行数 `-1`。运行明确拒绝无界生成、分叉、环、未知插件、FTP/SFTP、SQL、脚本、外部 FEL / Redis、全局参数引用、异步输出及当前范围外的表达式。保存不会把这些配置静默修改成可运行的配置。生成器缺省行数从已校验的原 `etl_plugin.json` 读取（本版原值为 100000），不会被偷偷改为测试行数；运行上限为 1000000 行。
 
 原字段映射表单自带的未启用 Redis 占位值可以保留；只有与原目录默认值完全一致且当前映射没有外部函数的配置可进入本批执行。参数值改变时返回 `UNSUPPORTED_GRAPH`。
