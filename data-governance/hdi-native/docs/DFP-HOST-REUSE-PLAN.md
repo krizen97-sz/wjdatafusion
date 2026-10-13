@@ -57,3 +57,11 @@ ready只代表原TaskList/ProcessMain实例完成Vue挂载，不代表后端任�
 原store集成修正：flowVo/loadTemplate位于root.flowData，动作context属于非命名空间flowData模块。测试现以原包SHA校验后的Vue 2.7.16、Vuex 3.6.2、module54098构建真实Store执行save/save/push及回读失败路径，替代此前错误的平面状态假设。真实原Store测试通过；网络与无关展示集成仍为受控依赖，不宣称引擎运行验证。
 
 本修正完整verify使用HDI_CORE_BUNDLE_DIR启用真实原Store用例，共315项测试通过、0跳过，UI Guard/构建/167个JS兼容检查通过。
+
+## 活动任务状态同步
+
+原GLOBAL_TASKRUNSTATUS_CONTROL仅轮询节点统计，原checkTaskStatusLoop达到20次后本地回退为运行中，无法覆盖平台长任务真实终态。宿主复用原Vuex watch、原Axios库及setFlowVo，在可见的活动任务（1/2/5/10）每2秒查询平台getFlowById。用户、工作区、项目、任务ID和修订必须一致；只合并权威状态字段，保留完整live flowVo和nodes/links/params。保存期间跳过读取或丢弃读回。
+
+隐藏页面/iframe、离开任务、销毁时暂停或取消；ResizeObserver及visibility/focus恢复可见查询。失败不刷新页面、不替换画布、不推断完成，同一任务修订只提示一次。使用原裸Axios库而非旧管理实例，因为后者遇Network Error会重新加载顶层页面。没有增加节点速度、行数或其它未采集指标。
+
+状态同步验证：16项定向测试（含3项原Store实例测试）通过；完整前端verify使用原bundle跑321项测试、0跳过，UI Guard、生产构建和167个JS兼容检查通过。原运行终态浏览器证据仍由集成任务采集。

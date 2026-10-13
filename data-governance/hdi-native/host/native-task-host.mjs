@@ -199,13 +199,89 @@ export function bindOriginalSaveQueue(store, client, host, origin, onFailure) {
     }
     return config
   })
-  return () => {
+  const dispose = () => {
     closed = true
     if (store.dispatch === wrapped) store.dispatch = dispatch
     if (flowContext.dispatch === wrapped) flowContext.dispatch = dispatch
     client.interceptors.request.eject(requestId)
     for (const queue of queues.values()) queue.error = fail()
   }
+  dispose.isPending = taskId => (queues.get(String(taskId))?.pending || 0) > 0
+  return dispose
+}
+
+/** Read the platform's current state without replaying a diagram or manufacturing node observations. */
+export function bindOriginalTaskStatus(store, client, host, options) {
+  if (typeof store.watch !== 'function' || typeof client?.get !== 'function') throw new Error('原任务状态接口不可用')
+  const surface = options.surface || window, doc = surface.document
+  const schedule = options.schedule || setTimeout, cancel = options.cancel || clearTimeout
+  const interval = options.intervalMs || 2000, warned = new Set()
+  const visible = options.isVisible || (() => !doc?.hidden && (!surface.frameElement || surface.frameElement.getClientRects().length > 0))
+  const pending = options.isSavePending || (() => false)
+  const decimal = value => /^[1-9]\d*$/.test(String(value ?? '')) && Number.isSafeInteger(Number(value)) ? String(value) : null
+  const matches = flow => String(flow?.groupId) === String(host.workspaceId) && String(flow?.userId) === String(host.user.id) && flow?.projectCode === host.projectCode
+  let closed = false, timer = null, epoch = 0, flight = null
+  const snapshot = () => {
+    if (closed) return null
+    const id = decimal(options.getTaskId()), flow = originalFlowState(store).flowVo, revision = decimal(flow?._platformRevision)
+    return id && decimal(flow?.id) === id && revision && matches(flow) && [1, 2, 5, 10].includes(flow.flowStatus) ? { id, revision } : null
+  }
+  const enqueue = generation => {
+    if (closed || generation !== epoch || timer != null || !visible() || !snapshot()) return
+    timer = schedule(() => { timer = null; return poll(generation) }, interval)
+  }
+  const warn = scope => {
+    const key = `${scope.id}:${scope.revision}`
+    if (warned.has(key)) return
+    warned.add(key)
+    try { options.onFailure?.('任务状态暂时无法刷新，当前画布已保留，请稍后重试。') } catch {}
+  }
+  const poll = async generation => {
+    const requested = snapshot()
+    if (!requested || closed || generation !== epoch || !visible()) return
+    if (pending(requested.id)) { enqueue(generation); return }
+    const controller = typeof surface.AbortController === 'function' ? new surface.AbortController() : null
+    const currentFlight = { controller, generation }; flight = currentFlight
+    try {
+      const response = await client.get(`/detl/flow/getFlowById/${requested.id}`, { signal: controller?.signal, timeout: 10000 })
+      if (closed || generation !== epoch || !visible() || pending(requested.id)) return
+      const current = snapshot(), flow = response?.data
+      if (!current || current.id !== requested.id || current.revision !== requested.revision) return
+      if (response?.code !== '0' || decimal(flow?.id) !== requested.id || !matches(flow)
+          || decimal(flow?._platformRevision) !== requested.revision || ![-1, 0, 1, 2, 3, 4, 5, 10, 31].includes(flow?.flowStatus)) { warn(requested); return }
+      const live = originalFlowState(store).flowVo, changed = live.flowStatus !== flow.flowStatus
+      const authority = { flowStatus: flow.flowStatus }
+      for (const key of ['flowLock', 'readOnly', 'updateTime']) if (Object.prototype.hasOwnProperty.call(flow, key)) authority[key] = flow[key]
+      store.commit('setFlowVo', { ...live, ...authority })
+      if (changed) options.onStateChanged?.(flow.flowStatus)
+    } catch {
+      if (!closed && generation === epoch && visible() && !pending(requested.id)) warn(requested)
+    } finally {
+      if (flight === currentFlight) flight = null
+      enqueue(generation)
+    }
+  }
+  const refresh = () => {
+    epoch++
+    if (timer != null) { cancel(timer); timer = null }
+    flight?.controller?.abort(); flight = null
+    enqueue(epoch)
+  }
+  const stopWatching = store.watch(state => {
+    const flow = state.flowData?.flowVo
+    return `${options.getTaskId() || ''}:${flow?.id || ''}:${flow?._platformRevision || ''}:${flow?.flowStatus ?? ''}`
+  }, refresh)
+  doc?.addEventListener?.('visibilitychange', refresh)
+  surface.addEventListener?.('focus', refresh)
+  let observer = null
+  if (surface.frameElement && typeof surface.ResizeObserver === 'function') { observer = new surface.ResizeObserver(refresh); observer.observe(surface.frameElement) }
+  refresh()
+  return { refresh, destroy() {
+    if (closed) return
+    closed = true; epoch++; if (timer != null) cancel(timer); timer = null
+    flight?.controller?.abort(); flight = null; stopWatching(); observer?.disconnect()
+    doc?.removeEventListener?.('visibilitychange', refresh); surface.removeEventListener?.('focus', refresh)
+  } }
 }
 
 /** Wait for this iframe's original publish action before reading its run settings. Never invent/rewrite a revision. */
@@ -338,6 +414,7 @@ export async function mountOriginalTasks(host, target) {
       throw new Error('原任务组件尚未挂载')
     }
   }
+  let statusSync = null
   const vm = new Vue({
     i18n,
     data: () => ({ taskId: host.initialTaskId || null, readonly: host.readOnly === true || host.readonly === true }),
@@ -347,6 +424,7 @@ export async function mountOriginalTasks(host, target) {
         if (!/^[1-9]\d{0,18}$/.test(id) || (id.length === 19 && id > '9223372036854775807')) throw new Error('原任务返回的标识无效')
         if (host.openTaskInWindow?.({ id, readonly: host.readOnly === true || readonly, isNewCreate })) return
         this.taskId = id
+        statusSync?.refresh()
         this.readonly = host.readOnly === true || readonly
         await this.$nextTick()
         ensureMounted(this)
@@ -376,6 +454,7 @@ export async function mountOriginalTasks(host, target) {
   const destroy = () => {
     if (destroyed) return
     destroyed = true
+    statusSync?.destroy()
     destroyBoundary()
     destroySaveQueue()
     window.removeEventListener('pagehide', onPageHide)
@@ -388,12 +467,20 @@ export async function mountOriginalTasks(host, target) {
       originalRuntime()(4780).Message?.error({ message, duration: 6000, showClose: true })
     })
     destroyBoundary = bindOriginalPublishBoundary(store, client, host, window.location.origin)
+    // Use the same vendor Axios library without the retired management interceptor that reloads the page on network errors.
+    const axios = originalRuntime()(86698).A
+    statusSync = bindOriginalTaskStatus(store, { get: async (url, config) => {
+      const response = await axios.get(url, { ...config, withCredentials: true, headers: { Workspace: host.workspaceId, projectCode: host.projectCode } })
+      return response.data
+    } }, host, { surface: window, getTaskId: () => vm.taskId, isSavePending: id => destroySaveQueue.isPending(id),
+      onStateChanged: value => host.onTaskStatusChanged?.(value),
+      onFailure: message => originalRuntime()(4780).Message?.warning({ message, duration: 6000, showClose: true }) })
     await vm.$nextTick()
     ensureMounted(vm)
   } catch (error) { destroy(); throw error }
   window.addEventListener('pagehide', onPageHide)
   return {
-    async backToTaskList() { vm.taskId = null; await vm.$nextTick(); ensureMounted(vm) },
+    async backToTaskList() { vm.taskId = null; statusSync?.refresh(); await vm.$nextTick(); ensureMounted(vm) },
     setRoute(next) {
       const snapshot = { ...next }
       Object.keys(route).forEach(key => Vue.delete(route, key))

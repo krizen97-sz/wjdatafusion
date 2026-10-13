@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import vm from 'node:vm'
 import { createHash } from 'node:crypto'
-import { bindOriginalSaveQueue, bindOriginalPublishBoundary } from '../../../../../data-governance/hdi-native/host/native-task-host.mjs'
+import { bindOriginalSaveQueue, bindOriginalPublishBoundary, bindOriginalTaskStatus } from '../../../../../data-governance/hdi-native/host/native-task-host.mjs'
 
 // Run explicitly with the verified private bundle. Original Vue, Vuex, store actions and mutations execute unchanged.
 // Only HTTP, display helpers and unrelated integrations are controlled; this is not an engine execution test.
@@ -112,4 +112,18 @@ test('original nested save readback failure rejects the queued action instead of
   await turn(); f.gates[0].resolve(); await Promise.all([first, second])
   assert.equal(f.requests.length, 1); assert.equal(f.store.state.flowData.flowVo._platformRevision, 1); assert.equal(f.notices.length, 1)
   destroy()
+})
+
+
+test('the original Vuex setFlowVo consumes a verified terminal state without replacing live business data', options, async () => {
+  const f = fixture(); await f.store.dispatch('initFlowDataByTaskId', { taskId: 42 })
+  f.store.commit('setFlowVo', { ...f.store.state.flowData.flowVo, flowStatus: 2, flowDisplayName: 'live title', autoArrange: 'horizontal' })
+  const live = f.store.state.flowData, nodes = live.nodesMap, links = live.links, params = live.paramVoList
+  let tick; const notices = []
+  const sync = bindOriginalTaskStatus(f.store, { get: async () => ({ code: '0', data: { ...copy(live.flowVo), flowStatus: 3, flowDisplayName: 'older server title', autoArrange: null } }) }, host,
+    { surface: { document: { hidden: false } }, getTaskId: () => 42, schedule(fn) { tick = fn; return 1 }, cancel() {}, onFailure: value => notices.push(value) })
+  await tick(); await f.Vue.nextTick()
+  assert.equal(live.flowVo.flowStatus, 3); assert.equal(live.flowVo.folderId, -1); assert.equal(live.flowVo.flowDisplayName, 'live title'); assert.equal(live.flowVo.autoArrange, 'horizontal')
+  assert.equal(live.nodesMap, nodes); assert.equal(live.links, links); assert.equal(live.paramVoList, params); assert.deepEqual(notices, [])
+  sync.destroy()
 })

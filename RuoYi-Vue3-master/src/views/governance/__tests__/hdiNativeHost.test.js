@@ -7,7 +7,7 @@ async function withHost(options, run) {
   const previousWindow = globalThis.window, previousStorage = globalThis.localStorage
   const listeners = new Map(), instances = [], localeMessages = []
   const TaskList = { name: 'OriginalTaskList', methods: { handleCachePreSearch() { this.popoverSearchForm = { ...this.searchForm } } } }, DagMain = { name: 'OriginalDagMain' }
-  const store = { state: { currentWorkspaceId: options.workspace ?? '11', flowData: { flowVo: {} } }, values: {}, dispatch() {}, subscribeAction() { return () => {} }, commit(key, value) { this.values[key] = value } }
+  const store = { state: { currentWorkspaceId: options.workspace ?? '11', flowData: { flowVo: {} } }, values: {}, dispatch() {}, watch() { return () => {} }, subscribeAction() { return () => {} }, commit(key, value) { this.values[key] = value } }
   store._modules = { root: { context: { dispatch: store.dispatch } }, get: () => ({ state: store.state.flowData, context: { dispatch: store.dispatch } }) }
   class Vue {
     constructor(config) {
@@ -37,6 +37,7 @@ async function withHost(options, run) {
   const chunks = []
   const runtime = id => {
     if (id === 43620) return { A: http }
+    if (id === 86698) return { A: { get: async () => ({ data: { code: '0', data: {} } }) } }
     if (id === 4780) return { Drawer: { render() {}, methods: {} } }
     if (id === 54147) return { Go: value => ({ ...value, methods: { ...value.methods } }) }
     if (id === 30930) return { Ay: { t: value => value } }
