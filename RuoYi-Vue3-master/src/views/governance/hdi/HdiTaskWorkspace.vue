@@ -4,10 +4,10 @@
       <el-button icon="Back" @click="backToList">任务列表</el-button>
     </div>
     <el-result v-if="failed" icon="warning" title="任务工作区暂不可用" sub-title="请重试；如果仍无法连接，请联系管理员。">
-      <template #extra><el-button type="primary" @click="connect">重新连接</el-button></template>
+      <template #extra><el-button type="primary" @click="connect(true)">重新连接</el-button></template>
     </el-result>
     <div v-else ref="frameHost" v-loading="loading" class="hdi-frame-host" :style="{ height: `${frameHeight}px` }">
-      <iframe v-if="frameUrl" ref="frame" :key="frameUrl" :src="frameUrl" title="数据流程编排、测试与运行" class="hdi-task-frame" @error="fail" />
+      <iframe v-if="frameUrl" ref="frame" :key="frameUrl" :src="frameUrl" title="数据流程编排、测试与运行" class="hdi-task-frame" @load="frameLoaded" @error="fail" />
     </div>
   </div>
 </template>
@@ -18,13 +18,16 @@ import { useRoute, useRouter } from 'vue-router'
 import { useElementBounding, useWindowSize } from '@vueuse/core'
 import { ElMessage } from 'element-plus'
 import { createHdiSession } from '@/api/governance/hdi'
-import { hdiFrameUrl, isHdiMessage } from './hdiHostBridge'
+import { getInfo } from '@/api/login'
+import { hdiFrameUrl, platformTaskUrl } from './hdiHostBridge'
 
 const route = useRoute(), router = useRouter()
 const workspace = ref(), frameHost = ref(), frame = ref()
 const frameUrl = ref(''), loading = ref(true), failed = ref(false)
 const taskId = ref(route.query.hdiTask || null)
 const readonly = ref(route.query.hdiReadonly === 'true')
+const isNewCreate = ref(route.query.hdiNew === '1')
+const nativeContext = ref(null)
 const { height: viewportHeight } = useWindowSize()
 const { top } = useElementBounding(frameHost)
 const frameHeight = computed(() => {
@@ -32,59 +35,122 @@ const frameHeight = computed(() => {
   const bottomPadding = main ? Number.parseFloat(getComputedStyle(main).paddingBottom) || 0 : 0
   return Math.max(360, viewportHeight.value - top.value - bottomPadding)
 })
-let attempt = 0, timeout, active = true
+let attempt = 0, timeout, active = true, frameCleanup = () => {}, lastActivityRefresh = 0, refreshing = false, warned = false
 function fail() {
+  frameCleanup()
   clearTimeout(timeout)
   loading.value = false
   failed.value = true
   frameUrl.value = ''
 }
-async function connect() {
+async function connect(renew = false) {
   const current = ++attempt
+  frameCleanup()
   clearTimeout(timeout)
   frameUrl.value = ''
   loading.value = true
   failed.value = false
   try {
-    const response = await createHdiSession()
+    const response = await createHdiSession(renew)
     if (current !== attempt) return
-    frameUrl.value = hdiFrameUrl(response.data?.frameUrl, window.location.origin, taskId.value, readonly.value)
+    nativeContext.value = response.data
+    warned = false
+    frameUrl.value = hdiFrameUrl(response.data?.frameUrl, window.location.origin, taskId.value, readonly.value, isNewCreate.value)
     timeout = setTimeout(() => { if (current === attempt) fail() }, 45000)
   } catch { if (current === attempt) fail() }
 }
 function backToList() {
-  frame.value?.contentWindow?.postMessage({ type: 'rynew-hdi:back' }, window.location.origin)
-}
-function message(event) {
-  if (!isHdiMessage(event, frame.value?.contentWindow, window.location.origin)) return
-  if (event.data.type === 'rynew-hdi:ready') {
+  taskId.value = null
+  readonly.value = false
+  isNewCreate.value = false
+  const query = { ...route.query }
+  delete query.hdiTask
+  delete query.hdiReadonly
+  delete query.hdiNew
+  router.replace({ query })
+  if (nativeContext.value) {
+    frameCleanup()
     clearTimeout(timeout)
-    loading.value = false
-  } else if (event.data.type === 'rynew-hdi:error') {
-    fail()
-  } else if (event.data.type === 'rynew-hdi:task') {
-    const nextId = event.data.taskId
-    if (nextId != null && !/^[1-9]\d*$/.test(String(nextId))) return
-    taskId.value = nextId || null
-    readonly.value = Boolean(nextId && event.data.readonly === true)
-    const query = { ...route.query }
-    delete query.tab
-    if (nextId) query.hdiTask = String(nextId)
-    else delete query.hdiTask
-    if (readonly.value) query.hdiReadonly = 'true'
-    else delete query.hdiReadonly
-    if (active) router.replace({ query })
-  } else if (event.data.type === 'rynew-hdi:navigate') {
-    if (active) {
-      if (['flow', 'flowList', 'taskList'].includes(event.data.name)) backToList()
-      else ElMessage.warning('该任务子页面暂不可用。')
-    }
+    loading.value = true
+    frameUrl.value = hdiFrameUrl(nativeContext.value.frameUrl, window.location.origin)
+    timeout = setTimeout(fail, 45000)
   }
 }
-onMounted(() => { window.addEventListener('message', message); connect() })
+async function refreshWhileEditing() {
+  if (!active || window.document.hidden || refreshing || Date.now() - lastActivityRefresh < 60000) return
+  const current = attempt
+  lastActivityRefresh = Date.now()
+  refreshing = true
+  try {
+    // Use the existing platform login refresh path, then touch the real native session.
+    // Only user interaction triggers this; an abandoned background tab cannot keep a login alive.
+    await getInfo()
+    if (current !== attempt || !active) return
+    const response = await fetch('/detl/getEtlUserInfo', {
+      credentials: 'same-origin', cache: 'no-store',
+      headers: { Workspace: String(nativeContext.value.workspaceId), 'X-Requested-With': 'XMLHttpRequest' }
+    })
+    if (!response.ok) throw new Error('Native session is unavailable')
+    const native = await response.json()
+    if (String(native?.code) !== '0') throw new Error('Native session was not confirmed')
+    if (current !== attempt || !active) return
+    warned = false
+  } catch {
+    if (current !== attempt || !active) return
+    // Preserve the frame so the user can recover unsaved text before reconnecting.
+    if (!warned) ElMessage.warning('任务会话需要重新连接，请先保留尚未保存的内容。')
+    warned = true
+  } finally { refreshing = false }
+}
+function frameLoaded() {
+  frameCleanup()
+  try {
+    const child = frame.value?.contentWindow
+    const document = frame.value?.contentDocument
+    if (!child || child.location.origin !== window.location.origin || !document?.getElementById('app')) return fail()
+    const nativeOpen = child.open
+    const nativeClose = child.close
+    function openTask(url, target, features) {
+      const platformUrl = platformTaskUrl(url, window.location.origin, nativeContext.value?.workspaceId)
+      return nativeOpen.call(child, platformUrl || url, target, features)
+    }
+    child.open = openTask
+    // The native task page closes its window after a fatal task error. Preserve that
+    // action only for platform tabs opened by the original task list, not the main app.
+    function closeTask() {
+      if (taskId.value && window.opener) window.close()
+      else backToList()
+    }
+    child.close = closeTask
+    document.addEventListener('pointerdown', refreshWhileEditing, true)
+    document.addEventListener('keydown', refreshWhileEditing, true)
+    // This is the original application's mounted shell, not an invented task-success signal.
+    // Native table/canvas loaders and API failures continue to be displayed by the original UI.
+    const mounted = () => {
+      if (document.querySelector('main#app')) { clearTimeout(timeout); loading.value = false; observer.disconnect() }
+    }
+    const observer = new MutationObserver(mounted)
+    observer.observe(document.documentElement, { childList: true, subtree: true })
+    frameCleanup = () => {
+      observer.disconnect()
+      document.removeEventListener('pointerdown', refreshWhileEditing, true)
+      document.removeEventListener('keydown', refreshWhileEditing, true)
+      try { if (child.open === openTask) child.open = nativeOpen } catch { /* Frame has navigated or closed. */ }
+      try { if (child.close === closeTask) child.close = nativeClose } catch { /* Frame has navigated or closed. */ }
+      frameCleanup = () => {}
+    }
+    mounted()
+  } catch { fail() }
+}
+onMounted(connect)
 onActivated(() => { active = true })
 onDeactivated(() => { active = false })
-onBeforeUnmount(() => { ++attempt; clearTimeout(timeout); window.removeEventListener('message', message) })
+onBeforeUnmount(() => {
+  active = false
+  ++attempt
+  clearTimeout(timeout)
+  frameCleanup()
+})
 </script>
 
 <style scoped>

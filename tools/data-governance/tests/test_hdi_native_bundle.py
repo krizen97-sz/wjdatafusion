@@ -35,6 +35,7 @@ class NativeBundleTest(unittest.TestCase):
             bundle.INSTANCE + 'certs/server.keystore': b'must never copy',
             'conf/license.lic': b'must never copy',
             'bin/detl/dEtlv2.jar': b'not the selected engine',
+            **{'META-INF/' + name: ('original-descriptor:' + name).encode() for name in bundle.COMPONENT_DESCRIPTORS},
             **{bundle.TASK_SERVICE + name: ('task-service:' + name).encode()
                for name in bundle.TASK_SERVICE_RESOURCES},
             'bin/detl/lib/original-task-service.jar': b'original-task-service-dependency',
@@ -44,6 +45,12 @@ class NativeBundleTest(unittest.TestCase):
             'bin/detl/config/bootstrap.properties': b'private or site configuration',
             'bin/detl/config/certs/server.keystore': b'must never copy private keys',
             'bin/gateway/gateway.jar': b'not the task service',
+            **{'bin/agent/' + name: ('original-agent:' + name).encode() for name in bundle.AGENT_RESOURCES},
+            'bin/agent/lib/original-agent-dependency.jar': b'original-agent-library',
+            'bin/agent/ext/normal/original-native-sdk.jar': b'original-sdk',
+            'bin/agent/application.properties': b'private endpoint and identity settings',
+            'bin/agent/active': b'must not ship activation state',
+            'bin/agent/agent.sh': b'must not ship global process control',
             'bin/zookeeper/lib/zookeeper-3.8.4.jar': b'original-coordinator-library',
             'bin/zookeeper/conf/zoo.cfg': b'must not reuse site configuration',
             'bin/zookeeper/data/snapshot.1': b'must not reuse state',
@@ -101,6 +108,23 @@ class NativeBundleTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'allowlist'):
             self.package()
         self.assertFalse((self.root / 'out').exists())
+
+    def test_agent_is_explicit_and_keeps_identity_and_process_control_out(self):
+        self.package('without-agent')
+        self.assertFalse((self.root / 'without-agent/agent').exists())
+        self.package('with-agent', include_agent=True)
+        root = self.root / 'with-agent'
+        self.assertTrue(json.loads((root / 'bundle-manifest.json').read_text())['agentIncluded'])
+        for name in [*bundle.AGENT_RESOURCES, 'lib/original-agent-dependency.jar', 'ext/normal/original-native-sdk.jar']:
+            self.assertEqual(self.contents['bin/agent/' + name], (root / 'agent' / name).read_bytes())
+        for name in ['application.properties', 'active', 'agent.sh']:
+            self.assertFalse((root / 'agent' / name).exists())
+        self.assertTrue(bundle.verify(root)['verified'])
+        del self.contents['bin/agent/lib/original-agent-dependency.jar']
+        self.build_zip(); self.allow_current_zip()
+        with self.assertRaisesRegex(ValueError, 'agent libraries'):
+            self.package('missing-agent-library', include_agent=True)
+        self.assertFalse((self.root / 'missing-agent-library').exists())
 
     def test_task_manifest_tampering_and_frontend_mismatch_are_rejected(self):
         original = self.task.read_bytes()
@@ -183,6 +207,8 @@ class NativeBundleTest(unittest.TestCase):
         self.assertFalse(manifest['executionVerified'])
         for name in bundle.TASK_SERVICE_RESOURCES:
             self.assertEqual(self.contents[bundle.TASK_SERVICE + name], (root / 'task-service' / name).read_bytes())
+        for name in bundle.COMPONENT_DESCRIPTORS:
+            self.assertEqual(self.contents['META-INF/' + name], (root / 'component-descriptors' / name).read_bytes())
         self.assertEqual(b'original-task-service-dependency', (root / 'task-service/lib/original-task-service.jar').read_bytes())
         self.assertEqual(b'original-x86-extension', (root / 'task-service/ext/normal/original-kafka.jar').read_bytes())
         self.assertFalse((root / 'task-service/ext/huawei/arm-library.jar').exists())

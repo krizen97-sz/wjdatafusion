@@ -1,8 +1,20 @@
 {
-  "scope": "TaskList+ProcessMain+shared original assets; static dependency candidate, not runtime acceptance",
+  "scope": "Original standalone taskList + taskWorkBench, current Chrome; base original task modules and six original standalone assets; static candidate, not full browser acceptance",
   "sourceVersion": "V3.3.0_20260310_9fa7b9356a",
-  "fileCount": 1226,
-  "bytes": 27366907,
+  "fileCount": 1232,
+  "bytes": 31642920,
+  "addsToDfpCandidate": [
+    "static/js/index.8372992c.js",
+    "static/js/188.15d552eb.js",
+    "static/js/826.ab318cb6.js",
+    "static/js/73.55a627ab.js",
+    "static/css/826.6cd3b56d.css",
+    "static/css/73.7e261032.css"
+  ],
+  "excludedOptional": [
+    "legacy-browser chunks",
+    "ai-board module (only needed if actual native AI availability enables it)"
+  ],
   "files": [
     {
       "path": "components/386.js",
@@ -268,6 +280,16 @@
       "path": "static/css/188.c7f3bc5a.css",
       "bytes": 441024,
       "sha256": "57235221b212a732339f1a87f756cef9f57b5577cb8d28c7079dfa7cd169bbd8"
+    },
+    {
+      "path": "static/css/73.7e261032.css",
+      "bytes": 451727,
+      "sha256": "afe79871a5e1de6fefa9279ee7648afd8b6978b64503134e3a61d47e66a9a49d"
+    },
+    {
+      "path": "static/css/826.6cd3b56d.css",
+      "bytes": 30648,
+      "sha256": "b2ab8ee4b9ed9b8f116a38b0f028beb0c296167927d8fb0653035727742d9a86"
     },
     {
       "path": "static/css/chunk-common.e0c68b5c.css",
@@ -1680,6 +1702,11 @@
       "sha256": "5c080e26016d216a662bdb00fbe4a5df8280610919b106eebee00aa7afe7010b"
     },
     {
+      "path": "static/js/188.15d552eb.js",
+      "bytes": 10364,
+      "sha256": "06db2b2acc7934c3f55430d3ac225a53160a81accbedd42a3cf336b927a0f649"
+    },
+    {
       "path": "static/js/249.fad85ee1.js",
       "bytes": 2513,
       "sha256": "3b3f222a444acc4eff524d453a8ff99ebd692820d8a2f64590722cfcb0340d8f"
@@ -1705,6 +1732,16 @@
       "sha256": "25759a706710c7b62cc11504078bc3e7ee7fbe93ea9b344529793ee722b9cc52"
     },
     {
+      "path": "static/js/73.55a627ab.js",
+      "bytes": 3458176,
+      "sha256": "c03fae275438e36faf0ce28a119502cd6cd427f7169c09c966aebbbcf3f5307d"
+    },
+    {
+      "path": "static/js/826.ab318cb6.js",
+      "bytes": 234023,
+      "sha256": "98ec561bed0b48aa644080e2f8773a34a599119ad2f03f01c8dec8c01571891b"
+    },
+    {
       "path": "static/js/945.2c41acbf.js",
       "bytes": 4960,
       "sha256": "847a375adc785b13057223199b176b81201b3651d525d3a80b156fddd483c30e"
@@ -1723,6 +1760,11 @@
       "path": "static/js/chunk-vendors.10072682.js",
       "bytes": 6187730,
       "sha256": "734a2343ed25ca0f73c3bce9ad9a4a29266bd82e3f50ed03da104412628149d1"
+    },
+    {
+      "path": "static/js/index.8372992c.js",
+      "bytes": 91075,
+      "sha256": "a6a7dec5a92a6283bf22980d8c1d14691a30872d42097763a6201cd4c172ba2b"
     },
     {
       "path": "static/loading.gif",

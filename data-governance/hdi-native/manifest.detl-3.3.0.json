@@ -8,7 +8,7 @@
       "frontendVersion": "V3.3.0_20260310_9fa7b9356a"
     }
   },
-  "taskStaticManifestSha256": "6d49a4bcd97baa74ca2a64f016bdcbbdbfdfcf5eeafba8a89670752c12ce16b9",
+  "taskStaticManifestSha256": "d579ebcafeabda3b1492df61fb680006cc99e6cdd7aa7edbcf97b76dcbff56f5",
   "taskStaticManifest": "manifest.task-static.json",
   "notes": [
     "Original source artifacts only; no runtime configuration, credentials, private keys or product activation licenses.",
