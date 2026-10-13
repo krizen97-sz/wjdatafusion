@@ -76,6 +76,30 @@ class HdiCoreRunsTest {
         runs.startDebug(4, 17, 2); awaitState("FAILED");
         verify(worker).cancel(any()); verify(worker, never()).submit(any(), any());
     }
+    @Test void unexpectedCompilerFailureStillCancelsTheUnsubmittedReservation() throws Exception {
+        when(compiler.compile(anyString(), anyString(), anyMap())).thenThrow(new IllegalStateException("do-not-log-business-value"));
+        runs.startDebug(4, 17, 2); awaitState("FAILED");
+        assertTrue(row.get().errorMessage().contains("尚未提交")); assertFalse(row.get().errorMessage().contains("business-value"));
+        verify(worker).cancel(any()); verify(worker, never()).submit(any(), any());
+    }
+    @Test void bareReservationCannotResolveUnknownOutcomeOrEraseItsError() throws Exception {
+        when(worker.submit(any(), any())).thenThrow(new HdiWorkerClient.Failure("EOF", true));
+        runs.startDebug(4, 17, 2); awaitState("UNKNOWN");
+        String error = row.get().errorMessage(); when(worker.status(any())).thenReturn(view("RESERVED", false));
+        assertEquals("UNKNOWN", runs.status(4, row.get().id()).path("state").asText());
+        assertEquals(error, row.get().errorMessage()); verify(worker, times(1)).submit(any(), any());
+    }
+    @Test void explicitRejectionAndConfirmedBareReservationCleanlyFailInsteadOfHanging() throws Exception {
+        when(worker.submit(any(), any())).thenThrow(new HdiWorkerClient.Failure("LOCAL_OUTPUT_REQUIRED", false));
+        when(worker.status(any())).thenReturn(view("RESERVED", false));
+        runs.startDebug(4, 17, 2); awaitState("FAILED");
+        assertTrue(row.get().errorMessage().contains("传输协议")); verify(worker).cancel(any()); verify(worker, times(1)).submit(any(), any());
+    }
+    @Test void negativeReplyWithObservedExecutionRemainsUnknownAndIsNeverAutomaticallyCancelled() throws Exception {
+        when(worker.submit(any(), any())).thenThrow(new HdiWorkerClient.Failure("WORKER_INTERNAL_ERROR", false));
+        when(worker.status(any())).thenReturn(view("RUNNING", false));
+        runs.startDebug(4, 17, 2); awaitState("UNKNOWN"); verify(worker, never()).cancel(any());
+    }
     @Test void terminalWithoutFinalizedConfirmationIsNotReportedAsSucceeded() throws Exception {
         when(worker.submit(any(), any())).thenReturn(view("SUCCEEDED", false));
         runs.startDebug(4, 17, 2); awaitState("STOPPING");

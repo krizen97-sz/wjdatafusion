@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 /** Platform-owned run orchestration. Native observations are authoritative; unknown submissions are never replayed. */
 @Service
 public class HdiCoreRuns {
+    private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(HdiCoreRuns.class);
     private static final Set<String> TERMINAL = Set.of("SUCCEEDED", "FAILED", "CANCELLED");
     private static final Set<String> NATIVE_TERMINAL = Set.of("SUCCEEDED", "FAILED", "CANCELLED", "INTERRUPTED", "TIMED_OUT");
     private final HdiCoreProperties properties;
@@ -123,10 +124,33 @@ public class HdiCoreRuns {
             observe(run, observed);
             if (current.cancelled || closing) observe(run, worker.cancel(run));
         } catch (HdiWorkerClient.Failure failure) {
-            if (failure.uncertain() || current.submitting) unknown(current, "原执行通道中断或提交结果未知；未重新提交");
+            LOG.error("HDI run {} worker failure: {} (submission intent={})", run.id(), failure.code(), current.submitting);
+            if (!failure.uncertain() && current.submitting && confirmUnsubmittedReservation(current)) {
+                current.submitting = false;
+                failBeforeSubmit(current, "LOCAL_OUTPUT_REQUIRED".equals(failure.code())
+                    ? "执行器要求本地文件输出，请核对文件节点的传输协议与远程上传设置；任务尚未开始"
+                    : "执行器拒绝了该配置，任务尚未开始；请核查节点设置或联系管理员");
+            } else if (failure.uncertain() || current.submitting) unknown(current, "原执行通道中断或提交结果未知；未重新提交");
             else failBeforeSubmit(current, "原执行环境当前不可用，任务尚未开始");
-        } catch (HdiTaskFault failure) { failBeforeSubmit(current, failure.getMessage()); }
-        catch (RuntimeException failure) { unknown(current, "平台运行协调异常，请核查原执行状态"); }
+        } catch (HdiTaskFault failure) {
+            LOG.warn("HDI run {} preparation rejected with status {} (submission intent={})", run.id(), failure.status(), current.submitting);
+            failBeforeSubmit(current, failure.getMessage());
+        }
+        catch (RuntimeException failure) {
+            // Keep useful diagnostics without logging a source definition, data value or exception message.
+            LOG.error("HDI run {} preparation failure: {} at {}", run.id(), failure.getClass().getName(),
+                java.util.Arrays.stream(failure.getStackTrace()).limit(12).map(StackTraceElement::toString).collect(java.util.stream.Collectors.joining(" <- ")));
+            if (current.submitting) unknown(current, "平台运行协调异常，请核查原执行状态");
+            else failBeforeSubmit(current, "平台配置准备异常，任务尚未提交；请联系管理员核查运行编号");
+        }
+    }
+    private boolean confirmUnsubmittedReservation(Active current) {
+        try {
+            // Worker persists PREPARING before constructing/starting a Core thread. An owned RESERVED
+            // observation after a definitive rejection proves no execution was admitted; transport failure does not.
+            JsonNode observed = worker.status(current.run);
+            return "RESERVED".equals(observed.path("state").asText()) && !observed.path("finalized").asBoolean();
+        } catch (RuntimeException unavailable) { return false; }
     }
     private void failBeforeSubmit(Active current, String message) {
         if (current.submitting) { unknown(current, "原运行结果待核查，未重新提交"); return; }
@@ -202,6 +226,8 @@ public class HdiCoreRuns {
         HdiTaskStore.Run latest = store.run(run.ownerId(), run.id());
         if (TERMINAL.contains(latest.state())) { active.remove(run.id()); return; }
         String nativeState = observation.path("state").asText(); boolean finalized = observation.path("finalized").asBoolean(false);
+        // A reservation proves no execution. It cannot resolve a prior unknown outcome or erase its diagnostic.
+        if (latest.state().equals("UNKNOWN") && nativeState.equals("RESERVED") && !finalized) return;
         String state;
         if (NATIVE_TERMINAL.contains(nativeState)) {
             if (!finalized) state = "STOPPING";
