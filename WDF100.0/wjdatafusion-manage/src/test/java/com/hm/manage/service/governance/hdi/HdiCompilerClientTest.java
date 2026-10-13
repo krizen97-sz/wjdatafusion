@@ -147,12 +147,20 @@ class HdiCompilerClientTest {
         assertFalse(Files.exists(root.resolve("started")));
     }
 
+    @Test void validatesScheduleEchoAndQuartzExpression() {
+        ObjectNode schedule = JSON.createObjectNode().put("scheduleType", 2).put("unit", 4).put("timeInterval", "1").put("executeTime", "04:05:06");
+        JsonNode valid = client().schedule(schedule, "Asia/Shanghai"); assertEquals("6 5 4 * * ?", valid.path("cronExpressions").get(0).asText());
+        command("schedule-tamper"); assertEquals(502, assertThrows(HdiTaskFault.class, () -> client().schedule(schedule, "Asia/Shanghai")).status());
+    }
+
     @Test void optionalRealOriginalCliReturnsVerifiedSnapshot() throws Exception {
         String bundle = System.getenv("HDI_ORIGINAL_BUNDLE"), javaHome = System.getenv("HDI_COMPILER_JAVA_HOME"), script = System.getenv("HDI_COMPILER_SCRIPT");
         assumeTrue(bundle != null && javaHome != null && script != null, "original CLI integration not configured");
         Path runtime = root.resolve("compiler-state"); Files.createDirectory(runtime, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
         properties.setCompilerCommand(List.of("python3", script, "--bundle", bundle, "--java-home", javaHome, "--runtime", runtime.toString()));
         JsonNode result = client().prepare(context, visual()); assertEquals("17", result.path("canonicalVisual").path("flowId").asText());
+        JsonNode schedule = client().schedule(JSON.createObjectNode().put("scheduleType", 2).put("unit", 4).put("timeInterval", "1").put("executeTime", "04:05:06").put("flowIncrStatus", 1).put("startFullImmediately", 0), "Asia/Shanghai");
+        assertEquals("6 5 4 * * ?", schedule.path("cronExpressions").get(0).asText());
     }
 
     @Test void optionalRealOriginalCliCompilesAndBindsActualThreeNodePayload() throws Exception {
@@ -196,6 +204,12 @@ class HdiCompilerClientTest {
             }
             if (mode.equals("hang") || mode.equals("hold")) { Thread.sleep(10000); return; }
             JsonNode request = JSON.readTree(System.in.readAllBytes());
+            if (request.path("operation").asText().equals("schedule")) {
+                ObjectNode response = JSON.createObjectNode().put("ok", true).put("protocolVersion", 1).put("operation", "schedule").put("zoneId", request.path("zoneId").asText());
+                response.set("scheduleConfig", request.path("scheduleConfig")); response.set("diagnostics", JSON.createArrayNode());
+                response.set("cronExpressions", JSON.createArrayNode().add(mode.equals("schedule-tamper") ? "invalid cron" : "6 5 4 * * ?"));
+                System.out.print(response); return;
+            }
             if (mode.equals("overflow")) { System.out.print("x".repeat(1024 * 128)); return; }
             if (mode.equals("unsupported")) {
                 System.err.print("credential-secret".repeat(10000));
