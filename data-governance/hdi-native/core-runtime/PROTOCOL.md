@@ -61,3 +61,6 @@ Linux 必须支持 unprivileged user/network/PID namespaces。Core namespace 只
 `tls` 可指向管理员为该模块新建的私有 `serverKeystore/clientKeystore/passwordFile`；省略时为每次运行生成新 JKS。测试证书的短有效期不能当作正式部署配置。`javaRuntimeMode` 默认 `normal`；`interpreted-validation` 仅用于 QEMU TCG 上 Java 11 C1 不稳定的本机验证，会显式出现在 hello 中。正式原生 Linux 不应照抄该测试模式。
 
 本次验证包括真实原 DataGenerator → FieldMapping → FileOutput 的原生 finish、3 行 CSV 的内容/完整 SHA、分块产物、跨 owner 拒绝、重复 submit 幂等以及 held 子进程退出。运行取消已验证发布原 stop 后安全关闭本次进程；原生 stop 终态在 15 秒窗口未观察到时明确返回 `ORIGINAL_STOP_TIMEOUT_PROCESS_CLOSED`，不会把中间文件作为成功产物。当前 namespace 隔离的是网络与 PID，不是完整文件系统沙箱；只接受受平台编译器约束的三个已选插件。
+
+
+内置协调器追加验收：无 `zookeeper` 配置时，原 bundle 的 ZooKeeper 独立启动，完整三节点 stdio 验收通过；关闭后 held supervisor 与 JVM 均结束，预先存在的实验协调器保持运行。协调 JVM 通过 stdin 租约和 Linux parent-death signal 双重约束；worker 断连正常清理，supervisor 被强制结束时只终止其 held JVM。启动保存 PID、启动 tick、argv 哈希，发现旧记录对应进程仍存活时拒绝接管。Linux 实测 23 项组件测试通过，包含 stdin EOF 与 supervisor SIGKILL 后原子进程不遗留两项；macOS 上这两项 Linux 专有测试明确跳过。

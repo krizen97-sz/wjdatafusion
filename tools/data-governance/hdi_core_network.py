@@ -224,13 +224,72 @@ def namespace_supervisor(config_path):
     return 0
 
 
+def leased_exec(config_path, parent_pid):
+    """Linux parent-death signal survives exec and prevents an orphan JVM."""
+    import ctypes
+    if sys.platform != 'linux':
+        raise RuntimeError('Linux process ownership is required')
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(1, signal.SIGKILL, 0, 0, 0) != 0 or os.getppid() != parent_pid:
+        raise RuntimeError('Coordinator parent ownership was lost')
+    config = json.loads(Path(config_path).read_text())
+    os.execv(config['command'][0], config['command'])
+
+
+def leased_supervisor(config_path):
+    path = Path(config_path)
+    if path.is_symlink() or not path.is_file() or path.stat().st_mode & 0o077:
+        raise ValueError('Coordinator config must be a private regular file')
+    config = json.loads(path.read_text())
+    stopped = threading.Event()
+    for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        signal.signal(signum, lambda _s, _f: stopped.set())
+    def lease():
+        try:
+            for line in sys.stdin:
+                if line.strip() == 'HALT':
+                    break
+        finally:
+            stopped.set()
+    process = None
+    with open(config['log'], 'ab', buffering=0) as stream:
+        try:
+            process = subprocess.Popen([sys.executable, str(Path(__file__).resolve()),
+                '--leased-exec', str(path), '--parent-pid', str(os.getpid())],
+                stdin=subprocess.DEVNULL, stdout=stream, stderr=stream)
+            threading.Thread(target=lease, daemon=True).start()
+            print(json.dumps({'event': 'COORDINATOR_STARTED', 'pid': str(process.pid)}), flush=True)
+            while not stopped.wait(.2):
+                if process.poll() is not None:
+                    return process.returncode
+        finally:
+            if process is not None and process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+            print(json.dumps({'event': 'COORDINATOR_CLOSED',
+                              'finalized': process is None or process.poll() is not None}), flush=True)
+    return 0
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--namespace-config', required=True)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--namespace-config')
+    group.add_argument('--leased-config')
+    group.add_argument('--leased-exec')
+    parser.add_argument('--parent-pid', type=int)
     args = parser.parse_args()
     try:
-        raise SystemExit(namespace_supervisor(args.namespace_config))
+        if args.leased_exec:
+            leased_exec(args.leased_exec, args.parent_pid)
+        elif args.leased_config:
+            raise SystemExit(leased_supervisor(args.leased_config))
+        else:
+            raise SystemExit(namespace_supervisor(args.namespace_config))
     except Exception as error:
-        # Only the class is safe for an untrusted native process/config failure.
         print(json.dumps({'event': 'ISOLATION_FAILED', 'errorType': type(error).__name__}), flush=True)
         raise SystemExit(2)

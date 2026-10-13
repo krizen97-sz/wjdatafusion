@@ -289,18 +289,30 @@ class Worker:
         path = state / 'zoo.cfg'
         path.write_text('tickTime=2000\ndataDir=' + str(state / 'data') + '\nclientPort=' + str(number)
                         + '\nclientPortAddress=127.0.0.1\nadmin.enableServer=false\n4lw.commands.whitelist=ruok\n')
-        self.coordinator_stream = open(state / 'coordinator.log', 'ab')
-        self.coordinator = subprocess.Popen([self.java, *self.java_options, '-Xmx128m',
+        previous = self.root / 'coordinator-process.json'
+        if previous.exists():
+            record = strict_json(private_file(previous))
+            if any(identity(item['pid']) == item['identity'] for item in record.values()):
+                raise ProtocolError('COORDINATOR_RECOVERY_REQUIRED')
+        command = [self.java, *self.java_options, '-Xmx128m',
             '-Dlogback.configurationFile=' + str(self.log_config), '-Dzookeeper.admin.enableServer=false',
-            '-cp', str(home / 'lib/*'), 'org.apache.zookeeper.server.quorum.QuorumPeerMain', str(path)],
-            stdin=subprocess.DEVNULL, stdout=self.coordinator_stream, stderr=self.coordinator_stream)
+            '-cp', str(home / 'lib/*'), 'org.apache.zookeeper.server.quorum.QuorumPeerMain', str(path)]
+        leased = state / 'coordinator-owned.json'
+        atomic_json(leased, {'command': command, 'log': str(state / 'coordinator.log')})
+        self.coordinator = JsonChild([sys.executable, str(ROOT / 'hdi_core_network.py'),
+                                      '--leased-config', str(leased)], state / 'supervisor.log')
+        event = self.coordinator.receive(10)
+        if event.get('event') != 'COORDINATOR_STARTED':
+            raise ProtocolError('COORDINATOR_START_FAILED')
+        child_pid = int(event['pid'])
+        # leased-exec becomes the JVM without changing PID; readiness also checks exact socket ownership.
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
-            if self.coordinator.poll() is not None:
+            if self.coordinator.process.poll() is not None:
                 raise ProtocolError('COORDINATOR_START_FAILED')
             # Confirm the listener belongs to this held JVM, not a pre-existing service.
             inodes = set()
-            for fd in Path('/proc', str(self.coordinator.pid), 'fd').iterdir():
+            for fd in Path('/proc', str(child_pid), 'fd').iterdir():
                 try:
                     target = os.readlink(fd)
                     if target.startswith('socket:['):
@@ -311,6 +323,11 @@ class Worker:
                 for line in Path('/proc/net', family).read_text().splitlines()[1:]:
                     fields = line.split()
                     if fields[3] == '0A' and int(fields[1].split(':')[-1], 16) == number and fields[9] in inodes:
+                        child_identity = identity(child_pid)
+                        if child_identity is None:
+                            raise ProtocolError('COORDINATOR_START_FAILED')
+                        atomic_json(previous, {'supervisor': self.coordinator.record,
+                                               'jvm': {'pid': child_pid, 'identity': child_identity}})
                         self.zk = {'host': '127.0.0.1', 'port': number}
                         return
             time.sleep(.2)
@@ -516,15 +533,8 @@ class Worker:
         for task in tasks:
             task.thread.join(timeout=max(0, deadline - time.monotonic()))
         unfinished = [task.record['runId'] for task in tasks if task.thread.is_alive() or not task.record.get('finalized')]
-        if self.coordinator is not None and self.coordinator.poll() is None:
-            self.coordinator.terminate()
-            try:
-                self.coordinator.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                self.coordinator.kill()
-                self.coordinator.wait(timeout=5)
-        if self.coordinator_stream:
-            self.coordinator_stream.close()
+        if self.coordinator is not None:
+            self.coordinator.stop(grace=5)
         if unfinished:
             atomic_json(self.root / '.shutdown-unconfirmed.json', {'runs': unfinished})
             self.closed_result = False
