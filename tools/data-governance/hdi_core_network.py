@@ -156,7 +156,9 @@ def namespace_supervisor(config_path):
     if sorted(name for _, name in socket.if_nameindex()) != ['lo']:
         raise RuntimeError('Core namespace contains a nonloopback interface')
     import resource
-    file_limit = config.get('maximumFileBytes', 64 * 1024 * 1024)
+    # Original DiskStore maps a 256 MiB segment. Output files have a separate,
+    # smaller aggregate monitor; this process-wide cap also applies to scratch.
+    file_limit = config.get('maximumFileBytes', 512 * 1024 * 1024)
     if type(file_limit) is not int or not 1024 <= file_limit <= 1024 * 1024 * 1024:
         raise ValueError('Invalid Core file-size limit')
     resource.setrlimit(resource.RLIMIT_FSIZE, (file_limit, file_limit))

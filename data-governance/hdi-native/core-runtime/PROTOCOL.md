@@ -63,7 +63,24 @@ Linux 必须支持 unprivileged user/network/PID namespaces。Core namespace 只
 本次验证包括真实原 DataGenerator → FieldMapping → FileOutput 的原生 finish、3 行 CSV 的内容/完整 SHA、分块产物、跨 owner 拒绝、重复 submit 幂等以及 held 子进程退出。运行取消已在 45 秒等待配置下验证本次 exec_id 的原生 stop 终态，随后确认进程退出且不返回中间产物；若其他运行在停止窗口未观察到原生终态则明确返回 `ORIGINAL_STOP_TIMEOUT_PROCESS_CLOSED`，不会把中间文件作为成功产物。当前 namespace 隔离的是网络与 PID，不是完整文件系统沙箱；只接受受平台编译器约束的三个已选插件。
 
 
-内置协调器追加验收：无 `zookeeper` 配置时，原 bundle 的 ZooKeeper 独立启动，完整三节点 stdio 验收通过；关闭后 held supervisor 与 JVM 均结束，预先存在的实验协调器保持运行。协调 JVM 通过 stdin 租约和 Linux parent-death signal 双重约束；worker 断连正常清理，supervisor 被强制结束时只终止其 held JVM。启动保存 PID、启动 tick、argv 哈希，发现旧记录对应进程仍存活时拒绝接管。Linux 实测 28 项组件测试通过，包含 stdin EOF 与 supervisor SIGKILL 后原子进程不遗留两项；macOS 上这两项 Linux 专有测试明确跳过。
+内置协调器追加验收：无 `zookeeper` 配置时，原 bundle 的 ZooKeeper 独立启动，完整三节点 stdio 验收通过；关闭后 held supervisor 与 JVM 均结束，预先存在的实验协调器保持运行。协调 JVM 通过 stdin 租约和 Linux parent-death signal 双重约束；worker 断连正常清理，supervisor 被强制结束时只终止其 held JVM。启动保存 PID、启动 tick、argv 哈希，发现旧记录对应进程仍存活时拒绝接管。Linux 实测 49 项组件测试通过，包含 stdin EOF 与 supervisor SIGKILL 后原子进程不遗留两项；macOS 上这两项 Linux 专有测试明确跳过。
 
 
 `stopTimeoutSeconds` 默认 45 秒，可设置为 45–60 的整数，覆盖原普通任务 30 秒的停止等待。普通取消等待这个窗口，再关闭本次 held 进程；未确认关闭保持 UNKNOWN。`shutdown` 为所有运行共享 70 秒总预算：先同时提出取消，运行线程并行在前 60 秒完成或留下恢复屏障，最后最多 10 秒关闭内置协调器。进入 shutdown 后原 stop 的等待会缩短到共享截止前 15 秒，为进程确认与代理关闭留时间；不会按四个运行逐个等待 45 秒。该预算由 hello 的 `shutdownTimeoutSeconds` 返回，平台 stdio 超时应至少 80 秒。文件系统故障或无法确认退出会持久化 `.shutdown-unconfirmed.json` 并拒绝自动重启。
+
+
+## 运行文件预算与原日志
+
+原 DiskStore 构造器固定创建 256 MiB 的映射段。Core 全进程的单文件 `RLIMIT_FSIZE` 因此为 512 MiB；它与较小的用户结果限额分开。每个运行另有独立监测线程，每 0.2 秒扫描自身固定目录，不等待 ZooKeeper 元数据调用，并从 Core 启动一直工作到进程关闭；最终收编产物前再复核一次。
+
+| 类别 | 自身目录 | 运行时总量 / 文件数 |
+| --- | --- | --- |
+| 用户产物 | `outputs` | 64 MiB / 128 |
+| 内部缓存 | `store/tmp/work/fel/home` | 1 GiB / 4096 |
+| 日志 | `logs` | 64 MiB / 1024 |
+
+扫描通过目录文件描述符逐层打开，拒绝符号链接和非普通文件，不跟踪其它目录。轮询总量约束存在最多一个采样间隔的观察延迟，不能当作文件系统硬配额；单文件硬限制仍保留。超过任一预算即终止该运行仍持有的隔离进程，确认关闭后报告 `OUTPUT_LIMIT/SCRATCH_LIMIT/LOG_LIMIT` 等失败，不将中间结果收编为成功产物。
+
+Core 使用原 bundle 的 `logback.xml` 派生配置，保留原 SIFT、discriminator、filter 和实际文件写入器，只将 `LOG_HOME/DURABLE_LOG_HOME` 放入本次私有日志目录，并将控制台日志交现有脱敏通道。原管理历史不被适配器伪造，也不会通过创建空文件来冒充原写日志功能。
+
+独立三行任务复验已确认原生 finish、CSV/SHA、256 MiB 缓存文件成功创建，`File too large` 与调度日志 `NoSuchFileException` 消失。原新实例仍有一次首次读取尚不存在的状态历史文件异常：`TaskUtils.findRunningFlows` 捕获后继续，随后原 SIFT 写入器实际生成非空历史文件。因此本次验收不宣称日志零错误，不增加首次启动 hook，也不修改原 JAR。
