@@ -96,6 +96,14 @@ class HdiCoreCatalogTest {
         HdiCoreProperties properties = new HdiCoreProperties(); properties.setBundleDir(System.getProperty("hdi.core.bundle"));
         HdiCoreCatalog real = new HdiCoreCatalog(properties, new HdiCoreAssets(properties));
         assertEquals(3, real.getAdapters().size());
+        assertTrue(real.getAdapterUiInfo("dataGeneratorInput").isEmpty());
+        assertTrue(real.getAdapterUiInfo("fieldMapping").isEmpty());
+        assertEquals(Map.of("adapterExtField", "false", "adapterTableUse", "false", "adapterTableTruncate", "false"), real.getAdapterUiInfo("fileOutput"));
+        for (String[] plugin : new String[][]{{"dataGeneratorInput", "input"}, {"fieldMapping", "preproc"}, {"fileOutput", "output"}}) {
+            var adapterParams = real.listParams(6, plugin[0], plugin[1]);
+            assertFalse(adapterParams.isEmpty());
+            assertTrue(adapterParams.stream().allMatch(row -> Integer.valueOf(6).equals(row.get("paramTypeId"))));
+        }
         var generator = real.listParams(9, "dataGeneratorInput", "input");
         assertEquals("100000", generator.stream().filter(row -> row.get("paramName").equals("etl.plugin.input.generator.data.size")).findFirst().orElseThrow().get("paramDefaultValue"));
         assertEquals(20, real.listParams(2, null, null).size());
@@ -106,6 +114,21 @@ class HdiCoreCatalogTest {
     @Test void originalIconMustMatchThePublicManifest() throws Exception {
         Files.writeString(fixture.bundle.resolve("public/static/img/defaultinput.e71f57a7.svg"), "tampered");
         assertEquals(503, assertThrows(HdiTaskFault.class, () -> catalog.getAdapters()).status());
+    }
+
+    @Test void adapterUiInfoComesFromVerifiedOptionalPluginMetadata() throws Exception {
+        assertTrue(catalog.getAdapterUiInfo("dataGeneratorInput").isEmpty());
+        assertTrue(catalog.getAdapterUiInfo("fieldMapping").isEmpty());
+        String path = "instance/etl-fileOutput-2.0.0/etl_plugin.json";
+        var definition = HdiProtocol.JSON.readTree(Files.readAllBytes(fixture.bundle.resolve(path)));
+        ((com.fasterxml.jackson.databind.node.ObjectNode)definition).putObject("adapterUIParams")
+            .put("adapterExtField", "false").put("adapterTableUse", "false").put("adapterTableTruncate", "false");
+        fixture.entries.removeIf(row -> path.equals(row.get("path")));
+        fixture.put(path, HdiProtocol.JSON.writeValueAsBytes(definition)); fixture.manifest();
+        assertEquals(Map.of("adapterExtField", "false", "adapterTableUse", "false", "adapterTableTruncate", "false"), catalog.getAdapterUiInfo("fileOutput"));
+        assertEquals(400, assertThrows(HdiTaskFault.class, () -> catalog.getAdapterUiInfo("jdbcOutput")).status());
+        Files.writeString(fixture.bundle.resolve(path), "{}");
+        assertEquals(503, assertThrows(HdiTaskFault.class, () -> catalog.getAdapterUiInfo("fileOutput")).status());
     }
 
 }

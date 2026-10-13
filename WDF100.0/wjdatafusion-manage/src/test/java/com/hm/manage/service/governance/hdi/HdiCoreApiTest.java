@@ -320,4 +320,26 @@ class HdiCoreApiTest {
         assertTrue(json(request(get("/detl/flow/getColumnDisplayName"), editorSession, false), 200).path("data").isEmpty());
     }
 
+    @Test void originalNodeFormsCanReadPluginUiInfoAndAdapterParameterCategories() throws Exception {
+        when(catalog.getAdapterUiInfo("fileOutput")).thenReturn(Map.of("adapterTableUse", "false"));
+        assertEquals("false", json(request(get("/detl/globalConfig/groupAdapterManage/getAdapterUIInfo").param("adapterName", "fileOutput"), editorSession, false), 200)
+            .path("data").path("adapterTableUse").asText());
+        for (int typeId : new int[]{6, 9}) for (String[] plugin : new String[][]{{"dataGeneratorInput", "input"}, {"fieldMapping", "preproc"}, {"fileOutput", "output"}}) {
+            when(catalog.listParams(typeId, plugin[0], plugin[1])).thenReturn(List.of(Map.of("paramName", "original.param", "paramDisplayName", "原参数",
+                "paramDefaultValue", "10", "loadFlag", 1, "valueType", "el-input", "paramCategory", "原分类", "paramSubCategory", "原子类", "values", List.of())));
+            ObjectNode query = HdiProtocol.JSON.createObjectNode().put("typeId", typeId).put("adapterName", plugin[0]).put("stepTypeName", plugin[1]).put("onlySelected", true);
+            query.putArray("params").addObject().put("paramName", "original.param").put("paramValue", "20");
+            JsonNode groups = json(request(post("/detl/globalConfig/paramManage/getParamCategory").contentType("application/json").content(query.toString()), editorSession, true), 200).path("data");
+            JsonNode row = groups.get(0).path("subCategories").get(0).path("params").get(0);
+            assertEquals("原分类", groups.get(0).path("category").asText()); assertEquals("20", row.path("paramValue").asText());
+            assertEquals("10", row.path("defaultValue").asText()); assertEquals("el-input", row.path("valueType").asText()); assertEquals(1, row.path("loadFlag").intValue());
+            query.put("keyword", "不会匹配");
+            assertTrue(json(request(post("/detl/globalConfig/paramManage/getParamCategory").contentType("application/json").content(query.toString()), editorSession, true), 200).path("data").isEmpty());
+            json(request(post("/detl/globalConfig/paramManage/getParamCategory").contentType("application/json").content(query.toString()), editorSession, false), 403);
+        }
+        when(catalog.listParams(9, "jdbcInput", "input")).thenThrow(new HdiTaskFault(400, "不支持该插件"));
+        json(request(post("/detl/globalConfig/paramManage/getParamCategory").contentType("application/json")
+            .content("{\"typeId\":9,\"adapterName\":\"jdbcInput\",\"stepTypeName\":\"input\",\"params\":[]}"), editorSession, true), 400);
+    }
+
 }
