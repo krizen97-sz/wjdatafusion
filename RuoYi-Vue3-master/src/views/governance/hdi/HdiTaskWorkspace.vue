@@ -4,7 +4,7 @@
       <el-button v-if="taskId" icon="Back" @click="backToList">任务列表</el-button>
       <el-button v-if="taskId" icon="Tickets" @click="historyOpen = true">运行记录</el-button>
       <el-button v-if="warned" icon="Refresh" @click="connect(true)">重新连接</el-button>
-      <el-text v-if="taskId" type="info" class="ml10">本地文件目录填写“/平台输出”，运行后可在记录中下载。</el-text>
+      <el-text v-if="taskId" type="info" class="ml10">CSV 输出请关闭异步生成，目录填写“/平台输出”。节点速度暂未采集，结果请看运行记录。</el-text>
     </div>
     <HdiRunHistory v-model="historyOpen" :task-id="taskId" />
     <el-result v-if="failed" icon="warning" title="任务工作区暂不可用" sub-title="请重试；如果仍无法连接，请联系管理员。">

@@ -48,7 +48,7 @@ data-governance-hdi-core:
     - /var/lib/rynew/hdi/private/worker.json
 ```
 
-`worker-command` 使用部署机本地 worker 的明确参数数组，不经 shell；与编译器保持同一个已校验 bundle。平台自身继续使用 Java 17，编译器可用 Java 11 / 17，**原执行核心必须单独配置 Linux x86_64 Java 11**，不能直接照搬平台的 JAVA_HOME。私有 worker JSON、控制桥构建、Redis 口令文件和内置协调器规则见 `core-runtime/PROTOCOL.md`。先构建控制桥并填写其实际 SHA-256，再启动 worker 的真实预检；仅填路径不算部署成功。
+`worker-command` 使用部署机本地 worker 的明确参数数组，不经 shell；与编译器保持同一个已校验 bundle。平台自身继续使用 Java 17，编译器可用 Java 11 / 17，**原执行核心必须单独配置 Linux x86_64 Java 11**，不能直接照搬平台的 JAVA_HOME。使用 [本机安装准备入口](core-runtime/SETUP.md) 检查运行条件、构建控制桥并生成私有配置；它不会启动服务或覆盖既有目录。协议与内置协调器规则见 `core-runtime/PROTOCOL.md`。准备完成后仍需运行真实预检和任务验收。
 
 缺失 worker 或隔离能力时，执行资源显示不可用，不自动连接原平台。开发机跨架构实验的 SSH 通道不是生产依赖。
 
