@@ -154,6 +154,12 @@ class DataGovernanceLocalEngineTest {
         config(lookup).put("missing", "KEEP"); config(lookup).put("multiple", "FAIL"); assertEquals("lookup", assertThrows(DataGovernanceLocalEngine.ExecutionException.class, () -> run(graph)).nodeId());
     }
 
+    @Test void lookupMatchesCsvIdentifiersAgainstOrdinaryNumericSnapshotKeys() {
+        var lookup = node("lookup", "LOOKUP", m("rows", List.of(m("key", 1000, "label", "matched")), "matches", List.of(m("inputField", "key", "lookupField", "key")), "returns", List.of(m("lookupField", "label", "outputField", "label")), "missing", "FAIL", "multiple", "FAIL"));
+        var result = run(chain(node("input", "CSV_INPUT", m("content", "key\n1000\n")), lookup, output("JSON")));
+        assertEquals("[{\"key\":\"1000\",\"label\":\"matched\"}]", bytes(result));
+    }
+
     @Test void cancellationIsCheckedInsideInputRowsAndAtNodeBoundaries() {
         AtomicInteger calls = new AtomicInteger(); var graph = chain(source("[" + "{\"x\":1},".repeat(50) + "{\"x\":1}]"), output("JSON"));
         var failure = assertThrows(CancellationException.class, () -> engine.execute(graph, null, 10, () -> calls.incrementAndGet() > 15)); assertTrue(failure.getMessage().contains("input")); assertTrue(calls.get() < 30);
