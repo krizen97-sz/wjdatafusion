@@ -192,15 +192,29 @@ class OriginalSdkTests(unittest.TestCase):
 
     def test_original_mapping_rename_uses_native_null_process_type_default(self):
         visual = original_ui_visual()
-        visual['nodes']['120']['transformFieldVoList'][0]['fieldDstName'] = 'renamed'
-        visual['nodes']['130']['dstTableFieldVoList'][0]['fieldName'] = 'renamed'
-        result = self.invoke(self.compile_request(self.prepare(visual)))
+        # Exact edited field shape observed after the original browser saved a rename.
+        # Neither the original form nor TransformFieldService adds processType="move".
+        visual['nodes']['120']['transformFieldVoList'][0].update(
+            fieldDstName='mapped_message', fieldDstDisplayName='mapped_message',
+            duplicatedDstName=False, fieldSyncStatus='sync', columnType='varchar', condExpression='')
+        visual['nodes']['130']['dstTableFieldVoList'][0].update(
+            fieldName='mapped_message', fieldDisplayName='mapped_message',
+            fieldSyncStatus='sync', columnType='varchar', condExpression='')
+        prepared = self.prepare(visual)
+        self.assertNotIn('processType', prepared['canonicalVisual']['nodes']['120']['transformFieldVoList'][0])
+        result = self.invoke(self.compile_request(prepared))
         self.assertTrue(result['ok'], result)
         native = json.loads(base64.b64decode(result['flowjson']['base64']))
-        mapping = native['streams'][0]['modules'][1]['config']['fields'][0]
+        fields = native['streams'][0]['modules'][1]['config']['fields']
+        self.assertEqual(1, len(fields))
+        mapping = fields[0]
         self.assertEqual('message', mapping['field_src_name'])
-        self.assertEqual('renamed', mapping['field_target_name'])
+        self.assertEqual('mapped_message', mapping['field_target_name'])
         self.assertNotIn('field_src_reserve', mapping)
+        self.assertNotIn('cond_expression', mapping)
+        output = native['streams'][0]['modules'][2]['config']['datasource'][0]['dst_table_field'][0]
+        self.assertEqual('mapped_message', output['field_name'])
+        self.assertNotIn('field_expression', output)
 
     def test_original_form_cannot_silently_lose_selected_format_to_legacy_parameter(self):
         visual = original_ui_visual()
