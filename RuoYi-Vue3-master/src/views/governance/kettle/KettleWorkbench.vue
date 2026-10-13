@@ -3,25 +3,26 @@
     <header class="kettle-toolbar">
       <div class="kettle-task-heading">
         <div class="kettle-title-line"><strong :title="graph.name || '数据开发工作台'">{{ graph.name || '数据开发工作台' }}</strong><el-tag v-if="definition" size="small" effect="plain">{{ graph.kind === 'job' ? '作业' : '转换' }} · V{{ definition.revision }}</el-tag></div>
-        <div class="kettle-heading-meta"><el-text v-if="loading" type="info" size="small">正在加载工作台</el-text><el-text v-else-if="definition" :type="dirty || configDirty || connectionDirty ? 'warning' : 'info'" size="small">{{ dirty || configDirty || connectionDirty ? '有未保存修改' : '已保存' }}</el-text><el-tooltip :content="engineReady ? '执行服务可访问；数据源和节点配置仍需检查与测试' : '执行服务暂不可用，仍可查看和编辑已保存任务'" placement="bottom"><el-text :type="engineReady ? 'success' : 'info'" size="small">{{ engineReady ? '执行服务已连接' : '执行服务未连接' }}</el-text></el-tooltip><el-text v-if="executionProtected" type="warning" size="small">{{ activeRun ? '执行中，配置只读' : '执行状态待核查，配置只读' }}</el-text></div>
+        <div class="kettle-heading-meta"><el-text v-if="loading" type="info" size="small">正在加载工作台</el-text><el-text v-else-if="definition" :type="dirty || configDirty || connectionDirty ? 'warning' : 'info'" size="small">{{ dirty || configDirty || connectionDirty ? '有未保存修改' : '已保存' }}</el-text><el-tooltip :content="runtime.guidance" placement="bottom"><el-text :type="runtime.type === 'error' ? 'danger' : runtime.type" size="small">{{ runtime.label }}</el-text></el-tooltip><el-text v-if="executionProtected" type="warning" size="small">{{ activeRun ? '执行中，配置只读' : '执行状态待核查，配置只读' }}</el-text></div>
       </div>
       <div class="kettle-primary-actions">
         <el-button v-if="canEdit && definition" icon="DocumentChecked" :loading="saving" :disabled="!canChange || (!dirty && !configDirty && !connectionDirty)" @click="save">保存任务</el-button>
         <el-tooltip v-if="canRun && definition" :content="previewReason || '预览选中节点及其上游的实际数据'" placement="bottom"><span><el-button icon="View" :disabled="!canPreviewSelected" @click="execute('preview')">{{ dirty || configDirty ? '保存并预览' : '预览节点' }}</el-button></span></el-tooltip>
-        <el-button v-if="canRun && definition" type="primary" icon="VideoPlay" :disabled="!engineReady || busy || executionProtected" :loading="starting" @click="execute('run')">{{ dirty || configDirty ? '保存并运行' : '运行任务' }}</el-button>
+        <el-button v-if="canRun && definition" type="primary" icon="VideoPlay" :disabled="!engineReady || starterInputMissing || busy || executionProtected" :loading="starting" @click="execute('run')">{{ dirty || configDirty ? '保存并运行' : '运行任务' }}</el-button>
         <el-button v-if="executionProtected && run?.id && canRun" type="danger" plain icon="VideoPause" :loading="stopping" @click="stop">停止运行</el-button>
         <el-tooltip content="刷新执行服务与任务列表" placement="bottom"><el-button icon="Refresh" :loading="loading" :disabled="busy" aria-label="刷新执行服务与任务列表" @click="load" /></el-tooltip>
       </div>
     </header>
-    <div v-if="submissionRevisionExpired || pendingSubmission || error || (!engineReady && !loading)" class="kettle-notices">
+    <div v-if="submissionRevisionExpired || pendingSubmission || error || starterSelected || (!engineReady && !loading)" class="kettle-notices">
       <el-alert v-if="submissionRevisionExpired" title="原提交版本已过期，已确认没有执行该请求" type="warning" :closable="false"><el-button @click="openDefinition(definition.id, true)">重新读取任务</el-button></el-alert>
       <el-alert v-if="pendingSubmission" title="上次提交尚未确认，已保留原请求标识" type="warning" :closable="false"><el-space><el-button :loading="starting" @click="checkSubmission">核查提交记录</el-button><el-button v-if="canRun" :loading="starting" @click="retrySubmission">重试原提交</el-button></el-space></el-alert>
       <el-alert v-if="error" :title="error" type="error" show-icon closable @close="error = ''" />
-      <el-alert v-if="!engineReady && !loading" title="执行服务暂不可用，可先编辑任务，连接恢复后再检查字段和运行" type="info" :closable="false" />
+      <el-alert v-if="!engineReady && !loading" :title="runtime.label" :type="runtime.type" show-icon :closable="false"><span>{{ runtime.guidance }}</span><el-button v-if="!runtime.poll" link type="primary" :disabled="busy" @click="load">刷新引擎状态</el-button></el-alert>
+      <el-alert v-if="starterSelected" :title="starterInputMissing ? '示例输入文件尚未就绪' : '本地示例使用提示'" :type="starterInputMissing ? 'warning' : 'info'" :closable="false" show-icon><template v-if="starterInputMissing">请补齐 sample.csv 后再预览或运行。<el-button v-if="canEdit" link type="primary" :disabled="!canChange" :loading="uploading" @click="restoreStarterInput">补齐示例输入</el-button></template><template v-else>先选中“按姓名排序”并预览；运行后在结果中下载 result.csv。初始示例使用3行合成数据；修改流程后，以当前节点配置为准。</template></el-alert>
     </div>
     <div class="kettle-body" :class="{ 'has-library': libraryOpen && !resultsExpanded, 'has-inspector': inspectorVisible && !resultsExpanded, 'results-expanded': resultsExpanded && resultsOpen }">
       <aside v-show="libraryOpen && !resultsExpanded" class="kettle-library" aria-label="任务与工具">
-        <div class="kettle-library-actions"><template v-if="canEdit"><el-dropdown trigger="click" @command="openNew"><el-button size="small" icon="Plus" :disabled="busy">新建<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="transformation">数据转换</el-dropdown-item><el-dropdown-item command="job">执行作业</el-dropdown-item></el-dropdown-menu></template></el-dropdown><el-upload action="#" :show-file-list="false" :http-request="importFile" accept=".ktr,.kjb,.zip" :disabled="busy"><el-button size="small" icon="Upload" :disabled="busy" title="导入KTR、KJB或ZIP">导入</el-button></el-upload></template><el-tooltip content="收起任务与工具"><el-button size="small" link icon="Fold" aria-label="收起任务与工具面板" @click="libraryOpen = false" /></el-tooltip></div>
+        <div class="kettle-library-actions"><template v-if="canEdit"><el-dropdown trigger="click" @command="openNew"><el-button size="small" icon="Plus" :disabled="busy">新建<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button><template #dropdown><el-dropdown-menu><el-dropdown-item command="sample">从本地示例开始</el-dropdown-item><el-dropdown-item command="transformation">空白数据转换</el-dropdown-item><el-dropdown-item command="job">执行作业</el-dropdown-item></el-dropdown-menu></template></el-dropdown><el-upload action="#" :show-file-list="false" :http-request="importFile" accept=".ktr,.kjb,.zip" :disabled="busy"><el-button size="small" icon="Upload" :disabled="busy" title="导入KTR、KJB或ZIP">导入</el-button></el-upload></template><el-tooltip content="收起任务与工具"><el-button size="small" link icon="Fold" aria-label="收起任务与工具面板" @click="libraryOpen = false" /></el-tooltip></div>
         <el-tabs v-model="leftTab" class="motion-tabs kettle-library-tabs">
           <el-tab-pane label="任务" name="tasks"><template #label><span class="motion-control-label"><svg-icon icon-class="list" class="motion-control-label__icon" /><span class="motion-control-label__text">任务</span></span></template>
             <el-input v-model="taskSearch" clearable placeholder="搜索任务名称" aria-label="搜索任务" prefix-icon="Search" />
@@ -54,7 +55,7 @@
         <div v-show="!resultsExpanded || !resultsOpen" class="kettle-canvas" v-loading="loading">
           <FlowDiagram v-if="definition" ref="diagram" :nodes="graph.nodes" :connections="graph.connections" :selected-node-id="selectedNodeId" :selected-edge-id="selectedEdgeId" :editable="canChange && !configDirty" :presentation="presentation" :summary="nodeSummary" :source-predicate="isSource" :run="diagramRun" :result-stale="dirty || configDirty || run?.revision !== definition?.revision" show-auxiliary @select-node="selectNode" @select-edge="selectEdge" @move-node="moveNode" @add-node="dropPlugin" @connect="connectNodes" />
 
-          <el-empty v-else description="选择一个已有任务，或开始新的数据处理流程" :image-size="80"><el-space v-if="canEdit" wrap><el-button type="primary" icon="Plus" @click="openNew('transformation')">新建数据转换</el-button><el-button icon="Connection" @click="openNew('job')">编排执行作业</el-button></el-space><el-text v-else type="info">从左侧选择有权限查看的任务</el-text></el-empty>
+          <el-empty v-else description="选择一个已有任务，或开始新的数据处理流程" :image-size="80"><el-space v-if="canEdit" wrap><el-button type="primary" icon="VideoPlay" :disabled="busy" @click="openNew('sample')">从本地示例开始</el-button><el-button icon="Plus" :disabled="busy" @click="openNew('transformation')">新建空白转换</el-button><el-button icon="Connection" :disabled="busy" @click="openNew('job')">编排执行作业</el-button></el-space><el-text v-else type="info">从左侧选择有权限查看的任务</el-text></el-empty>
         </div>
         <footer v-if="definition" class="kettle-canvas-status"><el-text type="info" size="small">{{ graph.nodes.length }} 个节点 · {{ graph.connections.length }} 条连接<template v-if="selectedNode"> · 已选 {{ selectedNode.name }}</template></el-text><el-button link :icon="resultsOpen ? 'ArrowDown' : 'ArrowUp'" :aria-expanded="resultsOpen" @click="toggleResults">{{ resultsOpen ? '收起结果' : '测试与运行结果' }}</el-button></footer>
         <KettleResults v-if="resultsOpen && definition" :run="run" :stale="dirty || configDirty || run?.revision !== definition?.revision" :events="events" :selected-node="previewNodeName" :schema="selectedFields" :validation="validation" :validation-kind="graph.kind" :validation-stale="validationStale" :expanded="resultsExpanded" @toggle-expand="resultsExpanded = !resultsExpanded" @select-node="choosePreviewNode" @download="downloadOutput" @close="closeResults" />
@@ -73,7 +74,11 @@
       <template #footer><el-button @click="taskSettingsOpen = false">取消</el-button><el-button v-if="canEdit" type="primary" :loading="saving" :disabled="!canChange" @click="applyTaskSettings">应用任务设置</el-button></template>
     </el-dialog>
     <el-dialog v-model="inspectorExpanded" title="节点详细配置" width="90%" class="kettle-node-dialog" append-to-body destroy-on-close :before-close="closeInspector"><div class="kettle-expanded-editor"><KettleNodeConfig v-if="selectedNode && inspectorExpanded" :key="`${selectedNode.id}-${editorGeneration}`" ref="nodeEditor" :node="selectedNode" :plugin="selectedPlugin" :kind="graph.kind" :title="presentation(selectedNode).label" :context="formContext" :readonly="!canChange" :can-run="canPreviewSelected" :commit="applyNode" @dirty-change="configDirty = $event" @preview="execute('preview')" @remove="deleteNode" :preview-hint="previewReason" expanded bounded /></div></el-dialog>
-    <el-dialog v-model="newOpen" :title="newKind === 'job' ? '新建Kettle作业' : '新建Kettle转换'" width="500px" append-to-body><el-form label-position="top" @submit.prevent="create"><el-form-item label="任务名称" required><el-input v-model="newName" maxlength="100" autofocus @keyup.enter="create" /></el-form-item></el-form><template #footer><el-button @click="newOpen = false">取消</el-button><el-button type="primary" :loading="saving" :disabled="!newName.trim()" @click="create">创建</el-button></template></el-dialog>
+    <el-dialog v-model="newOpen" :title="newKind === 'job' ? '新建执行作业' : '新建数据转换'" width="500px" append-to-body :close-on-click-modal="!saving" :close-on-press-escape="!saving" :show-close="!saving">
+      <el-form label-position="top" :disabled="saving" @submit.prevent="create"><el-form-item label="任务名称" required><el-input v-model="newName" maxlength="80" autofocus @keyup.enter="create" /></el-form-item><el-form-item v-if="newKind !== 'job'" label="起步方式"><el-radio-group v-model="newTemplate"><el-radio value="sample">本地CSV处理示例</el-radio><el-radio value="blank">空白画布</el-radio></el-radio-group></el-form-item></el-form>
+      <el-alert v-if="newTemplate === 'sample' && newKind !== 'job'" title="创建4个节点并附带3行合成CSV数据" description="读取CSV → 整理姓名字段 → 按姓名排序 → 输出结果文件。创建完成后可修改、预览或运行，不会自动执行。" type="info" :closable="false" />
+      <template #footer><el-button :disabled="saving" @click="newOpen = false">取消</el-button><el-button type="primary" :loading="saving" :disabled="!newName.trim()" @click="create">{{ newTemplate === 'sample' ? '创建示例' : '创建' }}</el-button></template>
+    </el-dialog>
     <el-dialog v-model="hopOpen" title="连接执行条件" width="500px" append-to-body><el-form label-position="top"><el-form-item v-if="graph.kind === 'job'" label="上游节点结束后"><el-radio-group v-model="hopCondition"><el-radio value="success">成功时执行</el-radio><el-radio value="failure">失败时执行</el-radio><el-radio value="unconditional">无条件执行</el-radio></el-radio-group></el-form-item><el-form-item v-else :label="hopSource?.pluginId === 'FilterRows' ? '条件结果' : '匹配方式'"><el-radio-group v-model="hopCondition"><template v-if="hopSource?.pluginId === 'FilterRows'"><el-radio value="true">满足条件</el-radio><el-radio value="false">不满足条件</el-radio></template><template v-else><el-radio value="case">匹配值</el-radio><el-radio value="default">默认分支</el-radio></template></el-radio-group></el-form-item><el-form-item v-if="hopCondition === 'case'" label="匹配值"><el-input v-model="hopValue" /></el-form-item></el-form><template #footer><el-button @click="hopOpen = false">取消</el-button><el-button type="primary" :loading="saving" :disabled="!canChange" @click="saveHop">添加连接</el-button></template></el-dialog>
     <el-drawer v-model="assetsOpen" title="任务输入文件" size="640px" append-to-body>
       <el-alert title="上传实际数据文件后，在输入节点的文件选择框中选用" description="每次执行将这些文件复制到独立输入目录，与输出文件分开保存。预览采样不会限制正式运行的行数。" type="info" :closable="false" class="mb16" />
@@ -107,6 +112,8 @@ import { connectionSchema, presentationFor, schemaFor } from './nodeSchemas'
 import { jobNodeStates, mergeEvents, runActive, runFinishing, runNeedsReview, runStatus } from './runRules'
 import { groupTools, toolCapability, validationFeedback } from './workbenchRules'
 import { connectionDraftBelongsTo, definitionMutationAllowed, executionProtectsDraft, historySelectionAllowed, protectedHistoryRun, restoredTaskId, sameEditorContext } from './workbenchInteraction'
+import { runtimePresentation } from './runtimePresentation'
+import { STARTER_ID, STARTER_FILENAME, STARTER_PREVIEW_NODE, starterFlowXml, starterInputForm } from './starterFlow'
 import { arrangeNodes, NODE_HEIGHT, NODE_WIDTH, POSITION_SCALE } from '../graphRules'
 import { errorMessage } from '../workspaceRules'
 const { proxy } = getCurrentInstance()
@@ -121,7 +128,7 @@ const catalog = ref({ steps: [], jobs: [] }), status = ref({}), loading = ref(fa
 const dirty = ref(false), configDirty = ref(false), leftTab = ref('tasks'), taskSearch = ref(''), toolSearch = ref(''), selectedNodeId = ref(''), selectedEdgeId = ref(''), nodeEditor = ref(), diagram = ref()
 const toolScope = ref('common')
 const expandedGroups = ref(['输入', '处理', '输出', '作业']), files = ref([]), assetsOpen = ref(false), connectionsOpen = ref(false), connectionDraft = ref(null), connectionId = ref(''), connectionVersion = ref(0)
-const run = ref(null), events = ref([]), resultsOpen = ref(false), previewNodeName = ref(''), validation = ref(null), newOpen = ref(false), newKind = ref('transformation'), newName = ref('')
+const run = ref(null), events = ref([]), resultsOpen = ref(false), previewNodeName = ref(''), validation = ref(null), newOpen = ref(false), newKind = ref('transformation'), newName = ref(''), newTemplate = ref('blank')
 const taskSettingsOpen = ref(false), taskDraft = ref(null), taskName = ref(''), taskTimeZone = ref('Asia/Shanghai'), taskDraftVersion = ref(0)
 const taskParameters = computed(() => { taskDraftVersion.value; return taskDraft.value ? rowsAt(taskDraft.value.documentElement, graph.value.kind === 'job' ? 'parameters/parameter' : 'info/parameters/parameter').map(markRaw) : [] })
 const inspectorExpanded = ref(false)
@@ -130,10 +137,13 @@ const history = ref([]), historyOpen = ref(false), historyLoading = ref(false)
 const hopOpen = ref(false), hopCondition = ref('success'), hopValue = ref(''), pendingHop = ref(null)
 const hopSource = computed(() => graph.value.nodes.find(node => node.id === pendingHop.value?.sourceId))
 const taskKinds = [{ value: 'transformation', label: '转换' }, { value: 'job', label: '作业' }]
-let disposed = false, requestGeneration = 0, pollTimer, cursor = 0
+let disposed = false, requestGeneration = 0, pollTimer, runtimeTimer, statusGeneration = 0, cursor = 0
 const uploading = ref(false)
 const busy = computed(() => loading.value || saving.value || starting.value || validating.value || uploading.value || stopping.value)
-const engineReady = computed(() => status.value.enabled === true && status.value.executionAvailable === true)
+const runtime = computed(() => runtimePresentation(status.value))
+const engineReady = computed(() => runtime.value.ready)
+const starterSelected = computed(() => { version.value; return document.value?.documentElement?.getAttribute('data-rynew-example') === STARTER_ID })
+const starterInputMissing = computed(() => starterSelected.value && graph.value.nodes.some(node => node.pluginId === 'CsvInput' && textAt(node.element, 'filename') === '${INPUT_DIR}/' + STARTER_FILENAME) && !files.value.some(file => file.name === STARTER_FILENAME))
 const activeRun = computed(() => runActive(run.value?.state) || runFinishing(run.value))
 const pendingSubmission = ref(null), submissionRevisionExpired = ref(false)
 const reviewRun = computed(() => Boolean(pendingSubmission.value) || runNeedsReview(run.value))
@@ -141,7 +151,7 @@ const executionProtected = computed(() => executionProtectsDraft(run.value, pend
 const canChange = computed(() => definitionMutationAllowed({ canEdit: canEdit.value, busy: busy.value, run: run.value, pendingSubmission: pendingSubmission.value }))
 const inspectorVisible = computed(() => inspectorOpen.value && !inspectorExpanded.value && Boolean(selectedNode.value || selectedEdge.value))
 const validationStale = computed(() => Boolean(validation.value && !sameEditorContext(validationContext.value, editorContext())))
-const previewReason = computed(() => !definition.value ? '请先选择任务' : graph.value.kind === 'job' ? '作业按执行依赖运行；请打开子转换预览数据' : !selectedNode.value ? '先选择一个输入或处理节点' : schemaFor(selectedNode.value.pluginId).group === '输出' ? '输出节点可能写入目标，请使用运行任务' : !engineReady.value ? '执行服务暂不可用' : executionProtected.value ? '先等待当前运行结束或核查执行状态' : busy.value ? '请等待当前操作完成' : '')
+const previewReason = computed(() => !definition.value ? '请先选择任务' : graph.value.kind === 'job' ? '作业按执行依赖运行；请打开子转换预览数据' : !selectedNode.value ? '先选择一个输入或处理节点' : schemaFor(selectedNode.value.pluginId).group === '输出' ? '输出节点可能写入目标，请使用运行任务' : !engineReady.value ? runtime.value.label : starterInputMissing.value ? '请先补齐示例输入文件' : executionProtected.value ? '先等待当前运行结束或核查执行状态' : busy.value ? '请等待当前操作完成' : '')
 const canPreviewSelected = computed(() => canRun.value && !previewReason.value)
 const graph = computed(() => { version.value; return document.value ? graphFromXml(document.value) : { kind: 'transformation', nodes: [], connections: [], name: '' } })
 const selectedNode = computed(() => graph.value.nodes.find(node => node.id === selectedNodeId.value))
@@ -196,14 +206,33 @@ async function leaveDraft() {
   if (!dirty.value && !configDirty.value && !connectionDirty.value) return true
   try { await proxy.$modal.confirm(connectionDirty.value ? '连接有未应用修改，是否放弃本任务修改后切换？' : '当前任务有未保存修改，是否放弃后切换？'); return true } catch { return false }
 }
+function queueRuntimeStatus() {
+  clearTimeout(runtimeTimer)
+  if (!disposed && runtime.value.poll) runtimeTimer = setTimeout(refreshRuntimeStatus, 3000)
+}
+async function refreshRuntimeStatus() {
+  const generation = ++statusGeneration
+  try {
+    const response = await api.kettleStatus()
+    if (disposed || generation !== statusGeneration) return
+    const wasReady = engineReady.value; status.value = response.data || {}
+    if (!wasReady && engineReady.value) {
+      const result = await api.kettleCatalog()
+      if (!disposed && generation === statusGeneration) catalog.value = result.data || { steps: [], jobs: [] }
+    }
+  } catch { if (!disposed && generation === statusGeneration) status.value = { ...status.value, executionAvailable: false, runtimeState: 'UNKNOWN', runtimeMessage: '暂时无法确认引擎状态，请刷新后重试。' } }
+  finally { if (generation === statusGeneration) queueRuntimeStatus() }
+}
 async function load() {
+  if (loading.value) return
+  const generation = ++statusGeneration; clearTimeout(runtimeTimer)
   loading.value = true; error.value = ''
   try {
-    const [state, list] = await Promise.all([api.kettleStatus(), api.kettleDefinitions()]); if (disposed) return
-    status.value = state.data; definitions.value = list.data || []
-    const data = await api.kettleCatalog(); if (!disposed) catalog.value = data.data || { steps: [], jobs: [] }
-  } catch (cause) { if (!disposed) error.value = errorMessage(cause, '工作台加载失败') }
-  finally { if (!disposed) loading.value = false }
+    const [state, list] = await Promise.all([api.kettleStatus(), api.kettleDefinitions()]); if (disposed || generation !== statusGeneration) return
+    status.value = state.data || {}; definitions.value = list.data || []
+    const data = await api.kettleCatalog(); if (!disposed && generation === statusGeneration) catalog.value = data.data || { steps: [], jobs: [] }
+  } catch (cause) { if (!disposed && generation === statusGeneration) { status.value = { ...status.value, executionAvailable: false, runtimeState: 'UNKNOWN', runtimeMessage: '工作台状态未读取完整，请刷新后重试。' }; error.value = errorMessage(cause, '工作台加载失败') } }
+  finally { if (!disposed && generation === statusGeneration) { loading.value = false; queueRuntimeStatus() } }
 }
 async function openDefinition(id, force = false) {
   if (!force && definition.value?.id === id || !await leaveDraft()) return
@@ -211,11 +240,44 @@ async function openDefinition(id, force = false) {
   try { const [detail, inputs, previous] = await Promise.all([api.kettleDefinition(id), api.kettleInputFiles(id), api.kettleRunHistory(id)]); if (disposed || generation !== requestGeneration) return; setDocument(detail.data); files.value = inputs.data || []; history.value = previous.data || []; run.value = null; events.value = []; previewNodeName.value = ''; clearTimeout(pollTimer); const pendingRun = pendingSubmission.value && history.value.find(item => item.requestId === pendingSubmission.value.requestId); if (pendingRun) { clearPending(); await viewRun(pendingRun) } const protectedRun = protectedHistoryRun(history.value); if (!pendingRun && protectedRun) await viewRun(protectedRun); if (compactViewport.value) libraryOpen.value = false; rememberTask(detail.data.id); await nextTick(); diagram.value?.fit() }
   catch (cause) { error.value = errorMessage(cause, '任务读取失败') } finally { loading.value = false }
 }
-async function openNew(kind) { if (!await leaveDraft()) return; newKind.value = kind; newName.value = ''; newOpen.value = true }
+async function openNew(kind) { if (!canEdit.value || !await leaveDraft()) return; newKind.value = kind === 'sample' ? 'transformation' : kind; newTemplate.value = kind === 'sample' ? 'sample' : 'blank'; newName.value = kind === 'sample' ? '本地CSV处理示例' : ''; newOpen.value = true }
 async function create() {
-  if (!canEdit.value || !newName.value.trim() || saving.value) return; saving.value = true; error.value = ''
-  try { const xml = xmlText(emptyDocument(newKind.value, newName.value.trim())); const result = await api.createKettleDefinition({ name: newName.value.trim(), xmlBase64: toBase64(xml) }); setDocument(result.data); definitions.value = (await api.kettleDefinitions()).data; newOpen.value = false; leftTab.value = 'tools'; libraryOpen.value = true; files.value = []; run.value = null; events.value = []; history.value = []; rememberTask(result.data.id) }
-  catch (cause) { error.value = errorMessage(cause, '创建失败') } finally { saving.value = false }
+  if (!canEdit.value || !newName.value.trim() || busy.value) return
+  saving.value = true; error.value = ''; let created = false
+  const sample = newKind.value === 'transformation' && newTemplate.value === 'sample'
+  try {
+    const xml = sample ? starterFlowXml(newName.value.trim()) : xmlText(emptyDocument(newKind.value, newName.value.trim()))
+    const result = await api.createKettleDefinition({ name: newName.value.trim(), xmlBase64: toBase64(xml) })
+    if (disposed) return
+    created = true; setDocument(result.data); definitions.value = [result.data, ...definitions.value]; newOpen.value = false; leftTab.value = 'tools'; libraryOpen.value = true; files.value = []; run.value = null; events.value = []; history.value = []; clearTimeout(pollTimer); rememberTask(result.data.id)
+    if (sample) {
+      const input = await api.uploadKettleInputFile(result.data.id, starterInputForm())
+      if (disposed || definition.value?.id !== result.data.id) return
+      files.value = [input.data]
+      const node = graph.value.nodes.find(item => item.name === STARTER_PREVIEW_NODE)
+      if (node) await selectNode(node)
+      proxy.$modal.msgSuccess('示例任务与输入数据已创建，可预览节点或运行任务')
+    }
+    await nextTick(); diagram.value?.fit()
+  } catch (cause) { if (!disposed) error.value = created && sample ? '示例任务已保存，但输入文件未确认上传成功。请点击“补齐示例输入”，无需重复创建任务。' : errorMessage(cause, '创建失败') }
+  finally { saving.value = false }
+}
+async function restoreStarterInput() {
+  if (!canChange.value || !starterInputMissing.value || !definition.value) return
+  const owner = definition.value.id; uploading.value = true; error.value = ''
+  try {
+    // A timed-out upload may have succeeded. Reconcile first instead of adding a duplicate filename.
+    const current = (await api.kettleInputFiles(owner)).data || []
+    if (disposed || definition.value?.id !== owner) return
+    files.value = current
+    if (!current.some(file => file.name === STARTER_FILENAME)) {
+      const result = await api.uploadKettleInputFile(owner, starterInputForm())
+      if (disposed || definition.value?.id !== owner) return
+      files.value = [...current, result.data]
+    }
+    proxy.$modal.msgSuccess('示例输入文件已就绪')
+  } catch (cause) { if (!disposed && definition.value?.id === owner) error.value = errorMessage(cause, '示例输入文件上传失败，请稍后重试') }
+  finally { uploading.value = false }
 }
 async function save() {
   if (!definition.value || saving.value || busy.value || executionProtected.value) return false
@@ -330,7 +392,7 @@ async function checkSubmission() {
 }
 async function retrySubmission() { if (canRun.value && pendingSubmission.value && !starting.value) await submitPending() }
 async function execute(mode) {
-  if (!canRun.value || busy.value || activeRun.value || reviewRun.value || submissionRevisionExpired.value || !definition.value || !engineReady.value) return
+  if (!canRun.value || busy.value || activeRun.value || reviewRun.value || submissionRevisionExpired.value || !definition.value || !engineReady.value || starterInputMissing.value) return
   if (mode === 'preview' && !canPreviewSelected.value) return
   if (!await save()) return
   pendingSubmission.value = { revision: definition.value.revision, mode, previewStep: mode === 'preview' ? selectedNode.value.name : undefined, rowLimit: 20, requestId: elementId(document.value.createElement('request')) }
@@ -408,7 +470,7 @@ function updateWorkspaceSize() {
 }
 function beforeUnload(event) { if (dirty.value || configDirty.value || connectionDirty.value) { event.preventDefault(); event.returnValue = '' } }
 onMounted(async () => { window.addEventListener('beforeunload', beforeUnload); window.addEventListener('resize', updateWorkspaceSize); await nextTick(); updateWorkspaceSize(); if (typeof ResizeObserver !== 'undefined' && workbenchRoot.value?.parentElement) { workspaceObserver = new ResizeObserver(updateWorkspaceSize); workspaceObserver.observe(workbenchRoot.value.parentElement) } await load(); if (!disposed) { const id = restoredTaskId(route.query.task, definitions.value); if (id) await openDefinition(id) } })
-onBeforeUnmount(() => { disposed = true; requestGeneration++; clearTimeout(pollTimer); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('resize', updateWorkspaceSize); workspaceObserver?.disconnect(); cancelAnimationFrame(workspaceFrame) })
+onBeforeUnmount(() => { disposed = true; requestGeneration++; statusGeneration++; clearTimeout(pollTimer); clearTimeout(runtimeTimer); window.removeEventListener('beforeunload', beforeUnload); window.removeEventListener('resize', updateWorkspaceSize); workspaceObserver?.disconnect(); cancelAnimationFrame(workspaceFrame) })
 defineExpose({ canLeave: leaveDraft })
 </script>
 <style scoped>
