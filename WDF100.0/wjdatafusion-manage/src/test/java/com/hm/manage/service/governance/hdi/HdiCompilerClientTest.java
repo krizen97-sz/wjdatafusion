@@ -195,6 +195,21 @@ class HdiCompilerClientTest {
         assertEquals("13", compiled.path("revision").asText());
     }
 
+    @Test void optionalPersistedBrowserRunCompilesThroughJavaClientWithoutReserializingSnapshot() throws Exception {
+        String bundle = System.getenv("HDI_ORIGINAL_BUNDLE"), javaHome = System.getenv("HDI_COMPILER_JAVA_HOME"), script = System.getenv("HDI_COMPILER_SCRIPT"), fixture = System.getenv("HDI_COMPILER_FROZEN_RUN");
+        assumeTrue(bundle != null && javaHome != null && script != null && fixture != null, "persisted browser run integration not configured");
+        Path runtime = root.resolve("persisted-compiler-state"); Files.createDirectory(runtime, PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")));
+        properties.setCompilerCommand(List.of("/usr/bin/python3", script, "--bundle", bundle, "--java-home", javaHome, "--runtime", runtime.toString()));
+        JsonNode frozen = JSON.readTree(Files.readAllBytes(Path.of(fixture)));
+        Map<String,Object> run = JSON.convertValue(frozen.path("runContext"), new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>() { });
+        // As in HdiCoreRuns, paths come from the authenticated worker reservation.
+        run.put("outputsDir", frozen.path("workerView").path("outputsDir").asText());
+        run.put("authorizedOutputRoot", frozen.path("workerView").path("authorizedOutputRoot").asText());
+        run.put("outputRootSource", "worker-reserve");
+        JsonNode compiled = client().compile(frozen.path("snapshotJson").asText(), frozen.path("snapshotSha256").asText(), run);
+        assertTrue(compiled.path("ok").asBoolean()); assertEquals(3, compiled.path("nodeMappings").size());
+    }
+
     private record Fixture(String snapshot, Map<String,Object> run, ObjectNode response) { }
     private Fixture fixture() throws Exception {
         JsonNode visual = JSON.valueToTree(Map.of("nodes", Map.of("110", Map.of("id", 110), "130", Map.of("id", 130))));
