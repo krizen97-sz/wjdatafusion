@@ -32,7 +32,9 @@ public class HdiTaskStore {
     public record Revision(long taskId, long revision, long ownerId, String visualJson, String sha256, String snapshotJson, String snapshotSha256, String diagnosticsJson) { }
     public record Run(String id, long taskId, long revision, long ownerId, int workspaceId, long nativeFlowId,
                       long nativeInstanceId, long metadataIdBase, String definitionSha256, String mode, String state,
-                      String workerSnapshotJson, String errorMessage, Instant createdAt, Instant updatedAt) { }
+                      String workerSnapshotJson, String errorMessage, Instant createdAt, Instant updatedAt) {
+        public String execId() { return Long.toString(nativeFlowId + 2); }
+    }
     private static final RowMapper<Task> TASK = (r, n) -> new Task(r.getLong("task_id"), r.getInt("workspace_id"), r.getLong("owner_id"),
         r.getString("project_code"), r.getString("task_name"), r.getLong("folder_id"), r.getLong("revision"),
         r.getObject("published_revision") == null ? null : r.getLong("published_revision"), r.getString("state"),

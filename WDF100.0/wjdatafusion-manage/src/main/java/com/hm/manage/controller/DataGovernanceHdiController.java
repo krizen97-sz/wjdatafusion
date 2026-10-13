@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestBody;
 
 @RestController
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(prefix = "data-governance-hdi-core", name = "enabled", havingValue = "false", matchIfMissing = true)
 public class DataGovernanceHdiController {
     private final DataGovernanceHdiSessions sessions;
     public DataGovernanceHdiController(DataGovernanceHdiSessions sessions) { this.sessions = sessions; }
