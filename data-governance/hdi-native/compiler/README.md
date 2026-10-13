@@ -74,7 +74,9 @@ outputsDir 必须是 authorizedOutputRoot 下的独立子目录。二者只能�
 
 输入 `{"operation":"schedule","scheduleConfig":<原ScheduleConfigVo>,"zoneId":"Asia/Shanghai"}`，成功返回原 config、zoneId、cronExpressions、nativeSchedule 和 diagnostics。这里直接调用原 `ScheduleConfigVo.toScheduleVo()` 与 `CronUtil.generateEnableCronExpr()`，平台随后用已有 Quartz 解析、预览和计算下一次执行时间。
 
-首批仅支持 `scheduleType=2`、`unit=2`（每月）、`3`（每周）、`4`（每日），`executeTime` 为 `HH:mm:ss`，`timeInterval` 为原选项字符串（月1–32，其中32为原月末；周1–7；每日1）。不开放实时、依赖、按完成时间间隔、排除窗口、自定义 Cron、立即首跑或增量连续状态；不能把未实现的频率显示为可用。原生成器若给出 Quartz 不接受的组合则明确拒绝。调度实际持久化、并发占用、触发去重及重启语义属于平台调度服务，不在本编译进程中执行。
+`scheduleType=1` 使用原 DTO 校验后返回 `mode=MANUAL`、空 cronExpressions，不生成自动触发；平台可以持久保存手动设置并原子禁用旧周期，立即运行仍是另一次明确操作。周期首批支持 `scheduleType=2`、`unit=2`（每月）、`3`（每周）、`4`（每日），返回 `mode=CRON`；`executeTime` 为 `HH:mm:ss`，`timeInterval` 为原选项字符串（月1–32，其中32为原月末；周1–7；每日1）。原表单无 exactDate 时仍携带的 executeTimeExactDate 默认值保留，它不参与这条 Cron 生成链。
+
+不开放实时、依赖、按完成时间间隔、排除窗口、自定义 Cron、立即首跑或增量连续状态；不能把未实现的频率显示为可用。原生成器若给出 Quartz 不接受的组合则明确拒绝。调度实际持久化、并发占用、触发去重及重启语义属于平台调度服务，不在本编译进程中执行。
 
 成功返回：
 
