@@ -1,7 +1,7 @@
 package com.rynew.detl.bridge;
 
 import com.hikvision.idatafusion.detl.dto.user.UserDetails;
-import com.hikvision.idatafusion.detl.mapper.EtlFlowMapper;
+import com.hikvision.idatafusion.detl.mapper.*;
 import com.hikvision.idatafusion.detl.model.EtlFlow;
 import com.hikvision.idatafusion.detl.utils.UserSessionUtils;
 import java.io.*;
@@ -42,7 +42,7 @@ public final class IdentityBridgeProof {
     public static void main(String[] args) throws Exception {
         Path root = Files.createTempDirectory("rynew-bridge-proof-").toRealPath();
         try {
-            cryptoAndReplay(root); mappingRules(); privateFileRules(root); nativeSessionAndFilter(root); flowScopeAndFilter(root); defaultDisabled(); enabledConfiguration(root);
+            cryptoAndReplay(root); mappingRules(); privateFileRules(root); nativeSessionAndFilter(root); flowScopeAndFilter(root); NativeSaveAuthorizationProof.run(root); defaultDisabled(); enabledConfiguration(root);
             System.out.println("IdentityBridgeProof: " + checks + " checks passed (real original session API; no server, database, license or native initialization)");
         } finally { try (var paths = Files.walk(root)) { for (Path path : paths.sorted(Comparator.reverseOrder()).toArray(Path[]::new)) Files.deleteIfExists(path); } }
     }
@@ -112,7 +112,7 @@ public final class IdentityBridgeProof {
         denied(() -> PrivateFiles.replayDirectory(unrelated.toString()), "unowned nonempty directory rejected"); check(Files.readString(file).equals("unchanged"), "unrelated file retained");
     }
     static void nativeSessionAndFilter(Path root) throws Exception {
-        IdentityBridgeFilter filter = new IdentityBridgeFilter(verifier(child(root, "http-replays")), new IdentityMappings(mapping()), new NativeSessionIssuer(900), new NativeFlowAuthorizer(flowMapper(Map.of(), new AtomicInteger(), false)));
+        IdentityBridgeFilter filter = filter(verifier(child(root, "http-replays")), flowMapper(Map.of(), new AtomicInteger(), false));
         Request request = new Request(BODY, nonce(20)); Response response = new Response(); Session previousSession = request.session = new Session(); previousSession.attrs.put("untrusted-old-role", "must disappear");
         Request previousRequest = new Request(BODY, nonce(40)); ServletRequestAttributes previousContext = new ServletRequestAttributes(previousRequest.proxy()); RequestContextHolder.setRequestAttributes(previousContext);
         filter.doFilter(request.proxy(), response.proxy(), (a,b) -> { throw new AssertionError("exchange entered ordinary task chain"); });
@@ -147,6 +147,30 @@ public final class IdentityBridgeProof {
     static EtlFlow flow(long id, long groupId) {
         EtlFlow flow = new EtlFlow(); flow.setId(id); flow.setGroupId(groupId); return flow;
     }
+    static <T> T emptyMapper(Class<T> type) {
+        return type.cast(Proxy.newProxyInstance(type.getClassLoader(), new Class[]{type}, (proxy, method, args) -> {
+            if (method.getName().equals("toString")) return "UnusedOriginalMapperProof";
+            if (method.getName().equals("hashCode")) return System.identityHashCode(proxy);
+            if (method.getName().equals("equals")) return proxy == args[0];
+            throw new AssertionError("This mapper must not be called by the current proof");
+        }));
+    }
+    static IdentityBridgeFilter filter(TicketVerifier verifier, EtlFlowMapper mapper) {
+        NativeFlowAuthorizer scope = new NativeFlowAuthorizer(mapper, emptyMapper(EtlStreamDao.class), emptyMapper(EtlStepDao.class), emptyMapper(EtlStepItemDao.class), emptyMapper(EtlModuleDao.class), emptyMapper(EtlDstTableDao.class));
+        NativeSaveAuthorizer save = new NativeSaveAuthorizer(true, scope, emptyMapper(WorkspaceMapper.class), emptyMapper(SysFolderMapper.class), emptyMapper(EtlInstanceDao.class), emptyMapper(EtlGroupAdapterDao.class), List::of);
+        return new IdentityBridgeFilter(verifier, new IdentityMappings(mapping()), new NativeSessionIssuer(900), scope, save);
+    }
+    static void registerOtherMappers(AnnotationConfigApplicationContext context) {
+        context.registerBean(EtlStreamDao.class, () -> emptyMapper(EtlStreamDao.class));
+        context.registerBean(EtlStepDao.class, () -> emptyMapper(EtlStepDao.class));
+        context.registerBean(EtlStepItemDao.class, () -> emptyMapper(EtlStepItemDao.class));
+        context.registerBean(EtlModuleDao.class, () -> emptyMapper(EtlModuleDao.class));
+        context.registerBean(EtlDstTableDao.class, () -> emptyMapper(EtlDstTableDao.class));
+        context.registerBean(WorkspaceMapper.class, () -> emptyMapper(WorkspaceMapper.class));
+        context.registerBean(SysFolderMapper.class, () -> emptyMapper(SysFolderMapper.class));
+        context.registerBean(EtlInstanceDao.class, () -> emptyMapper(EtlInstanceDao.class));
+        context.registerBean(EtlGroupAdapterDao.class, () -> emptyMapper(EtlGroupAdapterDao.class));
+    }
     static EtlFlowMapper flowMapper(Map<Long,EtlFlow> flows, AtomicInteger reads, boolean unavailable) {
         return (EtlFlowMapper)Proxy.newProxyInstance(IdentityBridgeProof.class.getClassLoader(), new Class[]{EtlFlowMapper.class}, (proxy, method, args) -> {
             if (method.getDeclaringClass() == Object.class) {
@@ -173,7 +197,7 @@ public final class IdentityBridgeProof {
         for (long id = 1; id <= 100; id++) flows.put(id, flow(id, 901));
         flows.put(101L, flow(101, 902)); flows.put(9_007_199_254_740_993L, flow(9_007_199_254_740_993L, 901));
         TicketVerifier tickets = verifier(child(root, "scope-replays"));
-        IdentityBridgeFilter filter = new IdentityBridgeFilter(tickets, new IdentityMappings(mapping()), new NativeSessionIssuer(900), new NativeFlowAuthorizer(flowMapper(flows, reads, false)));
+        IdentityBridgeFilter filter = filter(tickets, flowMapper(flows, reads, false));
         String allowed = "{\"subject\":\"rynew:user:7\",\"flowIds\":[\"1\",\"9007199254740993\"]}";
         Request good = scopeRequest(allowed, 80); Response result = exchange(filter, good);
         check(result.status == 200 && result.text.toString().equals("{\"code\":\"0\",\"data\":{\"authorized\":true}}"), "all mapped native flow scopes are accepted without returning objects");
@@ -212,7 +236,7 @@ public final class IdentityBridgeProof {
         int beforePath = reads.get(); check(exchange(filter, wrongPath).status == 401 && reads.get() == beforePath, "session-path signature cannot authorize objects");
         Request remote = scopeRequest(allowed, 123); remote.address = "192.0.2.20";
         check(exchange(filter, remote).status == 401 && reads.get() == beforePath, "authorization also requires loopback");
-        IdentityBridgeFilter broken = new IdentityBridgeFilter(tickets, new IdentityMappings(mapping()), new NativeSessionIssuer(900), new NativeFlowAuthorizer(flowMapper(flows, reads, true)));
+        IdentityBridgeFilter broken = filter(tickets, flowMapper(flows, reads, true));
         Request databaseFailure = scopeRequest(allowed, 124); Response failed = exchange(broken, databaseFailure);
         check(failed.status == 503 && !failed.text.toString().contains("diagnostic") && databaseFailure.session == null, "mapper unavailable never grants scope or leaks diagnostics");
         check(exchange(filter, databaseFailure).status == 401, "failed database read still consumes its one-time ticket");
@@ -230,6 +254,7 @@ public final class IdentityBridgeProof {
         Files.setPosixFilePermissions(key, PosixFilePermissions.fromString("rw-------")); Files.setPosixFilePermissions(mapping, PosixFilePermissions.fromString("rw-------"));
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.registerBean(EtlFlowMapper.class, () -> flowMapper(Map.of(), new AtomicInteger(), false));
+            registerOtherMappers(context);
             context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("synthetic-bridge", Map.of(
                 "rynew.detl.identity-bridge.enabled", "true", "rynew.detl.identity-bridge.secret-file", key.toString(),
                 "rynew.detl.identity-bridge.mapping-file", mapping.toString(), "rynew.detl.identity-bridge.replay-directory", root.resolve("configured-replays").toString())));
@@ -237,11 +262,12 @@ public final class IdentityBridgeProof {
             Map<String,FilterRegistrationBean> beans = context.getBeansOfType(FilterRegistrationBean.class);
             check(beans.size() == 1, "explicit enable creates exactly one exchange filter");
             FilterRegistrationBean registration = beans.values().iterator().next();
-            check(registration.getUrlPatterns().equals(Set.of("/_platform/session", "/_platform/authorize")), "filter registration is exact, never all paths");
+            check(registration.getUrlPatterns().equals(Set.of("/_platform/session", "/_platform/authorize", "/_platform/authorize-save")), "filter registration is exact, never all paths");
             check(registration.getFilter() instanceof IdentityBridgeFilter, "enabled factory uses checked bridge filter");
         }
         try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
             context.registerBean(EtlFlowMapper.class, () -> flowMapper(Map.of(), new AtomicInteger(), false));
+            registerOtherMappers(context);
             context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("invalid-bridge", Map.of("rynew.detl.identity-bridge.enabled", "true")));
             context.register(IdentityBridgeAutoConfiguration.class);
             boolean rejected = false;

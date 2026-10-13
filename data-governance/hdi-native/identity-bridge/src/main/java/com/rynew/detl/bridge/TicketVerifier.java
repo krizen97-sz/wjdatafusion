@@ -24,8 +24,11 @@ final class TicketVerifier {
         this.key = key.clone(); this.replayRoot = replayRoot; this.clock = clock;
     }
     long verify(String method, String uri, byte[] body, String timestamp, String nonce, String signature) {
+        return verify(method, uri, body, timestamp, nonce, signature, MAX_BODY_BYTES);
+    }
+    long verify(String method, String uri, byte[] body, String timestamp, String nonce, String signature, int maximum) {
         try {
-            if (!"POST".equals(method) || uri == null || uri.indexOf('\n') >= 0 || uri.indexOf('\r') >= 0 || body.length > MAX_BODY_BYTES
+            if (maximum < 1 || maximum > NativeSaveAuthorizer.MAX_ENVELOPE_BYTES || !"POST".equals(method) || uri == null || uri.indexOf('\n') >= 0 || uri.indexOf('\r') >= 0 || body.length > maximum
                 || timestamp == null || !timestamp.matches("[1-9][0-9]{9,16}") || nonce == null || !nonce.matches("[A-Za-z0-9_-]{43}")
                 || signature == null || !signature.matches("[0-9a-f]{64}")) throw denied();
             byte[] decoded = Base64.getUrlDecoder().decode(nonce);
