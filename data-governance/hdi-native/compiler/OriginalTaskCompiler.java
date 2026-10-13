@@ -166,6 +166,7 @@ public final class OriginalTaskCompiler {
         Path root = Path.of(text(run.get("authorizedOutputRoot"))), out = Path.of(text(run.get("outputsDir")));
         require(root.isAbsolute() && out.isAbsolute() && root.equals(root.normalize()) && out.equals(out.normalize()), "Output paths must be absolute normalized paths");
         require(out.startsWith(root) && !out.equals(root), "outputsDir must be a private child of the authorized output root");
+        require(!out.toString().contains("${"), "Dynamic placeholders are forbidden in the platform output path");
         // Also checked again by the worker at launch; the compiler never creates output directories.
         for (Path p = out; p != null; p = p.getParent()) require(!Files.isSymbolicLink(p), "Symbolic output paths are forbidden");
         return out;
@@ -210,6 +211,7 @@ public final class OriginalTaskCompiler {
         for (Object raw : list(nodes.get(0).get("streamFieldVoList"), "stream fields")) {
             Map<String,Object> field = object(raw, "stream field"); String name = text(field.get("fieldName"));
             require(!name.isEmpty() && name.length() <= 256 && fields.add(name), "Invalid or duplicate stream field");
+            noPrimaryFilename(field);
         }
         Set<String> configured = new LinkedHashSet<>();
         for (Object raw : list(nodes.get(0).get("adapterData"), "generator fields")) configured.add(text(object(raw, "generator field").get("fieldName")));
@@ -226,8 +228,14 @@ public final class OriginalTaskCompiler {
         }
         for (Object raw : list(nodes.get(nodes.size()-1).get("dstTableFieldVoList"), "output fields")) {
             Map<String,Object> field = object(raw, "output field");
+            noPrimaryFilename(field);
             supported(fields.contains(text(field.get("fieldExpression"))), "Output expressions must directly reference an available field");
         }
+    }
+    static void noPrimaryFilename(Map<String,Object> field) {
+        // Original FileOutput.genFileName appends the value of the schema's primary field.
+        // Blocking this unneeded capability prevents data values becoming host path components.
+        supported(empty(field.get("fieldKeyFlag")) || "0".equals(text(field.get("fieldKeyFlag"))), "Primary-key-derived output filenames are outside this execution profile");
     }
     static void validateNode(Map<String,Object> node) {
         for (String key : EMPTY_REFERENCES) supported(empty(node.get(key)), "External reference is not supported: " + key);

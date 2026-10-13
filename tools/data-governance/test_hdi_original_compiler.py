@@ -199,6 +199,25 @@ class OriginalSdkTests(unittest.TestCase):
         self.assertEqual(0, code)
         self.assertTrue(json.loads(raw)['ok'])
 
+    def test_original_filename_sources_cannot_escape_private_output(self):
+        for field_list, node in [('streamFieldVoList', '110'), ('dstTableFieldVoList', '130')]:
+            visual = fixture_visual('../../outside')
+            visual['nodes'][node][field_list][0]['fieldKeyFlag'] = 1
+            prepared = self.prepare(visual)
+            self.assertTrue(prepared['ok'])
+            self.assertEqual('UNSUPPORTED_GRAPH', self.invoke(self.compile_request(prepared))['code'])
+        for name, value in [('etl.file.fileNameFromFlow', 'mapped_message'),
+                            ('etl.fileOutput.subPathInFtpOrSftp', '../../escape'),
+                            ('etl.plugin.fileOutput.generateFileByName', 'true'),
+                            ('etl.fileOutput.temporary.extension', '../../escape')]:
+            visual = fixture_visual()
+            visual['nodes']['130']['adapterParamVoList'].append({'paramName': name, 'paramValue': value})
+            self.assertEqual('UNSUPPORTED_GRAPH', self.invoke(self.compile_request(self.prepare(visual)))['code'])
+        visual = fixture_visual(); visual['nodes']['130']['adapterData']['customExtension'] = '../../escape'
+        self.assertEqual('UNSUPPORTED_GRAPH', self.invoke(self.compile_request(self.prepare(visual)))['code'])
+        request = self.compile_request(); request['runContext']['outputsDir'] = str(self.root / '${mapped_message}')
+        self.assertFalse(self.invoke(request)['ok'])
+
     def test_original_inactive_fieldmapping_defaults_are_not_external_configuration(self):
         visual = fixture_visual()
         visual['nodes']['120']['adapterParamVoList'] = [
