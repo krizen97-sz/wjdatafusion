@@ -28,6 +28,7 @@ public final class OriginalTaskCompiler {
     static final ObjectMapper MAPPER = new ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
         .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     static final int MAX_BYTES = 8 * 1024 * 1024;
+    static final String MANAGED_OUTPUT = "/平台输出";
     static final Set<String> PLUGINS = Set.of("dataGeneratorInput", "fieldMapping", "fileOutput");
     static final Map<String, String> TYPES = Map.of("dataGeneratorInput", "input", "fieldMapping", "preproc", "fileOutput", "output");
     static final Map<String, String> CLASSES = Map.of(
@@ -161,14 +162,52 @@ public final class OriginalTaskCompiler {
             "snapshotJson", serialized, "snapshotSha256", sha(serialized.getBytes(StandardCharsets.UTF_8)), "diagnostics", List.of());
     }
 
+    static Map<String,Object> schedule(Map<String,Object> request) {
+        require(request.keySet().equals(Set.of("operation", "scheduleConfig", "zoneId")), "Unexpected schedule request field");
+        String zone = text(request.get("zoneId"));
+        try { java.time.ZoneId.of(zone); } catch (RuntimeException invalid) { throw new Rejected("INVALID_INPUT", "Invalid platform scheduling time zone"); }
+        Map<String,Object> raw = object(request.get("scheduleConfig"), "scheduleConfig");
+        Set<String> fields = Set.of("id", "nodeIds", "scheduleType", "intervalTime", "flowIncrStatus", "dependencyFlowId", "dependencyFlowStatus", "unit", "timeInterval", "executeTime", "exactDate", "executeTimeExactDate", "excludeTimeType", "enablePeriod", "excludeDate", "excludeStartTime", "excludeEndTime", "disablePeriod", "startFullImmediately", "start", "alarmEnable");
+        supported(fields.containsAll(raw.keySet()), "Unknown original schedule field");
+        var config = bean(com.hikvision.idatafusion.detl.dto.task.schedule.ScheduleConfigVo.class, raw);
+        supported(Integer.valueOf(2).equals(config.getScheduleType()) && config.getUnit() != null && Set.of(2, 3, 4).contains(config.getUnit()), "Only original monthly, weekly and daily cycle schedules are supported");
+        supported(config.getFlowIncrStatus() == null || config.getFlowIncrStatus() == 1, "This profile schedules independent full batches only");
+        supported(config.getStartFullImmediately() == null || config.getStartFullImmediately() == 0, "Immediate initial execution is not supported by a periodic plan");
+        supported(config.getAlarmEnable() == null || config.getAlarmEnable() == 0, "Original external alarm delivery is not supported");
+        for (String key : List.of("exactDate", "executeTimeExactDate", "enablePeriod", "excludeDate", "excludeStartTime", "excludeEndTime", "disablePeriod"))
+            supported(empty(raw.get(key)), "Exact dates, custom cron and exclusion windows are not supported in this schedule profile");
+        String interval = config.getTimeInterval(), time = config.getExecuteTime();
+        require(time != null && time.matches("(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]"), "Execution time must be HH:mm:ss");
+        require(interval != null && interval.matches("[0-9]+(?:,[0-9]+){0,31}"), "Invalid original cycle selection");
+        int maximum = config.getUnit() == 2 ? 32 : config.getUnit() == 3 ? 7 : 1; Set<Integer> selected = new HashSet<>();
+        for (String value : interval.split(",")) {
+            require(value.matches("[1-9][0-9]?"), "Invalid original cycle selection"); int n = Integer.parseInt(value);
+            require(n <= maximum && selected.add(n), "Invalid or duplicate original cycle selection");
+        }
+        // Preserve the original DTO's validation and Cron construction; do not implement a second rule compiler.
+        ScheduleVo nativeSchedule = config.toScheduleVo();
+        String cron = com.hikvision.idatafusion.detl.utils.CronUtil.generateEnableCronExpr(nativeSchedule.getUnit(), nativeSchedule.getTimeInterval(), nativeSchedule.getExecuteTime(), nativeSchedule.getExactDate());
+        List<String> expressions = new ArrayList<>();
+        for (String expression : cron.split(";")) {
+            require(!expression.isBlank() && org.quartz.CronExpression.isValidExpression(expression), "Original schedule did not generate a valid Quartz expression");
+            expressions.add(expression);
+        }
+        require(!expressions.isEmpty(), "Original schedule has no trigger");
+        return map("ok", true, "protocolVersion", 1, "operation", "schedule", "scheduleConfig", raw, "zoneId", zone,
+            "cronExpressions", expressions, "nativeSchedule", nativeSchedule, "diagnostics", List.of());
+    }
+
     static Path outputDirectory(Map<String,Object> run) {
         require(Set.of("test", "run").contains(text(run.get("mode"))), "Invalid execution mode");
         Path root = Path.of(text(run.get("authorizedOutputRoot"))), out = Path.of(text(run.get("outputsDir")));
         require(root.isAbsolute() && out.isAbsolute() && root.equals(root.normalize()) && out.equals(out.normalize()), "Output paths must be absolute normalized paths");
         require(out.startsWith(root) && !out.equals(root), "outputsDir must be a private child of the authorized output root");
         require(!out.toString().contains("${"), "Dynamic placeholders are forbidden in the platform output path");
-        // Also checked again by the worker at launch; the compiler never creates output directories.
-        for (Path p = out; p != null; p = p.getParent()) require(!Files.isSymbolicLink(p), "Symbolic output paths are forbidden");
+        // A remote worker's /home may have unrelated symlink semantics on the compiler's OS.
+        // Only authenticated platform code may set this provenance after a bound worker.reserve response.
+        String source = text(run.get("outputRootSource"));
+        require(source.isEmpty() || source.equals("worker-reserve"), "Invalid output root provenance");
+        if (source.isEmpty()) for (Path p = out; p != null; p = p.getParent()) require(!Files.isSymbolicLink(p), "Symbolic output paths are forbidden");
         return out;
     }
     static List<EtlParam> params(Object raw, String plugin, long nodeId, int nodeType, Path bundle, Path output) throws IOException {
@@ -259,6 +298,21 @@ public final class OriginalTaskCompiler {
         } else {
             Map<String,Object> config = object(node.get("adapterData"), "fileOutput.adapterData");
             supported("local".equals(config.get("sourceType")), "Only local file output is supported");
+            boolean managedSelected = false;
+            for (String path : List.of("localDir", "absoluteDir")) {
+                Object value = config.get(path);
+                supported(empty(value) || MANAGED_OUTPUT.equals(value), "Select the explicit /平台输出 managed output; arbitrary host paths are not supported");
+                managedSelected |= MANAGED_OUTPUT.equals(value);
+            }
+            supported(empty(config.get("relativeDir")), "Managed output subdirectories are not supported");
+            for (Object raw : list(node.get("adapterParamVoList"), "file parameters")) {
+                Map<String,Object> parameter = object(raw, "file parameter");
+                if ("etl.file.localDir".equals(parameter.get("paramName"))) {
+                    supported(empty(parameter.get("paramValue")) || MANAGED_OUTPUT.equals(parameter.get("paramValue")), "The output path parameter must explicitly select /平台输出");
+                    managedSelected |= MANAGED_OUTPUT.equals(parameter.get("paramValue"));
+                }
+            }
+            supported(managedSelected, "Select /平台输出 before testing or running this flow");
             supported(Set.of("csv", "line").contains(text(config.get("fileType"))), "Only original csv/line file output is supported");
             for (String key : List.of("imgField", "temXlsDir", "jsonTemplate", "arrayPath")) supported(empty(config.get(key)), "File template/reference is not supported: " + key);
             for (String key : List.of("upload", "backFill", "isAsyncGenerateText")) supported(empty(config.get(key)) || Set.of("false", "0").contains(text(config.get(key))), "External/asynchronous file output is not supported");
@@ -316,7 +370,9 @@ public final class OriginalTaskCompiler {
         Map<String,Object> visual = object(snapshot.get("visual"), "visual");
         require(json(visual).equals(json(normalize(visual, ctx))), "Snapshot visual is not canonical for its platform context");
         Map<String,Object> run = object(request.get("runContext"), "runContext");
-        require(run.keySet().equals(Set.of("businessTaskId", "revision", "nativeFlowId", "nativeInstanceId", "metadataIdBase", "execId", "outputsDir", "authorizedOutputRoot", "mode")), "Unexpected runContext field");
+        Set<String> requiredRunKeys = Set.of("businessTaskId", "revision", "nativeFlowId", "nativeInstanceId", "metadataIdBase", "execId", "outputsDir", "authorizedOutputRoot", "mode");
+        Set<String> actualRunKeys = new HashSet<>(run.keySet()); actualRunKeys.remove("outputRootSource");
+        require(actualRunKeys.equals(requiredRunKeys), "Unexpected runContext field");
         for (String key : List.of("businessTaskId", "revision")) require(Objects.equals(ctx.get(key), run.get(key)), "Run does not belong to the frozen task revision");
         long flowId = wireId(run, "nativeFlowId"), instanceId = wireId(run, "nativeInstanceId"), base = wireId(run, "metadataIdBase"), groupId = wireId(ctx, "workspaceId");
         wireId(run, "execId"); require(base <= 9007199254740991L - 8192, "Metadata allocation block overflow");
@@ -431,8 +487,8 @@ public final class OriginalTaskCompiler {
             byte[] input = System.in.readNBytes(MAX_BYTES + 1); require(input.length <= MAX_BYTES, "Request exceeds 8 MiB");
             Map<String,Object> request = parse(new String(input, StandardCharsets.UTF_8));
             String operation = text(request.get("operation"));
-            require(operation.equals("prepare") || operation.equals("compile"), "Unknown operation");
-            Map<String,Object> result = operation.equals("prepare") ? prepare(request) : compile(request, Path.of(args[0]));
+            require(Set.of("prepare", "compile", "schedule").contains(operation), "Unknown operation");
+            Map<String,Object> result = operation.equals("prepare") ? prepare(request) : operation.equals("schedule") ? schedule(request) : compile(request, Path.of(args[0]));
             protocol.println(json(result));
         } catch (Throwable failure) {
             // Do not expose vendor exception messages or stack traces: these may contain task data.

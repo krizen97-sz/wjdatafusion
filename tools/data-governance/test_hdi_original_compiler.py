@@ -36,7 +36,7 @@ def fixture_visual(value='platform revision one'):
                         'transformFieldVoList': [{'fieldSrcName': 'message', 'fieldDstName': 'mapped_message',
                                                  'fieldSrcType': 'string', 'fieldDstType': 'string', 'processType': 'move'}]},
                 '130': {'id': 130, 'adapterName': 'fileOutput', 'adapterType': 'output',
-                        'adapterData': {'sourceType': 'local', 'localDir': '/browser/untrusted/path',
+                        'adapterData': {'sourceType': 'local', 'localDir': '/平台输出',
                                         'sourcePathType': 1, 'fileType': 'csv', 'colSplitter': ',',
                                         'encoding': 'UTF-8', 'addHeaderLine': 'true', 'isAsyncGenerateText': 'false'},
                         'dstTableFieldVoList': [output],
@@ -178,12 +178,40 @@ class OriginalSdkTests(unittest.TestCase):
 
     def test_parameter_path_is_rebound_and_enabled_network_rejected(self):
         visual = fixture_visual()
-        visual['nodes']['130']['adapterParamVoList'].append({'paramName': 'etl.file.localDir', 'paramValue': '/another/untrusted/path'})
+        visual['nodes']['130']['adapterParamVoList'].append({'paramName': 'etl.file.localDir', 'paramValue': '/平台输出'})
         compiled = self.invoke(self.compile_request(self.prepare(visual)))
         self.assertTrue(compiled['ok'], compiled)
-        self.assertNotIn(b'/another/untrusted/path', base64.b64decode(compiled['flowjson']['base64']))
+        self.assertNotIn('/平台输出'.encode(), base64.b64decode(compiled['flowjson']['base64']))
+        visual['nodes']['130']['adapterParamVoList'][-1]['paramValue'] = ''
+        self.assertTrue(self.invoke(self.compile_request(self.prepare(visual)))['ok'])
         visual['nodes']['130']['adapterParamVoList'].append({'paramName': 'etl.file.isUpload', 'paramValue': 'true'})
         self.assertEqual('UNSUPPORTED_GRAPH', self.invoke(self.compile_request(self.prepare(visual)))['code'])
+
+    def test_run_and_debug_require_explicit_exact_managed_directory(self):
+        for path in ['', '/tmp/unapproved', '/平台输出xxx', '/平台输出/', 'platform://managed-output']:
+            visual = fixture_visual(); visual['nodes']['130']['adapterData']['localDir'] = path
+            prepared = self.prepare(visual); self.assertTrue(prepared['ok'])
+            for mode in ['test', 'run']:
+                request = self.compile_request(prepared); request['runContext']['mode'] = mode
+                self.assertEqual('UNSUPPORTED_GRAPH', self.invoke(request)['code'])
+        visual = fixture_visual()
+        visual['nodes']['130']['adapterData']['absoluteDir'] = '/some/host/path'
+        self.assertEqual('UNSUPPORTED_GRAPH', self.invoke(self.compile_request(self.prepare(visual)))['code'])
+
+    def test_original_month_week_day_schedule_compiler(self):
+        for unit, interval, cron in [(2, '15', '6 5 4 15 * ?'), (3, '2,4', '6 5 4 ? * 2,4'), (4, '1', '6 5 4 * * ?')]:
+            config = dict(scheduleType=2, unit=unit, timeInterval=interval, executeTime='04:05:06', flowIncrStatus=1, startFullImmediately=0)
+            response = self.invoke(dict(operation='schedule', scheduleConfig=config, zoneId='Asia/Shanghai'))
+            self.assertTrue(response['ok'], response)
+            self.assertEqual(config, response['scheduleConfig'])
+            self.assertEqual([cron], response['cronExpressions'])
+
+    def test_unimplemented_schedule_semantics_are_rejected(self):
+        base = dict(scheduleType=2, unit=4, timeInterval='1', executeTime='04:05:06', flowIncrStatus=1, startFullImmediately=0)
+        for changes in [dict(unit=6), dict(scheduleType=3, intervalTime=60), dict(scheduleType=4, dependencyFlowId=17),
+                        dict(excludeStartTime='02:00:00'), dict(startFullImmediately=1), dict(flowIncrStatus=2), dict(executeTime='25:00:00')]:
+            result = self.invoke(dict(operation='schedule', scheduleConfig={**base, **changes}, zoneId='Asia/Shanghai'))
+            self.assertFalse(result['ok'])
 
     def test_run_block_overlap_and_symlink_output_rejected(self):
         request = self.compile_request(); request['runContext']['nativeFlowId'] = '22002'
@@ -191,6 +219,15 @@ class OriginalSdkTests(unittest.TestCase):
         target = self.root / 'actual-output'; target.mkdir(exist_ok=True)
         alias = self.root / 'output-alias'; alias.symlink_to(target)
         request = self.compile_request(); request['runContext']['outputsDir'] = str(alias / 'child')
+        self.assertFalse(self.invoke(request)['ok'])
+
+    def test_trusted_foreign_worker_path_uses_lexical_checks_not_compiler_host_filesystem(self):
+        target = self.root / 'local-target'; target.mkdir(exist_ok=True)
+        alias = self.root / 'foreign-path-name'; alias.symlink_to(target)
+        request = self.compile_request(); request['runContext'].update(
+            outputsDir=str(alias / 'outputs'), authorizedOutputRoot=str(alias), outputRootSource='worker-reserve')
+        self.assertTrue(self.invoke(request)['ok'])
+        request['runContext']['outputsDir'] = str(alias / '..' / 'escape')
         self.assertFalse(self.invoke(request)['ok'])
 
     def test_launcher_protocol_with_verified_bundle(self):

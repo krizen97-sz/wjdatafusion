@@ -66,6 +66,16 @@ context 必须由认证后的平台持久化记录构造，不能接受浏览器
 
 outputsDir 必须是 authorizedOutputRoot 下的独立子目录。二者只能来自平台授权输出策略/worker reserve，不能取自浏览器路径。编译器将原文件输出配置的路径及其旧参数形式绑定到此目录，不修改冻结 Visual，并拒绝符号链接。`test` 使用私有运行目录；`run` 使用平台已授权输出根下的独立运行目录。执行器在实际启动时仍须复核目录归属、隔离和路径，避免校验后目录被替换。
 
+用户在原 File 输出表单中必须明确选择精确逻辑路径 **`/平台输出`**。它表示每次写入执行器的独立 `run/outputs`，完整产物校验归档后通过平台下载，绝不表示写到主机上同名目录。测试和正式运行都拒绝空路径、任意主机路径、`/平台输出xxx` 或附加子目录；草稿可以先保存。只有这个明确选项才允许编译时绑定实际 worker 路径，不能将用户指定的其他路径静默重定向。`localDir`、`absoluteDir` 与旧 `etl.file.localDir` 参数中所有非空值都必须符合该边界。
+
+编译机与执行器不在同一主机时，平台在严格校验 `worker.reserve` 的身份响应后设置 `runContext.outputRootSource="worker-reserve"`。此时编译器仅做绝对路径、规范化、严格子目录和无动态占位符检查，不用编译机的本地符号链接解释 Linux 目标路径（例如 macOS 的 `/home` 与 Linux `/home` 不同）。实际目标文件系统的符号链接、所有者和权限检查仍由 worker 完成。此字段不能来自浏览器；省略时保留原本机符号链接拒绝。
+
+### 原定时规则编译
+
+输入 `{"operation":"schedule","scheduleConfig":<原ScheduleConfigVo>,"zoneId":"Asia/Shanghai"}`，成功返回原 config、zoneId、cronExpressions、nativeSchedule 和 diagnostics。这里直接调用原 `ScheduleConfigVo.toScheduleVo()` 与 `CronUtil.generateEnableCronExpr()`，平台随后用已有 Quartz 解析、预览和计算下一次执行时间。
+
+首批仅支持 `scheduleType=2`、`unit=2`（每月）、`3`（每周）、`4`（每日），`executeTime` 为 `HH:mm:ss`，`timeInterval` 为原选项字符串（月1–32，其中32为原月末；周1–7；每日1）。不开放实时、依赖、按完成时间间隔、排除窗口、自定义 Cron、立即首跑或增量连续状态；不能把未实现的频率显示为可用。原生成器若给出 Quartz 不接受的组合则明确拒绝。调度实际持久化、并发占用、触发去重及重启语义属于平台调度服务，不在本编译进程中执行。
+
 成功返回：
 
 * `protocolVersion:1, ok:true, operation:"compile"`

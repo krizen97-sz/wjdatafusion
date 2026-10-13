@@ -74,6 +74,18 @@ public class HdiCompilerClient {
         return response;
     }
 
+    /** Original ScheduleConfigVo-to-Cron conversion in the same isolated compiler, not an ETL algorithm. */
+    public JsonNode schedule(JsonNode scheduleConfig, String zoneId) {
+        require(scheduleConfig != null && scheduleConfig.isObject(), "schedule config");
+        try { java.time.ZoneId.of(zoneId); } catch (RuntimeException invalid) { throw new HdiTaskFault(503, "平台调度时区配置无效"); }
+        ObjectNode request = json.createObjectNode().put("operation", "schedule").put("zoneId", zoneId); request.set("scheduleConfig", scheduleConfig);
+        JsonNode result = invoke(request);
+        require("schedule".equals(result.path("operation").asText()) && zoneId.equals(result.path("zoneId").asText()) && scheduleConfig.equals(result.path("scheduleConfig")), "schedule binding");
+        require(result.path("cronExpressions").isArray() && !result.path("cronExpressions").isEmpty() && result.path("cronExpressions").size() <= 32, "schedule expressions");
+        for (JsonNode expression : result.path("cronExpressions")) require(expression.isTextual() && expression.asText().length() <= 256 && org.quartz.CronExpression.isValidExpression(expression.asText()), "schedule cron");
+        return result;
+    }
+
     public JsonNode compile(String snapshotJson, String sha, Map<String,Object> trustedRunContext) {
         JsonNode snapshot = checkedSnapshot(json.getNodeFactory().textNode(snapshotJson == null ? "" : snapshotJson), json.getNodeFactory().textNode(sha == null ? "" : sha));
         JsonNode frozen = snapshot.path("context");
