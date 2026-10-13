@@ -87,3 +87,18 @@ CREATE TABLE IF NOT EXISTS dg_hdi_preference (
   updated_at DATETIME(3) NOT NULL,
   PRIMARY KEY (owner_id, preference_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS dg_hdi_schedule (
+  task_id BIGINT NOT NULL,
+  owner_id BIGINT NOT NULL,
+  revision BIGINT NOT NULL,
+  generation BIGINT NOT NULL,
+  plan_json MEDIUMTEXT NOT NULL,
+  enabled TINYINT NOT NULL DEFAULT 0,
+  next_fire_at DATETIME(3) NULL,
+  last_outcome VARCHAR(128) NULL,
+  created_at DATETIME(3) NOT NULL,
+  updated_at DATETIME(3) NOT NULL,
+  PRIMARY KEY (task_id),
+  KEY ix_dg_hdi_schedule_due (enabled, next_fire_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
