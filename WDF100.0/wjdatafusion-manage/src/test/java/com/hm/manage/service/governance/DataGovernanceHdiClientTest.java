@@ -7,6 +7,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
@@ -133,4 +134,60 @@ class DataGovernanceHdiClientTest
         response.set("x".repeat(256 * 1024 + 1));
         assertThrows(IOException.class, () -> new DataGovernanceHdiClient(properties).exchange(1));
     }
+    @Test void authorizesOnlyServerDerivedSubjectAndStringIdsWithFullPathSignature() throws Exception {
+        AtomicReference<String> payload = new AtomicReference<>(); AtomicReference<Boolean> signatureOk = new AtomicReference<>(false);
+        server.createContext(DataGovernanceHdiClient.AUTHORIZE_PATH, exchange -> {
+            byte[] body = exchange.getRequestBody().readAllBytes(); payload.set(new String(body, StandardCharsets.UTF_8));
+            try {
+                String expected = DataGovernanceHdiClient.sign(Files.readAllBytes(key), "POST", DataGovernanceHdiClient.AUTHORIZE_PATH,
+                    exchange.getRequestHeaders().getFirst("X-RYNEW-Timestamp"), exchange.getRequestHeaders().getFirst("X-RYNEW-Nonce"), body);
+                signatureOk.set(expected.equals(exchange.getRequestHeaders().getFirst("X-RYNEW-Signature")));
+            } catch (Exception error) { throw new IOException(error); }
+            assertNull(exchange.getRequestHeaders().getFirst("Cookie")); assertNull(exchange.getRequestHeaders().getFirst("Authorization"));
+            byte[] response = "{\"code\":\"0\",\"data\":{\"authorized\":true}}".getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length); exchange.getResponseBody().write(response); exchange.close();
+        });
+        new DataGovernanceHdiClient(properties).authorize(7, List.of("9007199254740993", "9223372036854775807"));
+        assertTrue(signatureOk.get());
+        assertEquals("{\"subject\":\"rynew:user:7\",\"flowIds\":[\"9007199254740993\",\"9223372036854775807\"]}", payload.get());
+    }
+
+    @Test void invalidAuthorizationIdsNeverContactNativeService() {
+        var client = new DataGovernanceHdiClient(properties);
+        for (List<String> ids : List.of(List.<String>of(), List.of("0"), List.of("-1"), List.of("1.0"), List.of("01"), List.of("9223372036854775808"), java.util.Collections.nCopies(101, "1")))
+            assertThrows(IOException.class, () -> client.authorize(7, ids));
+        assertThrows(IOException.class, () -> client.authorize(0, List.of("1")));
+        properties.setEnabled(false); assertThrows(IOException.class, () -> client.authorize(7, List.of("1")));
+    }
+
+    @Test void authorizationDenialFailureMalformedAndOversizedResponsesFailClosedWithoutNativeBody() throws Exception {
+        AtomicInteger status = new AtomicInteger(403); AtomicReference<String> response = new AtomicReference<>("private-native-secret");
+        server.createContext(DataGovernanceHdiClient.AUTHORIZE_PATH, exchange -> {
+            exchange.getRequestBody().readAllBytes(); byte[] bytes = response.get().getBytes(StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(status.get(), bytes.length); exchange.getResponseBody().write(bytes); exchange.close();
+        });
+        var client = new DataGovernanceHdiClient(properties);
+        assertThrows(DataGovernanceHdiClient.ScopeDenied.class, () -> client.authorize(7, List.of("99")));
+        for (int code : List.of(401, 503, 500)) {
+            status.set(code); var error = assertThrows(IOException.class, () -> client.authorize(7, List.of("1")));
+            assertFalse(error.toString().contains("private-native-secret"));
+        }
+        status.set(200);
+        for (String body : List.of("private-native-secret", "{\"code\":\"0\",\"data\":{\"authorized\":\"true\"}}", "{\"code\":200,\"data\":{\"authorized\":true}}", "x".repeat(8193))) {
+            response.set(body); var error = assertThrows(IOException.class, () -> client.authorize(7, List.of("1")));
+            assertFalse(error.toString().contains("private-native-secret"));
+        }
+    }
+
+    @Test void authorizationNeverFollowsNativeRedirects() throws Exception {
+        AtomicInteger redirected = new AtomicInteger();
+        server.createContext("/unexpected", exchange -> { redirected.incrementAndGet(); exchange.sendResponseHeaders(200, -1); exchange.close(); });
+        server.createContext(DataGovernanceHdiClient.AUTHORIZE_PATH, exchange -> {
+            exchange.getRequestBody().readAllBytes(); exchange.getResponseHeaders().add("Location", "/unexpected");
+            exchange.sendResponseHeaders(307, -1); exchange.close();
+        });
+        assertThrows(IOException.class, () -> new DataGovernanceHdiClient(properties).authorize(7, List.of("1")));
+        assertEquals(0, redirected.get());
+    }
+
 }
