@@ -83,6 +83,125 @@ export function registerOriginalToolbar(Vue, i18n, runtime) {
   return loading
 }
 
+/** Serialize this iframe's original save actions; never replay a failed or foreign revision. */
+export function bindOriginalSaveQueue(store, client, host, origin, onFailure) {
+  const dispatch = store.dispatch, rootContext = store._modules?.root?.context
+  if (rootContext?.dispatch !== dispatch) throw new Error('原任务动作上下文版本不匹配')
+  if (typeof dispatch !== 'function' || typeof store.commit !== 'function' || typeof client.get !== 'function') throw new Error('原任务保存接口不可用')
+  const queues = new Map(), running = new Map()
+  let closed = false
+  const fail = () => new Error('任务保存未完成，后续修改仍保留在画布中；请重新打开任务核对版本后再保存')
+  const decimal = value => /^[1-9]\d*$/.test(String(value ?? '')) && Number.isSafeInteger(Number(value)) ? String(value) : null
+  const matches = flow => String(flow?.groupId) === String(host.workspaceId) && String(flow?.userId) === String(host.user.id) && flow?.projectCode === host.projectCode
+  const original = (type, payload) => dispatch.call(store, type, payload)
+  const acknowledge = async (record, payload) => {
+    const response = await client.get(`/detl/flow/getFlowVisualById/${record.id}`, { params: { timeStamp: payload.timeStamp }, timeStamp: payload.timeStamp })
+    const visual = response?.data, flow = visual?.flowVo, next = Number(record.revision) + 1
+    if (closed || response?.code !== '0' || !Number.isSafeInteger(next) || decimal(flow?.id) !== record.id
+        || decimal(flow?._platformRevision) !== String(next) || decimal(visual?.flowVersion) !== String(next) || !matches(flow) || decimal(store.state.flowVo?.id) !== record.id) throw fail()
+    const authoritative = {}
+    for (const field of ['id', 'groupId', 'userId', 'projectCode', '_platformRevision', 'flowStatus', 'flowLock', 'readOnly', 'createTime', 'updateTime']) {
+      if (Object.prototype.hasOwnProperty.call(flow, field)) authoritative[field] = flow[field]
+    }
+    // Original full readback would replace nodes/links/params and erase edits made while the request was running.
+    // Keep the live editing draft; only an explicit original load/refresh replaces the diagram.
+    store.commit('setFlowVo', authoritative)
+    store.commit('setFlowVersion', visual.flowVersion)
+    if (visual.visualVersion != null) store.commit('setVisualVersion', visual.visualVersion)
+    record.acknowledged = String(next)
+    return visual
+  }
+  store.dispatch = function(type, payload) {
+    if (type === 'initFlowDataByTaskId') {
+      const id = decimal(payload?.taskId), record = running.get(id)
+      if (record?.timeStamp != null && String(payload?.timeStamp) === String(record.timeStamp) && !payload?.historyId && !payload?.version) {
+        // The original save action omits a catch on its nested read promise. Drain that private callback,
+        // then reject the public queued action below; no caller receives success without a verified readback.
+        return acknowledge(record, payload).catch(error => { record.readbackError = error; return null })
+      }
+      const queue = queues.get(id)
+      // Explicit loads still run the complete original action, after in-flight writes have settled.
+      return Promise.resolve(queue?.tail).then(() => original(type, payload)).then(result => {
+        if (queue && queue.pending === 0 && decimal(store.state.flowVo?.id) === id && matches(store.state.flowVo)) queues.delete(id)
+        return result
+      })
+    }
+    if (!['saveFlowTask', 'pushFlowTask'].includes(type)) return original(type, payload)
+    if (closed) return Promise.reject(fail())
+    const id = decimal(payload?.flowVo?.id), revision = decimal(payload?.flowVo?._platformRevision)
+    if (!id || !revision || payload.flowVo.readOnly || store.state.loadTemplate) return original(type, payload)
+    let snapshot
+    try { snapshot = JSON.parse(JSON.stringify(payload)) } catch { return Promise.reject(fail()) }
+    let queue = queues.get(id)
+    if (!queue) { queue = { revision, accepted: new Set([revision]), pending: 0, pushes: 0, tail: Promise.resolve(), error: null }; queues.set(id, queue) }
+    if (queue.error || queue.pending >= 128) return Promise.reject(fail())
+    queue.pending++; if (type === 'pushFlowTask') queue.pushes++
+    const work = queue.tail.then(async () => {
+      if (closed || queue.error || !queue.accepted.has(revision) || decimal(store.state.flowVo?.id) !== id
+          || decimal(store.state.flowVo?._platformRevision) !== queue.revision) throw fail()
+      snapshot.flowVo._platformRevision = Number(queue.revision)
+      const record = { id, revision: queue.revision, type, timeStamp: null, acknowledged: null }
+      running.set(id, record)
+      try {
+        const result = await original(type, snapshot)
+        if (record.readbackError) throw record.readbackError
+        if (!record.acknowledged) throw fail()
+        queue.revision = record.acknowledged; queue.accepted.add(record.acknowledged)
+        return result
+      } finally { if (running.get(id) === record) running.delete(id) }
+    }).catch(error => {
+      if (!queue.error) { queue.error = fail(); try { onFailure?.(queue.error.message) } catch {} }
+      throw error
+    }).finally(() => {
+      queue.pending--; if (type === 'pushFlowTask') queue.pushes--
+      if (!queue.pending && !queue.error && queues.get(id) === queue) queues.delete(id)
+    })
+    queue.tail = work.catch(() => {})
+    return work
+  }
+  const wrapped = store.dispatch
+  rootContext.dispatch = wrapped
+  const requestId = client.interceptors.request.use(async config => {
+    let url
+    try { url = new URL(config.url, origin) } catch { return config }
+    if (url.origin !== origin) return config
+    const method = String(config.method || 'get').toLowerCase()
+    if (method === 'post' && /^\/detl\/flow\/saveFlowVisual\/(save|push)$/.test(url.pathname)) {
+      let body = config.data
+      try {
+        if (typeof body === 'string') body = JSON.parse(body)
+        if (typeof body?.visualBase64 === 'string') body = JSON.parse(decodeURIComponent(atob(body.visualBase64)))
+      } catch { throw fail() }
+      const record = running.get(decimal(body?.flowVo?.id))
+      if (record) {
+        const operation = record.type === 'pushFlowTask' ? 'push' : 'save'
+        if (!url.pathname.endsWith(`/${operation}`) || decimal(body.flowVo._platformRevision) !== record.revision || !decimal(config.timeStamp)) throw fail()
+        record.timeStamp = config.timeStamp
+      }
+    }
+    if (method === 'get' && url.pathname === '/detl/flow/getStartConfig') {
+      const ids = url.searchParams.getAll('flowId')
+      await Promise.resolve()
+      const queue = ids.length === 1 ? queues.get(decimal(ids[0])) : null
+      if (queue?.error) throw fail()
+      if (queue?.pushes) {
+        const boundary = queue.tail
+        await boundary
+        if (closed || queue.error) throw fail()
+        config._rynewPublishBoundary = { taskId: ids[0], revision: queue.revision }
+      }
+    }
+    return config
+  })
+  return () => {
+    closed = true
+    if (store.dispatch === wrapped) store.dispatch = dispatch
+    if (rootContext.dispatch === wrapped) rootContext.dispatch = dispatch
+    client.interceptors.request.eject(requestId)
+    for (const queue of queues.values()) queue.error = fail()
+  }
+}
+
 /** Wait for this iframe's original publish action before reading its run settings. Never invent/rewrite a revision. */
 export function bindOriginalPublishBoundary(store, client, host, origin) {
   if (typeof store.subscribeAction !== 'function') throw new Error('原任务发布事件接口不可用')
@@ -196,6 +315,7 @@ export async function mountOriginalTasks(host, target) {
   // The original factories consume the platform's genuine CSRF and persisted task domain.
   const TaskList = await components.AsyncTaskList(i18n, locale)
   const DagMain = await components.AsyncDagMain(i18n, locale)
+  i18n.mergeLocaleMessage(locale, { 'detl.testRunSuccess.name': locale === 'en_US' ? 'Test run submitted' : '试运行已提交' })
   const store = Vue.prototype.$store
   if (!TaskList || !DagMain || !store || String(store.state.currentWorkspaceId) !== String(host.workspaceId)) {
     throw new Error('原任务组件未取得当前平台工作区')
@@ -246,17 +366,22 @@ export async function mountOriginalTasks(host, target) {
       })
     }
   }).$mount(target)
-  let destroyBoundary = () => {}
+  let destroyBoundary = () => {}, destroySaveQueue = () => {}
   const destroy = () => {
     if (destroyed) return
     destroyed = true
     destroyBoundary()
+    destroySaveQueue()
     window.removeEventListener('pagehide', onPageHide)
     vm.$destroy()
   }
   const onPageHide = event => { if (!event.persisted) destroy() }
   try {
-    destroyBoundary = bindOriginalPublishBoundary(store, originalRequestClient(), host, window.location.origin)
+    const client = originalRequestClient()
+    destroySaveQueue = bindOriginalSaveQueue(store, client, host, window.location.origin, message => {
+      originalRuntime()(4780).Message?.error({ message, duration: 6000, showClose: true })
+    })
+    destroyBoundary = bindOriginalPublishBoundary(store, client, host, window.location.origin)
     await vm.$nextTick()
     ensureMounted(vm)
   } catch (error) { destroy(); throw error }
