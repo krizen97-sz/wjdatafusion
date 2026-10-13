@@ -82,9 +82,18 @@ public class HdiCompilerClient {
         JsonNode result = invoke(request);
         require("schedule".equals(result.path("operation").asText()) && zoneId.equals(result.path("zoneId").asText()) && scheduleConfig.equals(result.path("scheduleConfig")), "schedule binding");
         boolean manual = scheduleConfig.path("scheduleType").asInt(-1) == 1;
+        boolean calendar = scheduleConfig.path("scheduleType").asInt(-1) == 2 && Set.of(5, 6).contains(scheduleConfig.path("unit").asInt(-1));
         require(result.path("cronExpressions").isArray() && result.path("cronExpressions").size() <= 32
             && (manual ? "MANUAL".equals(result.path("mode").asText()) && result.path("cronExpressions").isEmpty()
+                : calendar ? "CALENDAR".equals(result.path("mode").asText()) && result.path("cronExpressions").isEmpty()
                 : "CRON".equals(result.path("mode").asText()) && !result.path("cronExpressions").isEmpty()), "schedule expressions");
+        if (calendar) {
+            String interval = scheduleConfig.path("timeInterval").asText();
+            require(interval.matches("[1-9][0-9]{0,9}") && result.path("calendar").path("interval").isInt()
+                && Long.parseLong(interval) == result.path("calendar").path("interval").longValue(), "calendar interval");
+            require((scheduleConfig.path("unit").asInt() == 5 ? "HOUR" : "MINUTE").equals(result.path("calendar").path("unit").asText())
+                && (interval + "#" + scheduleConfig.path("unit").asInt()).equals(result.path("nativeExpression").asText()), "calendar unit");
+        }
         for (JsonNode expression : result.path("cronExpressions")) require(expression.isTextual() && expression.asText().length() <= 256 && org.quartz.CronExpression.isValidExpression(expression.asText()), "schedule cron");
         return result;
     }
