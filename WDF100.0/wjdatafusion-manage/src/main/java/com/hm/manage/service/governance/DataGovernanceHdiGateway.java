@@ -114,8 +114,9 @@ public class DataGovernanceHdiGateway {
         if (!mutation.matches() || !verb.equals(Set.of("debugFlow", "pushFlowDataToZK").contains(mutation.group(1)) ? "POST" : "GET"))
             throw new Failure(403, "该原接口尚未纳入已核验的任务范围");
         // Exact verified operations only. There is deliberately no task-namespace write fallback.
-        require(user, "governance:flow:edit");
-        require(user, "governance:flow:test");
+        String operation = mutation.group(1);
+        if (Set.of("lockFlow", "unlockFlow", "pushFlowDataToZK").contains(operation)) require(user, "governance:flow:edit");
+        if (!Set.of("lockFlow", "unlockFlow").contains(operation)) require(user, "governance:flow:test");
     }
 
     /** Scope comes only from the signed server exchange. Browser headers never expand that scope. */

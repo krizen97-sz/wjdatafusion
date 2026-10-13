@@ -286,6 +286,23 @@ class DataGovernanceHdiGatewayTest {
         assertEquals(4, calls.get());
     }
 
+    @Test void executionAndEditingGrantsRetainTheirSeparatePlatformMeanings() throws Exception {
+        var session = session(); user.setPermissions(Set.of("governance:flow:list", "governance:flow:test"));
+        forward(authenticated("GET", "/detl/flow/startFlowV2/17", session));
+        forward(authenticated("GET", "/detl/flow/stopFlowV2/17", session));
+        forward(authenticated("POST", "/detl/flow/debugFlow/17", session));
+        assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(authenticated("GET", "/detl/flow/lockFlow/17", session))).status());
+        assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(authenticated("POST", "/detl/flow/pushFlowDataToZK/17", session))).status());
+        user.setPermissions(Set.of("governance:flow:list", "governance:flow:edit"));
+        forward(authenticated("GET", "/detl/flow/lockFlow/17", session));
+        forward(authenticated("GET", "/detl/flow/unlockFlow/17", session));
+        assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(authenticated("POST", "/detl/flow/debugFlow/17", session))).status());
+        assertEquals(403, assertThrows(DataGovernanceHdiSessions.Failure.class, () -> forward(authenticated("POST", "/detl/flow/pushFlowDataToZK/17", session))).status());
+        user.setPermissions(Set.of("governance:flow:list", "governance:flow:edit", "governance:flow:test"));
+        forward(authenticated("POST", "/detl/flow/pushFlowDataToZK/17", session));
+        assertEquals(6, calls.get()); verify(client, times(6)).authorize(7L, List.of("17"));
+    }
+
     @Test void flowIdQueriesCannotUseRepeatedOrBodyOverrideIdsAndUnknownWritesAreDenied() throws Exception {
         var session = session();
         for (String path : List.of("/flow/getFlowVisualState", "/flow/findFlowExecRecordPage", "/flow/findFlowModuleExecRecordPage")) {
@@ -346,7 +363,7 @@ class DataGovernanceHdiGatewayTest {
         assertEquals(401, response.getStatus()); assertEquals(0, reached.get()); assertFalse(response.getContentAsString().contains("native-"));
     }
 
-    @Test void originalPostQueriesWorkButMutatingGetNeedsAllPermissions() throws Exception {
+    @Test void originalPostQueriesWorkButMutatingGetNeedsExecutionPermission() throws Exception {
         var session = session(); user.setPermissions(Set.of("governance:flow:list"));
         var read = authenticated("POST", "/detl/flow/findFlowPage", session); read.setContent("{}".getBytes(StandardCharsets.UTF_8));
         assertEquals(nativeBody, forward(read).getContentAsString()); assertEquals(1, calls.get());

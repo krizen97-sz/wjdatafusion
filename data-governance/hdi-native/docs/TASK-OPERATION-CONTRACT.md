@@ -15,10 +15,10 @@
 | POST | /flow/getFlowVisualState | query flowId；不是 GET | list |
 | POST | /flow/findFlowExecRecordPage | query flowId；另有 pageNo/pageSize/filterData | list |
 | POST | /flow/findFlowModuleExecRecordPage | query flowId；另有 nodeId/pageNo/pageSize/filterData | list |
-| GET | /flow/startFlow/{flowId}、/flow/startFlowV2/{flowId} | PathVariable flowId | list + edit + test |
-| GET | /flow/stopFlow/{flowId}、/flow/stopFlowV2/{flowId} | PathVariable flowId | list + edit + test |
-| GET | /flow/lockFlow/{flowId}、/flow/unlockFlow/{flowId} | PathVariable flowId | list + edit + test |
-| POST | /flow/debugFlow/{flowId} | PathVariable flowId；原方法名 debugFlowStart | list + edit + test |
+| GET | /flow/startFlow/{flowId}、/flow/startFlowV2/{flowId} | PathVariable flowId | list + test |
+| GET | /flow/stopFlow/{flowId}、/flow/stopFlowV2/{flowId} | PathVariable flowId | list + test |
+| GET | /flow/lockFlow/{flowId}、/flow/unlockFlow/{flowId} | PathVariable flowId | list + edit |
+| POST | /flow/debugFlow/{flowId} | PathVariable flowId；原方法名 debugFlowStart | list + test |
 | POST | /flow/pushFlowDataToZK/{flowId} | PathVariable flowId | list + edit + test |
 
 模块执行记录的第二个 ID 是 nodeId，不是 recordId。原 FlowServiceImpl.findEtlFlowModuleExecRecordPage 将 flowId 和 nodeId 传给 findRunModule，原 EtlModuleMonitorMapper.listModuleMonitor 的 SQL 最终含 `where e.flow_id = #{flowId}`，且模块监控 join 也关联 flow_id；不能省去 flowId 归属授权。
