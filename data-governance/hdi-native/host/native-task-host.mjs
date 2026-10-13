@@ -39,8 +39,8 @@ export function loadOriginalModules(container = window.detlModule) {
  * Every /detl API and resource request must independently check the platform session.
  */
 export async function mountOriginalTasks(host, target) {
-  if (!host?.user || !host.router || !target || !host.projectCode) {
-    throw new Error('缺少平台用户、项目或导航上下文')
+  if (!host?.user || !host.router || !target || !host.projectCode || !host.workspaceId) {
+    throw new Error('缺少平台用户、工作区或导航上下文')
   }
   const { Vue, VueI18n, hui, components } = await loadOriginalModules()
   const locale = host.locale || 'zh_CN'
@@ -52,31 +52,41 @@ export async function mountOriginalTasks(host, target) {
   Vue.prototype.$router = host.router
   const route = Vue.observable({ ...(host.route || { query: {} }) })
   Object.defineProperty(Vue.prototype, '$route', { configurable: true, get: () => route })
-  // These original factories obtain real CSRF, translations and workspace from /detl.
-  // Do not synthesize a success envelope or skip their bootstrap/permission checks.
+  // The original factories consume the platform's genuine CSRF and persisted task domain.
   const TaskList = await components.AsyncTaskList(i18n, locale)
   const DagMain = await components.AsyncDagMain(i18n, locale)
-  if (!TaskList || !DagMain || !Vue.prototype.$store) {
-    throw new Error('HDI 原版任务接口初始化失败')
-  }
   const store = Vue.prototype.$store
+  if (!TaskList || !DagMain || !store || String(store.state.currentWorkspaceId) !== String(host.workspaceId)) {
+    throw new Error('原任务组件未取得当前平台工作区')
+  }
   store.commit('SET_USER', host.user)
   store.commit('SET_USER_INFO', host.user)
+  let destroyed = false
+  const ensureMounted = vm => {
+    const child = vm.$children?.[0]
+    if (destroyed || !vm._isMounted || !child?._isMounted || !vm.$el?.isConnected || vm.$el.nodeType !== 1) {
+      throw new Error('原任务组件尚未挂载')
+    }
+  }
   const vm = new Vue({
     i18n,
-    data: () => ({ taskId: host.initialTaskId || null, readonly: Boolean(host.readonly) }),
+    data: () => ({ taskId: host.initialTaskId || null, readonly: host.readOnly === true || host.readonly === true }),
     methods: {
-      openTask(row, readonly) {
-        if (!row?.id) throw new Error('原任务返回的标识为空')
-        this.taskId = row.id
-        this.readonly = readonly
-        host.onTaskOpened?.({ id: row.id, readonly })
+      async openTask(row, readonly, isNewCreate = false) {
+        const id = String(row?.id ?? '')
+        if (!/^[1-9]\d{0,18}$/.test(id) || (id.length === 19 && id > '9223372036854775807')) throw new Error('原任务返回的标识无效')
+        if (host.openTaskInWindow?.({ id, readonly: host.readOnly === true || readonly, isNewCreate })) return
+        this.taskId = id
+        this.readonly = host.readOnly === true || readonly
+        await this.$nextTick()
+        ensureMounted(this)
+        host.onTaskOpened?.({ id, readonly: this.readonly, isNewCreate })
       }
     },
     render(h) {
       const project = { projectCode: host.projectCode, projectName: host.projectName, projectList: host.projectList || [] }
       return this.taskId ? h(DagMain, {
-        key: String(this.taskId),
+        key: `${this.taskId}:${this.readonly ? 'view' : 'edit'}`,
         props: { ...project, flowId: this.taskId, isView: this.readonly, isShowTaskName: true, isDagTask: false },
         on: {
           changeTaskStatus: value => host.onTaskStatusChanged?.(value),
@@ -85,14 +95,13 @@ export async function mountOriginalTasks(host, target) {
       }) : h(TaskList, {
         props: { ...project, user: host.user, folderId: host.folderId },
         on: {
-          editTask: row => this.openTask(row, false),
-          viewTask: row => this.openTask(row, true),
-          createNewTask: row => this.openTask(row, false)
+          editTask: row => this.openTask(row, false).catch(() => host.onError?.()),
+          viewTask: row => this.openTask(row, true).catch(() => host.onError?.()),
+          createNewTask: row => this.openTask(row, false, true).catch(() => host.onError?.())
         }
       })
     }
   }).$mount(target)
-  let destroyed = false
   const destroy = () => {
     if (destroyed) return
     destroyed = true
@@ -100,9 +109,13 @@ export async function mountOriginalTasks(host, target) {
     vm.$destroy()
   }
   const onPageHide = event => { if (!event.persisted) destroy() }
+  try {
+    await vm.$nextTick()
+    ensureMounted(vm)
+  } catch (error) { destroy(); throw error }
   window.addEventListener('pagehide', onPageHide)
   return {
-    backToTaskList: () => { vm.taskId = null },
+    async backToTaskList() { vm.taskId = null; await vm.$nextTick(); ensureMounted(vm) },
     setRoute(next) {
       const snapshot = { ...next }
       Object.keys(route).forEach(key => Vue.delete(route, key))
