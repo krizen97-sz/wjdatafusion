@@ -18,7 +18,9 @@
 
 ## 周期计划
 
-`HdiCoreSchedules` 首批开放原 `scheduleType=2` 的每月（unit2）、每周（unit3）、每日（unit4）。Cron 由原 `ScheduleConfigVo.toScheduleVo` 和 `CronUtil.generateEnableCronExpr` 生成，平台现有 Quartz 负责未来时间计算。时区明确为 `Asia/Shanghai`，返回给原表单的预览为该时区的 `yyyy-MM-dd HH:mm:ss`。
+`HdiCoreSchedules` 开放原 `scheduleType=2` 的每月（unit2）、每周（unit3）、每日（unit4）。Cron 由原 `ScheduleConfigVo.toScheduleVo` 和 `CronUtil.generateEnableCronExpr` 生成，平台现有 Quartz 负责未来时间计算。时区明确为 `Asia/Shanghai`，返回给原表单的预览为该时区的 `yyyy-MM-dd HH:mm:ss`。
+
+小时（unit5）与分钟（unit6）按原 `CronUtil.getExecExpr` 的 `N#unit` 协议以及 Core `JobManager.getScheduleBuilder` 的 CalendarIntervalScheduleBuilder 实现，持久计划使用 `kind=CALENDAR`、原表达式、interval/unit 和 anchorTime。原 `JobManager.initStartTime` 默认 startNow；平台在启用后的下一个 1 秒轮询触发首次运行，随后按持久锚点推进。它既不是整点 Cron，也不是等上一轮完成后再加间隔；例如 10:07:03 起每90分钟，后续为 11:37:03、13:07:03。运行重叠仍明确跳过该期，恢复后根据相同锚点找未来时间，不补派过去任务。
 
 计划只绑定已发布且与预期版本相同的 immutable revision，后续编辑或发布不会暗中替换旧计划的数据定义。保存计划不执行数据任务；启用后由持久 due 时间触发。禁用只停止后续触发，当前运行另调用 stop。
 
@@ -30,7 +32,7 @@ Store 在同一事务中按 Task → Plan 顺序加锁，校验 generation / exp
 
 服务启动前已经到期的触发记 `SKIPPED_RESTART`，运行时迟到超过 30 秒记 `SKIPPED_MISFIRE`，均直接计算未来时间，不补跑历史任务。已成功 claim 但平台在派发前崩溃的 QUEUED 记录重启后成为 UNKNOWN，不自动重新执行。
 
-小时/分钟/秒的原间隔语义、实时、依赖、排除窗口和立即首跑仍需按原实际调度链另行核实实现；不可将它们展示为已支持的整点 Cron。每项能力应在真实保存、触发、终态验证后开放。
+秒级、实时、依赖、排除窗口和额外立即全量首跑仍未开放。每项能力应在真实保存、触发、终态验证后开放，不以一个频率名称替代执行语义。
 
 ## 验证边界
 
