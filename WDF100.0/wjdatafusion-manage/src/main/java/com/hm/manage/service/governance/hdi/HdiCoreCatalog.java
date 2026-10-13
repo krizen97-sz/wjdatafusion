@@ -30,6 +30,8 @@ public final class HdiCoreCatalog {
     // These are new platform registry identities, not IDs claimed to exist in a vendor database.
     private static final List<String> SUPPORTED = List.of("dataGeneratorInput", "fieldMapping", "fileOutput");
     private static final Map<String, String> TYPES = Map.of("dataGeneratorInput", "input", "fieldMapping", "preproc", "fileOutput", "output");
+    private static final Map<String, String> ORIGINAL_ICONS = Map.of("input", "/static/img/defaultinput.e71f57a7.svg",
+        "preproc", "/static/img/defaultpreproc.26462e9c.svg", "output", "/static/img/defaultoutput.bfb8531e.svg");
     private static final String DATA_JAR = "task-service/dEtlv2.jar";
     private static final String SQL_ROOT = "db/migration/V200/";
     private static final List<String> TYPE_SQL = List.of("V1.0.1__INIT_DATA.sql", "V1.0.10__ETL2_0511.sql",
@@ -50,6 +52,13 @@ public final class HdiCoreCatalog {
             item.put("id", plugin.id); item.put("groupAdapterId", plugin.id);
             item.put("adapterName", text(def, "adapterName")); item.put("adapterDisplayName", text(def, "adapterDisplayName"));
             item.put("adapterType", text(def, "adapterType")); item.put("adapterVersion", text(def, "version"));
+            String icon = ORIGINAL_ICONS.get(text(def, "adapterType"));
+            HdiCoreAssets.Asset image = assets.read("/detl" + icon);
+            if (image == null || !"image/svg+xml".equals(image.contentType())) throw unavailable();
+            item.put("iconStr", icon); item.put("iconUrI", icon);
+            // Original getOrderedGroupAdapters uses PROCESS_ADAPTER_TYPE.getOrDefault(adapterName, "other").
+            // The bundled seed has no fieldMapping override; a missing processType hides it from the original panel.
+            if ("fieldMapping".equals(text(def, "adapterName"))) item.put("processType", "other");
             item.put("adapterClassName", text(def, "className")); item.put("languageType", 1); // Original LanguageType.JAVA=1.
             item.put("languageTypeDesc", "java"); item.put("dbTypeId", scalar(def.get("adapterDatabaseType")));
             item.put("addComment", scalar(def.get("adapterComment")));
