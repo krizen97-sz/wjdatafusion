@@ -74,6 +74,8 @@ public class HdiCoreApi {
                 if (key == null) throw new HdiTaskFault(503, "节点参数加密尚未就绪");
                 return Map.of("publicKey", key.publicKey());
             case "/system/environment/getBase64VisualEnable": requireMethod(method, "GET"); return true;
+            case "/globalConfig/groupAdapterManage/getAdapterUIInfo":
+                requireMethod(method, "GET"); return catalog.getAdapterUiInfo(HdiProtocol.query(request, "adapterName"));
             case "/globalConfig/groupAdapterManage/listAdapters": requireMethod(method, "GET"); return catalog.getAdapters();
             case "/globalConfig/groupAdapterManage/getAdapterTypeOptions": requireMethod(method, "GET"); return catalog.getAdapterTypeOptions();
             case "/code/codeConfig/getDataTypeList": requireMethod(method, "GET"); return catalog.getDataTypes();
@@ -118,10 +120,12 @@ public class HdiCoreApi {
             }
             case "/globalConfig/paramManage/getParamCategory": {
                 requireMethod(method, "POST"); JsonNode query = object(body(request));
-                if (query.path("typeId").asInt(-1) != 2) throw unsupported();
+                if (!query.path("typeId").isIntegralNumber() || !Set.of(2, 6, 9).contains(query.path("typeId").intValue())) throw unsupported();
+                if (query.hasNonNull("onlySelected") && !query.path("onlySelected").isBoolean()) throw bad("参数选择范围无效");
                 String keyword = optionalText(query, "keyword");
                 if (keyword != null && keyword.length() > 128) throw bad("参数搜索条件过长");
-                return parameterCategories(query.path("params"), query.path("onlySelected").asBoolean(false), keyword);
+                return parameterCategories(query.path("params"), query.path("onlySelected").asBoolean(false), keyword,
+                    catalog.listParams(query.path("typeId").intValue(), optionalText(query, "adapterName"), optionalText(query, "stepTypeName")));
             }
             case "/flow/checkBeforeStart":
             case "/flow/checkFlowIncrConfig": {
@@ -336,9 +340,12 @@ public class HdiCoreApi {
 
     /** Original ParamCategoryVo/ParamSelectedVo presentation; execution values remain frozen in the revision. */
     private ArrayNode parameterCategories(JsonNode params, boolean onlySelected, String keyword) {
+        return parameterCategories(params, onlySelected, keyword, catalog.listParams(2, null, null));
+    }
+    private ArrayNode parameterCategories(JsonNode params, boolean onlySelected, String keyword, List<Map<String, Object>> definitions) {
         Map<String, String> selected = selectedParameters(params, false);
         Map<String, ObjectNode> groups = new LinkedHashMap<>(); Set<String> known = new java.util.HashSet<>();
-        for (Map<String, Object> config : catalog.listParams(2, null, null)) {
+        for (Map<String, Object> config : definitions) {
             String name = (String)config.get("paramName"); known.add(name); boolean chosen = selected.containsKey(name);
             if (onlySelected && !chosen) continue;
             if (keyword != null && !keyword.isBlank() && !name.contains(keyword) && !String.valueOf(config.get("paramDisplayName")).contains(keyword)) continue;

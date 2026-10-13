@@ -71,15 +71,26 @@ public final class HdiCoreCatalog {
         return List.copyOf(result);
     }
 
+    /** Original getAdapterUiInfo exposes parsed adapterUIParams; an absent optional section is an empty map. */
+    public Map<String, Object> getAdapterUiInfo(String adapterName) {
+        if (adapterName == null || !SUPPORTED.contains(adapterName)) throw badQuery();
+        Plugin plugin = plugins().stream().filter(p -> adapterName.equals(text(p.definition, "adapterName"))).findFirst().orElseThrow(HdiCoreCatalog::unavailable);
+        JsonNode info = plugin.definition.get("adapterUIParams");
+        if (info == null || info.isNull()) return Map.of();
+        if (!info.isObject()) throw unavailable();
+        @SuppressWarnings("unchecked") Map<String, Object> result = JSON.convertValue(info, Map.class);
+        return Collections.unmodifiableMap(result);
+    }
+
     public List<Map<String, Object>> listParams(Integer typeId, String adapterName, String stepTypeName) {
         if (Integer.valueOf(2).equals(typeId)) {
             if ((adapterName != null && !adapterName.isBlank()) || (stepTypeName != null && !stepTypeName.isBlank())) throw badQuery();
             return params(json(assets.readOriginal("instance/conf/task_config.json")).get("configParam"), 2, 0);
         }
-        if (!Integer.valueOf(9).equals(typeId) || !SUPPORTED.contains(adapterName)) throw badQuery();
+        if ((!Integer.valueOf(6).equals(typeId) && !Integer.valueOf(9).equals(typeId)) || adapterName == null || !SUPPORTED.contains(adapterName)) throw badQuery();
         Plugin plugin = plugins().stream().filter(p -> adapterName.equals(text(p.definition, "adapterName"))).findFirst().orElseThrow(HdiCoreCatalog::unavailable);
         if (stepTypeName != null && !stepTypeName.isBlank() && !stepTypeName.equals(TYPES.get(adapterName))) throw badQuery();
-        return params(plugin.definition.get("adapterParams"), 9, plugin.id);
+        return params(plugin.definition.get("adapterParams"), typeId, plugin.id);
     }
 
     public List<Map<String, Object>> getAdapterTypeOptions() {
