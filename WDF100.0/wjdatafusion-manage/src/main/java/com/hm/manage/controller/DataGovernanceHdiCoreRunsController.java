@@ -34,15 +34,19 @@ public class DataGovernanceHdiCoreRunsController {
     }
     @GetMapping("/runs/{runId}")
     public AjaxResult status(@PathVariable String runId, HttpServletResponse response) {
-        HdiProtocol.noCache(response); return AjaxResult.success(runs.status(SecurityUtils.getUserId(), runId));
+        HdiProtocol.noCache(response); return nativeData(runs.status(SecurityUtils.getUserId(), runId));
     }
     @GetMapping("/runs/{runId}/artifacts")
     public AjaxResult artifacts(@PathVariable String runId, HttpServletResponse response) {
-        HdiProtocol.noCache(response); return AjaxResult.success(runs.artifacts(SecurityUtils.getUserId(), runId));
+        HdiProtocol.noCache(response); return nativeData(runs.artifacts(SecurityUtils.getUserId(), runId));
     }
     @GetMapping("/runs/{runId}/logs")
     public AjaxResult logs(@PathVariable String runId, @RequestParam(defaultValue = "0") long cursor, @RequestParam(defaultValue = "32768") int limit, HttpServletResponse response) {
-        HdiProtocol.noCache(response); return AjaxResult.success(runs.logs(SecurityUtils.getUserId(), runId, cursor, limit));
+        HdiProtocol.noCache(response); return nativeData(runs.logs(SecurityUtils.getUserId(), runId, cursor, limit));
+    }
+    private static AjaxResult nativeData(com.fasterxml.jackson.databind.JsonNode node) {
+        // Boot 4's Jackson 3 HTTP converter cannot serialize the native SDK's Jackson 2 tree as JSON data.
+        return AjaxResult.success(HdiProtocol.JSON.convertValue(node, Object.class));
     }
     @GetMapping("/runs/{runId}/artifacts/{artifactId}/download")
     public ResponseEntity<byte[]> download(@PathVariable String runId, @PathVariable String artifactId) {

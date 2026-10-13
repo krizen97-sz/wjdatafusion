@@ -42,4 +42,13 @@ class HdiCoreDownloadTest {
         when(runs.artifact(7, "run", "artifact", 0, 1048576)).thenThrow(new HdiTaskFault(404, "不可访问"));
         assertEquals(404, assertThrows(HdiTaskFault.class, () -> controller.download("run", "artifact")).status());
     }
+    @Test void platformHttpSerializerReceivesActualNativeDataInsteadOfJsonNodeBeanProperties() throws Exception {
+        when(runs.status(7, "run")).thenReturn(HdiProtocol.JSON.createObjectNode().put("state", "SUCCEEDED").put("finalized", true));
+        var mvc = org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup(controller).build();
+        var response = mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get("/governance/hdi/runs/run")).andReturn().getResponse();
+        assertEquals(200, response.getStatus());
+        var body = HdiProtocol.JSON.readTree(response.getContentAsByteArray());
+        assertEquals("SUCCEEDED", body.path("data").path("state").asText());
+        assertTrue(body.path("data").path("finalized").asBoolean()); assertFalse(body.path("data").has("nodeType"));
+    }
 }
