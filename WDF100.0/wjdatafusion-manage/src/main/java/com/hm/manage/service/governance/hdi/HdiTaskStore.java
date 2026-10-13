@@ -69,6 +69,30 @@ public class HdiTaskStore {
         return count == null ? 0 : count;
     }
     private static String like(String keyword) { return "%" + (keyword == null ? "" : keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")) + "%"; }
+    public boolean nameAvailable(long owner, String name, Long excludeId) {
+        if (name == null || name.isBlank() || name.length() > 128) return false;
+        Long count = excludeId == null
+            ? jdbc.queryForObject("SELECT COUNT(*) FROM dg_hdi_task WHERE owner_id=? AND deleted=0 AND task_name=?", Long.class, owner, name.trim())
+            : jdbc.queryForObject("SELECT COUNT(*) FROM dg_hdi_task WHERE owner_id=? AND deleted=0 AND task_name=? AND task_id<>?", Long.class, owner, name.trim(), excludeId);
+        return count != null && count == 0;
+    }
+    public Task publish(long owner, long taskId, long revision) {
+        return transactions.execute(status -> {
+            List<Task> rows = jdbc.query("SELECT " + TASK_COLUMNS + " FROM dg_hdi_task WHERE task_id=? AND owner_id=? AND deleted=0 FOR UPDATE", TASK, taskId, owner);
+            if (rows.size() != 1) throw new HdiTaskFault(404, "任务不存在或无权访问");
+            if (rows.get(0).revision() != revision) throw new HdiTaskFault(409, "任务修订已变化，请重新打开");
+            revision(owner, taskId, revision);
+            jdbc.update("UPDATE dg_hdi_task SET published_revision=?,state=CASE WHEN state='DRAFT' THEN 'READY' ELSE state END,updated_at=? WHERE task_id=? AND owner_id=?", revision, Timestamp.from(Instant.now()), taskId, owner);
+            return get(owner, taskId);
+        });
+    }
+    public List<Task> interrupted(long owner, int page, int size) {
+        return jdbc.query("SELECT " + TASK_COLUMNS + " FROM dg_hdi_task WHERE owner_id=? AND deleted=0 AND state='UNKNOWN' ORDER BY updated_at DESC LIMIT ? OFFSET ?", TASK, owner, size, (page - 1) * size);
+    }
+    public long interruptedCount(long owner) {
+        Long count = jdbc.queryForObject("SELECT COUNT(*) FROM dg_hdi_task WHERE owner_id=? AND deleted=0 AND state='UNKNOWN'", Long.class, owner);
+        return count == null ? 0 : count;
+    }
     public Revision revision(long owner, long task, long revision) {
         get(owner, task);
         List<Revision> rows = jdbc.query("SELECT * FROM dg_hdi_revision WHERE task_id=? AND revision=? AND owner_id=?", (r, n) -> new Revision(r.getLong("task_id"), r.getLong("revision"), r.getLong("owner_id"), r.getString("visual_json"), r.getString("definition_sha256"), r.getString("snapshot_json"), r.getString("snapshot_sha256"), r.getString("diagnostics_json")), task, revision, owner);
@@ -78,6 +102,7 @@ public class HdiTaskStore {
     public record PreparedVisual(String visualJson, String snapshotJson, String snapshotSha256, String diagnosticsJson) { }
     @FunctionalInterface public interface VisualWriter { PreparedVisual write(long id, long revision); }
     public Task save(long owner, Long id, Long expectedRevision, String name, long folder, VisualWriter visualWriter) {
+        if (folder != -1) throw new HdiTaskFault(422, "当前任务域使用根目录，请选择全部目录");
         if (owner <= 0 || name == null || name.isBlank() || name.length() > 128) throw new HdiTaskFault(400, "请填写有效的任务名称");
         return transactions.execute(status -> {
             Workspace workspace = workspace(); Instant now = Instant.now(); long taskId; long next;
