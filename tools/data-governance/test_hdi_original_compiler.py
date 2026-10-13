@@ -45,6 +45,36 @@ def fixture_visual(value='platform revision one'):
             'links': [{'source': 110, 'target': 120, 'connectStatus': 0}, {'source': 120, 'target': 130, 'connectStatus': 0}]}
 
 
+def original_ui_visual():
+    """Sanitized shape from the original browser's three-node form, not a hand-filled DB row.
+
+    The original form omits processType/fieldExpression/enableFlag, uses blank
+    numeric precision and keeps Element control names in adapter parameter DTOs.
+    """
+    visual = fixture_visual('browser original core')
+    field = dict(fieldName='message', fieldType='varchar', fieldSize=64, fieldPrecision='',
+                 fieldKeyFlag=0, fieldExpression='browser original core', ruleType='FIXED_VALUE',
+                 fieldRangeMin='', fieldRangeMax='')
+    visual['nodes']['110']['adapterData'] = [field]
+    visual['nodes']['110']['streamFieldVoList'] = [{**field, 'fieldDisplayName': 'message', 'fieldAlias': 'message'}]
+    visual['nodes']['110']['adapterParamVoList'][0].update(valueType='el-input', minValue=None, maxValue=None)
+    visual['nodes']['120']['transformFieldVoList'] = [dict(
+        fieldSrcName='message', fieldDstName='message', fieldSrcDisplayName='message', fieldDstDisplayName='message',
+        fieldSrcType='varchar', fieldDstType='varchar', fieldSrcSize=64, fieldDstSize=64, fieldSrcPrecision='', fieldDstPrecision='')]
+    node = visual['nodes']['130']
+    node['adapterData'].update(isAsyncGenerateText=False, databaseSid='', absoluteDir='', relativeDir='',
+                               numOfJson=1, imgField='', arrayPath='', backFill='false', jsonTemplate='')
+    node['dstTableFieldVoList'] = [dict(fieldName='message', fieldDisplayName='message', fieldSize=64,
+                                      fieldType='varchar', fieldPrecision='', isNew=None, isUpdate=None, fieldKeyFlag=0)]
+    node['adapterParamVoList'] = [dict(paramName=name, paramValue=value, valueType=control, minValue=None, maxValue=None)
+                                 for name, value, control in [
+        ('etl.file.isUpload', 'false', 'el-switch'), ('etl.file.serverType', 'Ftp', 'el-select'),
+        ('etl.file.rowSplitChar', ',', 'el-input'), ('etl.file.retrytimes', '5', 'el-input'),
+        ('etl.file.maxRow', '100', 'el-input'), ('etl.file.flushTime', '10000', 'el-input')]]
+    visual.update(status=True, saveFlowStatus=0)
+    return visual
+
+
 class LauncherUnitTests(unittest.TestCase):
     def test_traversal_and_symlink_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -140,6 +170,56 @@ class OriginalSdkTests(unittest.TestCase):
         self.assertNotEqual(first['flowjson']['sha256'], second['flowjson']['sha256'])
         self.assertIn(b'second saved value', base64.b64decode(second['flowjson']['base64']))
         self.assertTrue({row['moduleId'] for row in first['nodeMappings']}.isdisjoint({row['moduleId'] for row in second['nodeMappings']}))
+
+    def test_original_browser_default_mapping_and_output_dto_compile_without_invented_fields(self):
+        prepared = self.prepare(original_ui_visual())
+        result = self.invoke(self.compile_request(prepared))
+        self.assertTrue(result['ok'], result)
+        native = json.loads(base64.b64decode(result['flowjson']['base64']))
+        modules = {m['adapter']['adapter_name']: m['config'] for m in native['streams'][0]['modules']}
+        self.assertEqual([], modules['fieldMapping']['fields'])  # Original service emits no work for passthrough.
+        field = modules['fileOutput']['datasource'][0]['dst_table_field'][0]
+        self.assertEqual('message', field['field_name'])
+        self.assertNotIn('field_expression', field)
+        self.assertEqual(1, field['enable_flag'])
+        self.assertEqual(0, field['field_order'])  # Original DstTableFieldService.batchInsert ordering.
+        params = {p['param_name']: p['param_value'] for p in modules['fileOutput']['adapter_param']}
+        self.assertEqual('csv', params['etl.file.fileType'])
+        self.assertEqual('false', params['etl.file.isUpload'])
+        original = prepared['canonicalVisual']['nodes']
+        self.assertNotIn('processType', original['120']['transformFieldVoList'][0])
+        self.assertNotIn('enableFlag', original['130']['dstTableFieldVoList'][0])
+
+    def test_original_mapping_rename_uses_native_null_process_type_default(self):
+        visual = original_ui_visual()
+        visual['nodes']['120']['transformFieldVoList'][0]['fieldDstName'] = 'renamed'
+        visual['nodes']['130']['dstTableFieldVoList'][0]['fieldName'] = 'renamed'
+        result = self.invoke(self.compile_request(self.prepare(visual)))
+        self.assertTrue(result['ok'], result)
+        native = json.loads(base64.b64decode(result['flowjson']['base64']))
+        mapping = native['streams'][0]['modules'][1]['config']['fields'][0]
+        self.assertEqual('message', mapping['field_src_name'])
+        self.assertEqual('renamed', mapping['field_target_name'])
+        self.assertNotIn('field_src_reserve', mapping)
+
+    def test_original_form_cannot_silently_lose_selected_format_to_legacy_parameter(self):
+        visual = original_ui_visual()
+        visual['nodes']['130']['adapterParamVoList'].append(dict(paramName='etl.file.fileType', paramValue='txt', valueType='el-select'))
+        self.assertTrue(self.prepare(visual)['ok'])  # The saved draft is preserved for correction.
+        rejected = self.invoke(self.compile_request(self.prepare(visual)))
+        self.assertFalse(rejected['ok'])
+        self.assertEqual('UNSUPPORTED_GRAPH', rejected['code'])
+        visual['nodes']['130']['adapterParamVoList'][-1]['paramValue'] = 'csv'
+        result = self.invoke(self.compile_request(self.prepare(visual)))
+        self.assertTrue(result['ok'], result)
+
+    def test_missing_output_expression_does_not_allow_unknown_fields_or_fel(self):
+        visual = original_ui_visual()
+        visual['nodes']['130']['dstTableFieldVoList'][0]['fieldName'] = 'missing'
+        self.assertFalse(self.invoke(self.compile_request(self.prepare(visual)))['ok'])
+        visual = original_ui_visual()
+        visual['nodes']['130']['dstTableFieldVoList'][0]['fieldExpression'] = 'runtime.exec()'
+        self.assertFalse(self.invoke(self.compile_request(self.prepare(visual)))['ok'])
 
     def test_snapshot_tampering_and_identity_mismatch_rejected(self):
         request = self.compile_request()

@@ -8,6 +8,10 @@
 
 原 `dataGeneratorInput` → 零个或多个原 `fieldMapping` → 原本地 `fileOutput`，一个连接完整的线性链，最多 32 个节点、96 条边、512 个字段。生成器首批开放 `FIXED_VALUE`；映射首批开放无外部函数的 `move` / `keep`；输出首批开放同步 CSV / line。数据处理由原插件完成。
 
+兼容原浏览器的缺省 DTO：`transformFieldVoList.processType` 可以缺失，原 `FieldMappingServiceImpl` 对同名同类型的字段不生成转换项，改名时沿用原非 `keep` 默认；本适配不填造处理规则。输出字段可以没有 `fieldExpression` / `enableFlag`，编译元数据通过原 `DstTableFieldServiceImpl.batchInsert` 的实际投影生成字段顺序、启用标志和本次 stream/node 归属，原字段表达式继续保持缺省。该 DAO 的批量写入仅捕获到本次不可变快照，不连接数据库。字段名仍须来自上游，显式 FEL 表达式不开放。
+
+原 `el-input` / `el-switch` / `el-select` 参数 DTO 可以保留。原文件生成器优先采用 `adapterParamVoList` 中已有参数，再从 `adapterData` 补缺；因此若历史参数 `etl.file.fileType=txt` 与表单 `adapterData.fileType=csv` 冲突，草稿可保存，但编译明确拒绝，不能静默输出另一种格式。受支持的显式格式参数须与表单一致。目录适配应遵循原参数表单的过滤契约，不把已由专属节点表单接管的旧默认值重新注入。
+
 保存允许空草稿、不完整链、未配置完的节点和原无限行数 `-1`。运行明确拒绝无界生成、分叉、环、未知插件、FTP/SFTP、SQL、脚本、外部 FEL / Redis、全局参数引用、异步输出及当前范围外的表达式。保存不会把这些配置静默修改成可运行的配置。生成器缺省行数从已校验的原 `etl_plugin.json` 读取（本版原值为 100000），不会被偷偷改为测试行数；运行上限为 1000000 行。
 
 原字段映射表单自带的未启用 Redis 占位值可以保留；只有与原目录默认值完全一致且当前映射没有外部函数的配置可进入本批执行。参数值改变时返回 `UNSUPPORTED_GRAPH`。
