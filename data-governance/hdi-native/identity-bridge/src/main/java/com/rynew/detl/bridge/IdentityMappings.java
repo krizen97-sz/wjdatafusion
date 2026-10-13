@@ -32,8 +32,8 @@ final class IdentityMappings {
             if (!seen.contains(projectCode)) throw TicketVerifier.denied(); projectList = List.copyOf(list);
         }
         Map<String,Object> response() {
-            return Map.of("user", Map.of("id", userId, "userId", userId, "userName", userName, "accountName", accountName, "realUserName", realUserName, "language", language),
-                "projectCode", projectCode, "projectName", projectName, "projectList", projectList, "workspaceId", workspaceId, "locale", language);
+            return Map.of("user", Map.of("id", Long.toString(userId), "userId", Long.toString(userId), "userName", userName, "accountName", accountName, "realUserName", realUserName, "language", language),
+                "projectCode", projectCode, "projectName", projectName, "projectList", projectList, "workspaceId", Long.toString(workspaceId), "locale", language);
         }
     }
     private final Map<String, Identity> identities;
