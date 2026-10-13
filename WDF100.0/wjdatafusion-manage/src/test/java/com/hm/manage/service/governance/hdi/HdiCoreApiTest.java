@@ -325,7 +325,7 @@ class HdiCoreApiTest {
         assertEquals("false", json(request(get("/detl/globalConfig/groupAdapterManage/getAdapterUIInfo").param("adapterName", "fileOutput"), editorSession, false), 200)
             .path("data").path("adapterTableUse").asText());
         for (int typeId : new int[]{6, 9}) for (String[] plugin : new String[][]{{"dataGeneratorInput", "input"}, {"fieldMapping", "preproc"}, {"fileOutput", "output"}}) {
-            when(catalog.listParams(typeId, plugin[0], plugin[1])).thenReturn(List.of(Map.of("paramName", "original.param", "paramDisplayName", "原参数",
+            when(catalog.listParams(eq(typeId), eq(plugin[0]), eq(plugin[1]), anySet())).thenReturn(List.of(Map.of("paramName", "original.param", "paramDisplayName", "原参数",
                 "paramDefaultValue", "10", "loadFlag", 1, "valueType", "el-input", "paramCategory", "原分类", "paramSubCategory", "原子类", "values", List.of())));
             ObjectNode query = HdiProtocol.JSON.createObjectNode().put("typeId", typeId).put("adapterName", plugin[0]).put("stepTypeName", plugin[1]).put("onlySelected", true);
             query.putArray("params").addObject().put("paramName", "original.param").put("paramValue", "20");
@@ -337,7 +337,7 @@ class HdiCoreApiTest {
             assertTrue(json(request(post("/detl/globalConfig/paramManage/getParamCategory").contentType("application/json").content(query.toString()), editorSession, true), 200).path("data").isEmpty());
             json(request(post("/detl/globalConfig/paramManage/getParamCategory").contentType("application/json").content(query.toString()), editorSession, false), 403);
         }
-        when(catalog.listParams(9, "jdbcInput", "input")).thenThrow(new HdiTaskFault(400, "不支持该插件"));
+        when(catalog.listParams(eq(9), eq("jdbcInput"), eq("input"), anySet())).thenThrow(new HdiTaskFault(400, "不支持该插件"));
         json(request(post("/detl/globalConfig/paramManage/getParamCategory").contentType("application/json")
             .content("{\"typeId\":9,\"adapterName\":\"jdbcInput\",\"stepTypeName\":\"input\",\"params\":[]}"), editorSession, true), 400);
     }
@@ -373,6 +373,14 @@ class HdiCoreApiTest {
         assertTrue(json(request(post("/detl/globalConfig/dataSourceManage/getDatasourceOptions").contentType("application/json").content("{\"dbType\":18,\"inOutFlags\":[2]}"), editorSession, true), 200).path("data").isEmpty());
         JsonNode capabilities = json(request(get("/detl/globalConfig/dataSourceManage/getDataSourceExtendInfo"), editorSession, false), 200).path("data");
         assertEquals(6, capabilities.size()); capabilities.forEach(value -> assertEquals("", value.asText()));
+        verifyNoInteractions(runs);
+    }
+
+    @Test void globalParameterCountReflectsTheEmptyPlatformRegistryWithoutEnablingExpressions() throws Exception {
+        JsonNode count = json(request(post("/detl/globalConfig/globalParamManage/count").param("keyword", ""), editorSession, true), 200).path("data");
+        assertEquals(0, count.intValue());
+        json(request(post("/detl/globalConfig/globalParamManage/count"), editorSession, false), 403);
+        json(request(post("/detl/globalConfig/globalParamManage/count").contentType("application/json").content("{}"), editorSession, true), 400);
         verifyNoInteractions(runs);
     }
 

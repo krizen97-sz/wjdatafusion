@@ -22,6 +22,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.springframework.stereotype.Component;
 import org.springframework.asm.ClassReader;
+import org.springframework.asm.AnnotationVisitor;
+import org.springframework.asm.FieldVisitor;
 import org.springframework.asm.ClassVisitor;
 import org.springframework.asm.MethodVisitor;
 import org.springframework.asm.Opcodes;
@@ -87,6 +89,9 @@ public final class HdiCoreCatalog {
     }
 
     public List<Map<String, Object>> listParams(Integer typeId, String adapterName, String stepTypeName) {
+        return listParams(typeId, adapterName, stepTypeName, Set.of());
+    }
+    public List<Map<String, Object>> listParams(Integer typeId, String adapterName, String stepTypeName, Set<String> selectedNames) {
         if (Integer.valueOf(2).equals(typeId)) {
             if ((adapterName != null && !adapterName.isBlank()) || (stepTypeName != null && !stepTypeName.isBlank())) throw badQuery();
             return params(json(assets.readOriginal("instance/conf/task_config.json")).get("configParam"), 2, 0);
@@ -94,7 +99,46 @@ public final class HdiCoreCatalog {
         if ((!Integer.valueOf(6).equals(typeId) && !Integer.valueOf(9).equals(typeId)) || adapterName == null || !SUPPORTED.contains(adapterName)) throw badQuery();
         Plugin plugin = plugins().stream().filter(p -> adapterName.equals(text(p.definition, "adapterName"))).findFirst().orElseThrow(HdiCoreCatalog::unavailable);
         if (stepTypeName != null && !stepTypeName.isBlank() && !stepTypeName.equals(TYPES.get(adapterName))) throw badQuery();
-        return params(plugin.definition.get("adapterParams"), typeId, plugin.id);
+        Set<String> hidden = "fileOutput".equals(adapterName) ? fileOutputFormManagedParams() : Set.of();
+        return params(plugin.definition.get("adapterParams"), typeId, plugin.id).stream()
+            .filter(row -> selectedNames.contains(row.get("paramName")) || !hidden.contains(row.get("paramName"))).toList();
+    }
+
+    /** Match AbstractAdapterService.getIgnoreDisplayParamName: annotated form-owned parameters stay out of new advanced defaults. */
+    private Set<String> fileOutputFormManagedParams() {
+        String annotation = "com/hikvision/idatafusion/detl/common/annotation/AdapterParam";
+        Boolean[] displayDefault = {null};
+        try {
+            new ClassReader(metadataClass(DATA_JAR, annotation)).accept(new ClassVisitor(Opcodes.ASM9) {
+                @Override public MethodVisitor visitMethod(int access, String name, String desc, String signature, String[] exceptions) {
+                    if (!name.equals("display") || !desc.equals("()Z")) return null;
+                    return new MethodVisitor(Opcodes.ASM9) {
+                        @Override public AnnotationVisitor visitAnnotationDefault() {
+                            return new AnnotationVisitor(Opcodes.ASM9) { @Override public void visit(String name, Object value) { if (value instanceof Boolean) displayDefault[0] = (Boolean)value; } };
+                        }
+                    };
+                }
+            }, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+            if (displayDefault[0] == null) throw unavailable();
+            Set<String> names = new java.util.LinkedHashSet<>();
+            ClassReader config = new ClassReader(metadataClass(DATA_JAR, "com/hikvision/idatafusion/detl/dto/task/node/FileOutputNodeConfigVo"));
+            if (!"java/lang/Object".equals(config.getSuperName())) throw unavailable();
+            config.accept(new ClassVisitor(Opcodes.ASM9) {
+                @Override public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+                    return new FieldVisitor(Opcodes.ASM9) {
+                        @Override public AnnotationVisitor visitAnnotation(String desc, boolean visible) {
+                            if (!desc.equals("L" + annotation + ";")) return null;
+                            return new AnnotationVisitor(Opcodes.ASM9) {
+                                String param; boolean display = displayDefault[0];
+                                @Override public void visit(String key, Object data) { if (key.equals("value") && data instanceof String) param = (String)data; else if (key.equals("display") && data instanceof Boolean) display = (Boolean)data; }
+                                @Override public void visitEnd() { if (!display && param != null && !param.isEmpty()) names.add(param); }
+                            };
+                        }
+                    };
+                }
+            }, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+            return Set.copyOf(names);
+        } catch (RuntimeException invalid) { throw unavailable(); }
     }
 
     /** Read the vendor's literal type dictionary without loading its classes or opening a data source. */
