@@ -342,4 +342,38 @@ class HdiCoreApiTest {
             .content("{\"typeId\":9,\"adapterName\":\"jdbcInput\",\"stepTypeName\":\"input\",\"params\":[]}"), editorSession, true), 400);
     }
 
+    @Test void jdbcTypeDictionaryIsReadOnlyOriginalMetadataAndStillRequiresPostCsrf() throws Exception {
+        when(catalog.getJdbcDbTypes()).thenReturn(List.of(1, 2, 16));
+        JsonNode types = json(request(post("/detl/globalConfig/dataSourceManage/getJdbcDbTypeList"), editorSession, true), 200).path("data");
+        assertEquals(List.of(1, 2, 16), HdiProtocol.JSON.convertValue(types, List.class));
+        json(request(post("/detl/globalConfig/dataSourceManage/getJdbcDbTypeList"), editorSession, false), 403);
+        json(request(get("/detl/globalConfig/dataSourceManage/getJdbcDbTypeList"), editorSession, false), 405);
+        json(request(post("/detl/globalConfig/dataSourceManage/getJdbcDbTypeList").contentType("application/json").content("{\"connection\":\"ignored\"}"), editorSession, true), 400);
+        verifyNoInteractions(runs);
+    }
+
+    @Test void fieldMappingEditorReceivesActualGroupedFieldsAndNoUnsupportedFelFunctions() throws Exception {
+        JsonNode functions = json(request(get("/detl/globalConfig/felManager/getFelClassifyList").param("name", ""), editorSession, false), 200).path("data");
+        assertTrue(functions.isArray()); assertTrue(functions.isEmpty());
+        String fields = "{\"fields\":[{\"fieldSrcName\":\"message\",\"fieldSrcType\":\"string\"},{\"fieldSrcName\":\"count\",\"fieldSrcType\":\"int\",\"fieldDstName\":\"renamed\",\"fieldDstType\":\"long\"},{\"fieldSrcName\":\"unspecified\"},{\"fieldSrcName\":\"second\",\"fieldSrcType\":\"string\"}]}";
+        JsonNode groups = json(request(post("/detl/globalConfig/felManager/getFelFieldClassifyList").contentType("application/json").content(fields), editorSession, true), 200).path("data");
+        assertEquals("long", groups.get(0).path("fieldType").asText()); assertEquals("renamed", groups.get(0).path("fieldNames").get(0).asText());
+        assertEquals("other", groups.get(1).path("fieldType").asText());
+        assertEquals(List.of("message", "second"), HdiProtocol.JSON.convertValue(groups.get(2).path("fieldNames"), List.class)); assertEquals(2, groups.get(2).path("size").intValue());
+        json(request(post("/detl/globalConfig/felManager/getFelFieldClassifyList").contentType("application/json").content(fields), editorSession, false), 403);
+        verifyNoInteractions(runs); verify(compiler, never()).compile(anyString(), anyString(), anyMap());
+    }
+    @Test void localFileFormGetsRealColumnTypeDirectoryWithoutExternalConnections() throws Exception {
+        when(catalog.getFileColumnTypes()).thenReturn(List.of(Map.of("fieldType", "string", "columnType", "string")));
+        for (String dbType : List.of("18", "FTP", "-1")) {
+            JsonNode result = json(request(get("/detl/globalConfig/dataSourceManage/getDataTypeList").param("dbType", dbType), editorSession, false), 200).path("data");
+            assertEquals("string", result.get(0).path("columnType").asText());
+        }
+        json(request(get("/detl/globalConfig/dataSourceManage/getDataTypeList").param("dbType", "2"), editorSession, false), 422);
+        assertTrue(json(request(post("/detl/globalConfig/dataSourceManage/getDatasourceOptions").contentType("application/json").content("{\"dbType\":18,\"inOutFlags\":[2]}"), editorSession, true), 200).path("data").isEmpty());
+        JsonNode capabilities = json(request(get("/detl/globalConfig/dataSourceManage/getDataSourceExtendInfo"), editorSession, false), 200).path("data");
+        assertEquals(6, capabilities.size()); capabilities.forEach(value -> assertEquals("", value.asText()));
+        verifyNoInteractions(runs);
+    }
+
 }

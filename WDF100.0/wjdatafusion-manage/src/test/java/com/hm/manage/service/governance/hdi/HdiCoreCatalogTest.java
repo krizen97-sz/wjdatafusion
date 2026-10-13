@@ -108,6 +108,11 @@ class HdiCoreCatalogTest {
         assertEquals("100000", generator.stream().filter(row -> row.get("paramName").equals("etl.plugin.input.generator.data.size")).findFirst().orElseThrow().get("paramDefaultValue"));
         assertEquals(20, real.listParams(2, null, null).size());
         assertEquals(3, real.getAdapterTypeOptions().size());
+        assertEquals(18, real.getAdapters().get(2).get("dbTypeId"));
+        assertTrue(real.getFileColumnTypes().stream().anyMatch(row -> "string".equals(row.get("columnType"))));
+        assertTrue(real.getFileColumnTypes().stream().allMatch(row -> row.get("actualFieldTypeId") == null && row.get("fieldType").equals(row.get("columnType"))));
+        assertEquals(24, real.getJdbcDbTypes().size());
+        assertEquals(List.of(1, 2, 3, 7, 16, 17, 19, 22, 25, 26, 83, 101, 109, 121, 124, 140, 144, 147, 149, 160, 180, 192, 193, 195), real.getJdbcDbTypes());
         assertTrue(real.getDataTypes().stream().anyMatch(row -> "external_file".equals(row.get("name"))));
         assertTrue(real.getDataTypes().stream().anyMatch(row -> "float4".equals(row.get("name"))));
     }
@@ -129,6 +134,33 @@ class HdiCoreCatalogTest {
         assertEquals(400, assertThrows(HdiTaskFault.class, () -> catalog.getAdapterUiInfo("jdbcOutput")).status());
         Files.writeString(fixture.bundle.resolve(path), "{}");
         assertEquals(503, assertThrows(HdiTaskFault.class, () -> catalog.getAdapterUiInfo("fileOutput")).status());
+    }
+
+    @Test void jdbcDictionaryReadsLiteralClassMetadataWithoutLoadingVendorCode() throws Exception {
+        String owner = "com/hikvision/idatafusion/detl/common/DataSourceConstants";
+        var code = new org.springframework.asm.ClassWriter(0);
+        code.visit(org.springframework.asm.Opcodes.V1_8, org.springframework.asm.Opcodes.ACC_PUBLIC, owner, null, "java/lang/Object", null);
+        var init = code.visitMethod(org.springframework.asm.Opcodes.ACC_STATIC, "<clinit>", "()V", null, null); init.visitCode();
+        for (int value : new int[]{17, 2}) {
+            init.visitIntInsn(org.springframework.asm.Opcodes.BIPUSH, value);
+            init.visitMethodInsn(org.springframework.asm.Opcodes.INVOKESTATIC, "java/lang/Integer", "valueOf", "(I)Ljava/lang/Integer;", false);
+            init.visitFieldInsn(org.springframework.asm.Opcodes.PUTSTATIC, owner, "TYPE_" + value, "Ljava/lang/Integer;");
+        }
+        init.visitInsn(org.springframework.asm.Opcodes.ICONST_2); init.visitTypeInsn(org.springframework.asm.Opcodes.ANEWARRAY, "java/lang/Integer");
+        int index = 0;
+        for (int value : new int[]{17, 2}) {
+            init.visitInsn(org.springframework.asm.Opcodes.DUP); init.visitIntInsn(org.springframework.asm.Opcodes.BIPUSH, index++);
+            init.visitFieldInsn(org.springframework.asm.Opcodes.GETSTATIC, owner, "TYPE_" + value, "Ljava/lang/Integer;"); init.visitInsn(org.springframework.asm.Opcodes.AASTORE);
+        }
+        init.visitMethodInsn(org.springframework.asm.Opcodes.INVOKESTATIC, "com/google/common/collect/Sets", "newHashSet", "([Ljava/lang/Object;)Ljava/util/HashSet;", false);
+        init.visitFieldInsn(org.springframework.asm.Opcodes.PUTSTATIC, owner, "JDBC_DATASOURCE_TYPE_LIST", "Ljava/util/Set;");
+        init.visitInsn(org.springframework.asm.Opcodes.RETURN); init.visitMaxs(4, 0); init.visitEnd(); code.visitEnd();
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(bytes)) { zip.putNextEntry(new ZipEntry(owner + ".class")); zip.write(code.toByteArray()); zip.closeEntry(); }
+        fixture.put("task-service/lib/dEtlv2-core-3.3.0.jar", bytes.toByteArray()); fixture.manifest();
+        assertEquals(List.of(2, 17), catalog.getJdbcDbTypes());
+        Files.writeString(fixture.bundle.resolve("task-service/lib/dEtlv2-core-3.3.0.jar"), "changed");
+        assertEquals(503, assertThrows(HdiTaskFault.class, () -> catalog.getJdbcDbTypes()).status());
     }
 
 }
