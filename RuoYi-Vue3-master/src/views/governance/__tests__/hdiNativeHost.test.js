@@ -1,12 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mountOriginalTasks } from '../../../../../data-governance/hdi-native/host/native-task-host.mjs'
+import { mountOriginalTasks, withOriginalListDefaults } from '../../../../../data-governance/hdi-native/host/native-task-host.mjs'
 
 // Contract proof for our thin host only. The original vendor bundles are not simulated as execution evidence.
 async function withHost(options, run) {
   const previousWindow = globalThis.window, previousStorage = globalThis.localStorage
   const listeners = new Map(), instances = []
-  const TaskList = { name: 'OriginalTaskList' }, DagMain = { name: 'OriginalDagMain' }
+  const TaskList = { name: 'OriginalTaskList', methods: { handleCachePreSearch() { this.popoverSearchForm = { ...this.searchForm } } } }, DagMain = { name: 'OriginalDagMain' }
   const store = { state: { currentWorkspaceId: options.workspace ?? '11' }, values: {}, subscribeAction() { return () => {} }, commit(key, value) { this.values[key] = value } }
   class Vue {
     constructor(config) {
@@ -57,7 +57,7 @@ test('host mounts resolved component instances and keeps original forms and task
     const opened = []
     const host = await mountOriginalTasks({ ...context, onTaskOpened: value => opened.push(value) }, '#target')
     const vm = instances[0]
-    assert.equal(vm.vnode.component, TaskList)
+    assert.equal(vm.vnode.component.extends, TaskList)
     assert.equal(store.values.SET_USER, context.user)
     await vm.openTask({ id: '42' }, true)
     assert.equal(vm.vnode.component, DagMain)
@@ -65,7 +65,7 @@ test('host mounts resolved component instances and keeps original forms and task
     assert.equal(vm.vnode.props.isView, true)
     assert.deepEqual(opened, [{ id: '42', readonly: true, isNewCreate: false }])
     await host.backToTaskList()
-    assert.equal(vm.vnode.component, TaskList)
+    assert.equal(vm.vnode.component.extends, TaskList)
     assert.equal(listeners.has('pagehide'), true)
     host.destroy()
     host.destroy()
@@ -97,7 +97,7 @@ test('successful task windows keep the list; blocked windows fall back without l
       openTaskInWindow: value => { windows.push(value); return popupOpened } }, '#target')
     const vm = instances[0]
     await vm.openTask({ id: '42' }, false)
-    assert.equal(vm.vnode.component, TaskList)
+    assert.equal(vm.vnode.component.extends, TaskList)
     assert.equal(windows[0].readonly, true)
     popupOpened = false
     await vm.openTask({ id: '43' }, false, true)
@@ -107,4 +107,16 @@ test('successful task windows keep the list; blocked windows fall back without l
     await assert.rejects(vm.openTask({ id: '9223372036854775808' }, false), /标识/)
     host.destroy()
   })
+})
+
+
+test('host initializes the original cached filter before any multiple select renders', () => {
+  const original = { name: 'TaskList', methods: { handleCachePreSearch() { this.popoverSearchForm = { ...this.searchForm } } }, render() {} }
+  const wrapper = withOriginalListDefaults(original)
+  const instance = { searchForm: { flowStatusList: [], folderId: -1 }, popoverSearchForm: {} }
+  wrapper.beforeMount.call(instance)
+  assert.deepEqual(instance.popoverSearchForm, { flowStatusList: [], folderId: -1 })
+  assert.equal(wrapper.extends, original)
+  assert.equal(wrapper.render, undefined)
+  assert.equal(original.beforeMount, undefined)
 })

@@ -121,6 +121,15 @@ export function bindOriginalPublishBoundary(store, client, host, origin) {
   }
 }
 
+export function withOriginalListDefaults(TaskList) {
+  const initialize = TaskList?.methods?.handleCachePreSearch
+  if (typeof initialize !== 'function') throw new Error('原任务列表初始化接口版本不匹配')
+  return {
+    extends: TaskList,
+    beforeMount() { initialize.call(this) }
+  }
+}
+
 /**
  * Called only inside the isolated, same-origin iframe after backend authorization.
  * This context is presentation data, NEVER proof of server-side authorization.
@@ -147,6 +156,7 @@ export async function mountOriginalTasks(host, target) {
   if (!TaskList || !DagMain || !store || String(store.state.currentWorkspaceId) !== String(host.workspaceId)) {
     throw new Error('原任务组件未取得当前平台工作区')
   }
+  const TaskListHost = withOriginalListDefaults(TaskList)
   store.commit('SET_USER', host.user)
   store.commit('SET_USER_INFO', host.user)
   let destroyed = false
@@ -180,7 +190,7 @@ export async function mountOriginalTasks(host, target) {
           changeTaskStatus: value => host.onTaskStatusChanged?.(value),
           updateTaskInfo: value => host.onTaskInfoChanged?.(value)
         }
-      }) : h(TaskList, {
+      }) : h(TaskListHost, {
         props: { ...project, user: host.user, folderId: host.folderId },
         on: {
           editTask: row => this.openTask(row, false).catch(() => host.onError?.()),
