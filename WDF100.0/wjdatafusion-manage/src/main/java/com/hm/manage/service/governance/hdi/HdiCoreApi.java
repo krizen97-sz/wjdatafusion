@@ -78,6 +78,11 @@ public class HdiCoreApi {
                 requireMethod(method, "GET"); return catalog.getAdapterUiInfo(HdiProtocol.query(request, "adapterName"));
             case "/globalConfig/groupAdapterManage/listAdapters": requireMethod(method, "GET"); return catalog.getAdapters();
             case "/globalConfig/groupAdapterManage/getAdapterTypeOptions": requireMethod(method, "GET"); return catalog.getAdapterTypeOptions();
+            case "/globalConfig/globalParamManage/count": {
+                requireMethod(method, "POST"); emptyBody(request);
+                String keyword = HdiProtocol.query(request, "keyword"); if (keyword != null && keyword.length() > 256) throw bad("全局参数查询过长");
+                return 0; // This profile registers no global parameters and rejects global references at compile time.
+            }
             case "/globalConfig/felManager/getFelClassifyList": {
                 requireMethod(method, "GET");
                 for (String queryName : List.of("name", "targetFieldType")) { String value = HdiProtocol.query(request, queryName); if (value != null && value.length() > 256) throw bad("函数查询参数过长"); }
@@ -147,8 +152,9 @@ public class HdiCoreApi {
                 if (query.hasNonNull("onlySelected") && !query.path("onlySelected").isBoolean()) throw bad("参数选择范围无效");
                 String keyword = optionalText(query, "keyword");
                 if (keyword != null && keyword.length() > 128) throw bad("参数搜索条件过长");
-                return parameterCategories(query.path("params"), query.path("onlySelected").asBoolean(false), keyword,
-                    catalog.listParams(query.path("typeId").intValue(), optionalText(query, "adapterName"), optionalText(query, "stepTypeName")));
+                List<Map<String, Object>> definitions = query.path("typeId").intValue() == 2 ? catalog.listParams(2, null, null)
+                    : catalog.listParams(query.path("typeId").intValue(), optionalText(query, "adapterName"), optionalText(query, "stepTypeName"), selectedParameters(query.path("params"), false).keySet());
+                return parameterCategories(query.path("params"), query.path("onlySelected").asBoolean(false), keyword, definitions);
             }
             case "/flow/checkBeforeStart":
             case "/flow/checkFlowIncrConfig": {
