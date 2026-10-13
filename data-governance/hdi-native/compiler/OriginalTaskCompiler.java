@@ -252,6 +252,8 @@ public final class OriginalTaskCompiler {
                 if (plugin.equals("dataGeneratorInput")) require(Long.parseLong(value) <= 1000000, "Generator row limit is 1000000");
             } else if (plugin.equals("fileOutput") && name.equals("etl.file.localDir")) {
                 value = output.toString();
+            } else if (plugin.equals("fileOutput") && name.equals("etl.file.fileType")) {
+                supported(Set.of("csv", "line").contains(value), "Only original csv/line file output is supported");
             } else {
                 // Inactive placeholders from the actual original plugin form are legitimate.
                 // Changed external/FEL settings require a separately audited execution profile.
@@ -317,14 +319,17 @@ public final class OriginalTaskCompiler {
                 Map<String,Object> field = object(raw, "mapping field"); String source = text(field.get("fieldSrcName")), target = text(field.get("fieldDstName"));
                 require(fields.contains(source) && !target.isEmpty() && target.length() <= 256, "Mapping references an unavailable field");
                 require(result.add(target), "Duplicate mapping target");
-                if ("keep".equals(field.get("processType"))) result.add(source);
+                if ("keep".equalsIgnoreCase(text(field.get("processType")))) result.add(source);
             }
             fields = result;
         }
         for (Object raw : list(nodes.get(nodes.size()-1).get("dstTableFieldVoList"), "output fields")) {
             Map<String,Object> field = object(raw, "output field");
             noPrimaryFilename(field);
-            supported(fields.contains(text(field.get("fieldExpression"))), "Output expressions must directly reference an available field");
+            // The original file plugin selects row values by fieldName. Its original
+            // DstTableFieldService accepts an absent expression and does not synthesize one.
+            // Keep that DTO shape; an explicit expression still cannot enable arbitrary FEL.
+            supported(fields.contains(text(field.get("fieldName"))) && (empty(field.get("fieldExpression")) || fields.contains(text(field.get("fieldExpression")))), "Output fields must directly reference an available field");
         }
     }
     static void noPrimaryFilename(Map<String,Object> field) {
@@ -349,7 +354,9 @@ public final class OriginalTaskCompiler {
             List<Object> fields = list(node.get("transformFieldVoList"), "transformFieldVoList"); require(!fields.isEmpty() && fields.size() <= 512, "Mapping must contain 1..512 fields");
             for (Object raw : fields) {
                 Map<String,Object> field = object(raw, "mapping field");
-                supported(Set.of("move", "keep").contains(text(field.get("processType"))) && empty(field.get("condExpression")) && empty(field.get("processClassName")) && empty(field.get("redisKey")) && empty(field.get("bussinessRedisKey")), "Only original move/keep mappings without external functions are supported");
+                // Original FieldMappingService skips identical name/type mappings, and
+                // only tests equalsIgnoreCase("keep") for a rename. Null is its form default.
+                supported((empty(field.get("processType")) || Set.of("move", "keep").contains(text(field.get("processType")).toLowerCase(Locale.ROOT))) && empty(field.get("condExpression")) && empty(field.get("processClassName")) && empty(field.get("redisKey")) && empty(field.get("bussinessRedisKey")), "Only original move/keep mappings without external functions are supported");
             }
         } else {
             Map<String,Object> config = object(node.get("adapterData"), "fileOutput.adapterData");
@@ -367,6 +374,8 @@ public final class OriginalTaskCompiler {
                     supported(empty(parameter.get("paramValue")) || MANAGED_OUTPUT.equals(parameter.get("paramValue")), "The output path parameter must explicitly select /平台输出");
                     managedSelected |= MANAGED_OUTPUT.equals(parameter.get("paramValue"));
                 }
+                if ("etl.file.fileType".equals(parameter.get("paramName")))
+                    supported(Objects.equals(config.get("fileType"), parameter.get("paramValue")), "File format parameter conflicts with the original file output form");
             }
             supported(managedSelected, "Select /平台输出 before testing or running this flow");
             supported(Set.of("csv", "line").contains(text(config.get("fileType"))), "Only original csv/line file output is supported");
@@ -400,6 +409,24 @@ public final class OriginalTaskCompiler {
         return result;
     }
     static void key(Object actual, long wanted) { require(Long.valueOf(text(actual)).equals(wanted), "Original generator requested an unrelated metadata ID"); }
+    static List<DstTableFieldVo> savedOutputFields(Object raw, long streamId, long nodeId) throws Exception {
+        List<DstTableFieldVo> incoming = new ArrayList<>(), persisted = new ArrayList<>();
+        for (Object value : list(raw, "output fields")) incoming.add(bean(DstTableFieldVo.class, value));
+        // Reuse the original save projection (enableFlag, list order, stream/node binding
+        // and passThrough semantics), with its sole DAO write captured in this snapshot.
+        var service = new com.hikvision.idatafusion.detl.service.task.impl.DstTableFieldServiceImpl();
+        inject(service, "etlDstTableFieldDao", provider("mapper.EtlDstTableFieldDao", Map.of("batchInsert", args -> {
+            for (Object value : (List<?>)args[0]) {
+                EtlDstTableField row = (EtlDstTableField)value;
+                key(row.getStreamId(), streamId); key(row.getNodeId(), nodeId);
+                DstTableFieldVo dto = new DstTableFieldVo(); org.springframework.beans.BeanUtils.copyProperties(row, dto); persisted.add(dto);
+            }
+            return null;
+        })));
+        service.batchInsert(incoming, streamId, null, nodeId);
+        require(!persisted.isEmpty(), "File output requires persisted output fields");
+        return persisted;
+    }
     public static final class CompilationSink extends ZkUtil {
         final String flowPath, oldPath; byte[] bytes; boolean publishIntent;
         CompilationSink(long groupId, long flowId) { flowPath = "/metadata/group/" + groupId + "/flowjson/" + flowId; oldPath = "/metadata/group/" + groupId + "/flow/" + flowId; }
@@ -462,12 +489,7 @@ public final class OriginalTaskCompiler {
             if (plugin.equals("fileOutput")) {
                 Map<String,Object> config = object(node.get("adapterData"), "file output");
                 config.putAll(map("localDir", output.toString(), "absoluteDir", output.toString(), "relativeDir", "", "sourcePathType", 1));
-                List<DstTableFieldVo> fields = new ArrayList<>();
-                for (Object raw : list(node.get("dstTableFieldVoList"), "output fields")) {
-                    Map<String,Object> field = new LinkedHashMap<>(object(raw, "output field")); field.putAll(map("nodeId", nodeId, "streamId", streamId, "enableFlag", 1));
-                    fields.add(bean(DstTableFieldVo.class, field));
-                }
-                outputByNode.put(nodeId, fields);
+                outputByNode.put(nodeId, savedOutputFields(node.get("dstTableFieldVoList"), streamId, nodeId));
             }
             if (plugin.equals("dataGeneratorInput")) for (Object raw : list(node.get("streamFieldVoList"), "input fields")) inputFields.add(bean(StreamFieldVo.class, raw));
             if (plugin.equals("fieldMapping")) {
