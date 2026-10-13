@@ -83,6 +83,19 @@ public class HdiCoreRuns {
         }
         return store.run(owner, run.id());
     }
+    /** Only the persistent scheduler may pass a run already reserved by its atomic claim transaction. */
+    void dispatchReservedSchedule(HdiTaskStore.Run reserved) {
+        enabled();
+        HdiTaskStore.Run run = store.run(reserved.ownerId(), reserved.id());
+        if (!"SCHEDULE".equals(run.mode()) || !"QUEUED".equals(run.state()) || !run.id().equals(reserved.id())
+            || run.taskId() != reserved.taskId() || run.revision() != reserved.revision() || run.nativeFlowId() != reserved.nativeFlowId()) throw new HdiTaskFault(409, "定时运行预留状态已经变化，未重新提交");
+        Active current = new Active(run);
+        if (active.putIfAbsent(run.id(), current) != null) return;
+        try { starters.execute(() -> start(current)); }
+        catch (java.util.concurrent.RejectedExecutionException busy) {
+            active.remove(run.id()); store.transition(run, "FAILED", null, "本机运行准备容量已满，定时任务尚未提交");
+        }
+    }
     private void start(Active current) {
         HdiTaskStore.Run run = current.run;
         try {
