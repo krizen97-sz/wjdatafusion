@@ -161,6 +161,8 @@ class HdiCompilerClientTest {
         JsonNode result = client().prepare(context, visual()); assertEquals("17", result.path("canonicalVisual").path("flowId").asText());
         JsonNode schedule = client().schedule(JSON.createObjectNode().put("scheduleType", 2).put("unit", 4).put("timeInterval", "1").put("executeTime", "04:05:06").put("flowIncrStatus", 1).put("startFullImmediately", 0), "Asia/Shanghai");
         assertEquals("6 5 4 * * ?", schedule.path("cronExpressions").get(0).asText());
+        JsonNode calendar = client().schedule(JSON.createObjectNode().put("scheduleType", 2).put("unit", 6).put("timeInterval", "90").put("flowIncrStatus", 1).put("startFullImmediately", 0), "Asia/Shanghai");
+        assertEquals("CALENDAR", calendar.path("mode").asText()); assertEquals(90, calendar.path("calendar").path("interval").asInt());
     }
 
     @Test void optionalRealOriginalCliCompilesAndBindsActualThreeNodePayload() throws Exception {

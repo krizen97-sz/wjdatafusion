@@ -213,9 +213,18 @@ class OriginalSdkTests(unittest.TestCase):
         self.assertEqual('MANUAL', response['mode']); self.assertEqual([], response['cronExpressions'])
         self.assertEqual(1, response['nativeSchedule']['execType']); self.assertEqual(1, response['nativeSchedule']['flowIncrStatus'])
 
+    def test_original_calendar_builder_preserves_non_cron_hour_and_minute_intervals(self):
+        for unit, interval, name in [(5, '36', 'HOUR'), (6, '90', 'MINUTE')]:
+            config = dict(scheduleType=2, unit=unit, timeInterval=interval, executeTime='12:00:00', flowIncrStatus=1, startFullImmediately=0)
+            response = self.invoke(dict(operation='schedule', scheduleConfig=config, zoneId='Asia/Shanghai'))
+            self.assertTrue(response['ok'], response)
+            self.assertEqual('CALENDAR', response['mode']); self.assertEqual([], response['cronExpressions'])
+            self.assertEqual(dict(interval=int(interval), unit=name), response['calendar'])
+            self.assertEqual(interval + '#' + str(unit), response['nativeExpression'])
+
     def test_unimplemented_schedule_semantics_are_rejected(self):
         base = dict(scheduleType=2, unit=4, timeInterval='1', executeTime='04:05:06', flowIncrStatus=1, startFullImmediately=0)
-        for changes in [dict(unit=6), dict(scheduleType=3, intervalTime=60), dict(scheduleType=4, dependencyFlowId=17),
+        for changes in [dict(unit=7), dict(scheduleType=3, intervalTime=60), dict(scheduleType=4, dependencyFlowId=17),
                         dict(excludeStartTime='02:00:00'), dict(startFullImmediately=1), dict(flowIncrStatus=2), dict(executeTime='25:00:00')]:
             result = self.invoke(dict(operation='schedule', scheduleConfig={**base, **changes}, zoneId='Asia/Shanghai'))
             self.assertFalse(result['ok'])
