@@ -7,8 +7,8 @@ async function withHost(options, run) {
   const previousWindow = globalThis.window, previousStorage = globalThis.localStorage
   const listeners = new Map(), instances = [], localeMessages = []
   const TaskList = { name: 'OriginalTaskList', methods: { handleCachePreSearch() { this.popoverSearchForm = { ...this.searchForm } } } }, DagMain = { name: 'OriginalDagMain' }
-  const store = { state: { currentWorkspaceId: options.workspace ?? '11' }, values: {}, dispatch() {}, subscribeAction() { return () => {} }, commit(key, value) { this.values[key] = value } }
-  store._modules = { root: { context: { dispatch: store.dispatch } } }
+  const store = { state: { currentWorkspaceId: options.workspace ?? '11', flowData: { flowVo: {} } }, values: {}, dispatch() {}, subscribeAction() { return () => {} }, commit(key, value) { this.values[key] = value } }
+  store._modules = { root: { context: { dispatch: store.dispatch } }, get: () => ({ state: store.state.flowData, context: { dispatch: store.dispatch } }) }
   class Vue {
     constructor(config) {
       Object.assign(this, config.data())
