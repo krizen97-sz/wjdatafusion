@@ -282,7 +282,7 @@ public class HdiCoreRuns {
         catch (Exception failure) { throw new HdiTaskFault(503, "完整产物读取或校验失败"); }
     }
     private static String contentType(String name) {
-        if (name.toLowerCase().endsWith(".csv")) return "text/csv; charset=UTF-8";
+        if (name.toLowerCase().endsWith(".csv")) return "text/csv"; // Encoding is configured by the original node; do not mislabel GBK output as UTF-8.
         return "application/octet-stream";
     }
     private static String serialized(JsonNode value) { return value == null ? null : value.toString(); }

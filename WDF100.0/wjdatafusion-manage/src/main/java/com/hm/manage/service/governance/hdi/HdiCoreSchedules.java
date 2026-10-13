@@ -54,10 +54,11 @@ public class HdiCoreSchedules {
         if (properties.isEnabled()) timer.scheduleWithFixedDelay(this::tickSafely, 1, 1, java.util.concurrent.TimeUnit.SECONDS);
     }
     public Map<String,Integer> supportedFrequencies() {
-        Map<String,Integer> values = new LinkedHashMap<>(); values.put("每月", 2); values.put("每周", 3); values.put("每日", 4); return values;
+        Map<String,Integer> values = new LinkedHashMap<>(); values.put("一次性", 0); values.put("每月", 2); values.put("每周", 3); values.put("每日", 4); return values;
     }
     public List<String> preview(JsonNode originalSchedule) {
         enabled(); JsonNode compiled = compiler.schedule(originalSchedule, ZONE.getId());
+        if ("MANUAL".equals(compiled.path("mode").asText())) return List.of();
         List<String> result = new ArrayList<>(); Instant cursor = clock.instant();
         for (int i = 0; i < 5; i++) {
             cursor = next(compiled.path("cronExpressions"), ZONE, cursor);
@@ -73,16 +74,27 @@ public class HdiCoreSchedules {
     public JsonNode save(long owner, long taskId, long expectedRevision, JsonNode originalSchedule, boolean activate) {
         enabled(); store.get(owner, taskId);
         JsonNode compiled = compiler.schedule(originalSchedule, ZONE.getId());
-        ObjectNode plan = HdiProtocol.JSON.createObjectNode().put("protocolVersion", 1).put("revision", Long.toString(expectedRevision)).put("zoneId", ZONE.getId());
+        if (!"CRON".equals(compiled.path("mode").asText())) throw new HdiTaskFault(422, "手动启动设置不能作为周期计划启用");
+        ObjectNode plan = HdiProtocol.JSON.createObjectNode().put("protocolVersion", 1).put("kind", "CRON").put("revision", Long.toString(expectedRevision)).put("zoneId", ZONE.getId());
         plan.set("scheduleConfig", compiled.path("scheduleConfig")); plan.set("cronExpressions", compiled.path("cronExpressions"));
         Instant fire = activate ? next(plan.path("cronExpressions"), ZONE, clock.instant()) : null;
         return view(store.saveSchedule(owner, taskId, expectedRevision, plan.toString(), activate, fire));
+    }
+    public JsonNode saveManual(long owner, long taskId, long expectedRevision, JsonNode originalSchedule) {
+        enabled(); store.get(owner, taskId);
+        JsonNode compiled = compiler.schedule(originalSchedule, ZONE.getId());
+        if (!"MANUAL".equals(compiled.path("mode").asText())) throw new HdiTaskFault(422, "当前设置不是原手动启动方式");
+        ObjectNode plan = HdiProtocol.JSON.createObjectNode().put("protocolVersion", 1).put("kind", "MANUAL").put("revision", Long.toString(expectedRevision)).put("zoneId", ZONE.getId());
+        plan.set("scheduleConfig", compiled.path("scheduleConfig")); plan.set("cronExpressions", HdiProtocol.JSON.createArrayNode());
+        // The store disables the previous periodic generation in this same transaction. Running is a separate explicit action.
+        return view(store.saveSchedule(owner, taskId, expectedRevision, plan.toString(), false, null));
     }
     public void disable(long owner, long taskId) { store.disableSchedule(owner, taskId); }
     private JsonNode view(HdiTaskStore.SchedulePlan plan) {
         JsonNode parsed = plan(plan);
         ObjectNode result = HdiProtocol.JSON.createObjectNode().put("configured", true).put("enabled", plan.enabled())
             .put("revision", Long.toString(plan.revision())).put("generation", Long.toString(plan.generation()))
+            .put("kind", parsed.path("kind").asText("CRON"))
             .put("timezone", parsed.path("zoneId").asText()).put("lastOutcome", plan.lastOutcome());
         result.set("schedule", parsed.path("scheduleConfig"));
         if (plan.nextFireAt() == null) result.putNull("nextFireAt"); else result.put("nextFireAt", plan.nextFireAt().toString());
@@ -122,7 +134,10 @@ public class HdiCoreSchedules {
         try {
             JsonNode value = HdiProtocol.JSON.readTree(plan.planJson());
             if (!value.isObject() || value.path("protocolVersion").asInt(-1) != 1 || !Long.toString(plan.revision()).equals(value.path("revision").asText())
-                || !value.path("scheduleConfig").isObject() || !value.path("cronExpressions").isArray() || value.path("cronExpressions").isEmpty()) throw new IllegalArgumentException();
+                || !value.path("scheduleConfig").isObject() || !value.path("cronExpressions").isArray()) throw new IllegalArgumentException();
+            boolean manual = "MANUAL".equals(value.path("kind").asText("CRON"));
+            if (manual ? plan.enabled() || plan.nextFireAt() != null || !value.path("cronExpressions").isEmpty()
+                : !"CRON".equals(value.path("kind").asText("CRON")) || value.path("cronExpressions").isEmpty()) throw new IllegalArgumentException();
             ZoneId.of(value.path("zoneId").asText()); return value;
         } catch (Exception error) { throw new HdiTaskFault(502, "持久化原调度计划无效，未执行该计划"); }
     }
