@@ -278,9 +278,10 @@ public final class OriginalTaskCompiler {
         List<EtlParam> result = new ArrayList<>(); Set<String> names = new HashSet<>();
         Set<String> allowed = plugin.equals("dataGeneratorInput") ? GENERATOR_PARAMS : plugin.equals("fileOutput") ? FILE_PARAMS : Set.of();
         Map<String,String> defaults = new LinkedHashMap<>();
+        Map<String,Map<String,Object>> definitions = new LinkedHashMap<>();
         Map<String,Object> descriptor = parse(Files.readString(bundle.resolve("instance/etl-" + plugin + "-2.0.0/etl_plugin.json")));
         for (Object rawParam : list(descriptor.get("adapterParams"), "original parameter catalog")) {
-            Map<String,Object> p = object(rawParam, "original parameter"); defaults.put(text(p.get("name")), text(p.get("defaultValue")));
+            Map<String,Object> p = object(rawParam, "original parameter"); defaults.put(text(p.get("name")), text(p.get("defaultValue"))); definitions.put(text(p.get("name")),p);
         }
         for (Object item : list(raw, "parameters")) {
             Map<String,Object> p = object(item, "parameter"); String name = text(p.get("paramName"));
@@ -300,6 +301,12 @@ public final class OriginalTaskCompiler {
             } else if (plugin.equals("fileOutput") && name.equals("etl.file.serverType") && value.equals("local")) {
                 // Explicitly consistent local metadata is allowed. Legacy catalog Ftp
                 // remains untouched and is rejected after the original merge below.
+            } else if (definitions.containsKey(name) && "el-switch".equals(text(definitions.get(name).getOrDefault("paramType",definitions.get(name).get("type"))))
+                && !Set.of("etl.file.nameIsWriteFile","etl.fileOutput.pathIsWriteFile","etl.plugin.fileOutput.generateFileByName","etl.plugin.fileOutput.image.backFillPath","etl.plugin.delete.flag","etl.plugin.output.truncate.cascade","isScram").contains(name)) {
+                Set<String> choices = new HashSet<>();
+                for (Object option : list(definitions.get(name).get("allowableValues"),"original switch options")) choices.add(text(object(option,"switch option").get("value")));
+                if (choices.isEmpty()) choices.addAll(Set.of("true","false"));
+                require(choices.contains(value),"Switch value must be one of the original catalog options: "+name);
             } else if (!Set.of("dataGeneratorInput","fieldMapping","fileOutput").contains(plugin)) {
                 supported(defaults.containsKey(name), "Parameter is not present in the original plugin catalog");
                 supported(!name.matches("(?i).*(password|username|bootstrap.servers|jdbc.url|server_ip|server_port|local_dir|server_dir).*"), "Connection and local paths must come from the platform binding and original form");
@@ -307,7 +314,7 @@ public final class OriginalTaskCompiler {
                 require(value.length() <= 4096, "Plugin parameter exceeds the value limit");
                 if (name.equals("etl.plugin.partial.failed.stop.enable")) supported(Set.of("true","false").contains(value),"Original failure-stop switch must be true or false");
                 else if (name.equals("etl.kafka.auto.offset.reset")) supported(Set.of("earliest","latest","none").contains(value),"Invalid original Kafka offset choice");
-                else if (name.equals("format")) supported(Set.of("json","text").contains(value),"Only JSON/text message format is supported");
+                else if (name.equals("format")) supported(Set.of("json","string").contains(value),"Only JSON/string message format is supported");
                 else if (name.equals("etl.plugin.sql.query.limit")) require(value.isEmpty() || value.matches("[1-9][0-9]{0,6}"),"Bounded query row limit required");
                 else if (name.equals("etl.kafka.group.id")) require(value.equals(defaults.get(name)) || value.matches("[A-Za-z0-9_.-]{1,128}"),"Invalid Kafka group ID");
                 else supported(Objects.equals(defaults.get(name),value),"Non-default advanced connector parameter requires explicit support: "+name);
@@ -381,7 +388,6 @@ public final class OriginalTaskCompiler {
         for (Object raw : list(nodes.get(0).get("streamFieldVoList"), "stream fields")) {
             Map<String,Object> field = object(raw, "stream field"); String name = text(field.get("fieldName"));
             require(!name.isEmpty() && name.length() <= 256 && fields.add(name), "Invalid or duplicate stream field");
-            noPrimaryFilename(field);
         }
         Set<String> configured = new LinkedHashSet<>();
         if ("dataGeneratorInput".equals(nodes.get(0).get("adapterName"))) for (Object raw : list(nodes.get(0).get("adapterData"), "generator fields")) configured.add(text(object(raw, "generator field").get("fieldName")));
@@ -398,7 +404,7 @@ public final class OriginalTaskCompiler {
         }
         for (Object raw : list(nodes.get(nodes.size()-1).get("dstTableFieldVoList"), "output fields")) {
             Map<String,Object> field = object(raw, "output field");
-            noPrimaryFilename(field);
+            if ("fileOutput".equals(nodes.get(nodes.size()-1).get("adapterName")) && !"1".equals(text(field.get("passThrough")))) noPrimaryFilename(field);
             // The original file plugin selects row values by fieldName. Its original
             // DstTableFieldService accepts an absent expression and does not synthesize one.
             // Keep that DTO shape; an explicit expression still cannot enable arbitrary FEL.
@@ -472,7 +478,7 @@ public final class OriginalTaskCompiler {
                 supported(empty(table.get("writeOperation")) || "INSERT".equals(table.get("writeOperation")),"Choose the original INSERT write operation");
             } else {
                 require(text(table.get("tableName")).matches("[A-Za-z0-9_.-]{1,249}"),"Select one explicit Kafka topic");
-                supported(Set.of("json","text").contains(text(table.get("messageFormat"))),"Select the original JSON/text message format");
+                supported(Set.of("json","string").contains(text(table.get("messageFormat"))),"Select the original JSON/string message format");
                 supported(empty(table.get("avroSchemaUrl")),"Remote Avro schema is not supported");
             }
             require(!list(node.get("dstTableFieldVoList"),"output fields").isEmpty(),"Output fields are required");
