@@ -20,7 +20,7 @@ from hdi_core_protocol import private_file, strict_json
 HERE = Path(__file__).resolve().parent
 BUILD = HERE.parents[1] / 'data-governance/hdi-native/core-runtime/build.py'
 SOURCE = BUILD.parent / 'src/CoreMetadataBridge.java'
-RECEIPT_VERSION = 2
+RECEIPT_VERSION = 3
 
 
 class SetupError(Exception):
@@ -87,10 +87,22 @@ def preflight(bundle, java_home):
     verify_bundle(bundle)
     required = ['instance/etl-core-3.3.0.jar', 'instance/lib/zookeeper-hw-hw-ei.jar',
                 'task-service/dEtlv2.jar', 'instance/conf/task_config.json']
-    for plugin in ('dataGeneratorInput', 'fieldMapping', 'fileOutput'):
+    for plugin in ('dataGeneratorInput', 'fieldMapping', 'fileInput', 'fileOutput',
+                   'postgresqlInput', 'postgresqlOutput', 'kafkaInput', 'kafkaV2Output'):
         required += [f'instance/etl-{plugin}-2.0.0/adapter.properties', f'instance/etl-{plugin}-2.0.0/etl_plugin.json']
     if not all((bundle / name).is_file() for name in required) or not list((bundle / 'zookeeper/lib').glob('zookeeper-*.jar')):
         raise SetupError('COMPLETE_CORE_COMPILER_BUNDLE_REQUIRED')
+
+
+def compiler_preflight(java_home):
+    """Compiler/metadata tools may reuse platform JDK 17; the native Core check remains Java 11."""
+    for name in ('java', 'javac'):
+        if not os.access(java_home / 'bin' / name, os.X_OK):
+            raise SetupError('COMPILER_JDK_11_OR_17_REQUIRED')
+    version = subprocess.run([str(java_home / 'bin/java'), '-version'],
+        capture_output=True, text=True, timeout=15, env=clean_environment())
+    if version.returncode or not re.search(r'version "(?:11|17)(?:\.|\")', version.stdout + version.stderr):
+        raise SetupError('COMPILER_JAVA_11_OR_17_REQUIRED')
 
 
 def build_control(bundle, java_home, output, log):
@@ -105,6 +117,7 @@ def build_control(bundle, java_home, output, log):
 def prepare(args):
     root, bundle = plain_path(args.install_root), plain_path(args.bundle)
     java_home = Path(args.java_home).resolve(strict=True)
+    compiler_java_home = Path(getattr(args, 'compiler_java_home', None) or java_home).resolve(strict=True)
     password_file = plain_path(args.redis_password_file)
     compiler = plain_path(args.compiler_launcher or HERE / 'hdi_original_compiler.py')
     compiler_source = plain_path(compiler.parents[2] / 'data-governance/hdi-native/compiler/OriginalTaskCompiler.java')
@@ -120,9 +133,12 @@ def prepare(args):
     if any((parent / '.git').exists() for parent in (root, *root.parents)):
         raise SetupError('INSTALL_ROOT_MUST_BE_OUTSIDE_CHECKOUT')
     preflight(bundle, java_home)
+    if compiler_java_home != java_home:
+        compiler_preflight(compiler_java_home)
     inputs = {'protocolVersion': 1, 'uid': os.getuid(), 'installRoot': str(root),
         'bundle': str(bundle), 'bundleManifestSha256': sha(bundle / 'bundle-manifest.json'),
-        'javaHome': str(java_home), 'compilerLauncher': str(compiler), 'compilerLauncherSha256': sha(compiler),
+        'javaHome': str(java_home), 'compilerJavaHome': str(compiler_java_home),
+        'compilerLauncher': str(compiler), 'compilerLauncherSha256': sha(compiler),
         'compilerSourceSha256': sha(compiler_source),
         'connectionFormsSourceSha256': sha(connection_form_source),
         'workerLauncher': str(HERE / 'hdi_core_worker.py'), 'controlSourceSha256': sha(SOURCE),
@@ -137,7 +153,7 @@ def prepare(args):
             private_directory(path)
         receipt = strict_json(private_file(receipt_path))
         version = receipt.get('receiptVersion')
-        if version is None or type(version) is int and version == 1:
+        if version is None or type(version) is int and version in (1, 2):
             raise SetupError('LEGACY_SETUP_RECEIPT_REQUIRES_NEW_INSTALLATION')
         if type(version) is not int or version != RECEIPT_VERSION:
             raise SetupError('UNSUPPORTED_SETUP_RECEIPT_VERSION')
@@ -168,7 +184,7 @@ def prepare(args):
     return {'protocolVersion': 1, 'ok': True, 'status': 'VERIFIED' if existing else 'PREPARED',
         'servicesStarted': False, 'redisConnectivityTested': False, 'workerConfig': str(config_path),
         'workerArgv': [sys.executable, str(HERE / 'hdi_core_worker.py'), '--config', str(config_path)],
-        'compilerArgv': [sys.executable, str(compiler), '--bundle', str(bundle), '--java-home', str(java_home),
+        'compilerArgv': [sys.executable, str(compiler), '--bundle', str(bundle), '--java-home', str(compiler_java_home),
                          '--runtime', str(root / 'compile')]}
 
 
@@ -176,7 +192,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--install-root', required=True, type=Path)
     parser.add_argument('--bundle', required=True, type=Path)
-    parser.add_argument('--java-home', required=True, type=Path)
+    parser.add_argument('--java-home', required=True, type=Path, help='Linux x86_64 JDK 11 for original Core and control bridge')
+    parser.add_argument('--compiler-java-home', type=Path,
+                        help='JDK 11 or 17 for original compiler/metadata; defaults to --java-home')
     parser.add_argument('--redis-password-file', required=True, type=Path)
     parser.add_argument('--redis-port', type=int, default=6379)
     parser.add_argument('--redis-database', type=int, required=True)
