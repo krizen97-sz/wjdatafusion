@@ -129,6 +129,7 @@ class HdiCoreConnectionsTest {
         p.remove(List.of("databaseIp", "databasePort")); p.put("address", "127.0.0.1:15432").put("connectType", "host");
         var savedPg = connections.saveForm(7, pg); long pgId = savedPg.path("id").asLong();
         assertEquals("jdbc:postgresql://127.0.0.1:15432/fixture", savedPg.path("dbUrl").asText());
+        assertEquals(1, connections.list(7, HdiProtocol.JSON.createObjectNode().put("datasourceType", "Postgresql")).size());
         assertEquals("127.0.0.1:15432", connections.formParameters(7, pgId).path("address").asText());
         var ftp = form("FTP", "原FTP表单", "secret"); p = (ObjectNode)ftp.path("parameters");
         p.remove(List.of("databaseIp", "databasePort", "databaseSid")); p.put("Host", "127.0.0.1").put("Port", "2121").put("FolderPath", "/incoming").put("ConnectMode", "1").put("ext2", "ftp").put("dbUrl", "ftp://127.0.0.1:2121//incoming");

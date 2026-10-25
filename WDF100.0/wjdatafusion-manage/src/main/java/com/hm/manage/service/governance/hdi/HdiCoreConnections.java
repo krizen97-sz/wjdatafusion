@@ -113,7 +113,7 @@ public class HdiCoreConnections {
         if (keyword.length() > 128) throw fault(400, "连接查询过长");
         for (Current row : jdbc.query("SELECT connection_id,owner_id,revision,name,db_type,enabled,test_status,tested_revision,test_message,tested_at FROM dg_hdi_connection WHERE owner_id=? AND deleted=0 ORDER BY updated_at DESC,connection_id DESC", (r,n) -> row(r), owner)) {
             if (!row.name.toLowerCase(java.util.Locale.ROOT).contains(keyword.toLowerCase(java.util.Locale.ROOT))) continue;
-            if (filter != null && filter.hasNonNull("datasourceType") && !filter.path("datasourceType").asText().isBlank() && !filter.path("datasourceType").asText().equals(typeName(row.type))) continue;
+            if (filter != null && filter.hasNonNull("datasourceType") && !filter.path("datasourceType").asText().isBlank() && !filter.path("datasourceType").asText().equalsIgnoreCase(typeName(row.type))) continue;
             if (filter != null && filter.hasNonNull("dbType") && !filter.path("dbType").asText().isBlank() && !filter.path("dbType").asText().equals("-1") && row.type != filter.path("dbType").asInt()) continue;
             Version v = version(owner, row.id, row.revision); rows.add(publicView(row, v.datasource, !v.encryptedSecret.isEmpty()));
         }
