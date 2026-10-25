@@ -722,7 +722,10 @@ public final class OriginalTaskCompiler {
         Map<String,Object> runtimeVisual = map("flowId", flowId, "flowVo", nativeFlow, "nodes", nativeNodes, "links", nativeLinks, "streamVoList", List.of(map("id", streamId, "upNodeId", flowId, "upNodeType", 2, "streamId", streamId, "streamNodeVoList", nativeStreamNodes)));
         EtlFlowHistory history = bean(EtlFlowHistory.class, "flowJson", json(runtimeVisual));
         EtlSchedule schedule = bean(EtlSchedule.class, "id", scheduleId, "nodeId", flowId, "flowIncrStatus", 1, "execType", 1, "enableFlag", 1);
-        Object adapterData = provider("service.task.AdapterDataService", Map.of("findAdapterDataByItemId", a -> lookup(dataByItem, a[0])));
+        Object adapterData = provider("service.task.AdapterDataService", Map.of("findAdapterDataByItemId", a -> {
+            lookup(paramByItem,a[0]); // Missing optional data is normal for a known original node.
+            return dataByItem.get(Long.valueOf(text(a[0])));
+        }));
         Object params = provider("service.globalconfig.ParamManageService", Map.of("getParamConfigByNode", a -> {
             int type = Integer.parseInt(text(a[0])); if (type == 2) { key(a[1], flowId); return new ArrayList<>(flowParameters); }
             if (type == 9) return new ArrayList<>(lookup(datasourceParamsByItem,a[1]));
