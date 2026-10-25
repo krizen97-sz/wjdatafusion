@@ -38,9 +38,10 @@ public final class HdiCoreCatalog {
     private static final List<String> BASE = List.of("dataGeneratorInput", "fieldMapping", "fileOutput");
     // Append registry identities so existing saved canvases retain their original platform IDs.
     private static final List<String> SUPPORTED = List.of("dataGeneratorInput", "fieldMapping", "fileOutput",
-        "postgresqlInput", "postgresqlOutput", "fileInput", "kafkaInput", "kafkaV2Output");
+        "postgresqlInput", "postgresqlOutput", "fileInput", "kafkaInput", "kafkaV2Output", "rabbitmqInput", "rabbitmqOutput");
     private static final Map<String, String> TYPES = Map.of("dataGeneratorInput", "input", "fieldMapping", "preproc", "fileOutput", "output",
-        "postgresqlInput", "input", "postgresqlOutput", "output", "fileInput", "input", "kafkaInput", "input", "kafkaV2Output", "output");
+        "postgresqlInput", "input", "postgresqlOutput", "output", "fileInput", "input", "kafkaInput", "input", "kafkaV2Output", "output",
+        "rabbitmqInput", "input", "rabbitmqOutput", "output");
     private static final Map<String, String> ORIGINAL_ICONS = Map.of("input", "/static/img/defaultinput.e71f57a7.svg",
         "preproc", "/static/img/defaultpreproc.26462e9c.svg", "output", "/static/img/defaultoutput.bfb8531e.svg");
     private static final String DATA_JAR = "task-service/dEtlv2.jar";

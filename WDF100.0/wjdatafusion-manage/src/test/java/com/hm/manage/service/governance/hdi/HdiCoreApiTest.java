@@ -365,11 +365,11 @@ class HdiCoreApiTest {
     }
     @Test void localFileFormGetsRealColumnTypeDirectoryWithoutExternalConnections() throws Exception {
         when(catalog.getFileColumnTypes()).thenReturn(List.of(Map.of("fieldType", "string", "columnType", "string")));
-        for (String dbType : List.of("18", "FTP", "-1")) {
+        for (String dbType : List.of("18", "FTP", "-1", "2", "MySQL", "120", "RabbitMQ")) {
             JsonNode result = json(request(get("/detl/globalConfig/dataSourceManage/getDataTypeList").param("dbType", dbType), editorSession, false), 200).path("data");
             assertEquals("string", result.get(0).path("columnType").asText());
         }
-        json(request(get("/detl/globalConfig/dataSourceManage/getDataTypeList").param("dbType", "2"), editorSession, false), 422);
+        json(request(get("/detl/globalConfig/dataSourceManage/getDataTypeList").param("dbType", "999"), editorSession, false), 422);
         assertTrue(json(request(post("/detl/globalConfig/dataSourceManage/getDatasourceOptions").contentType("application/json").content("{\"dbType\":18,\"inOutFlags\":[2]}"), editorSession, true), 200).path("data").isEmpty());
         JsonNode capabilities = json(request(get("/detl/globalConfig/dataSourceManage/getDataSourceExtendInfo"), editorSession, false), 200).path("data");
         assertEquals(6, capabilities.size()); capabilities.forEach(value -> assertEquals("", value.asText()));
@@ -404,7 +404,7 @@ class HdiCoreApiTest {
 
     @Test void fullRunPreflightAdmitsEveryOriginalConnectorButDoesNotEnableIncrementalOrUnknownPlugins() throws Exception {
         long id = create("原连接预检");
-        for (String adapter : List.of("dataGeneratorInput", "fieldMapping", "fileOutput", "fileInput", "postgresqlInput", "postgresqlOutput", "kafkaInput", "kafkaV2Output")) {
+        for (String adapter : List.of("dataGeneratorInput", "fieldMapping", "fileOutput", "fileInput", "postgresqlInput", "postgresqlOutput", "kafkaInput", "kafkaV2Output", "rabbitmqInput", "rabbitmqOutput")) {
             ObjectNode visual = (ObjectNode)read(id); visual.withObject("nodes").set("101", HdiProtocol.JSON.createObjectNode().put("id", 101).put("adapterName", adapter));
             json(request(post("/detl/flow/saveFlowVisual/save").contentType("application/json").content(encoded(visual)), editorSession, true), 200);
             JsonNode result = json(request(post("/detl/flow/checkBeforeStart").param("flowId", Long.toString(id)).param("flowIncrStatus", "1"), editorSession, true), 200).path("data");
