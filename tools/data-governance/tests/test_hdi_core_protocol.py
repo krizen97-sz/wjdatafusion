@@ -188,7 +188,10 @@ class ProtocolTests(unittest.TestCase):
         source = {'id': 41, 'db_type': 2, 'db_ip': '127.0.0.1', 'db_port': '15432',
                   'db_sid': 'fixture', 'db_url': 'jdbc:mysql://127.0.0.1:15432/fixture?useSSL=false'}
         self.assertEqual(p.validate_datasource_grant({'config': {'datasource': [source]}}, 'mysql', [binding]), binding)
-        for suffix in ('', '?useSSL=true', '?useSSL=false&allowPublicKeyRetrieval=true'):
+        explicit = {**source, 'db_url': source['db_url'] + '&allowPublicKeyRetrieval=true'}
+        self.assertEqual(p.validate_datasource_grant({'config': {'datasource': [explicit]}}, 'mysql', [binding]), binding)
+        for suffix in ('', '?useSSL=true', '?useSSL=false&allowPublicKeyRetrieval=true&socketFactory=Other',
+                       '?useSSL=false&allowPublicKeyRetrieval=false'):
             changed = {**source, 'db_url': 'jdbc:mysql://127.0.0.1:15432/fixture' + suffix}
             with self.assertRaisesRegex(p.ProtocolError, 'CONNECTOR_URL_MISMATCH'):
                 p.validate_datasource_grant({'config': {'datasource': [changed]}}, 'mysql', [binding])
