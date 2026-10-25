@@ -109,6 +109,15 @@ class HdiCoreConnectionsTest {
         assertEquals("21", connections.saveForm(7, input).path("databasePort").asText());
         ((ObjectNode)input.path("parameters")).put("databasePort", "2181"); assertThrows(HdiTaskFault.class, () -> connections.saveForm(7, input));
     }
+    @Test void platformRejectsWorkerForbiddenAddressesPassivePortsAndSecretBytesBeforeExecution() throws Exception {
+        var input = form("FTP", "不可执行地址", "secret"); var parameters = (ObjectNode)input.path("parameters");
+        parameters.put("databaseIp", "169.254.8.9"); policy.setAllowedEndpoints(List.of("169.254.8.9:2121")); policy.setFtpPassiveRanges(Map.of("169.254.8.9:2121", "22100-22109"));
+        assertThrows(HdiTaskFault.class, () -> connections.saveForm(7, input));
+        parameters.put("databaseIp", "127.0.0.1"); policy.setAllowedEndpoints(List.of("127.0.0.1:2121")); policy.setFtpPassiveRanges(Map.of("127.0.0.1:2121", "2170-2190"));
+        assertThrows(HdiTaskFault.class, () -> connections.saveForm(7, input));
+        policy.setFtpPassiveRanges(Map.of("127.0.0.1:2121", "22100-22109")); parameters.put("databasePassword", encrypt("bad\0secret"));
+        assertThrows(HdiTaskFault.class, () -> connections.saveForm(7, input));
+    }
     @Test void originalReferencesRejectCrossDatasourceTableBindingsAndSupportLocalOnlyFlows() throws Exception {
         var one = connections.saveForm(7, form("PostgreSQL", "输入", "secret")); var two = connections.saveForm(7, form("PostgreSQL", "输出", "secret"));
         var visual = visual(one.path("id").longValue(), "postgresqlInput"); ((ObjectNode)visual.path("nodes").path("101")).putArray("srcTableUseVoList").addObject().put("srcDbId", two.path("id").longValue());
