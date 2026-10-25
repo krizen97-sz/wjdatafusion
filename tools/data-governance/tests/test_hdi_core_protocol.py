@@ -178,6 +178,34 @@ class ProtocolTests(unittest.TestCase):
             with self.assertRaisesRegex(p.ProtocolError, 'CONNECTOR_PARAMETERS_REJECTED'):
                 p.validate_datasource_grant(module, 'kafka', [binding])
 
+    def test_database_primary_keys_are_not_misclassified_as_dynamic_file_names(self):
+        record = p.reservation({**self.request(), 'connectionBindings': [self.connection()]})
+        outputs = self.root / 'outputs'; outputs.mkdir()
+        record['outputsDir'] = str(outputs)
+        module = {'module_info': {'flow_id': 21001, 'module_instance_id': 21002, 'adapter_version': '2.0.0'},
+                  'adapter': {'adapter_name': 'postgresqlOutput', 'adapter_type': 'output', 'language_type': 1,
+                    'adapter_class_name': p.ADAPTERS['postgresqlOutput'][1]},
+                  'config': {'datasource': [{'id': 41, 'db_type': 16, 'db_ip': '127.0.0.1', 'db_port': '15432',
+                    'db_sid': 'postgres', 'db_url': 'jdbc:postgresql://127.0.0.1:15432/postgres',
+                    'dst_table_field': [{'field_name': 'id', 'field_key_flag': 1}]}]}}
+        def blob(value):
+            raw = json.dumps(value).encode()
+            return {'base64': base64.b64encode(raw).decode(), 'sha256': hashlib.sha256(raw).hexdigest()}
+        result = {'ok': True, 'protocolVersion': 1, 'businessTaskId': record['businessTaskId'],
+                  'ownerId': '1', 'revision': '1', 'flowId': '21001', 'workspaceId': '100',
+                  'instanceId': '21002', 'execId': '21003', 'snapshotSha256': 'a' * 64,
+                  'metadataSnapshot': {'metadataIdBase': '21101', 'allocatedThrough': '21102',
+                    'outputsDir': str(outputs), 'connectionBindings': [self.connection()]},
+                  'flowjson': blob({'flow': {'id': 21001, 'group_id': 100}, 'streams': [{'modules': [module]}]}),
+                  'schedule': blob({'id': 21001, 'exec_id': '21003', 'oper_type': 1, 'oper_value': 1,
+                    'strategy_flow': {'id': 21001, 'group_id': 100}}),
+                  'stop': blob({'id': 21001, 'oper_type': 1, 'oper_value': 0})}
+        self.assertEqual(set(p.validate_compiled(result, record)), {'flowjson', 'schedule', 'stop'})
+        module['adapter'].update(adapter_name='fileOutput', adapter_class_name=p.ADAPTERS['fileOutput'][1])
+        result['flowjson'] = blob({'flow': {'id': 21001, 'group_id': 100}, 'streams': [{'modules': [module]}]})
+        with self.assertRaisesRegex(p.ProtocolError, 'DYNAMIC_FILENAME_NOT_SUPPORTED'):
+            p.validate_compiled(result, record)
+
 
 if __name__ == '__main__':
     unittest.main()

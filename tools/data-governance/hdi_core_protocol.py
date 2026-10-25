@@ -397,7 +397,8 @@ def validate_compiled(compiled, record):
             elif isinstance(value, list):
                 for child in value:
                     reject_filename_keys(child)
-        reject_filename_keys(module.get('config', {}))
+        if name == 'fileOutput':
+            reject_filename_keys(module.get('config', {}))
         params = adapter_parameters(module)
         if ADAPTERS[name][0] == 'output':
             output_count += 1
