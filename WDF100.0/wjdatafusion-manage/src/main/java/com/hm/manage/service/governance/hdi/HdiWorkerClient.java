@@ -40,6 +40,7 @@ public class HdiWorkerClient implements AutoCloseable {
     private static final int REQUEST_LIMIT = 48 * 1024 * 1024, RESPONSE_LIMIT = 8 * 1024 * 1024;
     private final HdiCoreProperties properties;
     private final Duration timeout;
+    private final Duration startupTimeout;
     private final BlockingQueue<Object> responses = new ArrayBlockingQueue<>(4);
     private final ExecutorService pipes = Executors.newFixedThreadPool(3, task -> { Thread thread = new Thread(task, "hdi-worker-pipe"); thread.setDaemon(true); return thread; });
     private Process process;
@@ -47,7 +48,12 @@ public class HdiWorkerClient implements AutoCloseable {
     private JsonNode greeting;
 
     @Autowired public HdiWorkerClient(HdiCoreProperties properties) { this(properties, Duration.ofSeconds(30)); }
-    HdiWorkerClient(HdiCoreProperties properties, Duration timeout) { this.properties = properties; this.timeout = timeout; }
+    HdiWorkerClient(HdiCoreProperties properties, Duration timeout) {
+        this(properties, timeout, Duration.ofSeconds(properties.getWorkerStartupTimeoutSeconds()));
+    }
+    HdiWorkerClient(HdiCoreProperties properties, Duration timeout, Duration startupTimeout) {
+        this.properties = properties; this.timeout = timeout; this.startupTimeout = startupTimeout;
+    }
 
     public synchronized JsonNode hello() {
         boolean existing = process != null;
@@ -116,7 +122,9 @@ public class HdiWorkerClient implements AutoCloseable {
             process = builder.start(); Process owned = process;
             pipes.submit(() -> readResponses(owned.getInputStream()));
             pipes.submit(() -> drainLog(owned.getErrorStream(), log));
-            greeting = checkedGreeting(exchange("hello", HdiProtocol.JSON.createObjectNode()));
+            // Hash verification, namespace probes and bundled ZooKeeper startup precede the first reply.
+            // A cold start has its own bounded budget; later requests retain the normal deadline.
+            greeting = checkedGreeting(exchange("hello", HdiProtocol.JSON.createObjectNode(), startupTimeout));
         } catch (Failure failure) { throw failure; }
         catch (IOException error) { broken = true; throw new Failure("WORKER_START_FAILED", process != null); }
     }
@@ -133,6 +141,9 @@ public class HdiWorkerClient implements AutoCloseable {
         return value;
     }
     private JsonNode exchange(String operation, ObjectNode body) {
+        return exchange(operation, body, operation.equals("shutdown") ? Duration.ofSeconds(80) : timeout);
+    }
+    private JsonNode exchange(String operation, ObjectNode body, Duration requestTimeout) {
         if (closed || broken || process == null) throw new Failure("CHANNEL_DISCONNECTED", true);
         String requestId = UUID.randomUUID().toString(); body = body.deepCopy();
         body.put("protocolVersion", 1).put("requestId", requestId).put("op", operation);
@@ -142,7 +153,6 @@ public class HdiWorkerClient implements AutoCloseable {
             final byte[] payload = data;
             Future<?> write = pipes.submit(() -> { try { process.getOutputStream().write(payload); process.getOutputStream().write('\n'); process.getOutputStream().flush(); }
                 catch (IOException failure) { throw new java.io.UncheckedIOException(failure); } });
-            Duration requestTimeout = operation.equals("shutdown") ? Duration.ofSeconds(80) : timeout;
             long deadline = System.nanoTime() + requestTimeout.toNanos();
             write.get(requestTimeout.toMillis(), TimeUnit.MILLISECONDS);
             Object received = responses.poll(Math.max(1, deadline-System.nanoTime()), TimeUnit.NANOSECONDS);

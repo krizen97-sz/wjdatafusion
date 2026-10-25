@@ -16,6 +16,7 @@ public class HdiCoreProperties {
     private String publicOrigin = "";
     private List<String> compilerCommand = new ArrayList<>();
     private List<String> workerCommand = new ArrayList<>();
+    private int workerStartupTimeoutSeconds = 180;
     private int sessionIdleSeconds = 1800;
     private int maxVisualBytes = 4 * 1024 * 1024;
     public boolean isEnabled() { return enabled; }
@@ -32,6 +33,11 @@ public class HdiCoreProperties {
     public void setCompilerCommand(List<String> value) { compilerCommand = new ArrayList<>(value); }
     public List<String> getWorkerCommand() { return List.copyOf(workerCommand); }
     public void setWorkerCommand(List<String> value) { workerCommand = new ArrayList<>(value); }
+    public int getWorkerStartupTimeoutSeconds() { return workerStartupTimeoutSeconds; }
+    public void setWorkerStartupTimeoutSeconds(int value) {
+        if (value < 60 || value > 300) throw new IllegalArgumentException("worker-startup-timeout-seconds must be between 60 and 300");
+        workerStartupTimeoutSeconds = value;
+    }
     public int getSessionIdleSeconds() { return sessionIdleSeconds; }
     public void setSessionIdleSeconds(int value) { sessionIdleSeconds = value; }
     public int getMaxVisualBytes() { return maxVisualBytes; }

@@ -32,6 +32,7 @@ data-governance-hdi-core:
   bundle-dir: /opt/rynew/hdi/bundle
   host-dir: /opt/rynew/hdi/host
   state-dir: /var/lib/rynew/hdi/platform
+  worker-startup-timeout-seconds: 180
   compiler-command:
     - /usr/bin/python3
     - /opt/rynew/tools/data-governance/hdi_original_compiler.py
@@ -49,6 +50,8 @@ data-governance-hdi-core:
 ```
 
 `worker-command` 使用部署机本地 worker 的明确参数数组，不经 shell；与编译器保持同一个已校验 bundle。平台自身继续使用 Java 17，编译器可用 Java 11 / 17，**原执行核心必须单独配置 Linux x86_64 Java 11**，不能直接照搬平台的 JAVA_HOME。使用 [本机安装准备入口](core-runtime/SETUP.md) 检查运行条件、构建控制桥并生成私有配置；它不会启动服务或覆盖既有目录。协议与内置协调器规则见 `core-runtime/PROTOCOL.md`。准备完成后仍需运行真实预检和任务验收。
+
+首次访问执行资源会校验完整 bundle、探测隔离能力并启动内置协调器，只有全部成功才返回可用状态。`worker-startup-timeout-seconds` 只控制首次握手，默认 180 秒，允许 60–300 秒；普通请求及后续资源状态查询的协议交换仍限 30 秒，受控关闭的协议交换限 80 秒。客户端串行处理请求，等待前一请求释放锁的时间不计入这些交换预算；部署反向代理的读取超时需覆盖启动及排队时间。冷启动超时仍关闭通道并要求核查，不会自动重启 worker 或重复提交任务。
 
 缺失 worker 或隔离能力时，执行资源显示不可用，不自动连接原平台。开发机跨架构实验的 SSH 通道不是生产依赖。
 
