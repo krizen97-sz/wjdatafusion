@@ -124,6 +124,48 @@ class HdiCoreRunsTest {
         runs.startDebug(4, 17, 2); awaitState("SUCCEEDED");
         assertFalse(runs.artifacts(4, row.get().id()).path("available").asBoolean()); assertTrue(row.get().errorMessage().contains("产物"));
     }
+    private ObjectNode stoppedPartial() {
+        ObjectNode result = view("CANCELLED", true).put("nativeState", "stop").put("stopRequestedByUser", true)
+            .put("recoveryRequired", false).put("artifactCompleteness", "PARTIAL");
+        result.putArray("artifacts").add(HdiProtocol.JSON.createObjectNode().put("artifactId", "stopped-result")
+            .put("name", "stopped.csv").put("bytes", content.length).put("sha256", HdiTaskStore.sha256(content)));
+        return result;
+    }
+    @Test void explicitNativeStopPublishesPartialFilesWithoutChangingCancellationToSuccess() throws Exception {
+        when(worker.submit(any(), any())).thenReturn(stoppedPartial()); String sha = HdiTaskStore.sha256(content);
+        when(worker.artifact(any(), eq("stopped-result"), eq(0L), anyInt())).thenReturn(HdiProtocol.JSON.createObjectNode()
+            .put("artifactId", "stopped-result").put("bytes", content.length).put("sha256", sha).put("offset", 0)
+            .put("nextOffset", content.length).put("eof", true).put("base64", Base64.getEncoder().encodeToString(content)));
+        runs.startDebug(4, 17, 2); awaitState("CANCELLED");
+        JsonNode status = runs.status(4, row.get().id()), manifest = runs.artifacts(4, row.get().id());
+        assertEquals("CANCELLED", status.path("state").asText()); assertEquals("stop", status.path("nativeState").asText());
+        assertEquals("PARTIAL", status.path("artifactCompleteness").asText());
+        assertTrue(manifest.path("available").asBoolean()); assertEquals("PARTIAL", manifest.path("artifactCompleteness").asText());
+        String id = manifest.path("artifacts").get(0).path("artifactId").asText(); reset(worker);
+        assertArrayEquals(content, runs.artifact(4, row.get().id(), id, 0, 1024).bytes()); verifyNoInteractions(worker);
+        assertThrows(HdiTaskFault.class, () -> runs.artifact(999, row.get().id(), id, 0, 1024));
+    }
+    private void rejectsPartial(ObjectNode observation, String state) throws Exception {
+        when(worker.submit(any(), any())).thenReturn(observation); runs.startDebug(4, 17, 2); awaitState(state);
+        assertFalse(runs.artifacts(4, row.get().id()).path("available").asBoolean());
+        assertThrows(HdiTaskFault.class, () -> runs.artifact(4, row.get().id(), "stopped-result", 0, 1024));
+        verify(worker, never()).artifact(any(), anyString(), anyLong(), anyInt());
+    }
+    @Test void cancellationWithoutExplicitUserIntentDoesNotPublishPartialFiles() throws Exception {
+        ObjectNode observation = stoppedPartial(); observation.remove("stopRequestedByUser"); rejectsPartial(observation, "CANCELLED");
+    }
+    @Test void forcedStopTimeoutDoesNotPublishPartialFiles() throws Exception {
+        rejectsPartial(stoppedPartial().put("errorCode", "ORIGINAL_STOP_TIMEOUT_PROCESS_CLOSED"), "CANCELLED");
+    }
+    @Test void incompleteCleanupCannotPublishPartialFiles() throws Exception {
+        rejectsPartial(stoppedPartial().put("finalized", false), "STOPPING");
+    }
+    @Test void recoveryRequiredCannotPublishPartialFiles() throws Exception {
+        rejectsPartial(stoppedPartial().put("recoveryRequired", true), "CANCELLED");
+    }
+    @Test void failureOrUnacknowledgedStopCannotPublishPartialFiles() throws Exception {
+        rejectsPartial(stoppedPartial().put("nativeState", "running"), "CANCELLED");
+    }
     @Test void externalOutputCompletionPreservesNativeStateAndExposesObservedErrorsWithoutInventingArtifacts() throws Exception {
         ObjectNode success = view("SUCCEEDED", true); success.put("nativeState", "finish"); success.putArray("artifacts");
         success.putArray("outputWarningCodes").add("JDBC_OUTPUT_ERROR_OBSERVED").add("JDBC_OUTPUT_ROWS_SKIPPED").add("not-a-trusted-message");

@@ -96,3 +96,11 @@ ready只代表原TaskList/ProcessMain实例完成Vue挂载，不代表后端任�
 | MySQL处理实现来源 | 原JDBC读写基类、用户批准的最小方言子类 | 独立平台适配包，显示“原JDBC适配” | platform-adapters/mysql、HdiCorePlatformAdapters | 仅驱动、URL前缀、标识符引号三方法；单独的manifest固定版本，不伪装原专用MySQL插件 |
 
 复用现有平台宿主、原数据源/画布/字段组件与运行记录抽屉，不新增UI框架或另一套节点表单。原RabbitMQ数据源字典在V1.0.22新增，sort本来为NULL；原表单开关从V1.0.63取出并保持字符串类型，不凭空设置默认值。上述代码装配验证与真实浏览器输入输出验收分别记录，不把元数据读取成功当作运行成功。
+
+## 持续输入主动停止后的结果
+
+| 页面需要 | 现有实现 | 选择 | 参考文件 | 必需适配 |
+| --- | --- | --- | --- | --- |
+| 原Rabbit持续监听停止后查看已生成文件 | 现有运行记录抽屉、归档表和警告反馈 | 复用el-alert、el-table、原下载能力 | HdiRunHistory.vue、DeliveryWorkbench.vue、ScheduleWorkbench.vue | 原Stop确认且资源清理完成后显示“部分结果”，状态保持CANCELLED；不将超时或强关包装为成功 |
+
+仅扩展平台结果管理。原消息读取、确认、输出、停止算法不改；文件仍按字节数与SHA-256归档。没有新的样本引擎、结果预览伪数据、组件或样式例外。

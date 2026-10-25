@@ -25,8 +25,9 @@
       <el-tabs v-loading="detailLoading" class="motion-tabs">
         <el-tab-pane label="输出文件">
           <template #label><span class="motion-control-label"><svg-icon icon-class="documentation" class="motion-control-label__icon" /><span class="motion-control-label__text">输出文件</span></span></template>
-          <el-text type="info">文件通过完整性校验后归档；文件大小与摘要对应完整产物。</el-text>
-          <el-table :data="files" row-key="artifactId" :empty-text="detail?.state === 'SUCCEEDED' ? '本次没有可下载的本地文件；外部输出请核对目标端和运行日志。' : '运行成功并完成归档后，可在这里下载本地文件。'">
+          <el-alert v-if="detail?.artifactCompleteness === 'PARTIAL'" title="任务已主动停止。以下文件仅包含停止前已生成的数据，不代表源数据已全部处理。" type="warning" :closable="false" show-icon class="mb8" />
+          <el-text type="info">文件按字节数和摘要校验后归档；外部数据库和消息输出请核对目标端。</el-text>
+          <el-table :data="files" row-key="artifactId" empty-text="尚无可下载的本地文件。外部输出请核对目标端，归档异常请查看运行日志。">
             <el-table-column label="文件" prop="name" min-width="180" show-overflow-tooltip />
             <el-table-column label="大小" width="120"><template #default="{ row }">{{ row.bytes.toLocaleString() }} 字节</template></el-table-column>
             <el-table-column label="SHA-256" prop="sha256" min-width="240" show-overflow-tooltip />
@@ -60,7 +61,7 @@ let generation = 0, selection = 0, timer, cursor = 0
 const modes = { DEBUG: '调试', RUN: '手动', SCHEDULE: '定时' }
 const states = {
   QUEUED: ['等待准备', 'info'], PREPARING: ['准备环境', 'info'], COMPILING: ['生成配置', 'info'], STARTING: ['启动中', 'primary'],
-  RUNNING: ['运行中', 'primary'], STOPPING: ['停止中', 'warning'], SUCCEEDED: ['引擎完成', 'success'], FAILED: ['失败', 'danger'], CANCELLED: ['已取消', 'info'], UNKNOWN: ['需要核查', 'warning']
+  RUNNING: ['运行中', 'primary'], STOPPING: ['停止中', 'warning'], SUCCEEDED: ['引擎完成', 'success'], FAILED: ['失败', 'danger'], CANCELLED: ['已停止', 'info'], UNKNOWN: ['需要核查', 'warning']
 }
 function state(value, error) {
   if (value === 'SUCCEEDED' && error) return { label: '完成 · 待核对', type: 'warning' }

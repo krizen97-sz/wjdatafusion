@@ -25,7 +25,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 
-/** Immutable complete artifacts; publication is independent from, and never derived from, UI previews. */
+/** Immutable verified files; a stopped run's partial data is explicitly distinguished from successful output. */
 @Component
 public class DataGovernanceArtifactStore
 {
@@ -37,8 +37,12 @@ public class DataGovernanceArtifactStore
     private final ObjectMapper mapper = new ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
     public record Artifact(String id, int order, String filename, String contentType, long byteSize, String sha256) { }
-    public record Manifest(String runId, long submitterId, String definitionHash, String publishedAt, List<Artifact> artifacts)
-    { public Manifest { artifacts = List.copyOf(artifacts); } }
+    public record Manifest(String runId, long submitterId, String definitionHash, String publishedAt, List<Artifact> artifacts, boolean partial)
+    {
+        public Manifest { artifacts = List.copyOf(artifacts); }
+        public Manifest(String runId, long submitterId, String definitionHash, String publishedAt, List<Artifact> artifacts)
+        { this(runId, submitterId, definitionHash, publishedAt, artifacts, false); }
+    }
     private record Owner(String runId, long submitterId, String definitionHash) { }
     @FunctionalInterface public interface ContentWriter { void writeTo(OutputStream output) throws IOException; }
 
@@ -126,13 +130,20 @@ public class DataGovernanceArtifactStore
     }
 
     public Manifest publish(Stage stage, StoredRun stored)
+    { return publish(stage, stored, false); }
+
+    /** The caller must first verify explicit user cancellation acknowledged by the original execution. */
+    public Manifest publishStoppedPartial(Stage stage, StoredRun stored)
+    { return publish(stage, stored, true); }
+
+    private Manifest publish(Stage stage, StoredRun stored, boolean partial)
     {
         synchronized (stage)
         {
             checkStage(stage);
             if (stored == null || stored.run == null || !stage.owner.runId.equals(stored.run.id) || stage.owner.submitterId != stored.ownerId
-                || !stage.owner.definitionHash.equals(stored.run.definitionHash) || !"SUCCEEDED".equals(stored.run.status) || !stored.run.cleanupConfirmed
-                || stage.artifacts.isEmpty()) throw new ServiceException("只有成功且清理确认的非空完整产物可以发布");
+                || !stage.owner.definitionHash.equals(stored.run.definitionHash) || !(partial ? "CANCELLED" : "SUCCEEDED").equals(stored.run.status) || !stored.run.cleanupConfirmed
+                || stage.artifacts.isEmpty()) throw new ServiceException(partial ? "只有已取消且清理确认的非空部分结果可以发布" : "只有成功且清理确认的非空完整产物可以发布");
             try
             {
                 for (Artifact artifact : stage.artifacts)
@@ -142,7 +153,7 @@ public class DataGovernanceArtifactStore
                 Files.move(stage.directory.resolve("staging"), content, StandardCopyOption.ATOMIC_MOVE);
                 forceDirectory(stage.directory);
                 Manifest manifest = new Manifest(stage.owner.runId, stage.owner.submitterId, stage.owner.definitionHash,
-                    Instant.now().toString(), stage.artifacts);
+                    Instant.now().toString(), stage.artifacts, partial);
                 writeAtomic(stage.directory.resolve("manifest.json"), manifest);
                 stage.published = true;
                 stored.run.artifactsManifestAvailable = true; stored.run.artifactCount = stage.artifacts.size();

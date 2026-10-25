@@ -216,6 +216,7 @@ public class HdiCoreRuns {
             .put("finalized", evidence.path("finalized").asBoolean(false)).put("engineState", evidence.path("state").asText("UNKNOWN"))
             .put("observed", !evidence.isEmpty()).put("metricsAvailable", false).put("updatedAt", run.updatedAt().toString());
         view.put("nativeState", evidence.path("nativeState").asText(null));
+        view.put("artifactCompleteness", run.state().equals("SUCCEEDED") ? "COMPLETE" : confirmedPartialStop(evidence) ? "PARTIAL" : "NONE");
         view.set("outputWarningCodes", HdiProtocol.JSON.valueToTree(outputWarnings(evidence)));
         view.put("error", run.errorMessage()); view.putNull("inputRows"); view.putNull("outputRows");
         return view;
@@ -258,9 +259,14 @@ public class HdiCoreRuns {
             default -> "UNKNOWN";
         };
         ObjectNode persisted = observation.deepCopy(); String error = null;
-        if (state.equals("SUCCEEDED")) {
-            try { captureArtifacts(run, observation); persisted.put("platformArtifactsAvailable", true); }
-            catch (RuntimeException failure) { persisted.put("platformArtifactsAvailable", false); error = "原引擎运行成功，但完整产物尚未通过平台收编校验"; }
+        boolean partial = state.equals("CANCELLED") && confirmedPartialStop(observation);
+        if (state.equals("SUCCEEDED") || partial) {
+            persisted.put("artifactCompleteness", partial ? "PARTIAL" : "COMPLETE");
+            try { captureArtifacts(run, observation, partial); persisted.put("platformArtifactsAvailable", true); }
+            catch (RuntimeException failure) {
+                persisted.put("platformArtifactsAvailable", false);
+                error = partial ? "原任务已停止，但停止时生成的部分结果尚未通过平台归档校验" : "原引擎运行成功，但完整产物尚未通过平台收编校验";
+            }
             String warning = outputWarningMessage(observation);
             if (warning != null) error = error == null ? warning : warning + "；" + error;
         } else if (state.equals("FAILED")) error = "原引擎执行失败或超时，详情请查看该运行日志";
@@ -269,13 +275,29 @@ public class HdiCoreRuns {
         if (TERMINAL.contains(state) || state.equals("UNKNOWN")) active.remove(run.id());
     }
 
-    private void captureArtifacts(HdiTaskStore.Run run, JsonNode observation) {
+    private static boolean confirmedPartialStop(JsonNode evidence) {
+        return "CANCELLED".equals(evidence.path("state").asText()) && "stop".equals(evidence.path("nativeState").asText())
+            && evidence.path("stopRequestedByUser").isBoolean() && evidence.path("stopRequestedByUser").booleanValue()
+            && evidence.path("finalized").isBoolean() && evidence.path("finalized").booleanValue()
+            && evidence.path("recoveryRequired").isBoolean() && !evidence.path("recoveryRequired").booleanValue()
+            && evidence.path("errorCode").asText("").isEmpty() && "PARTIAL".equals(evidence.path("artifactCompleteness").asText());
+    }
+    private static boolean publishedArtifacts(HdiTaskStore.Run run, JsonNode evidence) {
+        return evidence.path("platformArtifactsAvailable").asBoolean(false)
+            && (run.state().equals("SUCCEEDED") || run.state().equals("CANCELLED") && confirmedPartialStop(evidence));
+    }
+    private void captureArtifacts(HdiTaskStore.Run run, JsonNode observation, boolean partial) {
         JsonNode artifacts = observation.path("artifacts");
         if (!artifacts.isArray() || artifacts.size() > DataGovernanceArtifactStore.MAX_ARTIFACTS) throw new HdiTaskFault(502, "原运行未提供完整产物清单");
         if (artifacts.isEmpty()) return; // Database/message outputs need not create a downloadable local file.
-        try { artifactStore.manifest(run.id(), run.ownerId()); return; } catch (RuntimeException absent) { /* Begin immutable capture only when no published manifest exists. */ }
+        DataGovernanceArtifactStore.Manifest existing = null;
+        try { existing = artifactStore.manifest(run.id(), run.ownerId()); } catch (RuntimeException absent) { /* Begin immutable capture only when no published manifest exists. */ }
+        if (existing != null) {
+            if (existing.partial() != partial) throw new HdiTaskFault(502, "产物完整性类型不一致");
+            return;
+        }
         DataGovernanceModels.StoredRun stored = new DataGovernanceModels.StoredRun(); stored.ownerId = run.ownerId(); stored.run = new DataGovernanceModels.TestRun();
-        stored.run.id = run.id(); stored.run.definitionHash = run.definitionSha256(); stored.run.status = "SUCCEEDED"; stored.run.cleanupConfirmed = true;
+        stored.run.id = run.id(); stored.run.definitionHash = run.definitionSha256(); stored.run.status = partial ? "CANCELLED" : "SUCCEEDED"; stored.run.cleanupConfirmed = true;
         var stage = artifactStore.begin(stored); Set<String> ids = new HashSet<>(); long total = 0;
         try {
             for (JsonNode artifact : artifacts) {
@@ -294,7 +316,7 @@ public class HdiCoreRuns {
                 });
                 if (!captured.sha256().equals(sha)) throw new HdiTaskFault(502, "完整产物摘要不一致");
             }
-            artifactStore.publish(stage, stored);
+            if (partial) artifactStore.publishStoppedPartial(stage, stored); else artifactStore.publish(stage, stored);
         } catch (RuntimeException failure) { artifactStore.abandon(stage); throw failure; }
     }
     private static byte[] decodedChunk(JsonNode chunk, String id, String sha, long bytes, long offset, int maximum) {
@@ -308,23 +330,28 @@ public class HdiCoreRuns {
     }
     public JsonNode artifacts(long owner, String runId) {
         HdiTaskStore.Run run = store.run(owner, runId);
-        if (!run.state().equals("SUCCEEDED") || !saved(run).path("platformArtifactsAvailable").asBoolean(false))
+        JsonNode evidence = saved(run); boolean partial = confirmedPartialStop(evidence);
+        if (!publishedArtifacts(run, evidence))
             return HdiProtocol.JSON.createObjectNode().put("available", false).put("reason", "NOT_PUBLISHED").set("artifacts", HdiProtocol.JSON.createArrayNode());
         if (saved(run).path("artifacts").isArray() && saved(run).path("artifacts").isEmpty())
-            return HdiProtocol.JSON.createObjectNode().put("available", true).put("localArtifactsGenerated", false).set("artifacts", HdiProtocol.JSON.createArrayNode());
+            return HdiProtocol.JSON.createObjectNode().put("available", true).put("artifactCompleteness", partial ? "PARTIAL" : "COMPLETE").put("localArtifactsGenerated", false).set("artifacts", HdiProtocol.JSON.createArrayNode());
         try {
             var manifest = artifactStore.manifest(runId, owner); var items = HdiProtocol.JSON.createArrayNode();
+            if (manifest.partial() != partial) throw new HdiTaskFault(502, "产物完整性类型不一致");
             for (var item : manifest.artifacts()) items.add(HdiProtocol.JSON.createObjectNode().put("artifactId", item.id()).put("name", item.filename())
                 .put("bytes", item.byteSize()).put("sha256", item.sha256()).put("contentType", item.contentType()));
-            return HdiProtocol.JSON.createObjectNode().put("available", true).set("artifacts", items);
+            return HdiProtocol.JSON.createObjectNode().put("available", true).put("artifactCompleteness", partial ? "PARTIAL" : "COMPLETE").set("artifacts", items);
         } catch (RuntimeException failure) { throw new HdiTaskFault(503, "平台完整产物暂不可读取"); }
     }
     public ArtifactChunk artifact(long owner, String runId, String artifactId, long offset, int limit) {
         HdiTaskStore.Run run = store.run(owner, runId);
-        if (!run.state().equals("SUCCEEDED") || !saved(run).path("platformArtifactsAvailable").asBoolean(false)) throw new HdiTaskFault(409, "完整产物尚未发布");
+        JsonNode evidence = saved(run);
+        if (!publishedArtifacts(run, evidence)) throw new HdiTaskFault(409, "产物尚未通过归档确认");
         if (offset < 0 || limit < 1 || limit > 1024 * 1024) throw new HdiTaskFault(400, "产物读取范围无效");
         try {
-            var item = artifactStore.manifest(runId, owner).artifacts().stream().filter(value -> value.id().equals(artifactId)).findFirst()
+            var manifest = artifactStore.manifest(runId, owner);
+            if (manifest.partial() != confirmedPartialStop(evidence)) throw new HdiTaskFault(502, "产物完整性类型不一致");
+            var item = manifest.artifacts().stream().filter(value -> value.id().equals(artifactId)).findFirst()
                 .orElseThrow(() -> new HdiTaskFault(404, "产物不存在或无权访问"));
             if (offset > item.byteSize()) throw new HdiTaskFault(416, "产物读取范围超出文件");
             byte[] all;

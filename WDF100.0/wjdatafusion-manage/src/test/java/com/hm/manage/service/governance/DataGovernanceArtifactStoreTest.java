@@ -36,6 +36,7 @@ class DataGovernanceArtifactStoreTest
         var artifact = store.capture(stage, "完整产物.bin", "application/octet-stream", bytes.length,
             output -> { output.write(bytes, 0, 10000); output.write(bytes, 10000, bytes.length - 10000); });
         success(stored); var manifest = store.publish(stage, stored);
+        assertFalse(manifest.partial());
         assertTrue(stored.run.artifactsManifestAvailable); assertEquals(1, stored.run.artifactCount);
         assertEquals(bytes.length, artifact.byteSize()); assertEquals(1, artifact.order());
         assertEquals(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)), artifact.sha256());
@@ -52,6 +53,33 @@ class DataGovernanceArtifactStoreTest
             for (Path path : List.of(runPath(stored).resolve("manifest.json"), runPath(stored).resolve("owner.json"), runPath(stored).resolve("content/" + artifact.id() + ".bin")))
                 assertEquals(PosixFilePermissions.fromString("rw-------"), Files.getPosixFilePermissions(path));
         }
+    }
+
+    @Test void stoppedPartialFilesRemainCancelledAndAreExplicitInReopenedManifest() throws Exception
+    {
+        var stored = run(); var store = new DataGovernanceArtifactStore(properties()); var stage = store.begin(stored);
+        byte[] value = "message\nobserved row\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        var artifact = store.capture(stage, "stopped.csv", "text/csv", value.length, output -> output.write(value));
+        stored.run.status = "CANCELLED";
+        assertThrows(ServiceException.class, () -> store.publishStoppedPartial(stage, stored));
+        stored.run.cleanupConfirmed = true;
+        assertThrows(ServiceException.class, () -> store.publish(stage, stored));
+        var manifest = store.publishStoppedPartial(stage, stored);
+        assertTrue(manifest.partial()); assertEquals("CANCELLED", stored.run.status);
+        var reopened = new DataGovernanceArtifactStore(properties());
+        assertTrue(reopened.manifest(stored.run.id, stored.ownerId).partial());
+        try (var input = reopened.read(stored.run.id, artifact.id(), stored.ownerId)) { assertArrayEquals(value, input.readAllBytes()); }
+        assertThrows(ServiceException.class, () -> reopened.manifest(stored.run.id, stored.ownerId + 1));
+    }
+
+    @Test void olderCompleteManifestWithoutPartialFieldRemainsReadable() throws Exception
+    {
+        var stored = run(); var store = new DataGovernanceArtifactStore(properties()); var stage = store.begin(stored);
+        store.capture(stage, "old.csv", "text/csv", 1, output -> output.write(1)); success(stored); store.publish(stage, stored);
+        Path file = runPath(stored).resolve("manifest.json"); var json = new com.fasterxml.jackson.databind.ObjectMapper();
+        var legacy = (com.fasterxml.jackson.databind.node.ObjectNode)json.readTree(Files.readAllBytes(file)); legacy.remove("partial");
+        Files.writeString(file, legacy.toString());
+        assertFalse(new DataGovernanceArtifactStore(properties()).manifest(stored.run.id, stored.ownerId).partial());
     }
 
     @Test void onlySuccessfulCleanedRunsCanPublishAndFailedStagingIsNotDeliverable() throws Exception
