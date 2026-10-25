@@ -56,3 +56,5 @@ data-governance-hdi-core:
 地址是示例，部署应填写实际批准端点。Map键须使用方括号保留IPv4与冒号，例如 `"[127.0.0.1:2121]"`；否则Spring配置绑定会改变键，导致被动范围无法匹配。连接使用明确IPv4，支持标准FTP控制端口21；禁止Core保留2180–2183，FTP被动范围最多32个端口。Kafka公布的broker须同时属于允许端点，worker仍使用隔离网络和固定通道。
 
 测试：`HdiCoreConnectionsTest` 验证owner隔离、密文保存、原表单字段、编辑冲突、冻结版本、删除阻断和网络策略。设置 `HDI_CONNECTION_FIXTURE_DIR` 可读取本任务私有 PostgreSQL/FTP fixture JSON 并执行真实连接检查、PG模式/表/列读取与Kafka集群元数据检查；凭据不打印、不提交。
+
+`HdiCoreMoreConnectionsTest` 对新增三类逐项检查保存、列表、分页、详情、编辑表单和冻结引用均不含真实密码或浏览器RSA密文，历史版本仅在可信执行解析中解密。`test_hdi_more_metadata.py` 在独立JVM调用包内真实MySQL/RabbitMQ/SFTP连接测试客户端，部署同一个守卫但只批准另一测试端口；独立监听器确认被拒绝端口连TCP连接都未收到，因此首字节为0。另测传入端点与可信scope不一致时，在构造原客户端前拒绝。该负例只使用本机临时监听器，不登录实际业务系统；需要显式设置 `HDI_ORIGINAL_BUNDLE` 和 `HDI_COMPILER_JAVA_HOME`，不把跳过当实测通过。
