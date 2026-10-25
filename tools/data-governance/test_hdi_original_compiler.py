@@ -306,6 +306,33 @@ class OriginalSdkTests(unittest.TestCase):
         self.assertEqual(params['etl.file.localDir'],request['runContext']['outputsDir'])
         self.assertEqual(params['etl.file.serverDir'],'/outbox')
 
+    def test_native_connector_switch_values_follow_the_original_catalog(self):
+        visual,connections=connector_visual('kafkaInput','fileOutput')
+        visual['nodes']['110']['adapterParamVoList'].append({'paramName':'etl.kafka.enable.auto.commit','paramValue':False})
+        prepared=self.prepare_connectors(visual,connections);request=self.compile_request(prepared);request['runContext']['connections']=connections
+        result=self.invoke(request);self.assertTrue(result['ok'],result)
+        native=json.loads(base64.b64decode(result['flowjson']['base64']))
+        params={p['param_name']:p['param_value'] for p in native['streams'][0]['modules'][0]['config']['adapter_param']}
+        self.assertEqual(params['etl.kafka.enable.auto.commit'],'false')
+        visual['nodes']['110']['adapterParamVoList'][-1]['paramValue']='not-a-boolean'
+        prepared=self.prepare_connectors(visual,connections);request=self.compile_request(prepared);request['runContext']['connections']=connections
+        self.assertFalse(self.invoke(request)['ok'])
+
+    def test_primary_keys_are_retained_for_database_and_queue_and_nonprimary_file_targets(self):
+        for output in ['postgresqlOutput','kafkaV2Output','fileOutput']:
+            visual,connections=connector_visual('dataGeneratorInput',output)
+            visual['nodes']['110']['streamFieldVoList'][0]['fieldKeyFlag']=1
+            if output!='fileOutput':visual['nodes']['130']['dstTableFieldVoList'][0]['fieldKeyFlag']=1
+            prepared=self.prepare_connectors(visual,connections);request=self.compile_request(prepared);request['runContext']['connections']=connections
+            result=self.invoke(request);self.assertTrue(result['ok'],result)
+
+    def test_kafka_uses_original_json_and_string_wire_values(self):
+        for format_name, accepted in [('json',True),('string',True),('text',False),('avro',False)]:
+            visual,connections=connector_visual('dataGeneratorInput','kafkaV2Output')
+            visual['nodes']['130']['dstTableVo'].update(messageFormat=format_name,messageField='mapped_message')
+            prepared=self.prepare_connectors(visual,connections);request=self.compile_request(prepared);request['runContext']['connections']=connections
+            self.assertEqual(self.invoke(request)['ok'],accepted,format_name)
+
     def test_frozen_connector_revision_and_identity_cannot_be_replaced(self):
         visual, connections=connector_visual('postgresqlInput','fileOutput')
         prepared=self.prepare_connectors(visual,connections);self.assertTrue(prepared['ok'],prepared)

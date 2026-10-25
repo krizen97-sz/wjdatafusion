@@ -13,7 +13,7 @@
 | 本地生成/映射/输出 | dataGeneratorInput / fieldMapping / fileOutput | DataGeneratorInputServiceImpl / FieldMappingServiceImpl / FileOutputServiceImpl | 原有本地流程兼容 |
 | PostgreSQL | postgresqlInput / postgresqlOutput | InputServiceImpl / OutputServiceImpl | 选择单表全量读取、向既有表插入；不自动建表/清空 |
 | FTP | fileInput / fileOutput | FileInputServiceImpl / FileOutputServiceImpl | 原FTP绝对目录、CSV/行文件；本地下载暂存与输出归档目录由平台绑定 |
-| Kafka | kafkaInput / kafkaV2Output | MqInputServiceImpl / MqOutputServiceImpl | 单一明确topic、原JSON/text消息格式；不开放任意认证/序列化器覆盖 |
+| Kafka | kafkaInput / kafkaV2Output | MqInputServiceImpl / MqOutputServiceImpl | 单一明确topic、原JSON/string消息格式；不开放任意认证/序列化器覆盖 |
 
 原包没有本次可验证的独立 MySQL 输入输出插件，因此不把 PostgreSQL 插件冒充为 MySQL 实现。上述表仅证明编译接入能力；真实网络、原插件执行以及浏览器闭环必须另行验收。
 
@@ -35,9 +35,11 @@ PostgreSQL 选表输入必须保留原浏览器生成的 `fieldExpression=column
 
 保存允许空草稿、不完整链、未配置完的节点和原无限行数 `-1`。运行明确拒绝无界生成、分叉、环、未知插件、SFTP、原始SQL、脚本、外部 FEL / Redis、全局参数引用、异步输出及当前范围外的表达式。保存不会把这些配置静默修改成可运行的配置。生成器缺省行数从已校验的原 `etl_plugin.json` 读取（本版原值为 100000），不会被偷偷改为测试行数；运行上限为 1000000 行。
 
+原目录声明为 `el-switch` 的参数按其 `allowableValues` 校验；没有自定义选项时使用原布尔 true/false，接受浏览器传来的布尔或字符串值。Kafka 的 `etl.kafka.enable.auto.commit=false` 不再被错误归为“非默认不支持”。显式路径派生、未接入的删除/截断、SCRAM 等原有执行范围限制仍单独保留，不以通用开关校验绕过它们。消息格式的原 wire 值为 `json` / `string`；`text` 不是该原目录选项，Avro/BSON 本轮不开放。当前浏览器真实验收使用 JSON。
+
 原字段映射表单自带的未启用 Redis 占位值可以保留；只有与原目录默认值完全一致且当前映射没有外部函数的配置可进入本批执行。参数值改变时返回 `UNSUPPORTED_GRAPH`。
 
-文件名边界在执行前校验：原 `FileOutput.getAllFields` 会从流 schema 的主键取 `primaryFieldName`，`genFileName` 会直接把该字段值加入文件名。因此本 profile 拒绝输入/输出 `fieldKeyFlag!=0`，避免普通数据中的路径字符变成文件名。`fileNameFromFlow`、远程子目录、按字段文件名分组、动态路径等只能保持原空/false 默认；临时扩展名只能保持原默认，`customExtension` 仅允许 1–16 位字母数字、下划线或连字符。受信输出目录也不能含 `${...}` 动态占位符。合法草稿仍可保存，超范围能力在 compile 阶段明确拒绝。原 `flowName` 在已核 FileOutput 中仅参与日志上下文，没有加入此默认文件名生成链。
+文件名边界在执行前校验：原 `FileOutput.getAllFields` 会从流 schema 的主键取 `primaryFieldName`，`genFileName` 会直接把该字段值加入文件名。因此本 profile 仅拒绝最终 File 输出实际处理的字段 `fieldKeyFlag!=0`，避免普通数据中的路径字符变成文件名。被原 `passThrough=1` 忽略的字段不进入物理文件 schema；数据库输入、数据库输出和 Kafka 的主键元数据保留，不受文件名规则误限。`fileNameFromFlow`、远程子目录、按字段文件名分组、动态路径等只能保持原空/false 默认；临时扩展名只能保持原默认，`customExtension` 仅允许 1–16 位字母数字、下划线或连字符。受信输出目录也不能含 `${...}` 动态占位符。合法草稿仍可保存，超范围能力在 compile 阶段明确拒绝。原 `flowName` 在已核 FileOutput 中仅参与日志上下文，没有加入此默认文件名生成链。
 
 ## 平台调用
 
