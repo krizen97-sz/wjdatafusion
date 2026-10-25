@@ -195,6 +195,7 @@ class WorkerStateTests(unittest.TestCase):
         self.assertEqual(base64.b64decode(result['base64']), b'field\nvalue\n')
         self.assertEqual(self.worker.view(record)['state'], 'CANCELLED')
         self.assertEqual(self.worker.view(record)['artifactCompleteness'], 'PARTIAL')
+        self.assertIs(self.worker.view(record)['stopRequestedByUser'], True)
         (Path(record['outputsDir']) / 'sample.csv').write_bytes(b'field\nother\n')
         with self.assertRaisesRegex(ProtocolError, 'ARTIFACT_CHANGED'):
             self.worker.artifact(record, {'artifactId': record['artifacts'][0]['artifactId']})

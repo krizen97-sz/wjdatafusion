@@ -508,7 +508,7 @@ class Worker:
         keys = ('runId', 'businessTaskId', 'revision', 'ownerId', 'nativeFlowId', 'nativeInstanceId',
                 'execId', 'workspaceId', 'metadataIdBase', 'state', 'finalized', 'recoveryRequired',
                 'nativeState', 'errorCode', 'outputsDir', 'authorizedOutputRoot', 'artifacts', 'updatedAt',
-                'connectionBindings', 'outputWarningCodes', 'artifactCompleteness')
+                'connectionBindings', 'outputWarningCodes', 'artifactCompleteness', 'stopRequestedByUser')
         result = {key: record[key] for key in keys if key in record}
         if 'artifacts' in result:
             result['artifacts'] = [{key: item[key] for key in ('artifactId', 'name', 'bytes', 'sha256')}
