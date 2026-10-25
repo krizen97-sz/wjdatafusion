@@ -307,6 +307,10 @@ def validate_datasource_grant(module, kind, bindings):
         expected = 'jdbc:' + kind + '://' + endpoint['host'] + ':' + str(endpoint['port']) + '/' + database
         if kind == 'mysql':
             expected += '?useSSL=false'  # Original MysqlDatasource fixed URL template.
+            # Explicit original URL-mode option for MySQL 8 caching_sha2_password.
+            # This exact opt-in is not a general JDBC query/property escape hatch.
+            if source.get('db_url') == expected + '&allowPublicKeyRetrieval=true':
+                expected += '&allowPublicKeyRetrieval=true'
     elif kind in ('ftp', 'sftp'):
         if source.get('ext2', 'ftp') != kind:
             raise ProtocolError('CONNECTOR_PROTOCOL_MISMATCH')
