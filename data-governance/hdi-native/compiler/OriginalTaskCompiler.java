@@ -58,6 +58,7 @@ public final class OriginalTaskCompiler {
         Map.entry("mysqlInput", "com.rynew.hdi.adapter.MysqlInput"), Map.entry("mysqlOutput", "com.rynew.hdi.adapter.MysqlOutput"));
     static Path platformAdapters;
     static Map<String,Object> platformManifest;
+    static String platformAdaptersManifestSha256;
     static final Set<String> GENERATOR_PARAMS = Set.of("etl.plugin.input.generator.data.size");
     static final Set<String> FILE_PARAMS = Set.of("etl.file.maxRow", "etl.file.flushTime");
     static final Set<String> EMPTY_REFERENCES = Set.of("sqlStr", "runtimeJson", "referenceConfigAdapter",
@@ -192,6 +193,14 @@ public final class OriginalTaskCompiler {
         }
         return ids;
     }
+    static boolean usesPlatformAdapters(Map<String,Object> visual) {
+        for (Object raw : object(visual.get("nodes"),"nodes").values())
+            if (Set.of("mysqlInput","mysqlOutput").contains(text(object(raw,"node").get("adapterName")))) return true;
+        return false;
+    }
+    static void requireAdapterRevision(boolean valid) {
+        if (!valid) throw new Rejected("ADAPTER_REVISION_UNAVAILABLE", "The frozen platform adapter revision is not installed; restore that package or save and publish a new task revision");
+    }
     static void identifier(Object value, String name) {
         require(text(value).matches("[A-Za-z_][A-Za-z0-9_$]{0,127}"), name + " must be an explicit identifier");
     }
@@ -210,6 +219,10 @@ public final class OriginalTaskCompiler {
         require(refs.keySet().equals(referenced), "The platform must freeze every selected connection revision");
         for (Map.Entry<String,Object> ref : refs.entrySet()) { id(ref.getKey(), "connection ID"); require(ref.getValue() instanceof String, "Connection revision must be a decimal string"); id(ref.getValue(), "connection revision"); }
         if (!refs.isEmpty()) snapshot.put("connectionRefs", new LinkedHashMap<>(refs));
+        if (usesPlatformAdapters(visual)) {
+            requireAdapterRevision(platformAdaptersManifestSha256 != null);
+            snapshot.put("platformAdapterManifestSha256",platformAdaptersManifestSha256);
+        }
         String serialized = json(snapshot);
         return map("ok", true, "protocolVersion", 1, "operation", "prepare", "canonicalVisual", visual,
             "snapshotJson", serialized, "snapshotSha256", sha(serialized.getBytes(StandardCharsets.UTF_8)), "diagnostics", List.of());
@@ -669,11 +682,14 @@ public final class OriginalTaskCompiler {
         String snapshotText = (String)request.get("snapshotJson"); String snapshotHash = sha(snapshotText.getBytes(StandardCharsets.UTF_8));
         require(snapshotHash.equals(request.get("snapshotSha256")), "Frozen snapshot digest mismatch");
         Map<String,Object> snapshot = parse(snapshotText);
-        Set<String> snapshotKeys = new HashSet<>(snapshot.keySet()); snapshotKeys.remove("connectionRefs");
+        Set<String> snapshotKeys = new HashSet<>(snapshot.keySet()); snapshotKeys.remove("connectionRefs"); snapshotKeys.remove("platformAdapterManifestSha256");
         require(snapshotKeys.equals(Set.of("protocolVersion", "context", "visual")) && Integer.valueOf(1).equals(snapshot.get("protocolVersion")), "Unknown snapshot schema");
         Map<String,Object> ctx = context(object(snapshot.get("context"), "context"));
         Map<String,Object> visual = object(snapshot.get("visual"), "visual");
         require(json(visual).equals(json(normalize(visual, ctx))), "Snapshot visual is not canonical for its platform context");
+        boolean platformRequired = usesPlatformAdapters(visual);
+        if (platformRequired) requireAdapterRevision(platformAdaptersManifestSha256 != null && platformAdaptersManifestSha256.equals(snapshot.get("platformAdapterManifestSha256")));
+        else require(!snapshot.containsKey("platformAdapterManifestSha256"),"A graph without platform adapters cannot claim an adapter revision");
         Map<String,Object> run = object(request.get("runContext"), "runContext");
         Set<String> requiredRunKeys = Set.of("businessTaskId", "revision", "nativeFlowId", "nativeInstanceId", "metadataIdBase", "execId", "outputsDir", "authorizedOutputRoot", "mode");
         Set<String> actualRunKeys = new HashSet<>(run.keySet()); actualRunKeys.remove("outputRootSource"); actualRunKeys.remove("connections"); actualRunKeys.remove("connectionBindings");
@@ -884,18 +900,25 @@ public final class OriginalTaskCompiler {
         byte[] scheduleBytes = com.hikvision.idatafusion.detl.utils.ObjectUtils.toUnderlineJsonString(start).getBytes(StandardCharsets.UTF_8);
         Object stop = com.hikvision.idatafusion.detl.dto.task.control.FlowControlMessageDto.builder().flowId(flowId).type(0).build();
         byte[] stopBytes = com.hikvision.idatafusion.detl.utils.ObjectUtils.toUnderlineJsonString(stop).getBytes(StandardCharsets.UTF_8);
+        Map<String,Object> metadata = map("runtimeVisual", runtimeVisual, "modules", modules, "metadataIdBase", String.valueOf(base), "allocatedThrough", String.valueOf(base + 16 + nodes.size()*16L - 1), "outputsDir", output.toString(), "connectionBindings", run.getOrDefault("connectionBindings",List.of()));
+        if (platformRequired) metadata.put("platformAdapterManifestSha256",platformAdaptersManifestSha256);
         return map("ok", true, "protocolVersion", 1, "operation", "compile", "businessTaskId", ctx.get("businessTaskId"), "revision", ctx.get("revision"), "ownerId", ctx.get("ownerId"), "flowId", String.valueOf(flowId), "workspaceId", String.valueOf(groupId), "instanceId", String.valueOf(instanceId), "execId", run.get("execId"), "snapshotSha256", snapshotHash,
             "flowjson", map("base64", Base64.getEncoder().encodeToString(sink.bytes), "sha256", sha(sink.bytes)),
             "schedule", map("base64", Base64.getEncoder().encodeToString(scheduleBytes), "sha256", sha(scheduleBytes)),
             "stop", map("base64", Base64.getEncoder().encodeToString(stopBytes), "sha256", sha(stopBytes)),
-            "metadataSnapshot", map("runtimeVisual", runtimeVisual, "modules", modules, "metadataIdBase", String.valueOf(base), "allocatedThrough", String.valueOf(base + 16 + nodes.size()*16L - 1), "outputsDir", output.toString(), "connectionBindings", run.getOrDefault("connectionBindings",List.of())), "nodeMappings", mappings, "diagnostics", List.of());
+            "metadataSnapshot", metadata, "nodeMappings", mappings, "diagnostics", List.of());
     }
 
     public static void main(String[] args) throws Exception {
         PrintStream protocol = System.out; System.setOut(System.err);
         try {
-            require(args.length == 1 || args.length == 2, "Expected bundle root and optional platform adapter root");
-            if (args.length == 2) { platformAdapters = Path.of(args[1]).toAbsolutePath().normalize(); platformManifest = parse(Files.readString(platformAdapters.resolve("platform-adapter-manifest.json"))); }
+            require(args.length == 1 || args.length == 3, "Expected bundle root and optional platform adapter root plus trusted SHA-256 pin");
+            if (args.length == 3) {
+                platformAdapters = Path.of(args[1]).toAbsolutePath().normalize();
+                byte[] manifestBytes=Files.readAllBytes(platformAdapters.resolve("platform-adapter-manifest.json"));
+                requireAdapterRevision(args[2].matches("[a-f0-9]{64}") && args[2].equals(sha(manifestBytes)));
+                platformAdaptersManifestSha256=args[2]; platformManifest = parse(new String(manifestBytes,StandardCharsets.UTF_8));
+            }
             byte[] input = System.in.readNBytes(MAX_BYTES + 1); require(input.length <= MAX_BYTES, "Request exceeds 8 MiB");
             Map<String,Object> request = parse(new String(input, StandardCharsets.UTF_8));
             String operation = text(request.get("operation"));

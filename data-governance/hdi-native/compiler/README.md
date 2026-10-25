@@ -27,7 +27,9 @@ SFTP 使用原 `sourceType=sftp`、数据源类型18与 `ext2=sftp`，必须与�
 
 使用 `tools/data-governance/hdi_mysql_adapter.py --bundle <原包> --java-home <JDK> --output <新独立目录>` 构建。产物包含两个Java源码、平台构建JAR、平台注册描述和 `platform-adapter-manifest.json`，不会写入原 bundle。manifest以 `origin=platform-build/platform-registration` 区分平台文件，原依赖只引用原 bundle 的路径与SHA；worker验证后装入每次运行的私有插件目录。原JDBC输出JAR内历史properties的className带有多余 `.output`，适配明确继承实际存在的 `com.hikvision.idatafusion.etl.adapter.output.jdbc.JdbcOutput`，不修改原文件。
 
-原通用JDBC JAR没有独立参数JSON。平台描述从原PostgreSQL描述保留在原JDBC及跨JAR依赖class常量池中有引用的参数项，标签、类型、默认值及可选值原样复制；`parameter-provenance.json`逐项记录保留/未暴露原因和原class来源。未匹配不代表原实现不支持，仅不在本次最小profile暴露。编译器可信启动参数 `--platform-adapters <独立目录>` 校验该独立receipt；浏览器不能指定此目录或类名。
+原通用JDBC JAR没有独立参数JSON。平台描述从原PostgreSQL描述保留在原JDBC及跨JAR依赖class常量池中有引用的参数项，标签、类型、默认值及可选值原样复制；`parameter-provenance.json`逐项记录保留/未暴露原因和原class来源。未匹配不代表原实现不支持，仅不在本次最小profile暴露。编译器可信启动参数 `--platform-adapters <独立目录> --platform-adapters-sha256 <独立配置的manifest摘要>` 校验该receipt；配置目录时摘要必需，不能把自描述manifest当作独立信任锚。浏览器不能指定目录、类名或摘要。
+
+仅含MySQL节点的任务快照会由编译器加入 `platformAdapterManifestSha256`，编译结果的 `metadataSnapshot` 也携带同一摘要。运行时必须匹配当前安装包的配置pin；即使插件版本字符串仍是2.0.0，换包也不能静默改变已发布任务。不匹配或旧MySQL快照缺引用时返回 `ADAPTER_REVISION_UNAVAILABLE`，须恢复原包或重新保存/发布。旧非MySQL快照无需此字段，继续兼容。
 
 PostgreSQL 选表输入必须保留原浏览器生成的 `fieldExpression=columnName`，`srcTableType=1` 和 `srcTableId`；本次执行只重绑 `srcTableId` 到独立元数据块，不补写 SQL 表达式。原 `StreamFieldServiceImpl.saveStreamFields` 会为缺省/空表达式填入字段名；编译器现复用该保存投影，并仅捕获本次 DAO 写入，不能跳过此步把空表达式直接交给原 SQL 引擎。非同名 SQL 表达式仍在执行前拒绝。原输出表单的 `dataCleansing` 禁用值是字符串 `"0"`，不是布尔值或 `"false"`；原 Core 按整数读取该值。当前 profile 拒绝清空目标数据，并拒绝非法值。显式写入方式沿用原枚举 `INSERT`，不把任意大小写或未支持模式静默归一化。
 
@@ -156,6 +158,7 @@ outputsDir 必须是 authorizedOutputRoot 下的独立子目录。二者只能�
 HDI_ORIGINAL_BUNDLE=/absolute/original-bundle \
 HDI_COMPILER_JAVA_HOME=/absolute/jdk-17 \
 HDI_PLATFORM_ADAPTERS=/absolute/separate-platform-adapters \
+HDI_PLATFORM_ADAPTERS_SHA256=<independently-configured-manifest-sha256> \
 python3 -m unittest discover -s tools/data-governance -p test_hdi_original_compiler.py -v
 ```
 

@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -78,16 +79,22 @@ def classpath(bundle: Path) -> list[Path]:
     return jars
 
 
-def execute(bundle: Path, java_home: Path, request: bytes, runtime: Path, timeout: int = 45, platform_adapters: Path | None = None) -> tuple[int, bytes]:
+def execute(bundle: Path, java_home: Path, request: bytes, runtime: Path, timeout: int = 45, platform_adapters: Path | None = None, platform_adapters_sha256: str | None = None) -> tuple[int, bytes]:
     if len(request) > MAX_BYTES:
         raise ValueError('Compiler request exceeds 8 MiB')
     bundle = bundle.absolute()
     jars = classpath(bundle)
     adapter_args = []
     if platform_adapters is not None:
+        if not isinstance(platform_adapters_sha256, str) or not re.fullmatch('[a-f0-9]{64}', platform_adapters_sha256):
+            raise ValueError('An independently configured platform adapter manifest SHA-256 is required')
+        if digest(regular(platform_adapters, 'platform-adapter-manifest.json')) != platform_adapters_sha256:
+            raise ValueError('Platform adapter manifest differs from the trusted pin')
         from hdi_mysql_adapter import verify as verify_platform
         verify_platform(platform_adapters, bundle)
-        adapter_args = [str(platform_adapters.absolute())]
+        adapter_args = [str(platform_adapters.absolute()), platform_adapters_sha256]
+    elif platform_adapters_sha256 is not None:
+        raise ValueError('Platform adapter pin has no configured directory')
     for command in ('java', 'javac'):
         if not (java_home / 'bin' / command).is_file():
             raise ValueError('An explicit local JDK with java and javac is required')
@@ -125,11 +132,12 @@ def main() -> int:
     parser.add_argument('--runtime', required=True, type=Path)
     parser.add_argument('--timeout', type=int, default=45)
     parser.add_argument('--platform-adapters', type=Path, help='Trusted separately verified platform dialect adapter directory')
+    parser.add_argument('--platform-adapters-sha256', help='Independent trusted SHA-256 pin for that platform adapter manifest')
     args = parser.parse_args()
     try:
         if not 1 <= args.timeout <= 120:
             raise ValueError('Timeout must be 1..120 seconds')
-        code, result = execute(args.bundle, args.java_home, sys.stdin.buffer.read(MAX_BYTES + 1), args.runtime, args.timeout, args.platform_adapters)
+        code, result = execute(args.bundle, args.java_home, sys.stdin.buffer.read(MAX_BYTES + 1), args.runtime, args.timeout, args.platform_adapters, args.platform_adapters_sha256)
         sys.stdout.buffer.write(result)
         return code
     except (ValueError, OSError, subprocess.SubprocessError) as error:

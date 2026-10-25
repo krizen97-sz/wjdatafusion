@@ -178,6 +178,9 @@ class OriginalSdkTests(unittest.TestCase):
         cls.bundle = Path(os.environ['HDI_ORIGINAL_BUNDLE'])
         cls.java = Path(os.environ['HDI_COMPILER_JAVA_HOME'])
         cls.platform = Path(os.environ['HDI_PLATFORM_ADAPTERS']) if os.environ.get('HDI_PLATFORM_ADAPTERS') else None
+        cls.platform_sha = os.environ.get('HDI_PLATFORM_ADAPTERS_SHA256')
+        if cls.platform and not cls.platform_sha:
+            raise ValueError('SDK tests with platform adapters require an independent HDI_PLATFORM_ADAPTERS_SHA256 pin')
         cls.temporary = tempfile.TemporaryDirectory(prefix='original-compiler-tests-')
         cls.root = Path(cls.temporary.name).resolve()
         jars = launcher.classpath(cls.bundle)
@@ -190,10 +193,12 @@ class OriginalSdkTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.temporary.cleanup()
 
-    def invoke(self, payload):
+    def invoke(self, payload, adapter_args=None):
         raw = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
+        if adapter_args is None:
+            adapter_args = [str(self.platform),self.platform_sha] if self.platform else []
         result = subprocess.run([str(self.java / 'bin/java'), '-Xmx256m', '-cp', self.cp,
-                                 'OriginalTaskCompiler', str(self.bundle), *([str(self.platform)] if self.platform else [])], input=raw.encode(),
+                                 'OriginalTaskCompiler', str(self.bundle), *adapter_args], input=raw.encode(),
                                 cwd=self.root, capture_output=True, timeout=25)
         parsed = json.loads(result.stdout)
         self.assertEqual(result.returncode == 0, parsed['ok'])
@@ -259,6 +264,64 @@ class OriginalSdkTests(unittest.TestCase):
             self.assertEqual(module['adapter']['adapter_class_name'],'com.rynew.hdi.adapter.Mysql'+('Input' if ip=='mysqlInput' else 'Output'))
             self.assertEqual(module['config']['datasource'][0]['db_type'],2)
             self.assertEqual(module['config']['datasource'][0]['db_url'],'jdbc:mysql://127.0.0.1:13306/hdi_fixture?useSSL=false')
+            self.assertEqual(json.loads(request['snapshotJson'])['platformAdapterManifestSha256'],self.platform_sha)
+            self.assertEqual(result['metadataSnapshot']['platformAdapterManifestSha256'],self.platform_sha)
+
+    def test_mysql_snapshot_requires_frozen_adapter_reference(self):
+        if self.platform is None: self.skipTest('Pinned platform adapter required')
+        visual, connections=more_connector_visual('mysqlInput')
+        prepared=self.prepare_connectors(visual,connections)
+        for replacement in [None,'0'*64]:
+            request=self.compile_request(prepared)
+            frozen=json.loads(request['snapshotJson'])
+            if replacement is None: frozen.pop('platformAdapterManifestSha256')
+            else: frozen['platformAdapterManifestSha256']=replacement
+            request['snapshotJson']=json.dumps(frozen,ensure_ascii=False,separators=(',',':'))
+            request['snapshotSha256']=hashlib.sha256(request['snapshotJson'].encode()).hexdigest()
+            request['runContext']['connections']=connections
+            result=self.invoke(request)
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['code'],'ADAPTER_REVISION_UNAVAILABLE')
+
+    def test_same_plugin_version_new_manifest_cannot_change_frozen_task(self):
+        if self.platform is None: self.skipTest('Pinned platform adapter required')
+        import shutil
+        visual, connections=more_connector_visual('mysqlInput')
+        prepared=self.prepare_connectors(visual,connections)
+        replacement=self.root/'replacement-platform'
+        shutil.copytree(self.platform,replacement)
+        manifest=replacement/'platform-adapter-manifest.json'
+        doc=json.loads(manifest.read_text());doc['build']['acceptanceRevision']='a different explicitly installed package'
+        manifest.write_text(json.dumps(doc,ensure_ascii=False))
+        new_sha=hashlib.sha256(manifest.read_bytes()).hexdigest()
+        request=self.compile_request(prepared);request['runContext']['connections']=connections
+        result=self.invoke(request,[str(replacement),new_sha])
+        self.assertFalse(result['ok']);self.assertEqual(result['code'],'ADAPTER_REVISION_UNAVAILABLE')
+
+    def test_platform_manifest_must_match_independent_launch_pin(self):
+        if self.platform is None: self.skipTest('Pinned platform adapter required')
+        payload=dict(operation='prepare',context=self.context,visual=fixture_visual())
+        result=self.invoke(payload,[str(self.platform),'0'*64])
+        self.assertFalse(result['ok']);self.assertEqual(result['code'],'ADAPTER_REVISION_UNAVAILABLE')
+        raw=json.dumps(payload).encode()
+        for pin in [None,'0'*64]:
+            with self.assertRaises(ValueError):
+                launcher.execute(self.bundle,self.java,raw,self.root,platform_adapters=self.platform,platform_adapters_sha256=pin)
+
+    def test_old_non_mysql_snapshot_remains_compatible_without_platform_pin(self):
+        prepared=self.prepare()
+        self.assertNotIn('platformAdapterManifestSha256',json.loads(prepared['snapshotJson']))
+        result=self.invoke(self.compile_request(prepared),[])
+        self.assertTrue(result['ok'],result)
+        self.assertNotIn('platformAdapterManifestSha256',result['metadataSnapshot'])
+
+    def test_launcher_accepts_explicit_platform_pin_and_freezes_it(self):
+        if self.platform is None: self.skipTest('Pinned platform adapter required')
+        visual,connections=more_connector_visual('mysqlInput')
+        request=dict(operation='prepare',context=self.context,visual=visual,trustedConnectionRefs={key:row['connectionRevision'] for key,row in connections.items()})
+        code,raw=launcher.execute(self.bundle,self.java,json.dumps(request).encode(),self.root,platform_adapters=self.platform,platform_adapters_sha256=self.platform_sha)
+        result=json.loads(raw);self.assertEqual(code,0,result)
+        self.assertEqual(json.loads(result['snapshotJson'])['platformAdapterManifestSha256'],self.platform_sha)
 
     def test_mysql_jar_only_overrides_driver_and_dialect_selection(self):
         if self.platform is None:
