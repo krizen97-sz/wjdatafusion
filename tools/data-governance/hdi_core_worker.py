@@ -335,6 +335,12 @@ class Worker:
         self.coordinator_stream = None
         self.bundle = Path(config['bundle']).resolve(strict=True)
         verify_bundle(self.bundle)
+        self.platform_adapters = config.get('platformAdapters')
+        if self.platform_adapters is not None:
+            from hdi_platform_adapters import verify_platform_adapters
+            if not isinstance(self.platform_adapters, dict) or set(self.platform_adapters) != {'root', 'manifestSha256'}:
+                raise ProtocolError('INVALID_PLATFORM_ADAPTER_CONFIG')
+            verify_platform_adapters(self.platform_adapters['root'], self.bundle, self.platform_adapters['manifestSha256'])
         self.java_home = Path(config['javaHome']).resolve(strict=True)
         self.java = str(self.java_home / 'bin/java')
         self.java_mode = config.get('javaRuntimeMode', 'normal')
@@ -577,6 +583,8 @@ class Worker:
                 raise ProtocolError('WORKER_BUSY')
             compiled = strict_json(data)
             validate_compiled(compiled, record)
+            if any(item['kind'] == 'mysql' for item in record.get('connectionBindings', [])) and not getattr(self, 'platform_adapters', None):
+                raise ProtocolError('MYSQL_PLATFORM_ADAPTER_REQUIRED')
             path = self.runs_root / record['runId'] / 'private/compiled.json'
             if path.exists() and hashlib.sha256(private_file(path, MAX_COMPILED)).hexdigest() != sha:
                 raise ProtocolError('SUBMISSION_CONFLICT')
@@ -729,7 +737,7 @@ class NativeRun:
         # envelope's presentation-only nodeMappings names.
         if compiled.get('flowjson'):
             graph = strict_json(base64.b64decode(compiled['flowjson']['base64']))
-            self.observe_jdbc = any(module.get('adapter', {}).get('adapter_name') == 'postgresqlOutput'
+            self.observe_jdbc = any(module.get('adapter', {}).get('adapter_name') in ('postgresqlOutput', 'mysqlOutput')
                 for stream in graph.get('streams', []) for module in stream.get('modules', []))
 
     def update(self, **changes):
@@ -796,6 +804,10 @@ class NativeRun:
                 return
             engine = self.root / 'instance'
             shutil.copytree(self.worker.bundle / 'instance', engine)
+            if self.worker.platform_adapters:
+                from hdi_platform_adapters import install_platform_adapters
+                install_platform_adapters(self.worker.platform_adapters['root'], self.worker.bundle,
+                    self.worker.platform_adapters['manifestSha256'], engine)
             core_log_config = core_logging(self.worker.bundle, self.root)
             password = self.worker.tls['password'] if self.worker.tls else secrets.token_urlsafe(32)
             zk_password = secrets.token_urlsafe(32)

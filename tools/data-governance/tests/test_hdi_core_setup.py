@@ -56,6 +56,22 @@ class SetupTests(unittest.TestCase):
             'sourceSha256': setup.sha(setup.SOURCE), 'jarSha256': setup.sha(jar)})
         log.write_text('test-build')
 
+    def test_optional_platform_adapter_receipt_is_pinned_in_config_and_reverified(self):
+        package = self.root / 'adapters'; package.mkdir()
+        (package / 'platform-adapter-manifest.json').write_text('{"separate":true}')
+        self.args.platform_adapters = package
+        with patch.object(setup, 'verify_platform_adapters') as verify:
+            result = setup.prepare(self.args)
+            expected = {'root': str(package), 'manifestSha256': setup.sha(package / 'platform-adapter-manifest.json')}
+            config = json.loads(Path(result['workerConfig']).read_text())
+            receipt = json.loads((self.args.install_root / 'private/setup-receipt.json').read_text())
+            self.assertEqual(config['platformAdapters'], expected)
+            self.assertEqual(receipt['inputs']['platformAdapters'], expected)
+            verify.assert_called_once_with(package, self.bundle, expected['manifestSha256'])
+            (package / 'platform-adapter-manifest.json').write_text('{"changed":true}')
+            with self.assertRaisesRegex(setup.SetupError, 'EXISTING_INSTALLATION_CONFLICT'):
+                setup.prepare(self.args)
+
     def test_new_installation_is_private_and_only_references_supplied_password(self):
         result = setup.prepare(self.args)
         self.assertEqual(result['status'], 'PREPARED')
