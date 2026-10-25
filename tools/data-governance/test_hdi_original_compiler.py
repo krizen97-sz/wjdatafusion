@@ -219,7 +219,7 @@ class OriginalSdkTests(unittest.TestCase):
     def test_invalid_connector_dto_is_rejected_before_native_execution(self):
         cases=[]
         visual,connections=connector_visual('postgresqlInput','fileOutput')
-        visual['nodes']['110']['streamFieldVoList'][0]['fieldExpression']=''
+        visual['nodes']['110']['streamFieldVoList'][0]['fieldExpression']='upper(message)'
         cases.append((visual,connections))
         for output_plugin in ['postgresqlOutput','ftpFileOutput','kafkaV2Output']:
             visual,connections=connector_visual('dataGeneratorInput',output_plugin)
@@ -247,6 +247,30 @@ class OriginalSdkTests(unittest.TestCase):
         prepared=self.prepare_connectors(visual,connections);self.assertTrue(prepared['ok'],prepared)
         request=self.compile_request(prepared);request['runContext']['connections']=connections
         result=self.invoke(request);self.assertTrue(result['ok'],result)
+
+    def test_original_stream_save_and_synchronous_file_response_fields(self):
+        visual,connections=connector_visual('fileInput','fileOutput')
+        field=visual['nodes']['110']['streamFieldVoList'][0]
+        field.pop('fieldExpression');field.pop('fieldOrder')
+        visual['nodes']['110'].pop('srcTableUseVoList')
+        visual['nodes'].pop('120');visual['links']=[{'source':110,'target':130}]
+        out=visual['nodes']['130'];out['dstTableFieldVoList'][0].update(fieldName='message',fieldExpression='message')
+        for name in ['_RESULT_CODE_','_RESULT_MSG_','_RESULT_DATA_']:
+            out['dstTableFieldVoList'].append({'fieldName':name,'fieldType':'string','fieldSize':'','fieldPrecision':'','fieldKeyFlag':'','columnRemarks':'1','isNew':True})
+        prepared=self.prepare_connectors(visual,connections);self.assertTrue(prepared['ok'],prepared)
+        request=self.compile_request(prepared);request['runContext']['connections']=connections
+        result=self.invoke(request);self.assertTrue(result['ok'],result)
+        native=json.loads(base64.b64decode(result['flowjson']['base64']));modules=native['streams'][0]['modules']
+        fields=modules[0]['config']['datasource'][0]['etl_stream_field']
+        self.assertEqual(fields[0]['field_expression'],'message')
+        self.assertEqual(fields[0]['field_name'],'message')
+        self.assertNotIn('field_order',fields[0])
+        output=modules[1]['config']['datasource'][0]['dst_table_field']
+        self.assertEqual([f['field_name'] for f in output],['message','_RESULT_CODE_','_RESULT_MSG_','_RESULT_DATA_'])
+        self.assertEqual([f['field_order'] for f in output],[0,1,2,3])
+        out['dstTableFieldVoList'][-1]['fieldName']='_RESULT_UNSUPPORTED_'
+        prepared=self.prepare_connectors(visual,connections);request=self.compile_request(prepared);request['runContext']['connections']=connections
+        self.assertFalse(self.invoke(request)['ok'])
 
     def test_frozen_connector_revision_and_identity_cannot_be_replaced(self):
         visual, connections=connector_visual('postgresqlInput','fileOutput')

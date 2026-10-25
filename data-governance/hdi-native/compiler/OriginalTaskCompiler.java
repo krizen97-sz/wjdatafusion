@@ -402,6 +402,11 @@ public final class OriginalTaskCompiler {
             // The original file plugin selects row values by fieldName. Its original
             // DstTableFieldService accepts an absent expression and does not synthesize one.
             // Keep that DTO shape; an explicit expression still cannot enable arbitrary FEL.
+            if ("fileOutput".equals(nodes.get(nodes.size()-1).get("adapterName"))
+                && Set.of("_RESULT_CODE_","_RESULT_MSG_","_RESULT_DATA_").contains(text(field.get("fieldName")))) {
+                supported("string".equals(field.get("fieldType")) && (empty(field.get("fieldExpression")) || Objects.equals(field.get("fieldName"),field.get("fieldExpression"))), "Invalid original synchronous file response field");
+                continue; // Produced by the original synchronous FileOutput, not an upstream row key.
+            }
             // Original JDBC and file outputs bind row values by fieldName. A different
             // fieldExpression does not rename a row key; the original fieldMapping node does.
             supported(fields.contains(text(field.get("fieldName"))) && (empty(field.get("fieldExpression")) || Objects.equals(field.get("fieldName"),field.get("fieldExpression"))), "Output fields must match upstream names; use the original field mapping node to rename fields");
@@ -452,7 +457,7 @@ public final class OriginalTaskCompiler {
                 for (Object raw : list(node.get("streamFieldVoList"),"database fields")) {
                     Map<String,Object> field=object(raw,"database field");
                     identifier(field.get("fieldName"),"Database field");
-                    supported(Objects.equals(field.get("fieldName"),field.get("fieldExpression")),"Selected-table fields must retain the original column-name expression");
+                    supported(empty(field.get("fieldExpression")) || Objects.equals(field.get("fieldName"),field.get("fieldExpression")),"Selected-table fields must retain the original column-name expression");
                 }
             } else require(text(table.get("tableName")).matches("[A-Za-z0-9_.-]{1,249}"),"Select one explicit Kafka topic");
             supported(empty(table.get("incrType")) || "0".equals(text(table.get("incrType"))),"This connector profile runs full inputs");
@@ -536,6 +541,21 @@ public final class OriginalTaskCompiler {
         return result;
     }
     static void key(Object actual, long wanted) { require(Long.valueOf(text(actual)).equals(wanted), "Original generator requested an unrelated metadata ID"); }
+    static List<StreamFieldVo> savedInputFields(List<StreamFieldVo> incoming, long streamId, Map<Long,Long> tableUses) throws Exception {
+        List<StreamFieldVo> persisted = new ArrayList<>();
+        var service = new com.hikvision.idatafusion.detl.service.task.impl.StreamFieldServiceImpl();
+        inject(service,"etlStreamFieldDao",provider("mapper.EtlStreamFieldDao",Map.of(
+            "deleteByStream",args->{key(args[0],streamId);return null;},
+            "batchInsert",args->{
+                for(Object value:(List<?>)args[0]) {
+                    EtlStreamField row=(EtlStreamField)value; key(row.getStreamId(),streamId);
+                    StreamFieldVo dto=new StreamFieldVo();org.springframework.beans.BeanUtils.copyProperties(row,dto);persisted.add(dto);
+                }
+                return null;
+            })));
+        service.saveStreamFields(incoming,streamId,tableUses,true);
+        return persisted;
+    }
     static List<DstTableFieldVo> savedOutputFields(Object raw, long streamId, long nodeId) throws Exception {
         List<DstTableFieldVo> incoming = new ArrayList<>(), persisted = new ArrayList<>();
         for (Object value : list(raw, "output fields")) incoming.add(bean(DstTableFieldVo.class, value));
@@ -582,6 +602,7 @@ public final class OriginalTaskCompiler {
                     Map<String,Object> parameter = object(rawParam, "original output parameter");
                     require(values.put(text(parameter.get("param_name")), text(parameter.get("param_value"))) == null, "Duplicate generated output parameter");
                 }
+                supported("false".equals(values.get("etl.plugin.fileOutput.asynchronous.generation.text")), "Only original synchronous file output is supported");
                 // Same strict local-file profile as the worker. Inspect the ORIGINAL
                 // merged parameters; never silently replace an advanced parameter.
                 if (!expectedSource.equals(values.get("etl.file.serverType")) || !(expectedSource.equals("local")?"false":"true").equals(values.get("etl.file.isUpload")))
@@ -702,6 +723,10 @@ public final class OriginalTaskCompiler {
                     sourceFieldsByTable.put(offset+5,new DataGeneratorInputServiceImpl().getFieldList(inputFields,offset+5));
                     node.put("srcTableUseVoList",List.of(use));
                 }
+                Map<Long,Long> tableUses=sourceTableById.containsKey(offset+5) ? Map.of(offset+5,offset+6) : Map.of();
+                List<StreamFieldVo> savedFields=savedInputFields(inputFields,streamId,tableUses);
+                inputFields.clear();inputFields.addAll(savedFields);
+                if (sourceTableById.containsKey(offset+5)) sourceFieldsByTable.put(offset+5,new DataGeneratorInputServiceImpl().getFieldList(inputFields,offset+5));
             }
             if (plugin.equals("fieldMapping")) {
                 List<TransformFieldVo> transforms = new ArrayList<>();
@@ -750,7 +775,12 @@ public final class OriginalTaskCompiler {
             "findUseVoByStreamId", a -> { key(a[0],streamId); return sourceUses; },
             "findByFlowIdAndNodeId", a -> { key(a[0],flowId); return sourceUses; },
             "getSrcTableUseList", a -> { key(a[0],streamId); return sourceUses; }));
-        Object tableDao = provider("mapper.EtlSrcTableDao", Map.of("selectByPrimaryKey", a -> lookup(sourceTableById,a[0])));
+        boolean implicitFileTable = "fileInput".equals(nodes.get(0).get("adapterName")) && sourceUses.isEmpty();
+        Long originalMockTableId = new FileInputServiceImpl().mockTableUse().getTableId();
+        Object tableDao = provider("mapper.EtlSrcTableDao", Map.of("selectByPrimaryKey", a -> {
+            if (implicitFileTable && originalMockTableId.equals(Long.valueOf(text(a[0])))) return null;
+            return lookup(sourceTableById,a[0]);
+        }));
         Object streamFields = provider("service.task.StreamFieldService", Map.of("findStreamField", a -> { key(a[0],streamId); return inputFields; }));
         Object destinationService = provider("service.task.DstTableService", Map.of(
             "findDstTableByItemId", a -> outputTableByItem.get(Long.valueOf(text(a[0]))),
