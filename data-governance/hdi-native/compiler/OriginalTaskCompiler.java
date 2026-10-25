@@ -7,6 +7,12 @@ import com.hikvision.idatafusion.detl.dto.external.api.flow.ModuleDto;
 import com.hikvision.idatafusion.detl.dto.preproc.TransformFieldVo;
 import com.hikvision.idatafusion.detl.service.task.AdapterService;
 import com.hikvision.idatafusion.detl.service.task.input.DataGeneratorInputServiceImpl;
+import com.hikvision.idatafusion.detl.service.task.input.InputServiceImpl;
+import com.hikvision.idatafusion.detl.service.task.input.FileInputServiceImpl;
+import com.hikvision.idatafusion.detl.service.task.input.MqInputServiceImpl;
+import com.hikvision.idatafusion.detl.service.task.output.OutputServiceImpl;
+import com.hikvision.idatafusion.detl.service.task.output.MqOutputServiceImpl;
+import com.hikvision.idatafusion.detl.dto.globalconfig.datasource.DatasourceDto;
 import com.hikvision.idatafusion.detl.service.task.output.FileOutputServiceImpl;
 import com.hikvision.idatafusion.detl.service.task.impl.ZookeeperServiceImpl;
 import com.hikvision.idatafusion.detl.service.task.preproc.AdapterServiceFactory;
@@ -29,16 +35,23 @@ public final class OriginalTaskCompiler {
         .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     static final int MAX_BYTES = 8 * 1024 * 1024;
     static final String MANAGED_OUTPUT = "/平台输出";
-    static final Set<String> PLUGINS = Set.of("dataGeneratorInput", "fieldMapping", "fileOutput");
-    static final Map<String, String> TYPES = Map.of("dataGeneratorInput", "input", "fieldMapping", "preproc", "fileOutput", "output");
+    static final Set<String> INPUTS = Set.of("dataGeneratorInput", "postgresqlInput", "fileInput", "kafkaInput");
+    static final Set<String> OUTPUTS = Set.of("fileOutput", "postgresqlOutput", "kafkaV2Output");
+    static final Set<String> PLUGINS = Set.of("dataGeneratorInput", "fieldMapping", "fileOutput", "postgresqlInput", "postgresqlOutput", "fileInput", "kafkaInput", "kafkaV2Output");
+    static final Map<String, String> TYPES = Map.of("dataGeneratorInput", "input", "fieldMapping", "preproc", "fileOutput", "output", "postgresqlInput", "input", "postgresqlOutput", "output", "fileInput", "input", "kafkaInput", "input", "kafkaV2Output", "output");
     static final Map<String, String> CLASSES = Map.of(
         "dataGeneratorInput", "com.hikvision.idatafusion.adapter.input.data.DataGeneratorInput",
         "fieldMapping", "com.hikvision.idatafusion.etl.adapter.process.fieldmapping.FieldMapping",
-        "fileOutput", "com.hikvision.idatafusion.etl.adapter.output.file.FileOutput");
+        "fileOutput", "com.hikvision.idatafusion.etl.adapter.output.file.FileOutput",
+        "fileInput", "com.hikvision.idatafusion.etl.adapter.input.file.FileInput",
+        "postgresqlInput", "com.hikvision.idatafusion.etl.adapter.input.postgresql.PostgresqlInput",
+        "postgresqlOutput", "com.hikvision.idatafusion.etl.adapter.output.postgresql.PostgreSqlOutput",
+        "kafkaInput", "com.hikvision.idatafusion.etl.adapter.input.kafka.KafkaInput",
+        "kafkaV2Output", "com.hikvision.idatafusion.etl.adapter.output.kafkaV2.KafkaV2Output");
     static final Set<String> GENERATOR_PARAMS = Set.of("etl.plugin.input.generator.data.size");
     static final Set<String> FILE_PARAMS = Set.of("etl.file.maxRow", "etl.file.flushTime");
-    static final Set<String> EMPTY_REFERENCES = Set.of("dbId", "sqlStr", "runtimeJson", "referenceConfigAdapter",
-        "srcTableUseVoList", "datasourceParamVoList", "tableParamVoList", "lookupProcessVo", "javascriptVo", "joinVoList", "conditionVoList", "dataFilterVo",
+    static final Set<String> EMPTY_REFERENCES = Set.of("sqlStr", "runtimeJson", "referenceConfigAdapter",
+        "tableParamVoList", "lookupProcessVo", "javascriptVo", "joinVoList", "conditionVoList", "dataFilterVo",
         "httpInputNodeVo", "httpOutputNodeVo", "webServiceNode", "sqlRunnerNode", "alarmConfigVo",
         "cloudStoreVo", "kettleInputVo", "kettleProcessVo", "variableSettingVoList", "strackVoList");
 
@@ -99,6 +112,7 @@ public final class OriginalTaskCompiler {
 
     static Map<String,Object> normalize(Map<String,Object> input, Map<String,Object> context) {
         Map<String,Object> visual = parse(json(input));
+        removeVisualCredentials(visual);
         if (visual.containsKey("panelUIInfo")) {
             require(!visual.containsKey("panelUiInfo") || Objects.equals(visual.get("panelUiInfo"), visual.get("panelUIInfo")), "Conflicting panelUiInfo aliases");
             visual.put("panelUiInfo", visual.remove("panelUIInfo"));
@@ -147,17 +161,45 @@ public final class OriginalTaskCompiler {
         if (complete) {
             require(nodes.size() >= 2, "Execution requires an input and an output");
             supported(links.size() == nodes.size()-1, "Execution requires one connected linear chain");
-            supported("dataGeneratorInput".equals(ordered.get(0).get("adapterName")) && "fileOutput".equals(ordered.get(ordered.size()-1).get("adapterName")), "The supported chain starts with dataGeneratorInput and ends with fileOutput");
+            supported(INPUTS.contains(ordered.get(0).get("adapterName")) && OUTPUTS.contains(ordered.get(ordered.size()-1).get("adapterName")), "The supported chain starts with an original input and ends with an original output");
             for (int i = 1; i < ordered.size()-1; i++) supported("fieldMapping".equals(ordered.get(i).get("adapterName")), "Only fieldMapping is supported between input and output");
         }
         return ordered;
     }
 
+    static void removeVisualCredentials(Object value) {
+        if (value instanceof Map) {
+            Map<?,?> fields=(Map<?,?>)value;
+            fields.keySet().removeIf(key -> Set.of("password","databasePassword","passwd","secret","secretKey").contains(text(key)));
+            for (Object child : fields.values()) removeVisualCredentials(child);
+        } else if (value instanceof List) for (Object child : (List<?>)value) removeVisualCredentials(child);
+    }
+    static Set<String> connectionIds(Map<String,Object> visual) {
+        Set<String> ids = new LinkedHashSet<>();
+        for (Object raw : object(visual.get("nodes"),"nodes").values()) {
+            Map<String,Object> node = object(raw,"node");
+            if (!empty(node.get("dbId"))) ids.add(Long.toString(id(node.get("dbId"),"node.dbId")));
+        }
+        return ids;
+    }
+    static void identifier(Object value, String name) {
+        require(text(value).matches("[A-Za-z_][A-Za-z0-9_$]{0,127}"), name + " must be an explicit identifier");
+    }
+    static void remoteDirectory(Object value) {
+        String path = text(value); require(path.startsWith("/") && path.length() <= 1024 && !path.contains("\\") && !path.contains("${") && !path.contains("\0"), "Remote directory must be an explicit absolute path");
+        for (String component : path.split("/")) require(!component.equals("..") && !component.equals("."), "Remote path traversal is forbidden");
+    }
     static Map<String,Object> prepare(Map<String,Object> request) {
-        require(request.keySet().equals(Set.of("operation", "context", "visual")), "Unexpected prepare field");
+        Set<String> prepareKeys = new HashSet<>(request.keySet()); prepareKeys.remove("trustedConnectionRefs");
+        require(prepareKeys.equals(Set.of("operation", "context", "visual")), "Unexpected prepare field");
         Map<String,Object> ctx = context(object(request.get("context"), "context"));
         Map<String,Object> visual = normalize(object(request.get("visual"), "visual"), ctx);
         Map<String,Object> snapshot = map("protocolVersion", 1, "context", ctx, "visual", visual);
+        Map<String,Object> refs = request.get("trustedConnectionRefs") == null ? map() : object(request.get("trustedConnectionRefs"), "trustedConnectionRefs");
+        Set<String> referenced = connectionIds(visual);
+        require(refs.keySet().equals(referenced), "The platform must freeze every selected connection revision");
+        for (Map.Entry<String,Object> ref : refs.entrySet()) { id(ref.getKey(), "connection ID"); require(ref.getValue() instanceof String, "Connection revision must be a decimal string"); id(ref.getValue(), "connection revision"); }
+        if (!refs.isEmpty()) snapshot.put("connectionRefs", new LinkedHashMap<>(refs));
         String serialized = json(snapshot);
         return map("ok", true, "protocolVersion", 1, "operation", "prepare", "canonicalVisual", visual,
             "snapshotJson", serialized, "snapshotSha256", sha(serialized.getBytes(StandardCharsets.UTF_8)), "diagnostics", List.of());
@@ -258,6 +300,16 @@ public final class OriginalTaskCompiler {
             } else if (plugin.equals("fileOutput") && name.equals("etl.file.serverType") && value.equals("local")) {
                 // Explicitly consistent local metadata is allowed. Legacy catalog Ftp
                 // remains untouched and is rejected after the original merge below.
+            } else if (!Set.of("dataGeneratorInput","fieldMapping","fileOutput").contains(plugin)) {
+                supported(defaults.containsKey(name), "Parameter is not present in the original plugin catalog");
+                supported(!name.matches("(?i).*(password|username|bootstrap.servers|jdbc.url|server_ip|server_port|local_dir|server_dir).*"), "Connection and local paths must come from the platform binding and original form");
+                supported(!value.contains("${") && !value.contains("#{") || value.equals(defaults.get(name)), "Dynamic custom parameters are not supported");
+                require(value.length() <= 4096, "Plugin parameter exceeds the value limit");
+                if (name.equals("etl.kafka.auto.offset.reset")) supported(Set.of("earliest","latest","none").contains(value),"Invalid original Kafka offset choice");
+                else if (name.equals("format")) supported(Set.of("json","text").contains(value),"Only JSON/text message format is supported");
+                else if (name.equals("etl.plugin.sql.query.limit")) require(value.isEmpty() || value.matches("[1-9][0-9]{0,6}"),"Bounded query row limit required");
+                else if (name.equals("etl.kafka.group.id")) require(value.equals(defaults.get(name)) || value.matches("[A-Za-z0-9_.-]{1,128}"),"Invalid Kafka group ID");
+                else supported(Objects.equals(defaults.get(name),value),"Non-default advanced connector parameter requires explicit support: "+name);
             } else {
                 // Inactive placeholders from the actual original plugin form are legitimate.
                 // Changed external/FEL settings require a separately audited execution profile.
@@ -315,8 +367,8 @@ public final class OriginalTaskCompiler {
             noPrimaryFilename(field);
         }
         Set<String> configured = new LinkedHashSet<>();
-        for (Object raw : list(nodes.get(0).get("adapterData"), "generator fields")) configured.add(text(object(raw, "generator field").get("fieldName")));
-        require(fields.equals(configured), "Generator configuration and stream field names must match");
+        if ("dataGeneratorInput".equals(nodes.get(0).get("adapterName"))) for (Object raw : list(nodes.get(0).get("adapterData"), "generator fields")) configured.add(text(object(raw, "generator field").get("fieldName")));
+        if ("dataGeneratorInput".equals(nodes.get(0).get("adapterName"))) require(fields.equals(configured), "Generator configuration and stream field names must match");
         for (int i = 1; i < nodes.size()-1; i++) {
             Set<String> result = new LinkedHashSet<>();
             for (Object raw : list(nodes.get(i).get("transformFieldVoList"), "mapping fields")) {
@@ -333,7 +385,7 @@ public final class OriginalTaskCompiler {
             // The original file plugin selects row values by fieldName. Its original
             // DstTableFieldService accepts an absent expression and does not synthesize one.
             // Keep that DTO shape; an explicit expression still cannot enable arbitrary FEL.
-            supported(fields.contains(text(field.get("fieldName"))) && (empty(field.get("fieldExpression")) || fields.contains(text(field.get("fieldExpression")))), "Output fields must directly reference an available field");
+            supported((empty(field.get("fieldExpression")) ? fields.contains(text(field.get("fieldName"))) : fields.contains(text(field.get("fieldExpression")))), "Output fields must directly reference an available field");
         }
     }
     static void noPrimaryFilename(Map<String,Object> field) {
@@ -344,6 +396,12 @@ public final class OriginalTaskCompiler {
     static void validateNode(Map<String,Object> node) {
         for (String key : EMPTY_REFERENCES) supported(empty(node.get(key)), "External reference is not supported: " + key);
         String plugin = text(node.get("adapterName"));
+        supported(list(node.get("datasourceParamVoList"), "datasource parameters").isEmpty(), "Datasource overrides must use a platform connection");
+        boolean external = Set.of("postgresqlInput","postgresqlOutput","fileInput","kafkaInput","kafkaV2Output").contains(plugin)
+            || plugin.equals("fileOutput") && !"local".equals(object(node.get("adapterData"),"file output").get("sourceType"));
+        if (external) id(node.get("dbId"),"Selected platform connection");
+        else supported(empty(node.get("dbId")),"This local plugin must not carry an unrelated connection");
+        if (!Set.of("postgresqlInput","fileInput","kafkaInput").contains(plugin)) supported(empty(node.get("srcTableUseVoList")),"This node cannot carry source-table references");
         if (plugin.equals("dataGeneratorInput")) {
             List<Object> fields = list(node.get("adapterData"), "generator.adapterData");
             require(!fields.isEmpty() && fields.size() <= 512, "Generator must contain 1..512 fields");
@@ -362,13 +420,48 @@ public final class OriginalTaskCompiler {
                 // only tests equalsIgnoreCase("keep") for a rename. Null is its form default.
                 supported((empty(field.get("processType")) || Set.of("move", "keep").contains(text(field.get("processType")).toLowerCase(Locale.ROOT))) && empty(field.get("condExpression")) && empty(field.get("processClassName")) && empty(field.get("redisKey")) && empty(field.get("bussinessRedisKey")), "Only original move/keep mappings without external functions are supported");
             }
+        } else if (plugin.equals("postgresqlInput") || plugin.equals("kafkaInput")) {
+            List<Object> tables = list(node.get("srcTableUseVoList"),"source tables"); require(tables.size()==1,"Select exactly one original table or topic");
+            Map<String,Object> table=object(tables.get(0),"source table");
+            if (plugin.equals("postgresqlInput")) {
+                identifier(table.get("tableName"),"Source table");identifier(table.get("tableSchem") == null ? table.get("tableOwner") : table.get("tableSchem"),"Source schema");
+                supported(empty(table.get("tableSql")) && !"lifecycle".equals(table.get("tableConfigType")),"This database profile reads a selected table");
+            } else require(text(table.get("tableName")).matches("[A-Za-z0-9_.-]{1,249}"),"Select one explicit Kafka topic");
+            supported(empty(table.get("incrType")) || "0".equals(text(table.get("incrType"))),"This connector profile runs full inputs");
+            require(!list(node.get("streamFieldVoList"),"stream fields").isEmpty(),"Input fields are required");
+            supported(empty(node.get("adapterData")),"Non-default raw input adapterData is not supported");
+        } else if (plugin.equals("postgresqlOutput") || plugin.equals("kafkaV2Output")) {
+            Map<String,Object> table=object(node.get("dstTableVo"),"dstTableVo");
+            if (plugin.equals("postgresqlOutput")) {
+                identifier(table.get("tableName"),"Target table"); identifier(table.get("tableOwner"),"Target schema");
+                for (String flag : List.of("addCreateSql","dataCleansing")) supported(empty(table.get(flag)) || Set.of("false","0").contains(text(table.get(flag))),"Automatic creation/cleansing requires a separate reviewed operation");
+                supported(empty(table.get("writeOperation")) || "insert".equalsIgnoreCase(text(table.get("writeOperation"))),"This database output profile inserts rows");
+            } else {
+                require(text(table.get("tableName")).matches("[A-Za-z0-9_.-]{1,249}"),"Select one explicit Kafka topic");
+                supported(Set.of("json","text").contains(text(table.get("messageFormat"))),"Select the original JSON/text message format");
+                supported(empty(table.get("avroSchemaUrl")),"Remote Avro schema is not supported");
+            }
+            require(!list(node.get("dstTableFieldVoList"),"output fields").isEmpty(),"Output fields are required");
+            supported(empty(node.get("adapterData")),"Non-default raw output adapterData is not supported");
+        } else if (plugin.equals("fileInput")) {
+            Map<String,Object> config=object(node.get("adapterData"),"fileInput.adapterData");
+            supported("ftp".equals(config.get("sourceType")),"This file input profile uses the original FTP input");
+            remoteDirectory(config.get("absoluteDir"));
+            supported(empty(config.get("relativeDir")) && "2".equals(text(config.get("sourcePathType"))),"Choose an explicit absolute FTP directory");
+            supported(empty(config.get("localDir")) || MANAGED_OUTPUT.equals(config.get("localDir")),"Local download staging is platform managed");
+            supported(Set.of("csv","line").contains(text(config.get("fileType"))),"Only original CSV/line FTP input is supported");
+            supported(Set.of("time","delete","backup").contains(text(config.get("incrMode"))),"Choose an original FTP increment mode");
+            if ("backup".equals(config.get("incrMode"))) remoteDirectory(config.get("backDir"));
+            require(!list(node.get("streamFieldVoList"),"input fields").isEmpty(),"FTP input fields are required");
         } else {
             Map<String,Object> config = object(node.get("adapterData"), "fileOutput.adapterData");
-            supported("local".equals(config.get("sourceType")), "Only local file output is supported");
+            supported(Set.of("local","ftp").contains(text(config.get("sourceType"))), "Choose original local or FTP output");
+            boolean local="local".equals(config.get("sourceType"));
+            if (!local) { remoteDirectory(config.get("absoluteDir")); supported("2".equals(text(config.get("sourcePathType"))),"Choose an explicit absolute FTP directory"); }
             boolean managedSelected = false;
             for (String path : List.of("localDir", "absoluteDir")) {
                 Object value = config.get(path);
-                supported(empty(value) || MANAGED_OUTPUT.equals(value), "Select the explicit /平台输出 managed output; arbitrary host paths are not supported");
+                if (local || path.equals("localDir")) supported(empty(value) || MANAGED_OUTPUT.equals(value), "Select the explicit /平台输出 managed output; arbitrary host paths are not supported");
                 managedSelected |= MANAGED_OUTPUT.equals(value);
             }
             supported(empty(config.get("relativeDir")), "Managed output subdirectories are not supported");
@@ -382,10 +475,11 @@ public final class OriginalTaskCompiler {
                     if (!Objects.equals(config.get("fileType"), parameter.get("paramValue")))
                         throw new Rejected("UNSUPPORTED_GRAPH", "File format parameter conflicts with the original file output form", "FILE_FORMAT_CONFLICT");
             }
-            supported(managedSelected, "Select /平台输出 before testing or running this flow");
+            supported(!local || managedSelected, "Select /平台输出 before testing or running this flow");
             supported(Set.of("csv", "line").contains(text(config.get("fileType"))), "Only original csv/line file output is supported");
             for (String key : List.of("imgField", "temXlsDir", "jsonTemplate", "arrayPath")) supported(empty(config.get(key)), "File template/reference is not supported: " + key);
-            for (String key : List.of("upload", "backFill", "isAsyncGenerateText")) supported(empty(config.get(key)) || Set.of("false", "0").contains(text(config.get(key))), "External/asynchronous file output is not supported");
+            for (String key : List.of("backFill", "isAsyncGenerateText")) supported(empty(config.get(key)) || Set.of("false", "0").contains(text(config.get(key))), "Asynchronous/backfill file output is not supported");
+            supported(empty(config.get("upload")) || Objects.equals(text(config.get("upload")),local?"false":"true"),"File upload selection conflicts with source type");
             supported(empty(config.get("customExtension")) || text(config.get("customExtension")).matches("[A-Za-z0-9_-]{1,16}"), "File extension cannot contain a path");
             require(!list(node.get("dstTableFieldVoList"), "dstTableFieldVoList").isEmpty(), "File output fields are required");
         }
@@ -447,7 +541,8 @@ public final class OriginalTaskCompiler {
         return value;
     }
 
-    static void validateOriginalLocalOutputs(byte[] flowBytes) {
+    static void validateOriginalOutputs(byte[] flowBytes, List<Map<String,Object>> nodes) {
+        String expectedSource = text(object(nodes.get(nodes.size()-1).getOrDefault("adapterData",map()),"output configuration").get("sourceType"));
         Map<String,Object> generated = parse(new String(flowBytes, StandardCharsets.UTF_8));
         for (Object rawStream : list(generated.get("streams"), "original streams")) {
             Map<String,Object> stream = object(rawStream, "original stream");
@@ -461,8 +556,8 @@ public final class OriginalTaskCompiler {
                 }
                 // Same strict local-file profile as the worker. Inspect the ORIGINAL
                 // merged parameters; never silently replace an advanced parameter.
-                if (!"local".equals(values.get("etl.file.serverType")) || !"false".equals(values.get("etl.file.isUpload")))
-                    throw new Rejected("UNSUPPORTED_GRAPH", "Original fileOutput parameters must resolve to serverType=local and isUpload=false; remove conflicting legacy FTP/SFTP advanced parameters in the node form", "LOCAL_OUTPUT_REQUIRED");
+                if (!expectedSource.equals(values.get("etl.file.serverType")) || !(expectedSource.equals("local")?"false":"true").equals(values.get("etl.file.isUpload")))
+                    throw new Rejected("UNSUPPORTED_GRAPH", "Original fileOutput parameters must match the selected connection and upload mode; remove conflicting advanced parameters", "LOCAL_OUTPUT_REQUIRED");
             }
         }
     }
@@ -473,13 +568,14 @@ public final class OriginalTaskCompiler {
         String snapshotText = (String)request.get("snapshotJson"); String snapshotHash = sha(snapshotText.getBytes(StandardCharsets.UTF_8));
         require(snapshotHash.equals(request.get("snapshotSha256")), "Frozen snapshot digest mismatch");
         Map<String,Object> snapshot = parse(snapshotText);
-        require(snapshot.keySet().equals(Set.of("protocolVersion", "context", "visual")) && Integer.valueOf(1).equals(snapshot.get("protocolVersion")), "Unknown snapshot schema");
+        Set<String> snapshotKeys = new HashSet<>(snapshot.keySet()); snapshotKeys.remove("connectionRefs");
+        require(snapshotKeys.equals(Set.of("protocolVersion", "context", "visual")) && Integer.valueOf(1).equals(snapshot.get("protocolVersion")), "Unknown snapshot schema");
         Map<String,Object> ctx = context(object(snapshot.get("context"), "context"));
         Map<String,Object> visual = object(snapshot.get("visual"), "visual");
         require(json(visual).equals(json(normalize(visual, ctx))), "Snapshot visual is not canonical for its platform context");
         Map<String,Object> run = object(request.get("runContext"), "runContext");
         Set<String> requiredRunKeys = Set.of("businessTaskId", "revision", "nativeFlowId", "nativeInstanceId", "metadataIdBase", "execId", "outputsDir", "authorizedOutputRoot", "mode");
-        Set<String> actualRunKeys = new HashSet<>(run.keySet()); actualRunKeys.remove("outputRootSource");
+        Set<String> actualRunKeys = new HashSet<>(run.keySet()); actualRunKeys.remove("outputRootSource"); actualRunKeys.remove("connections"); actualRunKeys.remove("connectionBindings");
         require(actualRunKeys.equals(requiredRunKeys), "Unexpected runContext field");
         for (String key : List.of("businessTaskId", "revision")) require(Objects.equals(ctx.get(key), run.get(key)), "Run does not belong to the frozen task revision");
         long flowId = wireId(run, "nativeFlowId"), instanceId = wireId(run, "nativeInstanceId"), base = wireId(run, "metadataIdBase"), groupId = wireId(ctx, "workspaceId");
@@ -487,6 +583,23 @@ public final class OriginalTaskCompiler {
         require(flowId != instanceId && (flowId < base || flowId >= base+8192) && (instanceId < base || instanceId >= base+8192), "Runtime identifiers overlap the reserved metadata block");
         Path output = outputDirectory(run);
         List<Map<String,Object>> nodes = topology(visual, true);
+        Map<String,Object> connections = run.get("connections") == null ? map() : object(run.get("connections"), "connections");
+        Map<String,Object> connectionRefs = snapshot.get("connectionRefs") == null ? map() : object(snapshot.get("connectionRefs"), "connectionRefs");
+        require(connectionRefs.keySet().equals(connectionIds(visual)) && connections.keySet().equals(connectionRefs.keySet()), "Frozen connection bindings do not match the graph");
+        Map<Long,DatasourceDto> datasourceById = new LinkedHashMap<>();
+        Map<Long,List<EtlParam>> datasourceParameters = new LinkedHashMap<>();
+        for (Map.Entry<String,Object> entry : connections.entrySet()) {
+            long connectionId = id(entry.getKey(), "connectionId"); Map<String,Object> binding = object(entry.getValue(), "connection binding");
+            require(binding.keySet().equals(Set.of("datasource", "datasourceParamVoList", "connectionRevision")), "Unexpected connection binding field");
+            require(Objects.equals(binding.get("connectionRevision"), connectionRefs.get(entry.getKey())), "Connection revision differs from frozen task revision");
+            Map<String,Object> rawDatasource = object(binding.get("datasource"), "datasource");
+            require(id(rawDatasource.get("id"), "datasource.id") == connectionId, "Connection identity mismatch");
+            DatasourceDto source = bean(DatasourceDto.class, rawDatasource);
+            require(Set.of(16,18,8).contains(source.getDbType()), "Unsupported original datasource type");
+            datasourceById.put(connectionId, source);
+            supported(list(binding.get("datasourceParamVoList"), "connection parameters").isEmpty(), "Connection-level parameter overrides are not yet supported");
+            datasourceParameters.put(connectionId, List.of());
+        }
         for (Map<String,Object> node : nodes) validateNode(node);
         validateFields(nodes);
         Map<String,Object> logicalFlow = object(visual.get("flowVo"), "flowVo");
@@ -503,6 +616,12 @@ public final class OriginalTaskCompiler {
         Map<Long,EtlAdapter> adapterById = new LinkedHashMap<>();
         Map<Long,List<TransformFieldVo>> mappingByItem = new LinkedHashMap<>();
         Map<Long,List<DstTableFieldVo>> outputByNode = new LinkedHashMap<>();
+        Map<Long,DstTableVo> outputTableByItem = new LinkedHashMap<>();
+        Map<Long,List<DstTableFieldVo>> outputByTable = new LinkedHashMap<>();
+        Map<Long,EtlSrcTable> sourceTableById = new LinkedHashMap<>();
+        Map<Long,List<EtlSrcTableField>> sourceFieldsByTable = new LinkedHashMap<>();
+        Map<Long,List<EtlParam>> datasourceParamsByItem = new LinkedHashMap<>();
+        List<SrcTableUseVo> sourceUses = new ArrayList<>();
         List<StreamFieldVo> inputFields = new ArrayList<>(); List<ModuleDto> modules = new ArrayList<>();
         List<Object> mappings = new ArrayList<>(), nativeLinks = new ArrayList<>(), nativeStreamNodes = new ArrayList<>();
         Map<String,Object> nativeNodes = new LinkedHashMap<>();
@@ -510,13 +629,49 @@ public final class OriginalTaskCompiler {
             Map<String,Object> node = parse(json(nodes.get(i))); String plugin = text(node.get("adapterName")); Properties properties = catalog(bundle, plugin);
             long offset = base + 16 + i * 16L, moduleId = offset, stepId = offset+1, itemId = offset+2, nodeId = offset+3, adapterId = offset+4;
             String visualId = text(node.get("id")); node.put("id", nodeId); node.put("moduleAdapterId", adapterId);
+            Long connectionId = empty(node.get("dbId")) ? null : id(node.get("dbId"), "node.dbId");
+            if (connectionId != null) {
+                DatasourceDto source = lookup(datasourceById, connectionId);
+                int expected = plugin.startsWith("postgresql") ? 16 : plugin.startsWith("kafka") ? 8 : 18;
+                require(source.getDbType() == expected, "Selected connection type does not match the original plugin");
+                datasourceParamsByItem.put(itemId, new ArrayList<>(lookup(datasourceParameters, connectionId)));
+            } else datasourceParamsByItem.put(itemId, new ArrayList<>());
             node.put("moduleInstanceList", List.of(map("id", instanceId))); node.put("adapterVersion", properties.getProperty("version"));
             if (plugin.equals("fileOutput")) {
                 Map<String,Object> config = object(node.get("adapterData"), "file output");
-                config.putAll(map("localDir", output.toString(), "absoluteDir", output.toString(), "relativeDir", "", "sourcePathType", 1));
-                outputByNode.put(nodeId, savedOutputFields(node.get("dstTableFieldVoList"), streamId, nodeId));
+                config.put("localDir", output.toString());
+                if ("local".equals(config.get("sourceType"))) config.putAll(map("absoluteDir", output.toString(), "relativeDir", "", "sourcePathType", 1));
             }
-            if (plugin.equals("dataGeneratorInput")) for (Object raw : list(node.get("streamFieldVoList"), "input fields")) inputFields.add(bean(StreamFieldVo.class, raw));
+            if (OUTPUTS.contains(plugin)) {
+                List<DstTableFieldVo> outputFields = savedOutputFields(node.get("dstTableFieldVoList"), streamId, nodeId);
+                outputByNode.put(nodeId, outputFields);
+                if (connectionId != null) {
+                    Map<String,Object> table = new LinkedHashMap<>(object(node.get("dstTableVo"), "dstTableVo"));
+                    require(empty(table.get("dbId")) || id(table.get("dbId"), "dstTableVo.dbId") == connectionId, "Output table connection mismatch");
+                    table.putAll(map("id", offset+5, "dbId", connectionId, "streamId", streamId));
+                    DstTableVo dto = bean(DstTableVo.class, table); outputTableByItem.put(itemId, dto); outputByTable.put(offset+5, outputFields);
+                    node.put("dstTableVo", table);
+                }
+            }
+            if (INPUTS.contains(plugin)) {
+                if (plugin.equals("fileInput")) object(node.get("adapterData"), "file input").put("localDir", output.getParent().resolve("tmp/downloads").toString());
+                for (Object raw : list(node.get("streamFieldVoList"), "input fields")) {
+                    Map<String,Object> f = new LinkedHashMap<>(object(raw,"stream field"));
+                    if (connectionId != null) f.put("tableId", offset+5);
+                    f.put("streamId", streamId); inputFields.add(bean(StreamFieldVo.class,f));
+                }
+                if (connectionId != null && !list(node.get("srcTableUseVoList"), "source tables").isEmpty()) {
+                    Map<String,Object> use = new LinkedHashMap<>(object(list(node.get("srcTableUseVoList"), "source tables").get(0), "source table"));
+                    require(empty(use.get("srcDbId")) || id(use.get("srcDbId"), "srcDbId") == connectionId, "Input table connection mismatch");
+                    use.putAll(map("id", offset+6, "tableId", offset+5, "streamId", streamId, "srcDbId", connectionId));
+                    use.putIfAbsent("tableSchem", use.get("tableOwner")); use.putIfAbsent("tableAlias", ""); use.putIfAbsent("tableOrder",1); use.putIfAbsent("tableUseFlag",1); use.putIfAbsent("incrType",0); use.putIfAbsent("partFlag",0);
+                    SrcTableUseVo dto = bean(SrcTableUseVo.class,use); sourceUses.add(dto);
+                    Map<String,Object> table = new LinkedHashMap<>(use); table.put("id", offset+5); table.put("dbId",connectionId); table.putIfAbsent("tableViewFlag",0); table.putIfAbsent("tablePartedType",0);
+                    sourceTableById.put(offset+5,bean(EtlSrcTable.class,table));
+                    sourceFieldsByTable.put(offset+5,new DataGeneratorInputServiceImpl().getFieldList(inputFields,offset+5));
+                    node.put("srcTableUseVoList",List.of(use));
+                }
+            }
             if (plugin.equals("fieldMapping")) {
                 List<TransformFieldVo> transforms = new ArrayList<>();
                 for (Object raw : list(node.get("transformFieldVoList"), "mapping fields")) transforms.add(bean(TransformFieldVo.class, raw));
@@ -527,8 +682,8 @@ public final class OriginalTaskCompiler {
             String name = text(node.get("stageName")); if (name.isEmpty()) name = properties.getProperty("adapterDisplayName") + "_" + visualId;
             ModuleDto module = bean(ModuleDto.class, "moduleId", moduleId, "flowId", flowId, "instanceId", instanceId, "moduleName", name, "adapterType", TYPES.get(plugin), "streamId", streamId, "stepId", stepId, "itemId", itemId, "nodeId", nodeId, "adapterId", adapterId, "adapterName", plugin, "adapterVersion", properties.getProperty("version"), "instanceHost", "127.0.0.1", "runStatus", 0);
             modules.add(module); nativeNodes.put(String.valueOf(nodeId), node);
-            moduleById.put(moduleId, bean(EtlModule.class, "id", moduleId, "itemId", itemId, "visualNodeId", nodeId, "flowId", flowId, "moduleInstanceId", instanceId, "moduleAdapterId", adapterId, "enableFlag", 1));
-            adapterById.put(adapterId, bean(EtlAdapter.class, "id", adapterId, "groupId", groupId, "adapterName", plugin, "adapterDisplayName", properties.getProperty("adapterDisplayName"), "adapterType", TYPES.get(plugin), "languageType", com.hikvision.idatafusion.detl.common.LanguageType.JAVA.getType(), "dbTypeId", "", "adapterClassName", properties.getProperty("className"), "enableFlag", 1));
+            moduleById.put(moduleId, bean(EtlModule.class, "id", moduleId, "itemId", itemId, "visualNodeId", nodeId, "flowId", flowId, "moduleInstanceId", instanceId, "moduleAdapterId", adapterId, "datasourceId", connectionId, "adapterType", TYPES.get(plugin), "moduleName", name, "enableFlag", 1));
+            adapterById.put(adapterId, bean(EtlAdapter.class, "id", adapterId, "groupId", groupId, "adapterName", plugin, "adapterDisplayName", properties.getProperty("adapterDisplayName"), "adapterType", TYPES.get(plugin), "languageType", com.hikvision.idatafusion.detl.common.LanguageType.JAVA.getType(), "dbTypeId", connectionId == null ? "" : text(lookup(datasourceById, connectionId).getDbType()), "adapterClassName", properties.getProperty("className"), "enableFlag", 1));
             mappings.add(map("visualNodeId", visualId, "nodeId", String.valueOf(nodeId), "moduleId", String.valueOf(moduleId), "stepId", String.valueOf(stepId), "itemId", String.valueOf(itemId), "streamId", String.valueOf(streamId), "adapterName", plugin));
             nativeStreamNodes.add(map("id", nodeId, "stepId", stepId, "itemId", itemId, "streamNodeModuleVoList", List.of(map("moduleId", moduleId, "moduleInstanceId", instanceId, "moduleAdapterId", adapterId))));
             if (i > 0) nativeLinks.add(map("source", base + 16 + (i-1)*16L + 3, "target", nodeId, "connectStatus", 0));
@@ -539,7 +694,7 @@ public final class OriginalTaskCompiler {
         Object adapterData = provider("service.task.AdapterDataService", Map.of("findAdapterDataByItemId", a -> lookup(dataByItem, a[0])));
         Object params = provider("service.globalconfig.ParamManageService", Map.of("getParamConfigByNode", a -> {
             int type = Integer.parseInt(text(a[0])); if (type == 2) { key(a[1], flowId); return new ArrayList<>(flowParameters); }
-            if (type == 9) { lookup(paramByItem, a[1]); return new ArrayList<EtlParam>(); } // No datasource parameters in the local-file profile.
+            if (type == 9) return new ArrayList<>(lookup(datasourceParamsByItem,a[1]));
             require(type == 8, "Unsupported original parameter category"); return new ArrayList<>(lookup(paramByItem, a[1]));
         }));
         Object moduleDao = provider("mapper.EtlModuleDao", Map.of("selectByPrimaryKey", a -> lookup(moduleById, a[0]), "listFlowModules", a -> { key(a[0], flowId); return modules; }));
@@ -547,16 +702,49 @@ public final class OriginalTaskCompiler {
         DataGeneratorInputServiceImpl input = new DataGeneratorInputServiceImpl(); inject(input, "adapterDataService", adapterData); inject(input, "paramService", params);
         inject(input, "streamFieldService", provider("service.task.StreamFieldService", Map.of("findStreamField", a -> { key(a[0], streamId); return inputFields; })));
         FileOutputServiceImpl file = new FileOutputServiceImpl(); inject(file, "adapterDataService", adapterData); inject(file, "paramService", params); inject(file, "moduleDao", moduleDao);
-        inject(file, "dstTableService", provider("service.task.DstTableService", Map.of("findDstTableByItemId", a -> { lookup(paramByItem, a[0]); return null; })));
-        inject(file, "tableFieldDao", provider("mapper.EtlDstTableFieldDao", Map.of("getByNodeId", a -> { key(a[0], streamId); return lookup(outputByNode, a[1]); })));
+        inject(file, "dstTableService", provider("service.task.DstTableService", Map.of("findDstTableByItemId", a -> { lookup(paramByItem, a[0]); return outputTableByItem.get(Long.valueOf(text(a[0]))); })));
+        inject(file, "tableFieldDao", provider("mapper.EtlDstTableFieldDao", Map.of("getByNodeId", a -> { key(a[0], streamId); return lookup(outputByNode, a[1]); }, "getByTableId", a -> lookup(outputByTable,a[0]))));
         FieldMappingServiceImpl mapping = new FieldMappingServiceImpl(); inject(mapping, "paramService", params);
         inject(mapping, "streamDao", provider("mapper.EtlStreamDao", Map.of("selectByPrimaryKey", a -> { key(a[0], streamId); return bean(EtlStream.class, "id", streamId, "upNodeId", flowId); })));
         inject(mapping, "flowDao", flowDao);
         inject(mapping, "felManagerService", provider("service.globalconfig.FelManagerService", Map.of("selectThirdPartFel", a -> { require(Objects.equals(a[0], ctx.get("projectCode")), "Unexpected project metadata"); return List.of(); })));
         inject(mapping, "confDao", provider("mapper.EtlRunningConfDao", Map.of("findByConfigKey", a -> null)));
         inject(mapping, "transformFieldService", provider("service.task.TransformFieldService", Map.of("findTransformFieldByItemId", a -> lookup(mappingByItem, a[0]))));
-        List<AdapterService> generators = List.of(input, mapping, file);
+        Object dataSourceService = provider("service.globalconfig.DataSourceManageService", Map.of(
+            "getById", a -> lookup(datasourceById,a[0]), "getKerberosDatasourceByDataSourceId", a -> { lookup(datasourceById,a[0]); return null; }));
+        Object srcUseService = provider("service.task.SrcTableUseService", Map.of(
+            "findUseVoByStreamId", a -> { key(a[0],streamId); return sourceUses; },
+            "findByFlowIdAndNodeId", a -> { key(a[0],flowId); return sourceUses; },
+            "getSrcTableUseList", a -> { key(a[0],streamId); return sourceUses; }));
+        Object tableDao = provider("mapper.EtlSrcTableDao", Map.of("selectByPrimaryKey", a -> lookup(sourceTableById,a[0])));
+        Object streamFields = provider("service.task.StreamFieldService", Map.of("findStreamField", a -> { key(a[0],streamId); return inputFields; }));
+        Object destinationService = provider("service.task.DstTableService", Map.of(
+            "findDstTableByItemId", a -> outputTableByItem.get(Long.valueOf(text(a[0]))),
+            "findDstTable", a -> { key(a[0],streamId); require(outputTableByItem.size()==1,"Missing output table");return outputTableByItem.values().iterator().next(); }));
+        Object destinationFields = provider("service.task.DstTableFieldService", Map.of("findDstTableField", a -> { key(a[0],streamId);return lookup(outputByTable,a[1]); }));
+        InputServiceImpl jdbcInput = new InputServiceImpl();
+        for (AdapterService service : List.of(jdbcInput)) {
+            inject(service,"adapterDataService",adapterData); inject(service,"paramService",params);inject(service,"moduleDao",moduleDao); inject(service,"dataSourceManageService",dataSourceService);
+            inject(service,"srcTableUseService",srcUseService);inject(service,"etlSrcTableDao",tableDao); inject(service,"streamFieldService",streamFields);
+            inject(service,"tableFieldManageService",provider("service.globalconfig.TableFieldManageService",Map.of("selectEtlSrcTableFieldListByTableId",a->lookup(sourceFieldsByTable,a[0]))));
+            inject(service,"joinConditionService",provider("service.task.JoinConditionService",Map.of("findEtlCondition",a->List.of(),"findEtlJoin",a->List.of())));
+        }
+        OutputServiceImpl jdbcOutput = new OutputServiceImpl(); MqOutputServiceImpl mqOutput = new MqOutputServiceImpl();
+        for (AdapterService service : List.of(jdbcOutput,mqOutput)) {
+            inject(service,"adapterDataService",adapterData);inject(service,"paramService",params); inject(service,"dataSourceManageService",dataSourceService);
+            inject(service,"dstTableService",destinationService);inject(service,"dstTableFieldService",destinationFields);
+        }
+        inject(mqOutput,"moduleDao",moduleDao);inject(mqOutput,"confDao",provider("mapper.EtlRunningConfDao",Map.of("findByConfigKey",a->null)));
+        FileInputServiceImpl fileInput = new FileInputServiceImpl(); MqInputServiceImpl mqInput = new MqInputServiceImpl();
+        for (AdapterService service : List.of(fileInput,mqInput)) {
+            inject(service,"paramService",params);inject(service,"moduleDao",moduleDao);inject(service,"dataSourceManageService",dataSourceService);
+            inject(service,"srcTableUseService",srcUseService);inject(service,"tableDao",tableDao);inject(service,"streamFieldService",streamFields);
+        }
+        inject(fileInput,"adapterDataService",adapterData);inject(fileInput,"scheduleDao",provider("mapper.EtlScheduleDao",Map.of("getByFlowId",a->{key(a[0],flowId);return schedule;})));
+        inject(file,"dataSourceManageService",dataSourceService);
+        List<AdapterService> generators = List.of(input, mapping, file, fileInput, mqInput, mqOutput, jdbcOutput);
         AdapterServiceFactory factory = new AdapterServiceFactory(); inject(factory, "adapterServiceList", generators);
+        inject(factory,"input",jdbcInput);inject(factory,"output",jdbcOutput);
         CompilationSink sink = new CompilationSink(groupId, flowId);
         ZookeeperServiceImpl compiler = new ZookeeperServiceImpl(); inject(compiler, "etlFlowMapper", flowDao);
         inject(compiler, "etlScheduleDao", provider("mapper.EtlScheduleDao", Map.of("getByFlowId", a -> { key(a[0], flowId); return schedule; })));
@@ -571,7 +759,7 @@ public final class OriginalTaskCompiler {
         inject(compiler, "flowService", provider("service.task.FlowService", Map.of("updatePushStatus", a -> { key(a[0], flowId); sink.publishIntent = true; return null; })));
         compiler.forcePushFlowDataToZk(flowId);
         require(sink.bytes != null && sink.publishIntent, "Original compiler did not emit the expected metadata");
-        validateOriginalLocalOutputs(sink.bytes);
+        validateOriginalOutputs(sink.bytes, nodes);
         flow.setFlowIncrStatus(1);
         Object start = com.hikvision.idatafusion.detl.dto.task.control.FlowControlMessageDto.builder().flowId(flowId).type(1).scheduleOnce(schedule).flow(flow).offset(List.of()).execId(text(run.get("execId"))).build();
         byte[] scheduleBytes = com.hikvision.idatafusion.detl.utils.ObjectUtils.toUnderlineJsonString(start).getBytes(StandardCharsets.UTF_8);
@@ -581,7 +769,7 @@ public final class OriginalTaskCompiler {
             "flowjson", map("base64", Base64.getEncoder().encodeToString(sink.bytes), "sha256", sha(sink.bytes)),
             "schedule", map("base64", Base64.getEncoder().encodeToString(scheduleBytes), "sha256", sha(scheduleBytes)),
             "stop", map("base64", Base64.getEncoder().encodeToString(stopBytes), "sha256", sha(stopBytes)),
-            "metadataSnapshot", map("runtimeVisual", runtimeVisual, "modules", modules, "metadataIdBase", String.valueOf(base), "allocatedThrough", String.valueOf(base + 16 + nodes.size()*16L - 1), "outputsDir", output.toString()), "nodeMappings", mappings, "diagnostics", List.of());
+            "metadataSnapshot", map("runtimeVisual", runtimeVisual, "modules", modules, "metadataIdBase", String.valueOf(base), "allocatedThrough", String.valueOf(base + 16 + nodes.size()*16L - 1), "outputsDir", output.toString(), "connectionBindings", run.getOrDefault("connectionBindings",List.of())), "nodeMappings", mappings, "diagnostics", List.of());
     }
 
     public static void main(String[] args) throws Exception {
@@ -591,8 +779,10 @@ public final class OriginalTaskCompiler {
             byte[] input = System.in.readNBytes(MAX_BYTES + 1); require(input.length <= MAX_BYTES, "Request exceeds 8 MiB");
             Map<String,Object> request = parse(new String(input, StandardCharsets.UTF_8));
             String operation = text(request.get("operation"));
-            require(Set.of("prepare", "compile", "schedule").contains(operation), "Unknown operation");
-            Map<String,Object> result = operation.equals("prepare") ? prepare(request) : operation.equals("schedule") ? schedule(request) : compile(request, Path.of(args[0]));
+            require(Set.of("prepare", "compile", "schedule", "connectionForm", "connectionUrl").contains(operation), "Unknown operation");
+            @SuppressWarnings("unchecked") Map<String,Object> result = operation.startsWith("connection")
+                ? (Map<String,Object>)Class.forName("OriginalConnectionForms").getMethod("handle",Map.class).invoke(null,request)
+                : operation.equals("prepare") ? prepare(request) : operation.equals("schedule") ? schedule(request) : compile(request, Path.of(args[0]));
             protocol.println(json(result));
         } catch (Throwable failure) {
             // Do not expose vendor exception messages or stack traces: these may contain task data.

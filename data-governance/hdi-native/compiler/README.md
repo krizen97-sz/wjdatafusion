@@ -1,12 +1,21 @@
 # 原任务配置编译适配
 
-本组件把平台已持久化的原 `FlowVisualVo` 修订投影为本次运行的原元数据，再调用原 `ZookeeperServiceImpl.forcePushFlowDataToZk` 和原三种插件配置生成器。它不实现数据处理算法，不启动原任务管理服务、Agent、身份服务或许可服务，也不连接数据库、Redis、ZooKeeper。
+本组件把平台已持久化的原 `FlowVisualVo` 修订投影为本次运行的原元数据，再调用原 `ZookeeperServiceImpl.forcePushFlowDataToZk` 和原插件配置生成器。它不实现数据处理算法，不启动原任务管理服务、Agent、身份服务或许可服务，也不连接数据库、Redis、ZooKeeper。
 
 `OriginalFlowCompiler.java` 仍是合成验收 fixture。这里的 `OriginalTaskCompiler.java` 是独立的元数据适配入口：没有固定任务、实例或元数据 ID，也没有 fixture 的固定数据内容。任务数据、参数、字段和映射均取自平台冻结的修订。真实运行及操作权限由平台和原 Core 执行器负责。
 
 ## 当前执行范围
 
-原 `dataGeneratorInput` → 零个或多个原 `fieldMapping` → 原本地 `fileOutput`，一个连接完整的线性链，最多 32 个节点、96 条边、512 个字段。生成器首批开放 `FIXED_VALUE`；映射首批开放无外部函数的 `move` / `keep`；输出首批开放同步 CSV / line。数据处理由原插件完成。
+原输入 → 零个或多个原 `fieldMapping` → 原输出，一个连接完整的线性链，最多 32 个节点、96 条边、512 个字段。生成器开放 `FIXED_VALUE`，映射开放无外部函数的 `move` / `keep`，文件开放同步 CSV / line。数据处理始终由原插件完成。
+
+| 类别 | 原插件 | 原配置生成器 | 本次编译边界 |
+| --- | --- | --- | --- |
+| 本地生成/映射/输出 | dataGeneratorInput / fieldMapping / fileOutput | DataGeneratorInputServiceImpl / FieldMappingServiceImpl / FileOutputServiceImpl | 原有本地流程兼容 |
+| PostgreSQL | postgresqlInput / postgresqlOutput | InputServiceImpl / OutputServiceImpl | 选择单表全量读取、向既有表插入；不自动建表/清空 |
+| FTP | fileInput / fileOutput | FileInputServiceImpl / FileOutputServiceImpl | 原FTP绝对目录、CSV/行文件；本地下载暂存与输出归档目录由平台绑定 |
+| Kafka | kafkaInput / kafkaV2Output | MqInputServiceImpl / MqOutputServiceImpl | 单一明确topic、原JSON/text消息格式；不开放任意认证/序列化器覆盖 |
+
+原包没有本次可验证的独立 MySQL 输入输出插件，因此不把 PostgreSQL 插件冒充为 MySQL 实现。上述表仅证明编译接入能力；真实网络、原插件执行以及浏览器闭环必须另行验收。
 
 兼容原浏览器的缺省 DTO：`transformFieldVoList.processType` 可以缺失，原 `FieldMappingServiceImpl` 对同名同类型的字段不生成转换项，改名时沿用原非 `keep` 默认；本适配不填造处理规则。输出字段可以没有 `fieldExpression` / `enableFlag`，编译元数据通过原 `DstTableFieldServiceImpl.batchInsert` 的实际投影生成字段顺序、启用标志和本次 stream/node 归属，原字段表达式继续保持缺省。该 DAO 的批量写入仅捕获到本次不可变快照，不连接数据库。字段名仍须来自上游，显式 FEL 表达式不开放。
 
@@ -14,9 +23,9 @@
 
 原 `el-input` / `el-switch` / `el-select` 参数 DTO 可以保留。原文件生成器优先采用 `adapterParamVoList` 中已有参数，再从 `adapterData` 补缺；因此若历史参数 `etl.file.fileType=txt` 与表单 `adapterData.fileType=csv` 冲突，草稿可保存，但编译明确拒绝，不能静默输出另一种格式。受支持的显式格式参数须与表单一致。目录适配应遵循原参数表单的过滤契约，不把已由专属节点表单接管的旧默认值重新注入。
 
-编译完成后还检查原 `flowjson` 的实际合并结果，与 worker 的本地文件 profile 使用相同规则：`etl.file.serverType` 必须为 `local`，`etl.file.isUpload` 必须为 `false`。即使结构化表单已选本地，残留的高级 `serverType=Ftp` 仍会按原优先级覆盖，因此返回 `UNSUPPORTED_GRAPH` / `reason=LOCAL_OUTPUT_REQUIRED`，由用户在原表单取消冲突参数；不改写草稿或生成结果。文件格式冲突返回固定 `FILE_FORMAT_CONFLICT` reason。平台仅对白名单 reason 映射固定说明，不能展示任意原异常消息或参数值。
+编译完成后还检查原 `flowjson` 的实际合并结果，与 worker 的本地文件 profile 使用相同规则：`etl.file.serverType` 必须与原表单所选的 `local` / `ftp` 一致，`etl.file.isUpload` 必须对应 `false` / `true`。即使结构化表单已选本地，残留的高级 `serverType=Ftp` 仍会按原优先级覆盖，因此返回 `UNSUPPORTED_GRAPH` / `reason=LOCAL_OUTPUT_REQUIRED`，由用户在原表单取消冲突参数；不改写草稿或生成结果。文件格式冲突返回固定 `FILE_FORMAT_CONFLICT` reason。平台仅对白名单 reason 映射固定说明，不能展示任意原异常消息或参数值。
 
-保存允许空草稿、不完整链、未配置完的节点和原无限行数 `-1`。运行明确拒绝无界生成、分叉、环、未知插件、FTP/SFTP、SQL、脚本、外部 FEL / Redis、全局参数引用、异步输出及当前范围外的表达式。保存不会把这些配置静默修改成可运行的配置。生成器缺省行数从已校验的原 `etl_plugin.json` 读取（本版原值为 100000），不会被偷偷改为测试行数；运行上限为 1000000 行。
+保存允许空草稿、不完整链、未配置完的节点和原无限行数 `-1`。运行明确拒绝无界生成、分叉、环、未知插件、SFTP、原始SQL、脚本、外部 FEL / Redis、全局参数引用、异步输出及当前范围外的表达式。保存不会把这些配置静默修改成可运行的配置。生成器缺省行数从已校验的原 `etl_plugin.json` 读取（本版原值为 100000），不会被偷偷改为测试行数；运行上限为 1000000 行。
 
 原字段映射表单自带的未启用 Redis 占位值可以保留；只有与原目录默认值完全一致且当前映射没有外部函数的配置可进入本批执行。参数值改变时返回 `UNSUPPORTED_GRAPH`。
 
@@ -52,6 +61,14 @@ context 必须由认证后的平台持久化记录构造，不能接受浏览器
 
 成功返回 `ok:true, protocolVersion:1, operation:"prepare", canonicalVisual, snapshotJson, snapshotSha256, diagnostics`。平台原样保存 **snapshotJson 的 UTF-8 字节**及其 SHA。不要解析后重新序列化再计算/比较摘要；canonicalVisual 用于原 UI 回读。原子发布和权限校验仍由平台负责。
 
+### 冻结连接版本
+
+有连接的图保存时，平台先核对连接属主与启用状态，再传 `trustedConnectionRefs:{"71":"1"}`。编译器要求该键集合与原节点 `dbId` 精确匹配，并将非秘密的版本引用写入 snapshot envelope 的 `connectionRefs`。旧无连接 snapshot 三键格式继续兼容。原表单中的瞬态 password/databasePassword 字段会从 canonicalVisual 去除，任务快照不接收凭据。
+
+执行时，平台按被冻结版本解密连接，传入可信 `runContext.connections`，结构为 `{ "71": { "connectionRevision":"1", "datasource":<原DatasourceDto>, "datasourceParamVoList":[] } }`。编译器核对版本、连接ID、原插件类型以及表DTO归属，再通过原生成器投影为 native 数据源配置。`connectionBindings` 只携带 worker reserve 确认的非秘密网络授权，原样写入 metadataSnapshot，供 worker 再核对；实际密码只出现在私有 compiled native 配置，不能回传浏览器或混入公开任务修订。
+
+当前原 Core 以原支持的 `etl.security.decrypt=false` 模式消费本地私有配置；没有套用 BIC 身份加密或编造另一种协议。平台连接存储加密、运行授权、日志凭据脱敏与网络端点限制由对应平台/worker层执行。
+
 ### 运行编译
 
 ```json
@@ -74,7 +91,7 @@ context 必须由认证后的平台持久化记录构造，不能接受浏览器
 
 outputsDir 必须是 authorizedOutputRoot 下的独立子目录。二者只能来自平台授权输出策略/worker reserve，不能取自浏览器路径。编译器将原文件输出配置的路径及其旧参数形式绑定到此目录，不修改冻结 Visual，并拒绝符号链接。`test` 使用私有运行目录；`run` 使用平台已授权输出根下的独立运行目录。执行器在实际启动时仍须复核目录归属、隔离和路径，避免校验后目录被替换。
 
-用户在原 File 输出表单中必须明确选择精确逻辑路径 **`/平台输出`**。它表示每次写入执行器的独立 `run/outputs`，完整产物校验归档后通过平台下载，绝不表示写到主机上同名目录。测试和正式运行都拒绝空路径、任意主机路径、`/平台输出xxx` 或附加子目录；草稿可以先保存。只有这个明确选项才允许编译时绑定实际 worker 路径，不能将用户指定的其他路径静默重定向。`localDir`、`absoluteDir` 与旧 `etl.file.localDir` 参数中所有非空值都必须符合该边界。
+用户在原 File 输出表单中必须明确选择精确逻辑路径 **`/平台输出`**。它表示每次写入执行器的独立 `run/outputs`，完整产物校验归档后通过平台下载，绝不表示写到主机上同名目录。测试和正式运行都拒绝空路径、任意主机路径、`/平台输出xxx` 或附加子目录；草稿可以先保存。只有这个明确选项才允许编译时绑定实际 worker 路径，不能将用户指定的其他路径静默重定向。本地输出时 `localDir`、`absoluteDir` 与旧 `etl.file.localDir` 参数中所有非空值都必须符合该边界。FTP输出的 `absoluteDir` 保留原远程路径，只有 `localDir` 被绑定到独立输出暂存目录；FTP输入的 `localDir` 绑定本次 `tmp/downloads`。远程绝对目录拒绝 `..`、`.`、动态占位符与反斜杠，不把用户远程路径静默替换成本地路径。
 
 编译机与执行器不在同一主机时，平台在严格校验 `worker.reserve` 的身份响应后设置 `runContext.outputRootSource="worker-reserve"`。此时编译器仅做绝对路径、规范化、严格子目录和无动态占位符检查，不用编译机的本地符号链接解释 Linux 目标路径（例如 macOS 的 `/home` 与 Linux `/home` 不同）。实际目标文件系统的符号链接、所有者和权限检查仍由 worker 完成。此字段不能来自浏览器；省略时保留原本机符号链接拒绝。
 

@@ -75,6 +75,42 @@ def original_ui_visual():
     return visual
 
 
+def connector_visual(input_plugin='dataGeneratorInput', output_plugin='fileOutput'):
+    visual = fixture_visual('native connector value')
+    first, last = visual['nodes']['110'], visual['nodes']['130']
+    connections = {}
+    for plugin, node, connection_id, kind, db_type, port in [
+            (input_plugin, first, '71', 'postgresql' if input_plugin.startswith('postgresql') else 'kafka' if input_plugin.startswith('kafka') else 'ftp', 16 if input_plugin.startswith('postgresql') else 8 if input_plugin.startswith('kafka') else 18, 15432 if input_plugin.startswith('postgresql') else 19092 if input_plugin.startswith('kafka') else 2121),
+            (output_plugin, last, '72', 'postgresql' if output_plugin.startswith('postgresql') else 'kafka' if output_plugin.startswith('kafka') else 'ftp', 16 if output_plugin.startswith('postgresql') else 8 if output_plugin.startswith('kafka') else 18, 15432 if output_plugin.startswith('postgresql') else 19092 if output_plugin.startswith('kafka') else 2121)]:
+        if plugin == 'dataGeneratorInput' or plugin == 'fileOutput':
+            continue
+        node['adapterName'] = 'fileOutput' if plugin == 'ftpFileOutput' else plugin
+        node['dbId'] = int(connection_id)
+        node['adapterParamVoList'] = []
+        node['adapterData'] = {}
+        connections[connection_id] = {'connectionRevision':'1','datasourceParamVoList':[], 'datasource':{
+            'id':int(connection_id),'name':'isolated-original-'+kind,'dbType':db_type,'databaseIp':'127.0.0.1','databasePort':str(port),
+            'databaseSid':'hdi_fixture','databaseUsername':'hdi_fixture','databasePassword':'fixture-only-not-a-secret',
+            'dbUrl':('jdbc:postgresql://127.0.0.1:'+str(port)+'/hdi_fixture') if kind=='postgresql' else ('kafka2://' if kind=='kafka' else 'ftp://')+'127.0.0.1:'+str(port)+('' if kind=='kafka' else '/hdi_fixture'),
+            'ext1':'1' if kind=='ftp' else '', 'ext2':'ftp' if kind=='ftp' else '', 'ext3':'','inOutFlag':0}}
+        if node is first:
+            node['srcTableUseVoList'] = [{'id':90,'tableId':91,'srcDbId':int(connection_id),'tableName':'source_rows' if kind=='postgresql' else 'hdi_source',
+                'tableOwner':'public','tableSchem':'public','tableAlias':'','tableOrder':1,'tableUseFlag':1,'tableViewFlag':0,'incrType':0,'partFlag':0}]
+            node['streamFieldVoList'][0].update(fieldType='varchar',fieldExpression='',fieldSrcName='message')
+            if plugin == 'fileInput':
+                node['adapterData'] = {'sourceType':'ftp','sourcePathType':2,'absoluteDir':'/inbox','localDir':'/平台输出',
+                    'fileType':'csv','encoding':'UTF-8','colSplitter':',','beginRow':'2','incrMode':'time','maskFilename':'.*\\.csv','parsedData':'true'}
+            elif plugin == 'kafkaInput':
+                node['adapterParamVoList']=[{'paramName':'etl.kafka.auto.offset.reset','paramValue':'earliest'},{'paramName':'format','paramValue':'json'}]
+        else:
+            if plugin == 'ftpFileOutput':
+                node['adapterData'] = {'sourceType':'ftp','sourcePathType':2,'absoluteDir':'/outbox','localDir':'/平台输出',
+                    'fileType':'csv','encoding':'UTF-8','colSplitter':',','addHeaderLine':'true','isAsyncGenerateText':'false'}
+            node['dstTableVo'] = {'id':92,'dbId':int(connection_id),'tableName':'target_rows' if kind=='postgresql' else 'hdi_target',
+                'tableOwner':'public','messageFormat':'json','messageField':'','writeOperation':'insert','addCreateSql':'false','dataCleansing':'false','enableFlag':1}
+    return visual, connections
+
+
 class LauncherUnitTests(unittest.TestCase):
     def test_traversal_and_symlink_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -131,6 +167,49 @@ class OriginalSdkTests(unittest.TestCase):
                                     nativeInstanceId=str(21002+offset), metadataIdBase=str(22000+offset),
                                     execId=str(21003+offset), outputsDir=str(self.root / ('outputs-' + str(offset))),
                                     authorizedOutputRoot=str(self.root), mode='test'))
+
+    def prepare_connectors(self, visual, connections):
+        refs = {key:value['connectionRevision'] for key,value in connections.items()}
+        return self.invoke(dict(operation='prepare', context=self.context, visual=visual, trustedConnectionRefs=refs))
+
+    def test_original_connector_generators_preserve_database_ftp_and_kafka_metadata(self):
+        if not (self.bundle/'instance/etl-postgresqlInput-2.0.0').is_dir():
+            self.skipTest('Extended original connector bundle required')
+        for input_plugin, output_plugin in [('postgresqlInput','fileOutput'),('dataGeneratorInput','postgresqlOutput'),('fileInput','fileOutput'),('kafkaInput','fileOutput'),('dataGeneratorInput','kafkaV2Output'),('dataGeneratorInput','ftpFileOutput')]:
+            with self.subTest(input=input_plugin, output=output_plugin):
+                visual, connections = connector_visual(input_plugin,output_plugin)
+                prepared=self.prepare_connectors(visual,connections); self.assertTrue(prepared['ok'],prepared)
+                request=self.compile_request(prepared);request['runContext']['connections']=connections
+                result=self.invoke(request);self.assertTrue(result['ok'],result)
+                native=json.loads(base64.b64decode(result['flowjson']['base64']))
+                modules=native['streams'][0]['modules']
+                self.assertEqual([m['adapter']['adapter_name'] for m in modules],[input_plugin,'fieldMapping','fileOutput' if output_plugin=='ftpFileOutput' else output_plugin])
+                connected=modules[0] if input_plugin!='dataGeneratorInput' else modules[-1]
+                source=connected['config']['datasource'][0]
+                self.assertEqual(source['db_ip'],'127.0.0.1')
+                self.assertEqual(source['db_password'],'fixture-only-not-a-secret')
+                self.assertNotIn('fixture-only-not-a-secret',prepared['snapshotJson'])
+
+    def test_browser_connection_passwords_are_not_frozen_in_task_snapshots(self):
+        visual, connections=connector_visual('fileInput','fileOutput')
+        visual['nodes']['110']['ftpConfig']={'id':71,'databasePassword':'browser-must-not-store-this','password':'nor-this','databaseIp':'127.0.0.1'}
+        prepared=self.prepare_connectors(visual,connections); self.assertTrue(prepared['ok'],prepared)
+        self.assertNotIn('browser-must-not-store-this',prepared['snapshotJson'])
+        self.assertNotIn('nor-this',prepared['snapshotJson'])
+        self.assertEqual(prepared['canonicalVisual']['nodes']['110']['ftpConfig'],{'id':71,'databaseIp':'127.0.0.1'})
+        self.assertEqual(json.loads(prepared['snapshotJson'])['connectionRefs'],{'71':'1'})
+
+    def test_frozen_connector_revision_and_identity_cannot_be_replaced(self):
+        visual, connections=connector_visual('postgresqlInput','fileOutput')
+        prepared=self.prepare_connectors(visual,connections);self.assertTrue(prepared['ok'],prepared)
+        for change in ['revision','id','type']:
+            request=self.compile_request(prepared); request['runContext']['connections']=copy.deepcopy(connections)
+            if change=='revision':request['runContext']['connections']['71']['connectionRevision']='2'
+            elif change=='id':request['runContext']['connections']['71']['datasource']['id']=72
+            else:request['runContext']['connections']['71']['datasource']['dbType']=18
+            self.assertFalse(self.invoke(request)['ok'])
+        missing=self.invoke(dict(operation='prepare',context=self.context,visual=visual))
+        self.assertFalse(missing['ok'])
 
     def test_prepare_canonical_snapshot_preserves_original_dto(self):
         result = self.prepare()
@@ -278,7 +357,7 @@ class OriginalSdkTests(unittest.TestCase):
         self.assertFalse(self.invoke(request)['ok'])
         visual = fixture_visual(); visual['nodes']['130']['adapterData']['sourceType'] = 'ftp'
         prepared = self.prepare(visual); self.assertTrue(prepared['ok'])
-        self.assertEqual('UNSUPPORTED_GRAPH', self.invoke(self.compile_request(prepared))['code'])
+        self.assertEqual('INVALID_INPUT', self.invoke(self.compile_request(prepared))['code'])
 
     def test_unbounded_rows_save_but_do_not_compile(self):
         visual = fixture_visual(); visual['nodes']['110']['adapterParamVoList'][0]['paramValue'] = '-1'
