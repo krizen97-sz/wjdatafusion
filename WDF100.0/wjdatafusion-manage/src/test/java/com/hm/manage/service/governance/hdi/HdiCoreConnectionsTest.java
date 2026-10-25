@@ -142,7 +142,13 @@ class HdiCoreConnectionsTest {
         p.put("authentication", "ranger"); assertThrows(HdiTaskFault.class, () -> connections.saveForm(7, kafka));
     }
     @Test @EnabledIfEnvironmentVariable(named = "HDI_CONNECTION_FIXTURE_DIR", matches = ".+")
+    @EnabledIfEnvironmentVariable(named = "HDI_ORIGINAL_BUNDLE", matches = ".+")
+    @EnabledIfEnvironmentVariable(named = "HDI_COMPILER_JAVA_HOME", matches = ".+")
     void realLocalPostgresFtpKafkaConnectionsAndTableMetadata() throws Exception {
+        var compilerProperties = new HdiCoreProperties(); compilerProperties.setEnabled(true); compilerProperties.setStateDir(privateRoot.toString());
+        compilerProperties.setCompilerCommand(List.of("python3", Path.of("../../tools/data-governance/hdi_original_compiler.py").toAbsolutePath().normalize().toString(),
+            "--bundle", System.getenv("HDI_ORIGINAL_BUNDLE"), "--java-home", System.getenv("HDI_COMPILER_JAVA_HOME"), "--runtime", privateRoot.toString()));
+        connections.setKafkaMetadata(new HdiKafkaMetadataGateway(new HdiCompilerClient(compilerProperties)));
         Path directory = Path.of(System.getenv("HDI_CONNECTION_FIXTURE_DIR"));
         JsonNode pgFixture = HdiProtocol.JSON.readTree(Files.readAllBytes(directory.resolve("postgres-connection.json")));
         JsonNode ftpFixture = HdiProtocol.JSON.readTree(Files.readAllBytes(directory.resolve("ftp-connection.json")));
@@ -161,5 +167,11 @@ class HdiCoreConnectionsTest {
         long ftpId = connections.saveForm(7, ftp).path("id").asLong(); assertTrue(connections.testById(7, ftpId));
         policy.setKafkaBrokers(Map.of()); long kafkaId = connections.saveForm(7, form("Kafka", "本机原Kafka连接验收", "")).path("id").asLong(); assertTrue(connections.testById(7, kafkaId)); assertNotNull(connections.tables(7, kafkaId, HdiProtocol.JSON.createObjectNode()).get("list"));
         assertEquals(404, assertThrows(HdiTaskFault.class, () -> connections.testById(8, pgId)).status());
+    }
+
+    @Test void kafkaProbeWithoutIsolatedGatewayDoesNotFallBackToPlatformSockets() throws Exception {
+        policy.setKafkaBrokers(Map.of()); long id = connections.saveForm(7, form("Kafka", "未配置元数据隔离", "")).path("id").asLong();
+        assertEquals(503, assertThrows(HdiTaskFault.class, () -> connections.testById(7, id)).status());
+        assertEquals(503, assertThrows(HdiTaskFault.class, () -> connections.tables(7, id, HdiProtocol.JSON.createObjectNode())).status());
     }
 }
