@@ -90,6 +90,26 @@ class WorkerStateTests(unittest.TestCase):
             run.assert_not_called()
         self.assertEqual(self.worker.records[self.request['runId']]['state'], 'RESERVED')
 
+    def test_mysql_compiled_package_must_match_installed_manifest_before_execution(self):
+        binding = {'connectionId': '31', 'connectionRevision': '2', 'ownerId': '1', 'kind': 'mysql',
+                   'endpoints': [{'host': '127.0.0.1', 'address': '127.0.0.1', 'port': 13306}]}
+        self.worker.reserve({**self.request, 'connectionBindings': [binding]})
+        def submit(metadata):
+            raw = json.dumps({'metadataSnapshot': metadata}).encode()
+            return self.worker.submit({**self.request, 'compiledBase64': base64.b64encode(raw).decode(),
+                                       'sha256': hashlib.sha256(raw).hexdigest()})
+        with patch.object(module, 'validate_compiled'), patch.object(module, 'NativeRun') as run:
+            with self.assertRaisesRegex(ProtocolError, 'MYSQL_PLATFORM_ADAPTER_REQUIRED'):
+                submit({})
+            self.worker.platform_adapters = {'root': '/private/platform', 'manifestSha256': 'a' * 64}
+            for metadata in ({}, {'platformAdapterManifestSha256': 'b' * 64}):
+                with self.assertRaisesRegex(ProtocolError, 'MYSQL_PLATFORM_ADAPTER_MISMATCH'):
+                    submit(metadata)
+            run.assert_not_called()
+            self.assertEqual(self.worker.records[self.request['runId']]['state'], 'RESERVED')
+            submit({'platformAdapterManifestSha256': 'a' * 64})
+            run.assert_called_once()
+
     def test_original_plain_connector_credentials_are_redacted_from_public_logs(self):
         self.worker.redis_password = 'owned-redis-password'
         self.worker.reserve(self.request)
