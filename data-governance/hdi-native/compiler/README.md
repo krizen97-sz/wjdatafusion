@@ -35,7 +35,7 @@ PostgreSQL 选表输入必须保留原浏览器生成的 `fieldExpression=column
 
 保存允许空草稿、不完整链、未配置完的节点和原无限行数 `-1`。运行明确拒绝无界生成、分叉、环、未知插件、SFTP、原始SQL、脚本、外部 FEL / Redis、全局参数引用、异步输出及当前范围外的表达式。保存不会把这些配置静默修改成可运行的配置。生成器缺省行数从已校验的原 `etl_plugin.json` 读取（本版原值为 100000），不会被偷偷改为测试行数；运行上限为 1000000 行。
 
-原目录声明为 `el-switch` 的参数按其 `allowableValues` 校验；没有自定义选项时使用原布尔 true/false，接受浏览器传来的布尔或字符串值。Kafka 的 `etl.kafka.enable.auto.commit=false` 不再被错误归为“非默认不支持”。显式路径派生、未接入的删除/截断、SCRAM 等原有执行范围限制仍单独保留，不以通用开关校验绕过它们。消息格式的原 wire 值为 `json` / `string`；`text` 不是该原目录选项，Avro/BSON 本轮不开放。当前浏览器真实验收使用 JSON。
+原目录声明为 `el-switch` 的参数按其 `allowableValues` 校验；没有自定义选项时使用原布尔 true/false，接受浏览器传来的布尔或字符串值。Kafka 的 `etl.kafka.enable.auto.commit=false` 不再被错误归为“非默认不支持”。 这不代表不提交消费位置：原 `ConsumerWorker.getData` 在自动提交关闭且取到数据时仍调用 `commitSync`；独立重复验收须用不同测试消费组或新增输入消息，不重置既有主题。显式路径派生、未接入的删除/截断、SCRAM 等原有执行范围限制仍单独保留，不以通用开关校验绕过它们。消息格式的原 wire 值为 `json` / `string`；`text` 不是该原目录选项，Avro/BSON 本轮不开放。当前浏览器真实验收使用 JSON。
 
 原字段映射表单自带的未启用 Redis 占位值可以保留；只有与原目录默认值完全一致且当前映射没有外部函数的配置可进入本批执行。参数值改变时返回 `UNSUPPORTED_GRAPH`。
 

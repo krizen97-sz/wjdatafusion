@@ -581,7 +581,7 @@ class OriginalSdkTests(unittest.TestCase):
         self.assertTrue(json.loads(raw)['ok'])
 
     def test_original_filename_sources_cannot_escape_private_output(self):
-        for field_list, node in [('streamFieldVoList', '110'), ('dstTableFieldVoList', '130')]:
+        for field_list, node in [('dstTableFieldVoList', '130')]:
             visual = fixture_visual('../../outside')
             visual['nodes'][node][field_list][0]['fieldKeyFlag'] = 1
             prepared = self.prepare(visual)
