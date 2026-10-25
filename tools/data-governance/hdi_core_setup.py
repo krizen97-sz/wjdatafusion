@@ -16,6 +16,7 @@ import sys
 
 from hdi_original_execution_proof import verify_bundle
 from hdi_core_protocol import private_file, strict_json
+from hdi_platform_adapters import verify_platform_adapters
 
 HERE = Path(__file__).resolve().parent
 BUILD = HERE.parents[1] / 'data-governance/hdi-native/core-runtime/build.py'
@@ -135,6 +136,12 @@ def prepare(args):
     preflight(bundle, java_home)
     if compiler_java_home != java_home:
         compiler_preflight(compiler_java_home)
+    adapters = getattr(args, 'platform_adapters', None)
+    adapter_config = None
+    if adapters:
+        adapters = plain_path(adapters)
+        adapter_config = {'root': str(adapters), 'manifestSha256': sha(adapters / 'platform-adapter-manifest.json')}
+        verify_platform_adapters(adapters, bundle, adapter_config['manifestSha256'])
     inputs = {'protocolVersion': 1, 'uid': os.getuid(), 'installRoot': str(root),
         'bundle': str(bundle), 'bundleManifestSha256': sha(bundle / 'bundle-manifest.json'),
         'javaHome': str(java_home), 'compilerJavaHome': str(compiler_java_home),
@@ -144,6 +151,8 @@ def prepare(args):
         'workerLauncher': str(HERE / 'hdi_core_worker.py'), 'controlSourceSha256': sha(SOURCE),
         'redis': {'host': '127.0.0.1', 'port': args.redis_port, 'database': args.redis_database,
                   'passwordFile': str(password_file)}}
+    if adapter_config:
+        inputs['platformAdapters'] = adapter_config
     receipt_path = root / 'private/setup-receipt.json'
     config_path = root / 'private/worker.json'
     jar = root / 'control/rynew-hdi-core-control.jar'
@@ -178,6 +187,8 @@ def prepare(args):
             'javaHome': str(java_home), 'controlJar': str(jar), 'controlJarSha256': sha(jar),
             'redis': inputs['redis'], 'maxConcurrentRuns': 1, 'startupTimeoutSeconds': 120,
             'executionTimeoutSeconds': 300, 'stopTimeoutSeconds': 45, 'javaRuntimeMode': 'normal'}
+        if adapter_config:
+            config['platformAdapters'] = adapter_config
         new_json(config_path, config)
         new_json(receipt_path, {'receiptVersion': RECEIPT_VERSION, 'inputs': inputs,
             'jarSha256': sha(jar), 'configSha256': sha(config_path)})
@@ -192,6 +203,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--install-root', required=True, type=Path)
     parser.add_argument('--bundle', required=True, type=Path)
+    parser.add_argument('--platform-adapters', type=Path, help='Separately verified platform JDBC subclass package')
     parser.add_argument('--java-home', required=True, type=Path, help='Linux x86_64 JDK 11 for original Core and control bridge')
     parser.add_argument('--compiler-java-home', type=Path,
                         help='JDK 11 or 17 for original compiler/metadata; defaults to --java-home')

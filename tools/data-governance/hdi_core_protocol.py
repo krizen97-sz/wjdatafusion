@@ -23,6 +23,10 @@ ADAPTERS = {
     'postgresqlOutput': ('output', 'com.hikvision.idatafusion.etl.adapter.output.postgresql.PostgreSqlOutput'),
     'kafkaInput': ('input', 'com.hikvision.idatafusion.etl.adapter.input.kafka.KafkaInput'),
     'kafkaV2Output': ('output', 'com.hikvision.idatafusion.etl.adapter.output.kafkaV2.KafkaV2Output'),
+    'rabbitmqInput': ('input', 'com.hikvision.idatafusion.etl.adapter.input.rabbitmq.RabbitmqInput'),
+    'rabbitmqOutput': ('output', 'com.hikvision.idatafusion.etl.adapter.output.rabbitmq.RabbitmqOutput'),
+    'mysqlInput': ('input', 'com.rynew.hdi.adapter.MysqlInput'),
+    'mysqlOutput': ('output', 'com.rynew.hdi.adapter.MysqlOutput'),
 }
 TERMINAL = {'SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'TIMED_OUT'}
 
@@ -66,10 +70,10 @@ def connection_bindings(value, owner):
             raise ProtocolError('CONNECTOR_OWNER_MISMATCH')
         ids.add(key)
         kind = binding['kind']
-        if kind not in ('postgresql', 'ftp', 'kafka'):
+        if kind not in ('postgresql', 'ftp', 'kafka', 'mysql', 'rabbitmq', 'sftp'):
             raise ProtocolError('CONNECTOR_NOT_SUPPORTED')
         endpoints = binding['endpoints']
-        if not isinstance(endpoints, list) or not 1 <= len(endpoints) <= (16 if kind == 'kafka' else 1):
+        if not isinstance(endpoints, list) or not 1 <= len(endpoints) <= (16 if kind in ('kafka', 'rabbitmq') else 1):
             raise ProtocolError('CONNECTOR_ENDPOINT_LIMIT')
         normalized, seen = [], set()
         for endpoint in endpoints:
@@ -293,15 +297,19 @@ def validate_datasource_grant(module, kind, bindings):
     if binding is None:
         raise ProtocolError('CONNECTOR_BINDING_REQUIRED')
     endpoint = binding['endpoints'][0]
-    if (source.get('db_type') != {'postgresql': 16, 'ftp': 18, 'kafka': 8}[kind]
+    if (source.get('db_type') != {'postgresql': 16, 'ftp': 18, 'kafka': 8, 'mysql': 2, 'rabbitmq': 120, 'sftp': 18}[kind]
             or source.get('db_ip') != endpoint['host'] or str(source.get('db_port')) != str(endpoint['port'])):
         raise ProtocolError('CONNECTOR_ENDPOINT_MISMATCH')
-    if kind == 'postgresql':
+    if kind in ('postgresql', 'mysql'):
         database = source.get('db_sid')
         if not isinstance(database, str) or not re.fullmatch(r'[A-Za-z0-9_$.-]{1,128}', database):
             raise ProtocolError('CONNECTOR_DATABASE_REJECTED')
-        expected = 'jdbc:postgresql://' + endpoint['host'] + ':' + str(endpoint['port']) + '/' + database
-    elif kind == 'ftp':
+        expected = 'jdbc:' + kind + '://' + endpoint['host'] + ':' + str(endpoint['port']) + '/' + database
+        if kind == 'mysql':
+            expected += '?useSSL=false'  # Original MysqlDatasource fixed URL template.
+    elif kind in ('ftp', 'sftp'):
+        if source.get('ext2', 'ftp') != kind:
+            raise ProtocolError('CONNECTOR_PROTOCOL_MISMATCH')
         expected = 'ftp://' + endpoint['host'] + ':' + str(endpoint['port'])
         if source.get('db_sid'):
             directory = source['db_sid']
@@ -311,9 +319,10 @@ def validate_datasource_grant(module, kind, bindings):
             expected += '/' + directory
     else:
         url = source.get('db_url')
-        if not isinstance(url, str) or not url.startswith('kafka2://'):
+        prefix = 'kafka2://' if kind == 'kafka' else 'rabbitmq://'
+        if not isinstance(url, str) or not url.startswith(prefix):
             raise ProtocolError('CONNECTOR_URL_MISMATCH')
-        bootstrap = url[len('kafka2://'):].split(',')
+        bootstrap = url[len(prefix):].split(',')
         allowed = {item['host'] + ':' + str(item['port']) for item in binding['endpoints']}
         if (not 1 <= len(bootstrap) <= 16 or len(set(bootstrap)) != len(bootstrap)
                 or bootstrap[0] != endpoint['host'] + ':' + str(endpoint['port'])
@@ -330,6 +339,9 @@ def validate_datasource_grant(module, kind, bindings):
                        'etl.kafka.key.serializer', 'etl.kafka.value.serializer')
                or key.startswith(('etl.kafka.sasl.', 'etl.kafka.ssl.', 'etl.kafka.security.')) for key in params):
             raise ProtocolError('CONNECTOR_PARAMETERS_REJECTED')
+    if kind == 'rabbitmq':
+        if str(source.get('ext1')) != '0' or adapter_parameters(module).get('rabbitmq.protocol.type', 'amqp') != 'amqp':
+            raise ProtocolError('RABBITMQ_AMQP_PLAINTEXT_REQUIRED')
     return binding
 
 
@@ -416,13 +428,18 @@ def validate_compiled(compiled, record):
             output_count += 1
         if name.startswith('postgresql'):
             validate_datasource_grant(module, 'postgresql', reserved_connections)
+        elif name.startswith('mysql'):
+            validate_datasource_grant(module, 'mysql', reserved_connections)
+        elif name.startswith('rabbitmq'):
+            validate_datasource_grant(module, 'rabbitmq', reserved_connections)
         elif name.startswith('kafka'):
             validate_datasource_grant(module, 'kafka', reserved_connections)
         elif name == 'fileInput':
-            validate_datasource_grant(module, 'ftp', reserved_connections)
-            if (str(params.get('etl.file.server_type')).lower() != 'ftp'
-                    or params.get('etl.file.server_download') != 'true'
-                    or str(params.get('etl.file.server_passive_mode', '1')) != '1'):
+            protocol = str(params.get('etl.file.server_type')).lower()
+            if protocol not in ('ftp', 'sftp') or params.get('etl.file.server_download') != 'true':
+                raise ProtocolError('REMOTE_FILE_INPUT_REQUIRED')
+            validate_datasource_grant(module, protocol, reserved_connections)
+            if protocol == 'ftp' and str(params.get('etl.file.server_passive_mode', '1')) != '1':
                 raise ProtocolError('FTP_PASSIVE_REQUIRED')
             scratch = Path(record['outputsDir']).parent / 'tmp'
             below_output(params.get('etl.file.local_dir'), scratch)
@@ -432,9 +449,10 @@ def validate_compiled(compiled, record):
             below_output(params.get('etl.file.localDir'), record['outputsDir'])
             if params.get('etl.file.serverType') == 'local' and params.get('etl.file.isUpload') == 'false':
                 below_output(params.get('etl.file.serverDir'), record['outputsDir'])
-            elif str(params.get('etl.file.serverType')).lower() == 'ftp' and params.get('etl.file.isUpload') == 'true':
-                validate_datasource_grant(module, 'ftp', reserved_connections)
-                if str(params.get('etl.file.ftpPassiveMode', '1')) != '1':
+            elif str(params.get('etl.file.serverType')).lower() in ('ftp', 'sftp') and params.get('etl.file.isUpload') == 'true':
+                protocol = str(params['etl.file.serverType']).lower()
+                validate_datasource_grant(module, protocol, reserved_connections)
+                if protocol == 'ftp' and str(params.get('etl.file.ftpPassiveMode', '1')) != '1':
                     raise ProtocolError('FTP_PASSIVE_REQUIRED')
             else:
                 raise ProtocolError('LOCAL_OUTPUT_REQUIRED')

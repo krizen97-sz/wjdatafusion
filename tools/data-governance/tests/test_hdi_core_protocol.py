@@ -170,6 +170,41 @@ class ProtocolTests(unittest.TestCase):
                       'db_sid': directory, 'db_url': 'ftp://127.0.0.1:2121' + ('/' + directory if directory else '')}
             self.assertEqual(p.validate_datasource_grant({'config': {'datasource': [source]}}, 'ftp', [binding]), binding)
 
+    def test_sftp_is_a_single_ssh_endpoint_with_original_ftp_url(self):
+        binding = self.connection('sftp')
+        self.assertEqual(len(p.connector_targets(p.connection_bindings([binding], '1'))), 1)
+        source = {'id': 41, 'db_type': 18, 'db_ip': '127.0.0.1', 'db_port': '15432',
+                  'db_sid': '/', 'db_url': 'ftp://127.0.0.1:15432//', 'ext2': 'sftp'}
+        self.assertEqual(p.validate_datasource_grant({'config': {'datasource': [source]}}, 'sftp', [binding]), binding)
+        for patch in ({'ext2': 'ftp'}, {'db_url': 'sftp://127.0.0.1:15432//'}):
+            with self.assertRaises(p.ProtocolError):
+                p.validate_datasource_grant({'config': {'datasource': [{**source, **patch}]}}, 'sftp', [binding])
+        binding['passivePorts'] = {'start': 22100, 'end': 22109}
+        with self.assertRaisesRegex(p.ProtocolError, 'INVALID_CONNECTOR_BINDING'):
+            p.connection_bindings([binding], '1')
+
+    def test_mysql_only_accepts_original_fixed_jdbc_options(self):
+        binding = self.connection('mysql')
+        source = {'id': 41, 'db_type': 2, 'db_ip': '127.0.0.1', 'db_port': '15432',
+                  'db_sid': 'fixture', 'db_url': 'jdbc:mysql://127.0.0.1:15432/fixture?useSSL=false'}
+        self.assertEqual(p.validate_datasource_grant({'config': {'datasource': [source]}}, 'mysql', [binding]), binding)
+        for suffix in ('', '?useSSL=true', '?useSSL=false&allowPublicKeyRetrieval=true'):
+            changed = {**source, 'db_url': 'jdbc:mysql://127.0.0.1:15432/fixture' + suffix}
+            with self.assertRaisesRegex(p.ProtocolError, 'CONNECTOR_URL_MISMATCH'):
+                p.validate_datasource_grant({'config': {'datasource': [changed]}}, 'mysql', [binding])
+
+    def test_rabbitmq_broker_list_is_pinned_and_cannot_select_mqtt_or_tls(self):
+        binding = self.connection('rabbitmq')
+        binding['endpoints'].append({'host': '192.0.2.20', 'address': '192.0.2.20', 'port': 5672})
+        self.assertEqual(len(p.connector_targets(p.connection_bindings([binding], '1'))), 2)
+        source = {'id': 41, 'db_type': 120, 'db_ip': '127.0.0.1', 'db_port': '15432', 'ext1': '0',
+                  'db_url': 'rabbitmq://127.0.0.1:15432,192.0.2.20:5672'}
+        self.assertEqual(p.validate_datasource_grant({'config': {'datasource': [source]}}, 'rabbitmq', [binding]), binding)
+        for changed, params in [({**source, 'ext1': '1'}, []), (source, [{'param_name': 'rabbitmq.protocol.type', 'param_value': 'mqtt'}]),
+                                ({**source, 'db_url': 'rabbitmq://127.0.0.1:15432,192.0.2.30:5672'}, [])]:
+            with self.assertRaises(p.ProtocolError):
+                p.validate_datasource_grant({'config': {'datasource': [changed], 'adapter_param': params}}, 'rabbitmq', [binding])
+
     def test_kafka_configuration_cannot_replace_pinned_brokers_or_load_custom_serializers(self):
         binding = self.connection('kafka')
         source = {'id': 41, 'db_type': 8, 'db_ip': '127.0.0.1', 'db_port': '15432', 'db_url': 'kafka2://127.0.0.1:15432'}
