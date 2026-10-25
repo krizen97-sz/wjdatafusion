@@ -57,8 +57,13 @@ def classpath(bundle: Path) -> list[Path]:
     for folder in ('task-service/lib', 'task-service/ext/normal', 'instance/lib'):
         selected.extend(sorted(name for name in paths if str(Path(name).parent) == folder and name.endswith('.jar')))
     for plugin in ('dataGeneratorInput', 'fieldMapping', 'fileOutput'):
+        # The original core profile remains usable with the smaller verified bundle.
         selected.append(f'instance/etl-{plugin}-2.0.0/adapter.properties')
         selected.append(f'instance/etl-{plugin}-2.0.0/etl_plugin.json')
+    for plugin in ('postgresqlInput', 'postgresqlOutput', 'fileInput', 'kafkaInput', 'kafkaV2Output'):
+        prefix = f'instance/etl-{plugin}-2.0.0/'
+        if prefix + 'adapter.properties' in paths:
+            selected.extend(prefix + suffix for suffix in ('adapter.properties', 'etl_plugin.json'))
     jars = []
     for name in selected:
         record = paths.get(name)
@@ -88,8 +93,12 @@ def execute(bundle: Path, java_home: Path, request: bytes, runtime: Path, timeou
         cp = os.pathsep.join(map(str, jars))
         environment = {key: value for key, value in os.environ.items() if key not in (
             'JAVA_TOOL_OPTIONS', '_JAVA_OPTIONS', 'JDK_JAVA_OPTIONS', 'CLASSPATH', 'DYLD_INSERT_LIBRARIES')}
+        sources = [str(SOURCE)]
+        helper = SOURCE.with_name('OriginalConnectionForms.java')
+        if helper.is_file():
+            sources.append(str(helper))
         build = subprocess.run([str(java_home / 'bin/javac'), '--release', '11', '-encoding', 'UTF-8', '-cp', cp,
-                                '-d', str(directory), str(SOURCE)], cwd=directory, capture_output=True, timeout=timeout, env=environment)
+                                '-d', str(directory), *sources], cwd=directory, capture_output=True, timeout=timeout, env=environment)
         if build.returncode:
             raise ValueError('Compiler adapter build failed')
         completed = subprocess.run([str(java_home / 'bin/java'), '-Xms32m', '-Xmx256m', '-cp', str(directory) + os.pathsep + cp,
