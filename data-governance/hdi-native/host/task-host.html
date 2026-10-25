@@ -7,7 +7,21 @@
   <link rel="icon" href="/detl/favicon.ico">
   <link rel="stylesheet" href="/detl/static/css/188.c7f3bc5a.css">
   <link rel="stylesheet" href="/detl/static/css/index.13312c3e.css">
-  <style>html,body,#app,#detl-task-root{height:100%;width:100%;margin:0}body{overflow:hidden}html[data-hdi-metrics="unavailable"] .running-rate{display:none}</style>
+  <style>
+    html,body,#app,#detl-task-root{height:100%;width:100%;margin:0}
+    body{overflow:hidden}
+    html[data-hdi-metrics="unavailable"] .running-rate{display:none}
+    /* The original source page assumes a full-width management window. Keep its
+       controls and render intact while fitting the platform's narrower iframe. */
+    @media(max-width:1400px){
+      html .card-wrap[data-v-51501056]{width:50%}
+      html .main-action[data-v-51501056] .h-page-action__main{display:flex;flex-direction:column;height:auto}
+      html .main-action[data-v-51501056] .h-page-action__left-action{width:100%!important}
+      html .main-action[data-v-51501056] .h-page-button-group{display:flex;flex-wrap:wrap;height:auto}
+      html .main-action[data-v-51501056] .h-page-action__right-action{position:static;display:flex;flex-wrap:wrap;align-items:center;max-width:100%}
+    }
+    @media(max-width:900px){html .card-wrap[data-v-51501056]{width:100%}}
+  </style>
 </head>
 <body>
   <div id="app"><div id="detl-task-root"><span role="status">正在加载任务工作区…</span></div></div>

@@ -77,3 +77,11 @@ ready只代表原TaskList/ProcessMain实例完成Vue挂载，不代表后端任�
 | 连接密码与版本 | 平台CredentialCryptoService、HdiCoreKeys | 现有AES-GCM存储、原RSA传输 | governance/hdi、CredentialCryptoService | 连接按owner隔离，发布时冻结版本；公开表单仅回读密码占位 |
 
 沿用已读的前端规范、组件目录和参考页面，外层仅增加模块入口，不新增UI库、图标库或全局样式。原Vue2/HUI仍仅在专用iframe内运行，未改原render或原资源字节。原连接资源列表/表单与平台结果抽屉分别承担配置和结果，不新增另一套节点表单。
+
+## 原连接页的嵌入宽度适配
+
+| 页面需要 | 现有实现 | 选择 | 参考文件 | 必需定制 |
+| --- | --- | --- | --- | --- |
+| 平台侧栏内仍能阅读连接卡片、操作和筛选 | 原DatasourceTable的卡片、HUI工具栏及窗口resize处理 | 保留原DOM、事件与控件，仅在iframe宿主按可用宽度换行 | HdiTaskWorkspace.vue、components/iFrame/index.vue、document/workspace/index.vue | 原卡片固定25%、右侧筛选绝对定位会压缩较窄iframe；将该组件限定为两列/单列，工具栏上下排列 |
+
+范围只限 `task-host.html` 中原组件的 `data-v-51501056` 样式作用域；不修改bundle原字节、不新增组件或颜色、不影响画布和平台全局样式。使用原窗口resize方法重新计算列表高度。验证真实Chrome不同窗口宽度、原连接测试、表单打开及控制台，并运行UI Guard与完整前端验证。
