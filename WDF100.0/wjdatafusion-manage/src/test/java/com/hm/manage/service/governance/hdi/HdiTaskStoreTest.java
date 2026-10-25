@@ -94,6 +94,19 @@ class HdiTaskStoreTest {
         var next = store.reserveRun(7, task.id(), 1, "RUN", null); assertTrue(next.nativeFlowId() >= run.nativeFlowId() + 100000);
         assertThrows(HdiTaskFault.class, () -> store.run(8, next.id()));
     }
+    @Test void acknowledgingAFailedTaskPreservesHistoryAndCannotResetANewerOrUnknownRun() {
+        var task = store.save(7, null, null, "失败确认", -1, (id, revision) -> validVisual(id, revision, true));
+        var failed = store.reserveRun(7, task.id(), 1, "DEBUG", null);
+        store.transition(failed, "FAILED", "{\"finalized\":true}", "原失败证据");
+        var ready = store.acknowledgeFailedTask(7, task.id(), failed.id());
+        assertEquals("READY", ready.state()); assertEquals(1, ready.revision()); assertEquals(failed.id(), ready.lastRunId());
+        assertEquals("FAILED", store.run(7, failed.id()).state()); assertEquals("原失败证据", store.run(7, failed.id()).errorMessage());
+        var next = store.reserveRun(7, task.id(), 1, "DEBUG", null);
+        assertEquals(409, assertThrows(HdiTaskFault.class, () -> store.acknowledgeFailedTask(7, task.id(), failed.id())).status());
+        store.transition(next, "UNKNOWN", "{}", "待核查");
+        assertEquals(409, assertThrows(HdiTaskFault.class, () -> store.acknowledgeFailedTask(7, task.id(), next.id())).status());
+        assertEquals("UNKNOWN", store.get(7, task.id()).state()); assertEquals(2, store.runs(7, task.id()).size());
+    }
     @Test void scheduleClaimsAreAtomicVersionBoundAndSkipOverlapWithoutDuplicateDispatch() {
         var task = task(); store.publish(7, task.id(), 1);
         Instant fire = Instant.now().plusSeconds(60).truncatedTo(ChronoUnit.MILLIS), next = fire.plusSeconds(86400);

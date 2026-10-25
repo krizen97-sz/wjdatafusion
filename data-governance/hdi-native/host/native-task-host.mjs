@@ -2,6 +2,7 @@
 const containers = new WeakMap()
 const originalRuntimes = new WeakMap()
 const sharedUi = new WeakMap()
+const connectionAssets = new WeakMap()
 
 export const originalVersions = Object.freeze({ vue: '2.7.16', 'vue-i18n': '7.8.1' })
 
@@ -17,17 +18,18 @@ export function loadOriginalModules(container = window.detlModule) {
         const registration = scope[name]?.[originalVersions[name]]
         if (!registration) throw new Error(`HDI 原版依赖缺失：${name}`)
         const module = (await registration.get())()
-        return module.default || module
+        return module
       }
-      const Vue = await shared('vue')
-      const VueI18n = await shared('vue-i18n')
+      const vueModule = await shared('vue'), i18nModule = await shared('vue-i18n')
+      const Vue = vueModule.default || vueModule
+      const VueI18n = i18nModule.default || i18nModule
       const components = (await container.get('./DFPModules'))()
       for (const name of ['AsyncTaskList', 'AsyncDagMain', 'AsyncDagMainForView', 'AsyncAddBasicInfo']) {
         if (typeof components[name] !== 'function') throw new Error('HDI 原版任务导出不完整')
       }
       const hui = window.GLOBAL_HUI
       if (!hui) throw new Error('HDI 原版 HUI 未加载')
-      return { Vue, VueI18n, hui: hui.default || hui, components }
+      return { Vue, VueI18n, vueModule, i18nModule, hui: hui.default || hui, components }
     })()
     containers.set(container, loading)
     loading.catch(() => containers.delete(container))
@@ -375,6 +377,55 @@ export function withOriginalListDefaults(TaskList) {
   }
 }
 
+/** Keep the original source list/forms; its former license counter displays the real platform capacity. */
+export function withOriginalConnectionManagement(SourceList, client) {
+  if (SourceList?.name !== 'DatasourceTable' || typeof SourceList?.methods?.queryList !== 'function') throw new Error('原连接管理组件版本不匹配')
+  return {
+    extends: SourceList,
+    methods: {
+      async getDatasourceLicense() {
+        try {
+          const response = await client.get('/detl/_platform/connections/usage')
+          if (response?.code !== '0' || !Number.isInteger(response.data?.used) || !Number.isInteger(response.data?.total)) throw new Error('平台连接容量读取失败')
+          this.licenseData = response.data
+        } catch { this.$message?.error('平台连接容量读取失败，请稍后刷新。') }
+      }
+    }
+  }
+}
+
+function loadOriginalConnectionAssets(surface = window) {
+  if (!connectionAssets.has(surface)) {
+    // The DFP runtime only names task chunks. This verified original registration chunk has
+    // no bootstrap callback; load its exact packaged JS/CSS without starting the management app.
+    const load = (tag, url) => new Promise((resolve, reject) => {
+      const element = surface.document.createElement(tag)
+      if (tag === 'link') { element.rel = 'stylesheet'; element.href = url } else element.src = url
+      element.onload = resolve; element.onerror = () => reject(new Error('原连接管理资源加载失败'))
+      surface.document.head.appendChild(element)
+    })
+    connectionAssets.set(surface, Promise.all([load('link', '/detl/static/css/73.7e261032.css'), load('script', '/detl/static/js/73.55a627ab.js')]))
+  }
+  return connectionAssets.get(surface)
+}
+
+function registerOriginalConnectionLocale(runtime, i18n, locale, vueModule, i18nModule) {
+  const shared = {}
+  // The management registration chunk uses different consumption IDs for the same
+  // original shared Vue dependencies. Bind those IDs to the already-loaded vendor modules.
+  if (!runtime.m[54613]) shared[54613] = module => { module.exports = vueModule }
+  if (!runtime.m[34791]) shared[34791] = module => { module.exports = i18nModule }
+  if (Object.keys(shared).length) window.webpackChunkdetl_web.push([['rynew-original-connection-shared'], shared])
+  // Original 188.15d552eb.js module registration only, without its application bootstrap.
+  // Source SHA256: 4ecc27f6d3b7b9fdda9c807312b6cc76572c3e8f94959df8d55b10f8ef994775
+  if (!runtime.m[42850]) window.webpackChunkdetl_web.push([['rynew-original-connection-locale'], {
+    42850:function(e,t,s){"use strict";s.d(t,{t:function(){return c}});var n=s(54613),o=s.n(n),r=s(34791),i=s.n(r);o().use(i(),{i18n:function(e,t){const s=a.t(e,t);return null!==s&&void 0!==s?s:""}});const a=new(i());a.t=a.t.bind(a),window.GLOBAL_I18N=a;const c=a.t.bind(a);t.A=a}
+  }])
+  const original = runtime(42850).A
+  original.locale = locale
+  original.mergeLocaleMessage(locale, i18n.getLocaleMessage(locale))
+}
+
 /**
  * Called only inside the isolated, same-origin iframe after backend authorization.
  * This context is presentation data, NEVER proof of server-side authorization.
@@ -384,7 +435,7 @@ export async function mountOriginalTasks(host, target) {
   if (!host?.user || !host.router || !target || !host.projectCode || !host.workspaceId) {
     throw new Error('缺少平台用户、工作区或导航上下文')
   }
-  const { Vue, VueI18n, hui, components } = await loadOriginalModules()
+  const { Vue, VueI18n, vueModule, i18nModule, hui, components } = await loadOriginalModules()
   const locale = host.locale || 'zh_CN'
   Vue.use(VueI18n)
   const i18n = new VueI18n({ locale, fallbackLocale: locale, messages: {} })
@@ -405,6 +456,16 @@ export async function mountOriginalTasks(host, target) {
   registerOriginalAdapterDrawer(Vue, originalRuntime())
   await registerOriginalToolbar(Vue, i18n, originalRuntime())
   const TaskListHost = withOriginalListDefaults(TaskList)
+  let ConnectionsHost = null
+  if (host.initialView === 'connections') {
+    const runtime = originalRuntime()
+    await loadOriginalConnectionAssets()
+    registerOriginalConnectionLocale(runtime, i18n, locale, vueModule, i18nModule)
+    const publicKey = await store.dispatch('setPublicKey')
+    if (typeof publicKey !== 'string' || !publicKey) throw new Error('原连接表单加密尚未就绪')
+    ConnectionsHost = withOriginalConnectionManagement(runtime(15442).default, originalRequestClient())
+    i18n.mergeLocaleMessage(locale, { 'detl.dataSourceAuth.msg': locale === 'en_US' ? 'Platform connections' : '平台连接数量' })
+  }
   store.commit('SET_USER', host.user)
   store.commit('SET_USER_INFO', host.user)
   let destroyed = false
@@ -417,13 +478,14 @@ export async function mountOriginalTasks(host, target) {
   let statusSync = null
   const vm = new Vue({
     i18n,
-    data: () => ({ taskId: host.initialTaskId || null, readonly: host.readOnly === true || host.readonly === true }),
+    data: () => ({ taskId: host.initialTaskId || null, view: host.initialView || 'tasks', readonly: host.readOnly === true || host.readonly === true }),
     methods: {
       async openTask(row, readonly, isNewCreate = false) {
         const id = String(row?.id ?? '')
         if (!/^[1-9]\d{0,18}$/.test(id) || (id.length === 19 && id > '9223372036854775807')) throw new Error('原任务返回的标识无效')
         if (host.openTaskInWindow?.({ id, readonly: host.readOnly === true || readonly, isNewCreate })) return
         this.taskId = id
+        this.view = 'tasks'
         statusSync?.refresh()
         this.readonly = host.readOnly === true || readonly
         await this.$nextTick()
@@ -432,6 +494,7 @@ export async function mountOriginalTasks(host, target) {
       }
     },
     render(h) {
+      if (this.view === 'connections') return h(ConnectionsHost)
       const project = { projectCode: host.projectCode, projectName: host.projectName, projectList: host.projectList || [] }
       return this.taskId ? h(DagMain, {
         key: `${this.taskId}:${this.readonly ? 'view' : 'edit'}`,
@@ -480,7 +543,7 @@ export async function mountOriginalTasks(host, target) {
   } catch (error) { destroy(); throw error }
   window.addEventListener('pagehide', onPageHide)
   return {
-    async backToTaskList() { vm.taskId = null; statusSync?.refresh(); await vm.$nextTick(); ensureMounted(vm) },
+    async backToTaskList() { vm.taskId = null; vm.view = 'tasks'; statusSync?.refresh(); await vm.$nextTick(); ensureMounted(vm) },
     setRoute(next) {
       const snapshot = { ...next }
       Object.keys(route).forEach(key => Vue.delete(route, key))

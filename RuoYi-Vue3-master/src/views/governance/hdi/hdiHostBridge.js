@@ -6,11 +6,16 @@ export function validHdiTaskId(value) {
   return TASK_ID.test(id) && (id.length < 19 || id <= '9223372036854775807')
 }
 
-export function hdiFrameUrl(value, origin, taskId, readonly = false, isNewCreate = false) {
+export function hdiFrameUrl(value, origin, taskId, readonly = false, isNewCreate = false, view = 'tasks') {
   if (typeof value !== 'string') throw new Error('任务工作区地址无效')
   const url = new URL(value, origin)
   if (url.origin !== origin || url.pathname !== HOST_PATH || url.username || url.password || url.search || url.hash) {
     throw new Error('任务工作区地址无效')
+  }
+  if (!['tasks', 'connections'].includes(view)) throw new Error('任务工作区视图无效')
+  if (view === 'connections') {
+    if (taskId != null && taskId !== '') throw new Error('连接管理不能同时携带任务标识')
+    url.searchParams.set('view', view)
   }
   if (taskId != null && taskId !== '') {
     if (!validHdiTaskId(taskId)) throw new Error('任务标识无效')

@@ -32,6 +32,13 @@ public class HdiCoreApi {
     private final ObjectProvider<HdiCoreKeys> keys;
     private final ObjectProvider<HdiCoreRuns> runs;
     private final ObjectProvider<HdiCoreSchedules> schedules;
+    private HdiCoreConnectionApi connectionApi;
+    private HdiCoreConnections connections;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setConnections(HdiCoreConnectionApi routes, HdiCoreConnections connections) {
+        this.connectionApi = routes; this.connections = connections;
+    }
 
     public HdiCoreApi(HdiCoreProperties properties, HdiTaskStore store, HdiCoreSessions sessions, HdiCoreCatalog catalog,
             HdiCoreAssets assets, HdiCompilerClient compiler, ObjectProvider<HdiCoreKeys> keys, ObjectProvider<HdiCoreRuns> runs,
@@ -55,7 +62,7 @@ public class HdiCoreApi {
         if ("/_platform/context".equals(path)) { requireMethod(method, "GET"); HdiProtocol.send(response, sessions.context(session, user)); return; }
         HdiCoreAssets.Asset asset = assets.read("/detl" + path);
         if (asset != null) { if (!Set.of("GET", "HEAD").contains(method)) throw new HdiTaskFault(405, "静态资源仅支持读取"); bytes(response, asset.bytes(), asset.contentType(), method.equals("HEAD")); return; }
-        if ("POST".equals(method)) sessions.csrf(request, session);
+        if ("POST".equals(method) || path.equals("/dataSource/manage/deleteCommonDatasource")) sessions.csrf(request, session);
         Object data = dispatch(path, method, request, session, user);
         if (path.startsWith("/statistics/modulesSpeed/")) {
             response.setHeader("X-HDI-Metrics-Available", "false"); response.setHeader("X-HDI-Metrics-Reason", "NOT_COLLECTED");
@@ -65,6 +72,7 @@ public class HdiCoreApi {
 
     private Object dispatch(String path, String method, HttpServletRequest request, HdiCoreSessions.Session session, LoginUser user) throws IOException {
         long owner = session.ownerId;
+        if (connectionApi != null && connectionApi.handles(path)) return connectionApi.handle(path, request, user);
         switch (path) {
             case "/workspace/getByProduct":
                 requireMethod(method, "GET");
@@ -102,15 +110,18 @@ public class HdiCoreApi {
                 return List.of();
             }
             case "/globalConfig/dataSourceManage/getDataSourceExtendInfo":
-                requireMethod(method, "GET"); return Map.of("previewTypes", "", "joinTypes", "", "testConnectionTypes", "", "compositeKeyTypes", "", "writeOperationTypes", "", "createTableTypes", "");
+                requireMethod(method, "GET"); return Map.of("previewTypes", "", "joinTypes", "", "testConnectionTypes", connections == null ? "" : "16,18,8", "compositeKeyTypes", "", "writeOperationTypes", "", "createTableTypes", "");
             case "/globalConfig/dataSourceManage/getDataTypeList": {
                 requireMethod(method, "GET"); String type = HdiProtocol.query(request, "dbType"), version = HdiProtocol.query(request, "dbVersion");
-                if (type != null && !type.isEmpty() && !Set.of("18", "FTP", "-1").contains(type) || version != null && !version.isEmpty()) throw unsupported();
+                if (type != null && !type.isEmpty() && !Set.of("16", "PostgreSQL", "Postgresql", "8", "Kafka", "18", "FTP", "-1").contains(type)
+                        || version != null && !version.matches("[A-Za-z0-9_.-]{0,64}")) throw unsupported();
+                // Original getDataTypeList falls back to DataTypeUtils.getEtlTypes when no vendor type registry is registered.
                 return catalog.getFileColumnTypes();
             }
             case "/globalConfig/dataSourceManage/getJdbcDbTypeList":
                 requireMethod(method, "POST"); emptyBody(request); return catalog.getJdbcDbTypes();
             case "/code/codeConfig/getDataTypeList": requireMethod(method, "GET"); return catalog.getDataTypes();
+            case "/code/codeConfig/getAllColumnCode": requireMethod(method, "GET"); return catalog.getAllColumnCodes();
             case "/globalConfig/paramManage/listParams": {
                 requireMethod(method, "POST"); JsonNode query = object(body(request));
                 if (!query.path("typeId").isIntegralNumber()) throw bad("参数类型无效");
@@ -129,7 +140,7 @@ public class HdiCoreApi {
                 String requestedUser = HdiProtocol.query(request, "userId");
                 if (requestedUser != null && !requestedUser.isBlank() && !Long.toString(owner).equals(requestedUser)) throw new HdiTaskFault(403, "目录不属于当前用户");
                 String type = HdiProtocol.query(request, "folderType");
-                if (type != null && !Set.of("1", "5").contains(type)) throw unsupported();
+                if (type != null && !Set.of("1", "3", "5").contains(type)) throw unsupported();
                 // This platform profile currently persists owner-root tasks only; no directory or script records exist.
                 return List.of();
             }
@@ -165,9 +176,9 @@ public class HdiCoreApi {
                 requireMethod(method, "POST"); emptyBody(request); HdiCoreSessions.require(user, "governance:flow:test");
                 HdiTaskStore.Task task = store.get(owner, queryId(request, "flowId"));
                 if (!"1".equals(HdiProtocol.query(request, "flowIncrStatus"))) throw new HdiTaskFault(422, "当前原节点任务仅支持全量运行");
-                // The supported generator/fieldMapping/file profile has no incremental source or shared checkpoint storage.
+                // These installed original connectors are admitted only in the full-run profile, without a platform incremental checkpoint.
                 JsonNode visual = parse(store.revision(owner, task.id(), task.revision()).visualJson());
-                for (JsonNode node : visual.path("nodes")) if (!Set.of("dataGeneratorInput", "fieldMapping", "fileOutput").contains(node.path("adapterName").asText())) throw unsupported();
+                for (JsonNode node : visual.path("nodes")) if (!Set.of("dataGeneratorInput", "fieldMapping", "fileOutput", "fileInput", "postgresqlInput", "postgresqlOutput", "kafkaInput", "kafkaV2Output").contains(node.path("adapterName").asText())) throw unsupported();
                 return path.endsWith("checkFlowIncrConfig") ? true : Map.of("incrConfigComplete", true, "storageDataBatchNum", 0);
             }
             case "/flow/findFlowPage": return list(request, method, user);
@@ -231,6 +242,8 @@ public class HdiCoreApi {
             if (operation.startsWith("stop")) {
                 HdiCoreSessions.require(user, "governance:flow:edit"); scheduler().disable(owner, task.id());
                 if (task.lastRunId() != null && store.run(owner, task.lastRunId()).state().matches("QUEUED|PREPARING|COMPILING|STARTING|RUNNING|STOPPING|UNKNOWN")) runtime().stop(owner, task.lastRunId());
+                else if (task.lastRunId() != null && task.state().equals("FAILED") && store.run(owner, task.lastRunId()).state().equals("FAILED"))
+                    store.acknowledgeFailedTask(owner, task.id(), task.lastRunId());
                 return flow(store.get(owner, task.id()), user);
             }
             if (operation.equals("debugFlow")) { runtime().startDebug(owner, task.id(), task.revision()); return null; }
@@ -293,6 +306,7 @@ public class HdiCoreApi {
         if (publish) HdiCoreSessions.require(user, "governance:flow:test");
         int limit = properties.getMaxVisualBytes(); if (limit < 1024 || limit > 8 * 1024 * 1024) throw new HdiTaskFault(503, "任务配置限额无效");
         ObjectNode visual = (ObjectNode)HdiProtocol.visual(HdiProtocol.body(request, limit + 4096), limit);
+        originalNodeTypes(visual);
         ObjectNode flow = (ObjectNode)visual.path("flowVo"); long owner = session.ownerId;
         Long id = optionalId(flow.get("id"), "任务标识"), expected = optionalId(flow.get("_platformRevision"), "任务修订");
         if (id != null) store.get(owner, id); else if (expected != null) throw bad("新任务不能携带旧修订");
@@ -305,8 +319,9 @@ public class HdiCoreApi {
         String name = optionalText(flow, "flowDisplayName"); long folder = folder(flow.get("folderId"));
         flow.remove("_platformRevision");
         HdiTaskStore.Task saved = store.save(owner, id, expected, name, folder, (allocatedId, revision) -> {
-            JsonNode prepared = compiler.prepare(Map.of("businessTaskId", Long.toString(allocatedId), "revision", Long.toString(revision),
-                "ownerId", Long.toString(owner), "workspaceId", Integer.toString(session.workspace.id()), "projectCode", HdiTaskStore.project(owner)), visual);
+            Map<String,Object> context = Map.of("businessTaskId", Long.toString(allocatedId), "revision", Long.toString(revision),
+                "ownerId", Long.toString(owner), "workspaceId", Integer.toString(session.workspace.id()), "projectCode", HdiTaskStore.project(owner));
+            JsonNode prepared = connections == null ? compiler.prepare(context, visual) : compiler.prepare(context, visual, connections.freezeReferences(owner, visual));
             return new HdiTaskStore.PreparedVisual(prepared.path("canonicalVisual").toString(), prepared.path("snapshotJson").asText(),
                 prepared.path("snapshotSha256").asText(), prepared.path("diagnostics").toString());
         });
@@ -316,9 +331,16 @@ public class HdiCoreApi {
 
     private ObjectNode visual(HdiTaskStore.Task task, LoginUser user) {
         ObjectNode visual = (ObjectNode)parse(store.revision(task.ownerId(), task.id(), task.revision()).visualJson());
+        originalNodeTypes(visual);
         visual.set("flowVo", flow(task, user)); visual.put("flowId", task.id());
         visual.put("readOnly", !HdiCoreSessions.has(user, "governance:flow:edit")); visual.putNull("historyId");
         visual.put("flowVersion", task.revision()); return visual;
+    }
+    private static void originalNodeTypes(ObjectNode visual) {
+        // Original NodeVo.dbType is a comma-separated String; older platform projections used integers.
+        visual.path("nodes").forEach(node -> {
+            if (node.isObject() && node.path("dbType").isIntegralNumber()) ((ObjectNode)node).put("dbType", node.path("dbType").asText());
+        });
     }
 
     private ObjectNode flow(HdiTaskStore.Task task, LoginUser user) {

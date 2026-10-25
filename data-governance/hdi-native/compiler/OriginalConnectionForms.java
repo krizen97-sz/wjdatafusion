@@ -58,6 +58,7 @@ public final class OriginalConnectionForms {
         if (parameters instanceof Map && !((Map<?, ?>)parameters).isEmpty()) DatasourceFormProcessor.inject(original, values);
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("ok", true); response.put("protocolVersion", 1); response.put("operation", request.get("operation"));
+        response.put("diagnostics", List.of());
         response.put("datasourceType", type); response.put("dbType", original.getDbType());
         response.put("datasourceVersion", original.getVersion()); response.put("category", original.getCategory());
         if ("connectionForm".equals(request.get("operation"))) {

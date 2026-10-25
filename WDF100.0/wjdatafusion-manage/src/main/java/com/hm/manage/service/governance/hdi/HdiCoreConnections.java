@@ -207,6 +207,7 @@ public class HdiCoreConnections {
     }
 
     public List<Map<String, Object>> schemas(long owner, long id) {
+        if (get(owner, id).path("dbType").asInt() != 16) return List.of(); // FTP and Kafka have no relational schema selector.
         return metadata(owner, id, connection -> {
             List<Map<String, Object>> result = new ArrayList<>();
             try (ResultSet rows = connection.getMetaData().getSchemas()) {
@@ -378,6 +379,7 @@ public class HdiCoreConnections {
     }
     private static ObjectNode publicView(Current row, ObjectNode source, boolean configured) {
         ObjectNode value = source.deepCopy().put("id", row.id).put("_platformRevision", Long.toString(row.revision)).put("revision", row.revision).put("name", row.name).put("datasourceName", row.name).put("enableFlag", row.enabled ? 1 : 0).put("passwordConfigured", configured).put("databasePassword", configured ? "******" : "");
+        value.put("url", source.path("dbUrl").asText());
         value.put("datasourceCategory", row.type == 16 ? "关系型数据库" : row.type == 18 ? "其它" : "消息队列");
         boolean currentTest = row.testedRevision == row.revision;
         value.put("status", currentTest ? row.testStatus : -1).put("errorMsg", currentTest && row.testMessage != null ? row.testMessage : "").put("supportTest", true).put("showVersion", false);

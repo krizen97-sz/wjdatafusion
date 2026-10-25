@@ -24,6 +24,13 @@ test('task identities remain exact positive Long strings in navigation', () => {
   assert.equal(validHdiTaskId('9223372036854775807'), true)
 })
 
+test('connection management uses a separate same-origin view and cannot impersonate a task route', () => {
+  assert.equal(hdiFrameUrl(entry, origin, null, false, false, 'connections'), `${entry}?view=connections`)
+  assert.throws(() => hdiFrameUrl(entry, origin, '12', false, false, 'connections'))
+  assert.throws(() => hdiFrameUrl(entry, origin, null, false, false, 'https://outside.example'))
+  assert.equal(platformTaskUrl(`${entry}?view=connections&task=12`, origin, '11'), null)
+})
+
 test('both original and DFP task windows retain exact IDs and mode in the platform', () => {
   assert.equal(platformTaskUrl('/detl/#/task/taskWorkBench?id=9007199254740993&appCode=11&flag=1', origin, '11'),
     '/governance/workspace?hdiTask=9007199254740993')

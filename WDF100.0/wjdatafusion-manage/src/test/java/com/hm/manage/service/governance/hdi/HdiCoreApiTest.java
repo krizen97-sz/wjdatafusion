@@ -402,4 +402,19 @@ class HdiCoreApiTest {
         verifyNoInteractions(runs);
     }
 
+    @Test void fullRunPreflightAdmitsEveryOriginalConnectorButDoesNotEnableIncrementalOrUnknownPlugins() throws Exception {
+        long id = create("原连接预检");
+        for (String adapter : List.of("dataGeneratorInput", "fieldMapping", "fileOutput", "fileInput", "postgresqlInput", "postgresqlOutput", "kafkaInput", "kafkaV2Output")) {
+            ObjectNode visual = (ObjectNode)read(id); visual.withObject("nodes").set("101", HdiProtocol.JSON.createObjectNode().put("id", 101).put("adapterName", adapter));
+            json(request(post("/detl/flow/saveFlowVisual/save").contentType("application/json").content(encoded(visual)), editorSession, true), 200);
+            JsonNode result = json(request(post("/detl/flow/checkBeforeStart").param("flowId", Long.toString(id)).param("flowIncrStatus", "1"), editorSession, true), 200).path("data");
+            assertTrue(result.path("incrConfigComplete").asBoolean());
+        }
+        json(request(post("/detl/flow/checkBeforeStart").param("flowId", Long.toString(id)).param("flowIncrStatus", "2"), editorSession, true), 422);
+        ObjectNode visual = (ObjectNode)read(id); ((ObjectNode)visual.path("nodes").path("101")).put("adapterName", "unknownPlugin");
+        json(request(post("/detl/flow/saveFlowVisual/save").contentType("application/json").content(encoded(visual)), editorSession, true), 200);
+        json(request(post("/detl/flow/checkBeforeStart").param("flowId", Long.toString(id)).param("flowIncrStatus", "1"), editorSession, true), 422);
+        verifyNoInteractions(runs);
+    }
+
 }

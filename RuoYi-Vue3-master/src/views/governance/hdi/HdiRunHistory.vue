@@ -9,7 +9,7 @@
       <el-table-column label="提交时间" min-width="175"><template #default="{ row }">{{ time(row.createdAt) }}</template></el-table-column>
       <el-table-column label="类型" width="90"><template #default="{ row }">{{ modes[row.mode] || row.mode }}</template></el-table-column>
       <el-table-column label="版本" prop="revision" width="80" />
-      <el-table-column label="状态" min-width="120"><template #default="{ row }"><el-tag :type="state(row.state).type">{{ state(row.state).label }}</el-tag></template></el-table-column>
+      <el-table-column label="状态" min-width="150"><template #default="{ row }"><el-tag :type="state(row.state, row.error).type">{{ state(row.state, row.error).label }}</el-tag></template></el-table-column>
       <el-table-column label="说明" prop="error" min-width="230" show-overflow-tooltip />
       <el-table-column label="操作" width="100"><template #default="{ row }"><el-button link type="primary" @click="select(row)">查看详情</el-button></template></el-table-column>
     </el-table>
@@ -21,11 +21,12 @@
       </el-descriptions>
       <el-alert v-if="detailError" :title="detailError" type="error" :closable="false" class="mb16" />
       <el-alert v-if="detail?.error" :title="detail.error" type="warning" :closable="false" class="mb16" />
+      <el-alert v-else-if="detail?.outputWarningCodes?.length" title="原日志报告了数据库输出异常或跳过记录，请核对目标端和运行日志。" type="warning" :closable="false" class="mb16" />
       <el-tabs v-loading="detailLoading" class="motion-tabs">
         <el-tab-pane label="输出文件">
           <template #label><span class="motion-control-label"><svg-icon icon-class="documentation" class="motion-control-label__icon" /><span class="motion-control-label__text">输出文件</span></span></template>
           <el-text type="info">文件通过完整性校验后归档；文件大小与摘要对应完整产物。</el-text>
-          <el-table :data="files" row-key="artifactId" :empty-text="detail?.state === 'SUCCEEDED' ? '尚无通过归档校验的文件，请检查运行说明和日志。' : '运行成功并完成归档后，可在这里下载文件。'">
+          <el-table :data="files" row-key="artifactId" :empty-text="detail?.state === 'SUCCEEDED' ? '本次没有可下载的本地文件；外部输出请核对目标端和运行日志。' : '运行成功并完成归档后，可在这里下载本地文件。'">
             <el-table-column label="文件" prop="name" min-width="180" show-overflow-tooltip />
             <el-table-column label="大小" width="120"><template #default="{ row }">{{ row.bytes.toLocaleString() }} 字节</template></el-table-column>
             <el-table-column label="SHA-256" prop="sha256" min-width="240" show-overflow-tooltip />
@@ -34,7 +35,7 @@
         </el-tab-pane>
         <el-tab-pane label="运行日志">
           <template #label><span class="motion-control-label"><svg-icon icon-class="list" class="motion-control-label__icon" /><span class="motion-control-label__text">运行日志</span></span></template>
-          <div class="mb8"><el-button :loading="logLoading" @click="loadLogs">{{ logText ? '继续读取' : '读取日志' }}</el-button><el-text type="info" class="ml10">按实际日志位置读取，本窗口最多展示 256 KB。</el-text></div>
+          <div class="mb8"><el-button :loading="logLoading" @click="loadLogs">{{ logText ? '继续读取' : '读取日志' }}</el-button><el-text type="info" class="ml10">按实际日志位置读取，本窗口显示最近一段日志。</el-text></div>
           <el-alert v-if="logError" :title="logError" type="error" :closable="false" class="mb8" />
           <el-empty v-if="!logText" description="点击读取日志查看原执行器输出。" />
           <pre v-else class="hdi-run-log">{{ logText }}</pre>
@@ -59,9 +60,12 @@ let generation = 0, selection = 0, timer, cursor = 0
 const modes = { DEBUG: '调试', RUN: '手动', SCHEDULE: '定时' }
 const states = {
   QUEUED: ['等待准备', 'info'], PREPARING: ['准备环境', 'info'], COMPILING: ['生成配置', 'info'], STARTING: ['启动中', 'primary'],
-  RUNNING: ['运行中', 'primary'], STOPPING: ['停止中', 'warning'], SUCCEEDED: ['成功', 'success'], FAILED: ['失败', 'danger'], CANCELLED: ['已取消', 'info'], UNKNOWN: ['需要核查', 'warning']
+  RUNNING: ['运行中', 'primary'], STOPPING: ['停止中', 'warning'], SUCCEEDED: ['引擎完成', 'success'], FAILED: ['失败', 'danger'], CANCELLED: ['已取消', 'info'], UNKNOWN: ['需要核查', 'warning']
 }
-function state(value) { const [label, type] = states[value] || ['未知状态', 'warning']; return { label, type } }
+function state(value, error) {
+  if (value === 'SUCCEEDED' && error) return { label: '完成 · 待核对', type: 'warning' }
+  const [label, type] = states[value] || ['未知状态', 'warning']; return { label, type }
+}
 function time(value) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—' }
 function message(cause, fallback) { return cause?.message || fallback }
 function active(row) { return !['SUCCEEDED', 'FAILED', 'CANCELLED', 'UNKNOWN'].includes(row.state) }

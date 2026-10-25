@@ -66,3 +66,14 @@ ready只代表原TaskList/ProcessMain实例完成Vue挂载，不代表后端任�
 隐藏页面/iframe、离开任务、销毁时暂停或取消；ResizeObserver及visibility/focus恢复可见查询。失败不刷新页面、不替换画布、不推断完成，同一任务修订只提示一次。使用原裸Axios库而非旧管理实例，因为后者遇Network Error会重新加载顶层页面。没有增加节点速度、行数或其它未采集指标。
 
 状态同步验证：16项定向测试（含3项原Store实例测试）通过；完整前端verify使用原bundle跑321项测试、0跳过，UI Guard、生产构建和167个JS兼容检查通过。原运行终态浏览器证据仍由集成任务采集。
+
+## 原连接管理组件接入（2026-10-25）
+
+| 页面需要 | 现有实现 | 选择 | 参考文件 | 必需定制 |
+| --- | --- | --- | --- | --- |
+| 从任务打开连接管理 | 原HdiTaskWorkspace、现有任务新窗口协议 | 外层el-button，独立原组件iframe视图 | HdiTaskWorkspace.vue、hdiHostBridge.js | 新窗口保留当前画布，URL严格限定connections视图 |
+| 连接列表与新增/编辑 | 原73.55a627ab.js module15442、58713、79553 | 原DatasourceTable、类型选择及通用连接表单 | 原字节按bundle manifest校验，模块通过原webpack runtime装配 | 接平台HTTP契约；原授权数量展示改读真实平台连接数量，不调用原授权接口 |
+| 连接字段、条件显隐、URL组合 | 原dEtlv2-datasource.jar | 原getParameters、DatasourceFormProcessor.inject、jointUrl、showVersion | OriginalConnectionForms.java | 受控一请求JVM，不启动原管理服务；原中文字典随bundle提取 |
+| 连接密码与版本 | 平台CredentialCryptoService、HdiCoreKeys | 现有AES-GCM存储、原RSA传输 | governance/hdi、CredentialCryptoService | 连接按owner隔离，发布时冻结版本；公开表单仅回读密码占位 |
+
+沿用已读的前端规范、组件目录和参考页面，外层仅增加模块入口，不新增UI库、图标库或全局样式。原Vue2/HUI仍仅在专用iframe内运行，未改原render或原资源字节。原连接资源列表/表单与平台结果抽屉分别承担配置和结果，不新增另一套节点表单。

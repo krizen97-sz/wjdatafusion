@@ -124,6 +124,17 @@ class HdiCoreRunsTest {
         runs.startDebug(4, 17, 2); awaitState("SUCCEEDED");
         assertFalse(runs.artifacts(4, row.get().id()).path("available").asBoolean()); assertTrue(row.get().errorMessage().contains("产物"));
     }
+    @Test void externalOutputCompletionPreservesNativeStateAndExposesObservedErrorsWithoutInventingArtifacts() throws Exception {
+        ObjectNode success = view("SUCCEEDED", true); success.put("nativeState", "finish"); success.putArray("artifacts");
+        success.putArray("outputWarningCodes").add("JDBC_OUTPUT_ERROR_OBSERVED").add("JDBC_OUTPUT_ROWS_SKIPPED").add("not-a-trusted-message");
+        when(worker.submit(any(), any())).thenReturn(success);
+        runs.startDebug(4, 17, 2); awaitState("SUCCEEDED");
+        JsonNode status = runs.status(4, row.get().id()); assertEquals("SUCCEEDED", status.path("engineState").asText());
+        assertEquals("finish", status.path("nativeState").asText()); assertEquals(2, status.path("outputWarningCodes").size());
+        assertTrue(status.path("error").asText().contains("数据库输出错误")); assertTrue(status.path("outputRows").isNull());
+        JsonNode files = runs.artifacts(4, row.get().id()); assertTrue(files.path("available").asBoolean()); assertTrue(files.path("artifacts").isEmpty());
+        verify(worker, never()).artifact(any(), anyString(), anyLong(), anyInt());
+    }
     @Test void restartQuarantinesPendingRunsWithoutDispatchingThem() {
         when(store.unfinished()).thenReturn(List.of(row.get())); runs.initialize();
         assertEquals("UNKNOWN", row.get().state()); verifyNoInteractions(worker, compiler);

@@ -183,6 +183,19 @@ public class HdiTaskStore {
             return flag.asBoolean(false) ? "READY" : "DRAFT";
         } catch (java.io.IOException failure) { throw new HdiTaskFault(502, "原任务保存快照无效"); }
     }
+    /** Original Stop acknowledges a completed failure; the immutable failed run is never reset or replayed. */
+    public Task acknowledgeFailedTask(long owner, long taskId, String failedRunId) {
+        return transactions.execute(status -> {
+            Task task = lockedTask(owner, taskId);
+            if (!java.util.Objects.equals(task.lastRunId(), failedRunId)) throw new HdiTaskFault(409, "任务已有其他运行，请刷新后核对");
+            Run failed = run(owner, failedRunId);
+            if (!"FAILED".equals(failed.state()) || !"FAILED".equals(task.state())) throw new HdiTaskFault(409, "当前任务不是已结束的失败运行");
+            String state = editingState(revision(owner, taskId, task.revision()).visualJson());
+            jdbc.update("UPDATE dg_hdi_task SET state=?,updated_at=? WHERE task_id=? AND owner_id=? AND last_run_id=? AND state='FAILED'",
+                state, Timestamp.from(Instant.now()), taskId, owner, failedRunId);
+            return get(owner, taskId);
+        });
+    }
     public Run reserveRun(long owner, long taskId, long revision, String mode, String triggerKey) {
         if (!List.of("DEBUG", "RUN", "SCHEDULE").contains(mode)) throw new HdiTaskFault(400, "运行方式无效");
         return transactions.execute(status -> {

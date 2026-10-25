@@ -1,10 +1,11 @@
 <template>
   <div ref="workspace" class="app-container hdi-task-workspace">
-    <div v-if="(taskId || warned) && !failed" class="mb8">
-      <el-button v-if="taskId" icon="Back" @click="backToList">任务列表</el-button>
+    <div v-if="!failed" class="mb8">
+      <el-button v-if="taskId || connectionsView" icon="Back" @click="backToList">任务列表</el-button>
+      <el-button v-if="!connectionsView" tag="a" :href="connectionsUrl" target="_blank" rel="noopener" icon="Connection">连接管理</el-button>
       <el-button v-if="taskId" icon="Tickets" @click="historyOpen = true">运行记录</el-button>
       <el-button v-if="warned" icon="Refresh" @click="connect(true)">重新连接</el-button>
-      <el-text v-if="taskId" type="info" class="ml10">CSV 输出请关闭异步生成，目录填写“/平台输出”。节点速度暂未采集，结果请看运行记录。</el-text>
+      <el-text v-if="taskId" type="info" class="ml10">试运行会实际读写，并可能推进消息消费位置，请使用测试目标和消费组。本地文件目录：/平台输出。</el-text>
     </div>
     <HdiRunHistory v-model="historyOpen" :task-id="taskId" />
     <el-result v-if="failed" icon="warning" title="任务工作区暂不可用" sub-title="请重试；如果仍无法连接，请联系管理员。">
@@ -27,6 +28,8 @@ import { hdiFrameUrl, isHdiMessage, platformTaskUrl, validHdiTaskId } from './hd
 import HdiRunHistory from './HdiRunHistory.vue'
 
 const route = useRoute(), router = useRouter()
+const connectionsView = computed(() => route.query.hdiView === 'connections')
+const connectionsUrl = computed(() => router.resolve({ path: '/governance/workspace', query: { hdiView: 'connections' } }).href)
 const workspace = ref(), frameHost = ref(), frame = ref()
 const frameUrl = ref(''), loading = ref(true), failed = ref(false)
 const taskId = ref(route.query.hdiTask || null)
@@ -61,7 +64,7 @@ async function connect(renew = false) {
     if (current !== attempt) return
     nativeContext.value = response.data
     warned.value = false
-    frameUrl.value = hdiFrameUrl(response.data?.frameUrl, window.location.origin, taskId.value, readonly.value, isNewCreate.value)
+    frameUrl.value = hdiFrameUrl(response.data?.frameUrl, window.location.origin, taskId.value, readonly.value, isNewCreate.value, connectionsView.value ? 'connections' : 'tasks')
     timeout = setTimeout(() => { if (current === attempt) fail() }, 45000)
   } catch { if (current === attempt) fail() }
 }
@@ -73,6 +76,7 @@ function syncTaskRoute(id, viewOnly = false, created = false) {
   delete query.hdiTask
   delete query.hdiReadonly
   delete query.hdiNew
+  delete query.hdiView
   if (taskId.value) query.hdiTask = taskId.value
   if (taskId.value && viewOnly) query.hdiReadonly = 'true'
   else if (taskId.value && created) query.hdiNew = '1'
@@ -169,9 +173,9 @@ function frameLoaded() {
     mounted()
   } catch { fail() }
 }
-watch(() => [route.query.hdiTask, route.query.hdiReadonly, route.query.hdiNew], ([id, viewOnly, created]) => {
+watch(() => [route.query.hdiTask, route.query.hdiReadonly, route.query.hdiNew, route.query.hdiView], ([id, viewOnly, created, view], previous) => {
   const nextId = id || null, nextReadonly = viewOnly === 'true', nextNew = created === '1'
-  if (String(nextId) === String(taskId.value) && nextReadonly === readonly.value && nextNew === isNewCreate.value) return
+  if (String(nextId) === String(taskId.value) && nextReadonly === readonly.value && nextNew === isNewCreate.value && view === previous?.[3]) return
   taskId.value = nextId
   readonly.value = nextReadonly
   isNewCreate.value = nextNew
@@ -179,7 +183,7 @@ watch(() => [route.query.hdiTask, route.query.hdiReadonly, route.query.hdiNew], 
     frameCleanup()
     clearTimeout(timeout)
     loading.value = true
-    try { frameUrl.value = hdiFrameUrl(nativeContext.value.frameUrl, window.location.origin, nextId, nextReadonly, nextNew) }
+    try { frameUrl.value = hdiFrameUrl(nativeContext.value.frameUrl, window.location.origin, nextId, nextReadonly, nextNew, view || 'tasks') }
     catch { return fail() }
     timeout = setTimeout(fail, 45000)
   }

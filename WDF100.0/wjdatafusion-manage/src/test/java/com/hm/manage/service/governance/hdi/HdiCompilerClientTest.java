@@ -72,7 +72,7 @@ class HdiCompilerClientTest {
             HdiTaskFault failure = assertThrows(HdiTaskFault.class, () -> client().prepare(context, visual()));
             assertEquals(422, failure.status());
             assertFalse(failure.getMessage().contains("credential-secret"));
-            if (reason.equals("LOCAL_OUTPUT_REQUIRED")) assertEquals("仅支持本地文件输出，请关闭远程上传并取消残留的高级传输协议参数", failure.getMessage());
+            if (reason.equals("LOCAL_OUTPUT_REQUIRED")) assertEquals("文件输出的传输协议或上传设置与节点表单冲突，请移除冲突的高级参数", failure.getMessage());
             else if (reason.equals("FILE_FORMAT_CONFLICT")) assertTrue(failure.getMessage().contains("文件输出格式与高级参数中的文件格式不一致"));
             else assertEquals("当前原引擎接入范围不支持此流程节点、连接或参数配置", failure.getMessage());
         }
@@ -222,7 +222,7 @@ class HdiCompilerClientTest {
         // by the worker's local-only profile. The compiler now reports it before submit.
         HdiTaskFault failure = assertThrows(HdiTaskFault.class, () -> client().compile(frozen.path("snapshotJson").asText(), frozen.path("snapshotSha256").asText(), run));
         assertEquals(422, failure.status());
-        assertEquals("仅支持本地文件输出，请关闭远程上传并取消残留的高级传输协议参数", failure.getMessage());
+        assertEquals("文件输出的传输协议或上传设置与节点表单冲突，请移除冲突的高级参数", failure.getMessage());
     }
 
     private record Fixture(String snapshot, Map<String,Object> run, ObjectNode response) { }

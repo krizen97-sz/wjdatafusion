@@ -6,7 +6,7 @@ const send = (type, data = {}) => {
 let mounted
 function rememberTask(id, readonly, isNewCreate = false) {
   const url = new URL(window.location.href)
-  for (const key of ['task', 'readonly', 'new']) url.searchParams.delete(key)
+  for (const key of ['task', 'readonly', 'new', 'view']) url.searchParams.delete(key)
   if (id) url.searchParams.set('task', String(id))
   if (id && readonly) url.searchParams.set('readonly', 'true')
   else if (id && isNewCreate) url.searchParams.set('new', '1')
@@ -50,7 +50,9 @@ async function mount() {
     const result = await response.json()
     if (result.code !== '0' || !result.data?.user || !result.data?.projectCode || !result.data?.workspaceId) throw new Error('任务工作区未配置')
     const query = new URLSearchParams(window.location.search)
-    if (['task', 'readonly', 'new'].some(key => query.getAll(key).length > 1)) throw new Error('任务参数重复')
+    if (['task', 'readonly', 'new', 'view'].some(key => query.getAll(key).length > 1)) throw new Error('任务参数重复')
+    const view = query.get('view') || 'tasks'
+    if (!['tasks', 'connections'].includes(view) || view === 'connections' && query.has('task')) throw new Error('工作区视图无效')
     const taskId = query.get('task')
     if (taskId && (!/^[1-9]\d{0,18}$/.test(taskId) || (taskId.length === 19 && taskId > '9223372036854775807'))) throw new Error('任务标识无效')
     mounted = await mountOriginalTasks({
@@ -58,6 +60,7 @@ async function mount() {
       router,
       route: { query: {} },
       initialTaskId: taskId,
+      initialView: view,
       readonly: query.get('readonly') === 'true',
       openTaskInWindow: ({ id, readonly, isNewCreate }) => {
         const target = new URL('/governance/workspace', window.location.origin)
@@ -79,6 +82,9 @@ async function mount() {
       if (event.data?.type === 'rynew-hdi:back') back()
     })
     ready()
-  } catch { fail() }
+  } catch (error) {
+    console.error('原组件初始化失败', error?.name, String(error?.stack || '').split('\n').slice(1, 6).join('\n'))
+    fail()
+  }
 }
 mount()

@@ -49,6 +49,8 @@ public class HdiCompilerClient {
     private final Duration timeout;
     private final int maxStdout;
     private final Semaphore slots;
+    private final Semaphore connectionQueue = new Semaphore(12, true);
+    private final Semaphore connectionInvocation = new Semaphore(1, true);
 
     @Autowired
     public HdiCompilerClient(HdiCoreProperties properties) { this(properties, Duration.ofSeconds(45), MAX_STDOUT, 2); }
@@ -57,14 +59,21 @@ public class HdiCompilerClient {
     }
 
     public JsonNode prepare(Map<String,Object> trustedContext, JsonNode visual) {
+        return prepare(trustedContext, visual, null);
+    }
+
+    public JsonNode prepare(Map<String,Object> trustedContext, JsonNode visual, JsonNode trustedConnectionRefs) {
         JsonNode context = context(trustedContext);
         if (visual == null || !visual.isObject()) throw new HdiTaskFault(422, "流程定义必须是原画布对象");
         ObjectNode request = json.createObjectNode().put("operation", "prepare");
         request.set("context", context); request.set("visual", visual);
+        if (trustedConnectionRefs != null) { connectionRefs(trustedConnectionRefs); request.set("trustedConnectionRefs", trustedConnectionRefs); }
         JsonNode response = invoke(request);
         require("prepare".equals(response.path("operation").asText()), "operation");
         JsonNode snapshot = checkedSnapshot(response.path("snapshotJson"), response.path("snapshotSha256"));
         require(context.equals(snapshot.path("context")), "context");
+        if (trustedConnectionRefs != null && (!trustedConnectionRefs.isEmpty() || snapshot.has("connectionRefs"))) require(trustedConnectionRefs.equals(snapshot.path("connectionRefs")), "frozen connection versions");
+        else require(!snapshot.has("connectionRefs") || snapshot.path("connectionRefs").isEmpty(), "unexpected connection versions");
         require(response.path("canonicalVisual").isObject() && snapshot.path("visual").equals(response.path("canonicalVisual")), "visual");
         require(identity(snapshot.path("visual").path("flowId"), context.path("businessTaskId").asText()), "flowId");
         JsonNode flow = snapshot.path("visual").path("flowVo");
@@ -147,9 +156,39 @@ public class HdiCompilerClient {
         require(bytes.length <= MAX_REQUEST && hash(bytes).equals(sha.asText()), "snapshot digest");
         JsonNode snapshot = read(bytes);
         require(snapshot.path("protocolVersion").isInt() && snapshot.path("protocolVersion").intValue() == 1 && snapshot.path("context").isObject() && snapshot.path("visual").isObject(), "snapshot schema");
+        if (snapshot.has("connectionRefs")) connectionRefs(snapshot.path("connectionRefs"));
         @SuppressWarnings("unchecked") Map<String,Object> values = json.convertValue(snapshot.path("context"), Map.class);
         context(values);
         return snapshot;
+    }
+    private void connectionRefs(JsonNode refs) {
+        require(refs.isObject() && refs.size() <= 32, "connection references");
+        refs.fields().forEachRemaining(entry -> {
+            require(entry.getKey().matches("[1-9][0-9]{0,15}"), "connection ID"); decimal(entry.getValue());
+        });
+    }
+
+    public JsonNode connectionDescription(String operation, String type, String version, JsonNode parameters) {
+        require(Set.of("connectionForm", "connectionUrl").contains(operation), "connection operation");
+        require(Set.of("Postgresql", "PostgreSQL", "FTP", "Kafka").contains(type), "connection type");
+        ObjectNode request = json.createObjectNode().put("operation", operation).put("datasourceType", type);
+        if (version != null) request.put("datasourceVersion", version);
+        if (parameters != null) { require(parameters.isObject(), "connection parameters"); request.set("parameters", parameters); }
+        // Original forms request URL previews on several consecutive field changes. Serialize
+        // these read-only SDK calls within a bounded queue instead of rejecting normal typing.
+        if (!connectionQueue.tryAcquire()) throw new HdiTaskFault(429, "连接预览请求较多，请稍后重试");
+        JsonNode response; boolean acquired = false;
+        try {
+            acquired = connectionInvocation.tryAcquire(25, TimeUnit.SECONDS);
+            if (!acquired) throw new HdiTaskFault(503, "连接预览正在处理，请稍后重试");
+            response = invoke(request);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt(); throw new HdiTaskFault(503, "连接预览已中断");
+        } finally { if (acquired) connectionInvocation.release(); connectionQueue.release(); }
+        require(operation.equals(response.path("operation").asText()) && type.equals(response.path("datasourceType").asText()), "connection description binding");
+        if (operation.equals("connectionForm")) require(response.path("form").path("formItems").isArray(), "original connection form");
+        else require(response.path("url").isTextual(), "original connection URL");
+        return response;
     }
     private JsonNode payload(JsonNode envelope, int maxBytes) {
         require(envelope.isObject() && envelope.path("base64").isTextual() && envelope.path("sha256").isTextual(), "payload envelope");
@@ -230,7 +269,7 @@ public class HdiCompilerClient {
                     // Only fixed platform-owned reason codes can influence user text.
                     // Vendor messages/values may contain task data or secrets.
                     String reason = response.path("reason").asText();
-                    if (reason.equals("LOCAL_OUTPUT_REQUIRED")) throw new HdiTaskFault(422, "仅支持本地文件输出，请关闭远程上传并取消残留的高级传输协议参数");
+                    if (reason.equals("LOCAL_OUTPUT_REQUIRED")) throw new HdiTaskFault(422, "文件输出的传输协议或上传设置与节点表单冲突，请移除冲突的高级参数");
                     if (reason.equals("FILE_FORMAT_CONFLICT")) throw new HdiTaskFault(422, "文件输出格式与高级参数中的文件格式不一致，请统一两处格式或取消残留的高级文件格式参数");
                     throw new HdiTaskFault(422, "当前原引擎接入范围不支持此流程节点、连接或参数配置");
                 }

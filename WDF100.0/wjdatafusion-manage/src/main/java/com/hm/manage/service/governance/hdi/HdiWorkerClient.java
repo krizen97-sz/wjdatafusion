@@ -62,11 +62,21 @@ public class HdiWorkerClient implements AutoCloseable {
         return greeting.deepCopy();
     }
     public synchronized JsonNode reserve(HdiTaskStore.Run run) {
+        return reserve(run, null, List.of());
+    }
+    public synchronized JsonNode reserve(HdiTaskStore.Run run, JsonNode connectionBindings, List<String> redactionValues) {
         ObjectNode body = owned(run); body.put("businessTaskId", Long.toString(run.taskId())).put("revision", Long.toString(run.revision()))
             .put("nativeFlowId", Long.toString(run.nativeFlowId())).put("nativeInstanceId", Long.toString(run.nativeInstanceId()))
             .put("execId", run.execId()).put("workspaceId", Integer.toString(run.workspaceId())).put("metadataIdBase", Long.toString(run.metadataIdBase()))
             .put("mode", run.mode().equals("DEBUG") ? "test" : "run");
-        return bound(run, request("reserve", body));
+        if (connectionBindings != null) {
+            if (!connectionBindings.isArray() || connectionBindings.size() > 32 || redactionValues == null || redactionValues.size() > 32)
+                throw new Failure("INVALID_CONNECTION_BINDING", false);
+            body.set("connectionBindings", connectionBindings); body.set("redactionValues", HdiProtocol.JSON.valueToTree(redactionValues));
+        }
+        JsonNode result = bound(run, request("reserve", body));
+        if (connectionBindings != null && !connectionBindings.equals(result.path("connectionBindings"))) throw failed("CONNECTION_BINDING_MISMATCH");
+        return result;
     }
     public synchronized JsonNode submit(HdiTaskStore.Run run, JsonNode compiled) {
         byte[] bytes;

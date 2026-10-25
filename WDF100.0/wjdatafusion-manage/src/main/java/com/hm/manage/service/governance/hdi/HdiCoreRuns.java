@@ -33,6 +33,9 @@ public class HdiCoreRuns {
     private final HdiCompilerClient compiler;
     private final HdiWorkerClient worker;
     private final DataGovernanceArtifactStore artifactStore;
+    private HdiCoreConnections connections;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setConnections(HdiCoreConnections value) { this.connections = value; }
     private final ConcurrentHashMap<String,Active> active = new ConcurrentHashMap<>();
     private final ThreadPoolExecutor starters = new ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS, new SynchronousQueue<>(),
         runnable -> { Thread thread = new Thread(runnable, "hdi-run-start"); thread.setDaemon(true); return thread; });
@@ -105,18 +108,32 @@ public class HdiCoreRuns {
         try {
             if (current.cancelled || closing) { finishUnsubmitted(current); return; }
             store.transition(run, "PREPARING", null, null);
-            JsonNode reserved = worker.reserve(run); current.reserved = true;
+            HdiTaskStore.Revision frozen = store.revision(run.ownerId(), run.taskId(), run.revision());
+            HdiCoreConnections.Resolved resolved = null;
+            if (connections != null) {
+                JsonNode snapshot;
+                try { snapshot = HdiProtocol.JSON.readTree(frozen.snapshotJson()); }
+                catch (java.io.IOException invalid) { throw new HdiTaskFault(422, "任务冻结版本无法读取"); }
+                if (snapshot == null || !snapshot.isObject()) throw new HdiTaskFault(422, "任务冻结版本无法读取");
+                JsonNode refs = snapshot.has("connectionRefs") ? snapshot.path("connectionRefs") : HdiProtocol.JSON.createObjectNode();
+                resolved = connections.resolveForRun(run.ownerId(), snapshot.path("visual"), refs);
+            }
+            JsonNode reserved = resolved == null || resolved.connectionBindings().isEmpty() ? worker.reserve(run)
+                : worker.reserve(run, resolved.connectionBindings(), resolved.redactionValues()); current.reserved = true;
             if (!reserved.path("outputsDir").isTextual() || !reserved.path("authorizedOutputRoot").isTextual()) throw new HdiTaskFault(502, "原执行器没有返回受控输出目录");
             store.transition(run, "COMPILING", serialized(reserved), null);
             if (current.cancelled || closing) { cancelReserved(current); return; }
-            HdiTaskStore.Revision frozen = store.revision(run.ownerId(), run.taskId(), run.revision());
-            JsonNode compiled = compiler.compile(frozen.snapshotJson(), frozen.snapshotSha256(), Map.of(
+            Map<String,Object> runContext = new java.util.LinkedHashMap<>(Map.of(
                 "businessTaskId", Long.toString(run.taskId()), "revision", Long.toString(run.revision()),
                 "nativeFlowId", Long.toString(run.nativeFlowId()), "nativeInstanceId", Long.toString(run.nativeInstanceId()),
                 "metadataIdBase", Long.toString(run.metadataIdBase()), "execId", run.execId(),
                 "outputsDir", reserved.path("outputsDir").asText(), "authorizedOutputRoot", reserved.path("authorizedOutputRoot").asText(),
                 "outputRootSource", "worker-reserve",
                 "mode", run.mode().equals("DEBUG") ? "test" : "run"));
+            if (resolved != null && !resolved.connectionBindings().isEmpty()) {
+                runContext.put("connections", resolved.connections()); runContext.put("connectionBindings", resolved.connectionBindings());
+            }
+            JsonNode compiled = compiler.compile(frozen.snapshotJson(), frozen.snapshotSha256(), runContext);
             if (current.cancelled || closing) { cancelReserved(current); return; }
             // Persist submission intent before the transport call. A missing reply becomes UNKNOWN, never a retry.
             store.transition(run, "STARTING", serialized(reserved), null); current.submitting = true;
@@ -128,7 +145,7 @@ public class HdiCoreRuns {
             if (!failure.uncertain() && current.submitting && confirmUnsubmittedReservation(current)) {
                 current.submitting = false;
                 failBeforeSubmit(current, "LOCAL_OUTPUT_REQUIRED".equals(failure.code())
-                    ? "执行器要求本地文件输出，请核对文件节点的传输协议与远程上传设置；任务尚未开始"
+                    ? "文件输出的传输协议或上传设置与节点表单冲突，请核对高级参数；任务尚未开始"
                     : "执行器拒绝了该配置，任务尚未开始；请核查节点设置或联系管理员");
             } else if (failure.uncertain() || current.submitting) unknown(current, "原执行通道中断或提交结果未知；未重新提交");
             else failBeforeSubmit(current, "原执行环境当前不可用，任务尚未开始");
@@ -199,6 +216,7 @@ public class HdiCoreRuns {
             .put("finalized", evidence.path("finalized").asBoolean(false)).put("engineState", evidence.path("state").asText("UNKNOWN"))
             .put("observed", !evidence.isEmpty()).put("metricsAvailable", false).put("updatedAt", run.updatedAt().toString());
         view.put("nativeState", evidence.path("nativeState").asText(null));
+        view.set("outputWarningCodes", HdiProtocol.JSON.valueToTree(outputWarnings(evidence)));
         view.put("error", run.errorMessage()); view.putNull("inputRows"); view.putNull("outputRows");
         return view;
     }
@@ -243,6 +261,8 @@ public class HdiCoreRuns {
         if (state.equals("SUCCEEDED")) {
             try { captureArtifacts(run, observation); persisted.put("platformArtifactsAvailable", true); }
             catch (RuntimeException failure) { persisted.put("platformArtifactsAvailable", false); error = "原引擎运行成功，但完整产物尚未通过平台收编校验"; }
+            String warning = outputWarningMessage(observation);
+            if (warning != null) error = error == null ? warning : warning + "；" + error;
         } else if (state.equals("FAILED")) error = "原引擎执行失败或超时，详情请查看该运行日志";
         else if (state.equals("UNKNOWN")) error = "原执行状态待核查，未重新提交";
         store.transition(run, state, serialized(persisted), error);
@@ -251,7 +271,8 @@ public class HdiCoreRuns {
 
     private void captureArtifacts(HdiTaskStore.Run run, JsonNode observation) {
         JsonNode artifacts = observation.path("artifacts");
-        if (!artifacts.isArray() || artifacts.isEmpty() || artifacts.size() > DataGovernanceArtifactStore.MAX_ARTIFACTS) throw new HdiTaskFault(502, "原运行未提供完整产物清单");
+        if (!artifacts.isArray() || artifacts.size() > DataGovernanceArtifactStore.MAX_ARTIFACTS) throw new HdiTaskFault(502, "原运行未提供完整产物清单");
+        if (artifacts.isEmpty()) return; // Database/message outputs need not create a downloadable local file.
         try { artifactStore.manifest(run.id(), run.ownerId()); return; } catch (RuntimeException absent) { /* Begin immutable capture only when no published manifest exists. */ }
         DataGovernanceModels.StoredRun stored = new DataGovernanceModels.StoredRun(); stored.ownerId = run.ownerId(); stored.run = new DataGovernanceModels.TestRun();
         stored.run.id = run.id(); stored.run.definitionHash = run.definitionSha256(); stored.run.status = "SUCCEEDED"; stored.run.cleanupConfirmed = true;
@@ -289,6 +310,8 @@ public class HdiCoreRuns {
         HdiTaskStore.Run run = store.run(owner, runId);
         if (!run.state().equals("SUCCEEDED") || !saved(run).path("platformArtifactsAvailable").asBoolean(false))
             return HdiProtocol.JSON.createObjectNode().put("available", false).put("reason", "NOT_PUBLISHED").set("artifacts", HdiProtocol.JSON.createArrayNode());
+        if (saved(run).path("artifacts").isArray() && saved(run).path("artifacts").isEmpty())
+            return HdiProtocol.JSON.createObjectNode().put("available", true).put("localArtifactsGenerated", false).set("artifacts", HdiProtocol.JSON.createArrayNode());
         try {
             var manifest = artifactStore.manifest(runId, owner); var items = HdiProtocol.JSON.createArrayNode();
             for (var item : manifest.artifacts()) items.add(HdiProtocol.JSON.createObjectNode().put("artifactId", item.id()).put("name", item.filename())
@@ -316,6 +339,17 @@ public class HdiCoreRuns {
         return "application/octet-stream";
     }
     private static String serialized(JsonNode value) { return value == null ? null : value.toString(); }
+    private static List<String> outputWarnings(JsonNode evidence) {
+        JsonNode codes = evidence.path("outputWarningCodes"); if (!codes.isArray()) return List.of();
+        var result = new java.util.LinkedHashSet<String>();
+        for (JsonNode code : codes) if (code.isTextual() && Set.of("JDBC_OUTPUT_ERROR_OBSERVED", "JDBC_OUTPUT_ROWS_SKIPPED").contains(code.asText())) result.add(code.asText());
+        return List.copyOf(result);
+    }
+    private static String outputWarningMessage(JsonNode evidence) {
+        List<String> codes = outputWarnings(evidence);
+        if (codes.contains("JDBC_OUTPUT_ERROR_OBSERVED")) return "原引擎已结束，但观察到数据库输出错误；请核对目标表和运行日志";
+        return codes.isEmpty() ? null : "原引擎记录了跳过数据；请结合目标端和运行日志核对结果";
+    }
     private static JsonNode saved(HdiTaskStore.Run run) {
         if (run.workerSnapshotJson() == null || run.workerSnapshotJson().isBlank()) return HdiProtocol.JSON.createObjectNode();
         try { return HdiProtocol.JSON.readTree(run.workerSnapshotJson()); }

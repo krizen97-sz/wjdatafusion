@@ -95,7 +95,7 @@ class HdiCoreCatalogTest {
     void verifiesTheActualPackagedVendorCatalogWithoutRunningVendorCode() {
         HdiCoreProperties properties = new HdiCoreProperties(); properties.setBundleDir(System.getProperty("hdi.core.bundle"));
         HdiCoreCatalog real = new HdiCoreCatalog(properties, new HdiCoreAssets(properties));
-        assertEquals(3, real.getAdapters().size());
+        assertTrue(List.of(3, 8).contains(real.getAdapters().size()));
         assertTrue(real.getAdapterUiInfo("dataGeneratorInput").isEmpty());
         assertTrue(real.getAdapterUiInfo("fieldMapping").isEmpty());
         assertEquals(Map.of("adapterExtField", "false", "adapterTableUse", "false", "adapterTableTruncate", "false"), real.getAdapterUiInfo("fileOutput"));
@@ -108,9 +108,26 @@ class HdiCoreCatalogTest {
         assertEquals("100000", generator.stream().filter(row -> row.get("paramName").equals("etl.plugin.input.generator.data.size")).findFirst().orElseThrow().get("paramDefaultValue"));
         assertEquals(20, real.listParams(2, null, null).size());
         assertEquals(3, real.getAdapterTypeOptions().size());
-        assertEquals(18, real.getAdapters().get(2).get("dbTypeId"));
-        var options = real.getDatasourceTypeOptions(); assertEquals(1, options.size());
-        assertEquals("FTP", options.get(0).get("name")); assertEquals("18", options.get(0).get("value")); assertEquals("FTP", options.get(0).get("code"));
+        var columnCodes = real.getAllColumnCodes();
+        assertTrue(columnCodes.keySet().containsAll(List.of("DATETIME", "DATE", "TIMESTAMP", "LONG", "INT", "VARCHAR", "UNKNOWN")));
+        assertTrue(columnCodes.values().stream().allMatch(value -> value.matches("[0-9]+")));
+        assertEquals(real.getDataTypes().stream().filter(row -> row.get("name").equals("string")).findFirst().orElseThrow().get("value").toString(), columnCodes.get("VARCHAR"));
+        assertEquals("18", real.getAdapters().get(2).get("dbTypeId"));
+        var options = real.getDatasourceTypeOptions();
+        assertTrue(options.stream().anyMatch(row -> "FTP".equals(row.get("code")) && "18".equals(row.get("value"))));
+        if (real.getAdapters().size() == 8) {
+            for (var adapter : real.getAdapters()) {
+                String name = adapter.get("adapterName").toString(), type = adapter.get("adapterType").toString();
+                assertFalse(real.listParams(9, name, type).isEmpty(), name);
+                assertFalse(real.listParams(6, name, type).isEmpty(), name);
+            }
+            assertEquals(List.of(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L), real.getAdapters().stream().map(row -> row.get("id")).toList());
+            assertEquals(3, options.size());
+            assertEquals("16", real.getAdapters().get(3).get("dbTypeId"));
+            assertEquals("8", real.getAdapters().get(7).get("dbTypeId"));
+            assertTrue(real.listParams(6, "fileInput", "input").stream().noneMatch(row -> "etl.file.serverType".equals(row.get("paramName"))));
+            assertTrue(real.listParams(6, "kafkaV2Output", "output").stream().noneMatch(row -> java.util.Set.of("format", "schema.registry.url", "kafka.message.field").contains(row.get("paramName"))));
+        }
         assertTrue(real.listParams(6, "fileOutput", "output").stream().noneMatch(row -> "etl.file.fileType".equals(row.get("paramName"))));
         var selectedFileType = real.listParams(6, "fileOutput", "output", java.util.Set.of("etl.file.fileType")).stream()
             .filter(row -> "etl.file.fileType".equals(row.get("paramName"))).findFirst().orElseThrow();

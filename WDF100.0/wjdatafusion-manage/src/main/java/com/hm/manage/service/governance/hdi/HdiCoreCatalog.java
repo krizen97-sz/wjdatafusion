@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -34,8 +35,12 @@ public final class HdiCoreCatalog {
     private static final ObjectMapper JSON = new ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
         .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     // These are new platform registry identities, not IDs claimed to exist in a vendor database.
-    private static final List<String> SUPPORTED = List.of("dataGeneratorInput", "fieldMapping", "fileOutput");
-    private static final Map<String, String> TYPES = Map.of("dataGeneratorInput", "input", "fieldMapping", "preproc", "fileOutput", "output");
+    private static final List<String> BASE = List.of("dataGeneratorInput", "fieldMapping", "fileOutput");
+    // Append registry identities so existing saved canvases retain their original platform IDs.
+    private static final List<String> SUPPORTED = List.of("dataGeneratorInput", "fieldMapping", "fileOutput",
+        "postgresqlInput", "postgresqlOutput", "fileInput", "kafkaInput", "kafkaV2Output");
+    private static final Map<String, String> TYPES = Map.of("dataGeneratorInput", "input", "fieldMapping", "preproc", "fileOutput", "output",
+        "postgresqlInput", "input", "postgresqlOutput", "output", "fileInput", "input", "kafkaInput", "input", "kafkaV2Output", "output");
     private static final Map<String, String> ORIGINAL_ICONS = Map.of("input", "/static/img/defaultinput.e71f57a7.svg",
         "preproc", "/static/img/defaultpreproc.26462e9c.svg", "output", "/static/img/defaultoutput.bfb8531e.svg");
     private static final String DATA_JAR = "task-service/dEtlv2.jar";
@@ -66,7 +71,8 @@ public final class HdiCoreCatalog {
             // The bundled seed has no fieldMapping override; a missing processType hides it from the original panel.
             if ("fieldMapping".equals(text(def, "adapterName"))) item.put("processType", "other");
             item.put("adapterClassName", text(def, "className")); item.put("languageType", 1); // Original LanguageType.JAVA=1.
-            item.put("languageTypeDesc", "java"); item.put("dbTypeId", "FTP".equals(scalar(def.get("adapterDatabaseType"))) ? 18 : null);
+            Integer dbType = datasourceTypeId(scalar(def.get("adapterDatabaseType")));
+            item.put("languageTypeDesc", "java"); item.put("dbTypeId", dbType == null ? null : dbType.toString());
             item.put("addComment", scalar(def.get("adapterComment")));
             item.put("packageName", plugin.folder.substring(plugin.folder.lastIndexOf('/') + 1));
             for (String name : List.of("buildVersion", "pluginResourceType", "pluginFieldSyncMode", "referenceConfigAdapter", "adapterSubType"))
@@ -75,6 +81,27 @@ public final class HdiCoreCatalog {
             result.add(Collections.unmodifiableMap(item));
         }
         return List.copyOf(result);
+    }
+
+    private Integer datasourceTypeId(String type) {
+        if (type == null || type.isBlank()) return null;
+        for (Map<String, Object> row : seedRows(sqlResources().get(TYPE_SQL.get(0)), 54))
+            if (type.equalsIgnoreCase(row.get("code").toString())) return Integer.valueOf(row.get("value").toString());
+        throw unavailable();
+    }
+
+    /** Apply the same packaged datasource dictionary used by the original connection service. */
+    public JsonNode translateConnectionForm(JsonNode description) {
+        Properties dictionary = new Properties();
+        try { dictionary.load(new InputStreamReader(new ByteArrayInputStream(assets.readOriginal("task-service/i18n/zh_CN/datasource_translate.properties")), StandardCharsets.UTF_8)); }
+        catch (IOException invalid) { throw unavailable(); }
+        return translate(description, dictionary);
+    }
+    private JsonNode translate(JsonNode value, Properties dictionary) {
+        if (value.isTextual()) return JSON.getNodeFactory().textNode(dictionary.getProperty(value.asText(), value.asText()));
+        if (value.isArray()) { var result = JSON.createArrayNode(); value.forEach(item -> result.add(translate(item, dictionary))); return result; }
+        if (value.isObject()) { var result = JSON.createObjectNode(); value.fields().forEachRemaining(entry -> result.set(entry.getKey(), translate(entry.getValue(), dictionary))); return result; }
+        return value.deepCopy();
     }
 
     /** Original getAdapterUiInfo exposes parsed adapterUIParams; an absent optional section is an empty map. */
@@ -99,13 +126,15 @@ public final class HdiCoreCatalog {
         if ((!Integer.valueOf(6).equals(typeId) && !Integer.valueOf(9).equals(typeId)) || adapterName == null || !SUPPORTED.contains(adapterName)) throw badQuery();
         Plugin plugin = plugins().stream().filter(p -> adapterName.equals(text(p.definition, "adapterName"))).findFirst().orElseThrow(HdiCoreCatalog::unavailable);
         if (stepTypeName != null && !stepTypeName.isBlank() && !stepTypeName.equals(TYPES.get(adapterName))) throw badQuery();
-        Set<String> hidden = "fileOutput".equals(adapterName) ? fileOutputFormManagedParams() : Set.of();
+        Set<String> hidden = Set.of("fileOutput", "fileInput").contains(adapterName) ? fileFormManagedParams(adapterName)
+            // Exact result of original MqOutputServiceImpl.getIgnoreDisplayParamName("kafkaV2Output").
+            : "kafkaV2Output".equals(adapterName) ? Set.of("format", "schema.registry.url", "kafka.message.field") : Set.of();
         return params(plugin.definition.get("adapterParams"), typeId, plugin.id).stream()
             .filter(row -> selectedNames.contains(row.get("paramName")) || !hidden.contains(row.get("paramName"))).toList();
     }
 
     /** Match AbstractAdapterService.getIgnoreDisplayParamName: annotated form-owned parameters stay out of new advanced defaults. */
-    private Set<String> fileOutputFormManagedParams() {
+    private Set<String> fileFormManagedParams(String adapterName) {
         String annotation = "com/hikvision/idatafusion/detl/common/annotation/AdapterParam";
         Boolean[] displayDefault = {null};
         try {
@@ -121,7 +150,8 @@ public final class HdiCoreCatalog {
             }, ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
             if (displayDefault[0] == null) throw unavailable();
             Set<String> names = new java.util.LinkedHashSet<>();
-            ClassReader config = new ClassReader(metadataClass(DATA_JAR, "com/hikvision/idatafusion/detl/dto/task/node/FileOutputNodeConfigVo"));
+            ClassReader config = new ClassReader(metadataClass(DATA_JAR, "com/hikvision/idatafusion/detl/dto/task/node/"
+                + (adapterName.equals("fileInput") ? "FileInputNodeConfigVo" : "FileOutputNodeConfigVo")));
             if (!"java/lang/Object".equals(config.getSuperName())) throw unavailable();
             config.accept(new ClassVisitor(Opcodes.ASM9) {
                 @Override public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
@@ -246,7 +276,7 @@ public final class HdiCoreCatalog {
         }
         List<Map<String, Object>> result = new ArrayList<>();
         for (Map<String, Object> row : seedRows(sqlResources().get(TYPE_SQL.get(0)), 54)) {
-            if (!required.remove(row.get("code"))) continue;
+            if (!required.removeIf(type -> type.equalsIgnoreCase(row.get("code").toString()))) continue;
             Map<String, Object> option = new LinkedHashMap<>();
             option.put("name", row.get("name")); option.put("value", row.get("value")); option.put("code", row.get("code")); option.put("comment", null);
             result.add(Collections.unmodifiableMap(option));
@@ -295,6 +325,27 @@ public final class HdiCoreCatalog {
         return rows.stream().map(Collections::unmodifiableMap).toList();
     }
 
+    /** Original CodeManageServiceImpl.getDataTypeConversion projection over its packaged code dictionaries. */
+    public Map<String, String> getAllColumnCodes() {
+        List<String> files = List.of("V1.0.1__INIT_DATA.sql", "V1.0.2__ETL2_B4.sql", "V1.0.3__ETL2_0326.sql", "V1.0.10__ETL2_0511.sql", "V1.0.13__ETL2_2.1.0_b3.sql");
+        Map<String, String> scripts = sqlResources(files), aliases = new LinkedHashMap<>(), codes = new LinkedHashMap<>();
+        for (var row : getDataTypes()) codes.put(row.get("name").toString(), row.get("value").toString());
+        for (String file : files) {
+            for (var row : seedRows(scripts.get(file), 250)) aliases.put(row.get("name").toString(), row.get("value").toString());
+            if (file.equals("V1.0.10__ETL2_0511.sql")) {
+                if (!scripts.get(file).contains("set value='STRL' where name='TEXT' and pid = 250")) throw unavailable();
+                aliases.put("TEXT", "STRL");
+            }
+            if (file.equals("V1.0.13__ETL2_2.1.0_b3.sql")) {
+                if (!scripts.get(file).contains("set value ='TIMESTAMP' where pid =250 and name='TIMESTAMP'")) throw unavailable();
+                aliases.put("TIMESTAMP", "TIMESTAMP");
+            }
+        }
+        String unknown = codes.getOrDefault("UNKNOWN", "0"); Map<String, String> result = new LinkedHashMap<>();
+        aliases.forEach((name, type) -> result.put(name, codes.getOrDefault(type.toLowerCase(java.util.Locale.ROOT), unknown)));
+        result.put("UNKNOWN", unknown); return Collections.unmodifiableMap(result);
+    }
+
     private List<Plugin> plugins() {
         Map<String, Plugin> found = new LinkedHashMap<>();
         for (String path : assets.originalPaths()) {
@@ -311,8 +362,9 @@ public final class HdiCoreCatalog {
                     || !"java".equals(text(def, "adapterLanguge")) || found.containsKey(name)) throw unavailable();
             found.put(name, new Plugin(SUPPORTED.indexOf(name) + 1L, folder, def, props));
         }
-        if (found.size() != SUPPORTED.size()) throw unavailable();
-        return SUPPORTED.stream().map(found::get).toList();
+        if (!found.keySet().containsAll(BASE)) throw unavailable();
+        // A verified basic installation remains usable; never advertise connector JARs that are absent.
+        return SUPPORTED.stream().filter(found::containsKey).map(found::get).toList();
     }
 
     private static List<Map<String, Object>> params(JsonNode definitions, int type, long adapter) {
@@ -328,10 +380,12 @@ public final class HdiCoreCatalog {
             row.put("loadFlag", def.get("required").intValue()); row.put("required", def.get("required").intValue());
             row.put("valueType", text(def, type == 2 ? "type" : "paramType"));
             row.put("addComment", scalar(def.get("description"))); row.put("minValue", scalar(def.get("minValue"))); row.put("maxValue", scalar(def.get("maxValue")));
+            if (name.equals("etl.kafka.enable.auto.commit")) row.put("addComment", row.get("addComment") + "。关闭后原插件仍可能手动提交offset；试运行请使用专用测试消费组。");
             row.put("paramCategory", scalar(def.get("category"))); row.put("paramSubCategory", scalar(def.get("subCategory")));
             row.put("paramOrder", def.has("order") ? def.get("order").intValue() : result.size() + 1);
             JsonNode values = def.get("allowableValues");
-            if (values == null || !values.isArray() || values.size() > 1024) throw unavailable();
+            if (values == null || values.isNull()) values = JSON.createArrayNode(); // Optional in original PostgreSQL parameter metadata.
+            if (!values.isArray() || values.size() > 1024) throw unavailable();
             List<Map<String, Object>> choices = new ArrayList<>();
             for (JsonNode value : values) {
                 if (!value.has("value")) throw unavailable();
@@ -345,19 +399,22 @@ public final class HdiCoreCatalog {
     }
 
     private Map<String, String> sqlResources() {
+        return sqlResources(TYPE_SQL);
+    }
+    private Map<String, String> sqlResources(List<String> names) {
         Map<String, String> result = new LinkedHashMap<>();
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(assets.readOriginal(DATA_JAR)))) {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
                 if (!entry.getName().startsWith(SQL_ROOT)) continue;
                 String name = entry.getName().substring(SQL_ROOT.length());
-                if (!TYPE_SQL.contains(name)) continue;
+                if (!names.contains(name)) continue;
                 byte[] bytes = zip.readNBytes(1024 * 1024 + 1);
                 if (bytes.length > 1024 * 1024 || result.containsKey(name)) throw unavailable();
                 result.put(name, new String(bytes, StandardCharsets.UTF_8));
             }
         } catch (IOException error) { throw unavailable(); }
-        if (result.size() != TYPE_SQL.size()) throw unavailable();
+        if (result.size() != names.size()) throw unavailable();
         return result;
     }
 
