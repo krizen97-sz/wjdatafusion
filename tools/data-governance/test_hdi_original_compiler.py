@@ -95,8 +95,8 @@ def connector_visual(input_plugin='dataGeneratorInput', output_plugin='fileOutpu
             'ext1':'1' if kind=='ftp' else '', 'ext2':'ftp' if kind=='ftp' else '', 'ext3':'','inOutFlag':0}}
         if node is first:
             node['srcTableUseVoList'] = [{'id':90,'tableId':91,'srcDbId':int(connection_id),'tableName':'source_rows' if kind=='postgresql' else 'hdi_source',
-                'tableOwner':'public','tableSchem':'public','tableAlias':'','tableOrder':1,'tableUseFlag':1,'tableViewFlag':0,'incrType':0,'partFlag':0}]
-            node['streamFieldVoList'][0].update(fieldType='varchar',fieldExpression='',fieldSrcName='message')
+                'tableOwner':'public','tableSchem':'public','tableAlias':'a1','tableOrder':1,'tableUseFlag':1,'tableViewFlag':0,'incrType':0,'partFlag':0}]
+            node['streamFieldVoList'][0].update(fieldType='varchar',fieldExpression='message' if kind=='postgresql' else '',fieldSrcName='message',srcTableType=1,srcTableId=91,tableAlias='a1')
             if plugin == 'fileInput':
                 node['adapterData'] = {'sourceType':'ftp','sourcePathType':2,'absoluteDir':'/inbox','localDir':'/平台输出',
                     'fileType':'csv','encoding':'UTF-8','colSplitter':',','beginRow':'2','incrMode':'time','maskFilename':'.*\\.csv','parsedData':'true'}
@@ -107,7 +107,7 @@ def connector_visual(input_plugin='dataGeneratorInput', output_plugin='fileOutpu
                 node['adapterData'] = {'sourceType':'ftp','sourcePathType':2,'absoluteDir':'/outbox','localDir':'/平台输出',
                     'fileType':'csv','encoding':'UTF-8','colSplitter':',','addHeaderLine':'true','isAsyncGenerateText':'false'}
             node['dstTableVo'] = {'id':92,'dbId':int(connection_id),'tableName':'target_rows' if kind=='postgresql' else 'hdi_target',
-                'tableOwner':'public','messageFormat':'json','messageField':'','writeOperation':'insert','addCreateSql':'false','dataCleansing':'false','enableFlag':1}
+                'tableOwner':'public','messageFormat':'json','messageField':'','writeOperation':'INSERT','dataCleansing':'0','enableFlag':1}
     return visual, connections
 
 
@@ -189,6 +189,12 @@ class OriginalSdkTests(unittest.TestCase):
                 self.assertEqual(source['db_ip'],'127.0.0.1')
                 self.assertEqual(source['db_password'],'fixture-only-not-a-secret')
                 self.assertNotIn('fixture-only-not-a-secret',prepared['snapshotJson'])
+                if input_plugin=='postgresqlInput':
+                    self.assertEqual(source['etl_stream_field'][0]['field_expression'],'message')
+                    self.assertEqual(source['etl_stream_field'][0]['src_table_id'],source['src_table'][0]['id'])
+                if output_plugin!='fileOutput':
+                    self.assertEqual(str(source['dst_table']['data_cleansing']),'0')
+
 
     def test_browser_connection_passwords_are_not_frozen_in_task_snapshots(self):
         visual, connections=connector_visual('fileInput','fileOutput')
@@ -198,6 +204,23 @@ class OriginalSdkTests(unittest.TestCase):
         self.assertNotIn('nor-this',prepared['snapshotJson'])
         self.assertEqual(prepared['canonicalVisual']['nodes']['110']['ftpConfig'],{'id':71,'databaseIp':'127.0.0.1'})
         self.assertEqual(json.loads(prepared['snapshotJson'])['connectionRefs'],{'71':'1'})
+
+    def test_invalid_connector_dto_is_rejected_before_native_execution(self):
+        cases=[]
+        visual,connections=connector_visual('postgresqlInput','fileOutput')
+        visual['nodes']['110']['streamFieldVoList'][0]['fieldExpression']=''
+        cases.append((visual,connections))
+        for output_plugin in ['postgresqlOutput','ftpFileOutput','kafkaV2Output']:
+            visual,connections=connector_visual('dataGeneratorInput',output_plugin)
+            visual['nodes']['130']['dstTableVo']['dataCleansing']='false'
+            cases.append((visual,connections))
+        visual,connections=connector_visual('dataGeneratorInput','postgresqlOutput')
+        visual['nodes']['130']['dstTableVo']['writeOperation']='insert'
+        cases.append((visual,connections))
+        for visual,connections in cases:
+            prepared=self.prepare_connectors(visual,connections);self.assertTrue(prepared['ok'],prepared)
+            request=self.compile_request(prepared);request['runContext']['connections']=connections
+            result=self.invoke(request);self.assertFalse(result['ok']);self.assertEqual(result['code'],'UNSUPPORTED_GRAPH')
 
     def test_frozen_connector_revision_and_identity_cannot_be_replaced(self):
         visual, connections=connector_visual('postgresqlInput','fileOutput')
