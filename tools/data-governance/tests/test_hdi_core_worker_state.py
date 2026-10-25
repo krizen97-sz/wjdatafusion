@@ -101,6 +101,36 @@ class WorkerStateTests(unittest.TestCase):
         self.assertNotIn('original-ftp-password', text)
         self.assertIn('<redacted>', text)
 
+    def test_original_jdbc_warnings_never_change_engine_finish_or_invent_row_metrics(self):
+        self.worker.redis_password = 'owned-redis-password'
+        self.worker.reserve(self.request)
+        record = self.worker.records[self.request['runId']]
+        self.worker.persist(record, state='SUCCEEDED', nativeState='finish', finalized=True)
+        graph = {'streams': [{'modules': [{'adapter': {'adapter_name': 'postgresqlOutput'}}]}]}
+        task = module.NativeRun(self.worker, record, {'flowjson': {'base64': base64.b64encode(json.dumps(graph).encode()).decode()}})
+        prefix = '2026-10-25 13:05:25.706 [etl-plugin-runner-21001-2] '
+        lines = [prefix + 'ERROR c.h.idatafusion.etl.adapter.output.jdbc.JdbcOutput[927] - insert data (fields: message) failed.',
+                 prefix + 'INFO c.h.idatafusion.etl.adapter.output.jdbc.JdbcOutput[939] - insert 0 records , skip 3 records ',
+                 'java.sql.SQLException: do not expose this diagnostic payload']
+        (task.root / 'logs/core.log').write_text('\n'.join(lines) + '\n')
+        task.log_progress(final=True)
+        view = self.worker.view(record)
+        self.assertEqual(view['outputWarningCodes'], ['JDBC_OUTPUT_ERROR_OBSERVED', 'JDBC_OUTPUT_ROWS_SKIPPED'])
+        self.assertEqual(view['state'], 'SUCCEEDED'); self.assertEqual(view['nativeState'], 'finish')
+        self.assertNotIn('outputRows', view); self.assertNotIn('failedRows', view)
+        self.assertNotIn('diagnostic payload', json.dumps(view))
+
+    def test_jdbc_observations_ignore_success_other_flow_and_unrelated_vendor_errors(self):
+        own = '2026-10-25 13:05:25.706 [etl-plugin-runner-21001-2] '
+        success = own + 'INFO c.h.idatafusion.etl.adapter.output.jdbc.JdbcOutput[939] - insert 3 records , skip 0 records '
+        other = success.replace('21001-2', '31001-2').replace('skip 0', 'skip 3')
+        input_error = own + 'ERROR c.h.idatafusion.etl.adapter.input.jdbc.JdbcInput[927] - insert data (fields: message) failed.'
+        cold_start = '2026-10-25 13:05:25.706 [Thread-6] ERROR c.h.idatafusion.etl.core.task.utils.TaskUtils[104] - history missing'
+        self.assertEqual(module.jdbc_output_observations('\n'.join([success, other, input_error, cold_start]), '21001'), [])
+        skipped = own + 'INFO com.hikvision.idatafusion.etl.adapter.output.jdbc.JdbcOutput[939] - insert 2 records , skip 1 records '
+        self.assertEqual(module.jdbc_output_observations(skipped, '21001'), ['JDBC_OUTPUT_ROWS_SKIPPED'])
+        self.assertEqual(module.jdbc_output_observations(skipped + ' value supplied by the source', '21001'), [])
+
     def test_native_ids_remain_reserved_even_after_cancel(self):
         self.worker.reserve(self.request)
         self.worker.dispatch({'op': 'cancel', **self.request})
