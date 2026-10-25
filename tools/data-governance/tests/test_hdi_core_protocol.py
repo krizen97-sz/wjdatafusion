@@ -178,6 +178,19 @@ class ProtocolTests(unittest.TestCase):
             with self.assertRaisesRegex(p.ProtocolError, 'CONNECTOR_PARAMETERS_REJECTED'):
                 p.validate_datasource_grant(module, 'kafka', [binding])
 
+    def test_kafka_advertised_brokers_need_not_all_appear_in_original_bootstrap_url(self):
+        binding = self.connection('kafka')
+        binding['endpoints'].append({'host': '192.0.2.20', 'address': '192.0.2.20', 'port': 9092})
+        source = {'id': 41, 'db_type': 8, 'db_ip': '127.0.0.1', 'db_port': '15432',
+                  'db_url': 'kafka2://127.0.0.1:15432'}
+        self.assertEqual(p.validate_datasource_grant({'config': {'datasource': [source]}}, 'kafka', [binding]), binding)
+        source['db_url'] += ',192.0.2.20:9092'
+        self.assertEqual(p.validate_datasource_grant({'config': {'datasource': [source]}}, 'kafka', [binding]), binding)
+        for url in ('kafka2://192.0.2.20:9092', 'kafka2://127.0.0.1:15432,192.0.2.21:9092',
+                    'kafka2://127.0.0.1:15432,127.0.0.1:15432', 'kafka2://127.0.0.1:15432,'):
+            with self.assertRaisesRegex(p.ProtocolError, 'CONNECTOR_URL_MISMATCH'):
+                p.validate_datasource_grant({'config': {'datasource': [{**source, 'db_url': url}]}}, 'kafka', [binding])
+
     def test_database_primary_keys_are_not_misclassified_as_dynamic_file_names(self):
         record = p.reservation({**self.request(), 'connectionBindings': [self.connection()]})
         outputs = self.root / 'outputs'; outputs.mkdir()

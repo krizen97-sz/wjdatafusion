@@ -301,15 +301,27 @@ def validate_datasource_grant(module, kind, bindings):
         if not isinstance(database, str) or not re.fullmatch(r'[A-Za-z0-9_$.-]{1,128}', database):
             raise ProtocolError('CONNECTOR_DATABASE_REJECTED')
         expected = 'jdbc:postgresql://' + endpoint['host'] + ':' + str(endpoint['port']) + '/' + database
-    else:
-        expected = {'ftp': 'ftp://', 'kafka': 'kafka2://'}[kind] + ','.join(
-            item['host'] + ':' + str(item['port']) for item in binding['endpoints'])
-        if kind == 'ftp' and source.get('db_sid'):
+    elif kind == 'ftp':
+        expected = 'ftp://' + endpoint['host'] + ':' + str(endpoint['port'])
+        if source.get('db_sid'):
             directory = source['db_sid']
             if not isinstance(directory, str) or len(directory) > 1024 or any(c in directory for c in ('\x00', '\r', '\n')):
                 raise ProtocolError('CONNECTOR_DIRECTORY_REJECTED')
             # Preserve AbstractDatasource.jointUrl's original slash behavior.
             expected += '/' + directory
+    else:
+        url = source.get('db_url')
+        if not isinstance(url, str) or not url.startswith('kafka2://'):
+            raise ProtocolError('CONNECTOR_URL_MISMATCH')
+        bootstrap = url[len('kafka2://'):].split(',')
+        allowed = {item['host'] + ':' + str(item['port']) for item in binding['endpoints']}
+        if (not 1 <= len(bootstrap) <= 16 or len(set(bootstrap)) != len(bootstrap)
+                or bootstrap[0] != endpoint['host'] + ':' + str(endpoint['port'])
+                or not set(bootstrap) <= allowed):
+            raise ProtocolError('CONNECTOR_URL_MISMATCH')
+        # Advertised brokers may be authorized without being bootstrap seeds.
+        # Keep the generator's original ordered bootstrap subset unchanged.
+        expected = url
     if source.get('db_url') != expected:
         raise ProtocolError('CONNECTOR_URL_MISMATCH')
     if kind == 'kafka':
