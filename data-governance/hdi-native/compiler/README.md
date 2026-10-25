@@ -19,7 +19,7 @@
 
 PostgreSQL 选表输入必须保留原浏览器生成的 `fieldExpression=columnName`，`srcTableType=1` 和 `srcTableId`；本次执行只重绑 `srcTableId` 到独立元数据块，不补写 SQL 表达式。原 `StreamFieldServiceImpl.saveStreamFields` 会为缺省/空表达式填入字段名；编译器现复用该保存投影，并仅捕获本次 DAO 写入，不能跳过此步把空表达式直接交给原 SQL 引擎。非同名 SQL 表达式仍在执行前拒绝。原输出表单的 `dataCleansing` 禁用值是字符串 `"0"`，不是布尔值或 `"false"`；原 Core 按整数读取该值。当前 profile 拒绝清空目标数据，并拒绝非法值。显式写入方式沿用原枚举 `INSERT`，不把任意大小写或未支持模式静默归一化。
 
-原 JDBC / 文件输出按 `fieldName` 读取上游行值。仅把目标字段名改为另一个名称而把 `fieldExpression` 留成源字段，并不会执行改名，可能写入 NULL。当前直接字段 profile 要求目标字段名与上游一致；改名必须显式使用原 `fieldMapping` 节点，编译器不补写字段转换或 SQL。
+原 JDBC / 文件输出按 `fieldName` 读取上游行值。仅把目标字段名改为另一个名称而把 `fieldExpression` 留成源字段，并不会执行改名，可能写入 NULL。当前直接字段 profile 要求目标字段名与上游一致，且 `fieldSrcType` 为原直接来源 0/缺省；改名必须显式使用原 `fieldMapping` 节点。原浏览器可能从固定数据生成器继承字面 `fieldExpression`，该直接来源下不执行它，元数据原样保留；非 0 来源继续拒绝，编译器不补写字段转换或 SQL。
 
 同步 File 输出原表单会追加 `_RESULT_CODE_`、`_RESULT_MSG_`、`_RESULT_DATA_` 三个隐藏响应字段；原 `FileOutput.synchronousProcessData` 确实产生这些响应，它们不是普通上游字段。编译器仅对原同步 File 输出接受这三个精确字段并保留原 `DstTableFieldServiceImpl.batchInsert` 的顺序与启用标志，不根据 `isNew` 猜测删除。输入字段通过原 `saveStreamFields` 保留列表顺序和缺省值；该服务不补 `fieldOrder`，本适配也不编造。无选表的原 FileInput 使用原 `mockTableUse/mockTable` 占位行为，DAO 仅对该原占位 ID 返回缺行，其余非冻结 ID 继续拒绝。
 

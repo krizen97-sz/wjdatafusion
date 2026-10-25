@@ -409,7 +409,8 @@ public final class OriginalTaskCompiler {
             }
             // Original JDBC and file outputs bind row values by fieldName. A different
             // fieldExpression does not rename a row key; the original fieldMapping node does.
-            supported(fields.contains(text(field.get("fieldName"))) && (empty(field.get("fieldExpression")) || Objects.equals(field.get("fieldName"),field.get("fieldExpression"))), "Output fields must match upstream names; use the original field mapping node to rename fields");
+            supported(empty(field.get("fieldSrcType")) || "0".equals(text(field.get("fieldSrcType"))), "Only original direct output field binding is supported");
+            supported(fields.contains(text(field.get("fieldName"))), "Output fields must match upstream names; use the original field mapping node to rename fields");
         }
     }
     static void noPrimaryFilename(Map<String,Object> field) {

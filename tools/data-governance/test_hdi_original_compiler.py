@@ -272,6 +272,18 @@ class OriginalSdkTests(unittest.TestCase):
         prepared=self.prepare_connectors(visual,connections);request=self.compile_request(prepared);request['runContext']['connections']=connections
         self.assertFalse(self.invoke(request)['ok'])
 
+    def test_direct_original_output_keeps_inherited_expression_metadata(self):
+        visual,connections=connector_visual('dataGeneratorInput','postgresqlOutput')
+        visual['nodes']['130']['dstTableFieldVoList'][0].update(fieldExpression='browser original postgres')
+        prepared=self.prepare_connectors(visual,connections);request=self.compile_request(prepared);request['runContext']['connections']=connections
+        result=self.invoke(request);self.assertTrue(result['ok'],result)
+        native=json.loads(base64.b64decode(result['flowjson']['base64']))
+        field=native['streams'][0]['modules'][-1]['config']['datasource'][0]['dst_table_field'][0]
+        self.assertEqual(field['field_name'],'message');self.assertEqual(field['field_expression'],'browser original postgres')
+        visual['nodes']['130']['dstTableFieldVoList'][0]['fieldSrcType']=1
+        prepared=self.prepare_connectors(visual,connections);request=self.compile_request(prepared);request['runContext']['connections']=connections
+        self.assertFalse(self.invoke(request)['ok'])
+
     def test_frozen_connector_revision_and_identity_cannot_be_replaced(self):
         visual, connections=connector_visual('postgresqlInput','fileOutput')
         prepared=self.prepare_connectors(visual,connections);self.assertTrue(prepared['ok'],prepared)
@@ -386,7 +398,7 @@ class OriginalSdkTests(unittest.TestCase):
         visual['nodes']['130']['dstTableFieldVoList'][0]['fieldName'] = 'missing'
         self.assertFalse(self.invoke(self.compile_request(self.prepare(visual)))['ok'])
         visual = original_ui_visual()
-        visual['nodes']['130']['dstTableFieldVoList'][0]['fieldExpression'] = 'runtime.exec()'
+        visual['nodes']['130']['dstTableFieldVoList'][0].update(fieldExpression='runtime.exec()',fieldSrcType=1)
         self.assertFalse(self.invoke(self.compile_request(self.prepare(visual)))['ok'])
 
     def test_original_merged_output_rejects_legacy_ftp_before_worker_submission(self):
