@@ -38,6 +38,35 @@ SHUTDOWN_SECONDS = 70
 CORE_FILE_LIMIT = 512 * 1024 * 1024
 
 
+def jdbc_output_observations(text, native_flow_id):
+    """Warnings from verified original JdbcOutput log templates, never row totals.
+
+    The pinned etl-jdbcOutput-2.0.0.jar logs onlyInsertData SQL failures at ERROR
+    and its insert/skip summary at INFO. Its stopCheck deliberately excludes a
+    zero successful return count, so original finish is preserved separately.
+    Restrict observations to the held run's plugin threads and original logger;
+    startup history warnings and arbitrary exception text are not observations.
+    """
+    positive_id(native_flow_id)
+    entry = re.compile(r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} '
+        r'\[etl-plugin-runner-' + re.escape(native_flow_id) + r'-[0-9]+\] +(INFO|ERROR) +'
+        r'(?:com\.hikvision|c\.h)\.idatafusion\.etl\.adapter\.output\.jdbc\.JdbcOutput'
+        r'\[[0-9]+\] - ([^\r\n]*)$')
+    codes = set()
+    for line in text.splitlines():
+        matched = entry.fullmatch(line)
+        if not matched:
+            continue
+        level, message = matched.groups()
+        if level == 'ERROR' and re.fullmatch(r'insert data \(fields: [^\r\n]{0,4096}\) failed\.', message):
+            codes.add('JDBC_OUTPUT_ERROR_OBSERVED')
+        if level == 'INFO':
+            counts = re.fullmatch(r'insert ([0-9]{1,19}) records , skip ([0-9]{1,19}) records *', message)
+            if counts and int(counts.group(2)) > 0:
+                codes.add('JDBC_OUTPUT_ROWS_SKIPPED')
+    return sorted(codes)
+
+
 def stop_timeout(config):
     value = config.get('stopTimeoutSeconds', 45)
     if type(value) is not int or not 45 <= value <= 60:
@@ -466,7 +495,7 @@ class Worker:
         keys = ('runId', 'businessTaskId', 'revision', 'ownerId', 'nativeFlowId', 'nativeInstanceId',
                 'execId', 'workspaceId', 'metadataIdBase', 'state', 'finalized', 'recoveryRequired',
                 'nativeState', 'errorCode', 'outputsDir', 'authorizedOutputRoot', 'artifacts', 'updatedAt',
-                'connectionBindings')
+                'connectionBindings', 'outputWarningCodes')
         result = {key: record[key] for key in keys if key in record}
         if 'artifacts' in result:
             result['artifacts'] = [{key: item[key] for key in ('artifactId', 'name', 'bytes', 'sha256')}
@@ -695,6 +724,13 @@ class NativeRun:
         self.children, self.bridges = [], []
         self.secrets = [worker.redis_password, *(connection_secrets or [])]
         self.raw_cursor = 0
+        self.observe_jdbc = False
+        # The exact validated native adapter list is authoritative, not the
+        # envelope's presentation-only nodeMappings names.
+        if compiled.get('flowjson'):
+            graph = strict_json(base64.b64decode(compiled['flowjson']['base64']))
+            self.observe_jdbc = any(module.get('adapter', {}).get('adapter_name') == 'postgresqlOutput'
+                for stream in graph.get('streams', []) for module in stream.get('modules', []))
 
     def update(self, **changes):
         self.worker.persist(self.record, **changes)
@@ -736,6 +772,11 @@ class NativeRun:
             data = data[:end]
         self.raw_cursor += len(data)
         text = data.decode('utf-8', errors='replace')
+        if self.observe_jdbc:
+            warnings = sorted(set(self.record.get('outputWarningCodes', []))
+                              | set(jdbc_output_observations(text, self.record['nativeFlowId'])))
+            if warnings != self.record.get('outputWarningCodes', []):
+                self.update(outputWarningCodes=warnings)
         for secret in sorted(self.secrets, key=len, reverse=True):
             if secret:
                 text = text.replace(secret, '<redacted>')

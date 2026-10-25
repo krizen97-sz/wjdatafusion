@@ -107,3 +107,12 @@ Core 使用原 bundle 的 `logback.xml` 派生配置，保留原 SIFT、discrimi
 连接密码只进入原编译器/原执行器的私有配置，保持原 `etl.security.decrypt=false` 原生模式；平台连接库的加密存储在平台侧处理。`redactionValues` 写入运行目录 `private/connection-secrets.json`（0600），不进入公共状态响应；提交前复核其冻结摘要，原日志中的明文密码按实际值脱敏。FTP 输入下载目录限定本次 `tmp`，FTP 输出暂存文件限定本次 `outputs`，没有增加任意本地目录能力。
 
 上述协议扩展不等于所有连接插件已完成业务验收。组件测试验证授权、原字节透明性、未授权端口不可达、私有凭据与生命周期；原插件的具体行数、数据库写入、FTP 传输、Kafka 消费生产及浏览器操作须由集成验收逐项给出。
+
+
+## 原 JDBC 输出异常观察
+
+worker 的状态响应可附带 `outputWarningCodes`，目前仅含 `JDBC_OUTPUT_ERROR_OBSERVED`（原 JDBC 插入错误）和 `JDBC_OUTPUT_ROWS_SKIPPED`（原 JDBC 报告跳过记录）。这些是只读观察，不改写原 `nativeState=finish`、运行 `state=SUCCEEDED`，不制造输出/失败行数；没有观察项也不等于证明外部写入完整成功。
+
+依据为受清单校验的 `etl-jdbcOutput-2.0.0.jar`（SHA-256 `08bff2b8afb690cd2d6cfd613d4199f9eabb6098d6df7ba5e87846a53bc5ba0f`）中的 `JdbcOutput.onlyInsertData` 原日志模板：`insert data (fields: %s) failed.` 与 `insert N records , skip M records`。仅在本次已验证图包含原 `postgresqlOutput` 时启用；只接受本次私有 Core 日志、`etl-plugin-runner-<nativeFlowId>-N` 线程、原 JdbcOutput logger、相应 ERROR/INFO 级别和完整模板。冷启动历史文件提示、其他 flow 的记录、其他类异常和零跳过摘要不触发告警。只保存固定代码，不把日志原文或字段值放入状态响应。
+
+原 `JdbcOutput.stopCheck` 的容错判断排除了 `returnCount==0`：实际已验证开启原 `etl.plugin.partial.failed.stop.enable=true` 后，数据库拒绝全部三行仍可能报告原 finish。因此平台必须将“原执行结束”和“写入异常观察”同时展示，不能仅依赖原终态声明外部写入成功。真正业务验收仍需目标数据库/FTP/Kafka 回读。
