@@ -110,6 +110,10 @@ def connector_visual(input_plugin='dataGeneratorInput', output_plugin='fileOutpu
                 'tableOwner':'public','messageFormat':'json','messageField':'','writeOperation':'INSERT','dataCleansing':'0','addEtlColumn':0,'enableFlag':1}
             if plugin in ['postgresqlOutput','kafkaV2Output']:
                 node['adapterParamVoList']=[{'paramName':'etl.plugin.partial.failed.stop.enable','paramValue':'true'}]
+            if plugin == 'postgresqlOutput':
+                # Original JDBC binds values by fieldName; align the upstream original mapping.
+                visual['nodes']['120']['transformFieldVoList'][0]['fieldDstName']='message'
+                node['dstTableFieldVoList'][0].update(fieldName='message',fieldExpression='message',fieldDisplayName='message')
     return visual, connections
 
 
@@ -223,6 +227,10 @@ class OriginalSdkTests(unittest.TestCase):
             cases.append((visual,connections))
         visual,connections=connector_visual('dataGeneratorInput','postgresqlOutput')
         visual['nodes']['130']['dstTableVo']['writeOperation']='insert'
+        cases.append((visual,connections))
+        visual,connections=connector_visual('dataGeneratorInput','postgresqlOutput')
+        visual['nodes']['120']['transformFieldVoList'][0]['fieldDstName']='mapped_message'
+        visual['nodes']['130']['dstTableFieldVoList'][0]['fieldExpression']='mapped_message'
         cases.append((visual,connections))
         for visual,connections in cases:
             prepared=self.prepare_connectors(visual,connections);self.assertTrue(prepared['ok'],prepared)
