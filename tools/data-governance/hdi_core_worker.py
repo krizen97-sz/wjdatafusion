@@ -28,7 +28,7 @@ import xml.etree.ElementTree as ET
 from hdi_core_network import ByteBridge
 from hdi_core_protocol import (ProtocolError, TERMINAL, atomic_json, atomic_bytes, below_output,
                                positive_id, private_file, reservation, results_manifest,
-                               run_id, strict_json, validate_compiled)
+                               run_id, strict_json, validate_compiled, connector_targets, redaction_values)
 from hdi_original_execution_proof import verify_bundle
 
 MAX_LINE = 48 * 1024 * 1024
@@ -465,7 +465,8 @@ class Worker:
     def view(record):
         keys = ('runId', 'businessTaskId', 'revision', 'ownerId', 'nativeFlowId', 'nativeInstanceId',
                 'execId', 'workspaceId', 'metadataIdBase', 'state', 'finalized', 'recoveryRequired',
-                'nativeState', 'errorCode', 'outputsDir', 'authorizedOutputRoot', 'artifacts', 'updatedAt')
+                'nativeState', 'errorCode', 'outputsDir', 'authorizedOutputRoot', 'artifacts', 'updatedAt',
+                'connectionBindings')
         result = {key: record[key] for key in keys if key in record}
         if 'artifacts' in result:
             result['artifacts'] = [{key: item[key] for key in ('artifactId', 'name', 'bytes', 'sha256')}
@@ -487,6 +488,12 @@ class Worker:
 
     def reserve(self, request):
         values = reservation(request)
+        private_values = redaction_values(request.get('redactionValues', []))
+        if private_values and not values.get('connectionBindings'):
+            raise ProtocolError('CONNECTOR_BINDING_REQUIRED')
+        if 'connectionBindings' in values:
+            values['connectionSecretsSha256'] = hashlib.sha256(json.dumps(private_values, ensure_ascii=False,
+                separators=(',', ':')).encode()).hexdigest()
         with self.guard:
             if self.closing:
                 raise ProtocolError('WORKER_CLOSING')
@@ -508,6 +515,8 @@ class Worker:
             run.mkdir(mode=0o700)
             for name in ('private', 'logs', 'outputs', 'work', 'fel', 'home', 'tmp', 'store'):
                 (run / name).mkdir(mode=0o700)
+            if 'connectionBindings' in values:
+                atomic_json(run / 'private/connection-secrets.json', private_values)
             record = {**values, 'state': 'RESERVED', 'finalized': False, 'artifacts': [],
                       'outputsDir': str(run / 'outputs'), 'authorizedOutputRoot': str(run),
                       'createdAt': int(time.time() * 1000)}
@@ -544,8 +553,14 @@ class Worker:
                 raise ProtocolError('SUBMISSION_CONFLICT')
             if not path.exists():
                 atomic_bytes(path, data)
+            private_values = []
+            if record.get('connectionBindings'):
+                private_values = redaction_values(strict_json(private_file(path.parent / 'connection-secrets.json', 512 * 1024)))
+                actual = hashlib.sha256(json.dumps(private_values, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
+                if actual != record.get('connectionSecretsSha256'):
+                    raise ProtocolError('CONNECTOR_SECRETS_CHANGED')
             self.persist(record, state='PREPARING', compiledSha256=sha)
-            task = NativeRun(self, record, compiled)
+            task = NativeRun(self, record, compiled, private_values)
             self.tasks[record['runId']] = task
             task.thread.start()
             return self.view(record)
@@ -672,13 +687,13 @@ class Worker:
 
 
 class NativeRun:
-    def __init__(self, worker, record, compiled):
+    def __init__(self, worker, record, compiled, connection_secrets=None):
         self.worker, self.record, self.compiled = worker, record, compiled
         self.root = worker.runs_root / record['runId']
         self.cancel = threading.Event()
         self.thread = threading.Thread(target=self.execute, daemon=True)
         self.children, self.bridges = [], []
-        self.secrets = [worker.redis_password]
+        self.secrets = [worker.redis_password, *(connection_secrets or [])]
         self.raw_cursor = 0
 
     def update(self, **changes):
@@ -795,6 +810,7 @@ class NativeRun:
                 'etl.log.dir': self.root / 'logs', 'etl.storage.datadir': self.root / 'store', 'etl.storage.medium': 'diskstore',
                 'etl.ssl.serverkeystore': '/certs/server.keystore', 'etl.ssl.clientkeystore': '/certs/client.keystore',
                 'etl.ssl.password': password, 'etl.ssl.enabled.protocols': 'TLSv1.2,TLSv1.3', 'etl.proxy.enable': 'false',
+                'etl.security.decrypt': 'false',
                 'etl.security.resource.connect.enabled': 'true', 'etl.security.resource.connect.type': 'acl',
                 'etl.security.resource.connect.user': zk_user, 'etl.security.resource.connect.password': zk_password}
             (engine / 'conf').mkdir(exist_ok=True)
@@ -807,10 +823,16 @@ class NativeRun:
             for name, target in [('zk', self.worker.zk['port']), ('redis', self.worker.redis['port'])]:
                 self.bridges.append(ByteBridge(socket.AF_UNIX, str(socket_dir / (name + '.sock')),
                                                socket.AF_INET, ('127.0.0.1', target)))
+            dependencies = [{'address': '127.0.0.1', 'port': 2181, 'unixSocket': str(socket_dir / 'zk.sock')},
+                            {'address': '127.0.0.1', 'port': 2180, 'unixSocket': str(socket_dir / 'redis.sock')}]
+            for index, endpoint in enumerate(connector_targets(self.record.get('connectionBindings', []))):
+                path = str(socket_dir / ('c' + str(index) + '.sock'))
+                self.bridges.append(ByteBridge(socket.AF_UNIX, path, socket.AF_INET,
+                                               (endpoint['address'], endpoint['port'])))
+                dependencies.append({**endpoint, 'unixSocket': path})
             isolated = {'parentNetworkNamespace': os.readlink('/proc/self/ns/net'),
                 'maximumFileBytes': CORE_FILE_LIMIT,
-                'dependencies': [{'port': 2181, 'unixSocket': str(socket_dir / 'zk.sock')},
-                                 {'port': 2180, 'unixSocket': str(socket_dir / 'redis.sock')}],
+                'dependencies': dependencies,
                 'coreLog': str(self.root / 'logs/core.log'), 'corePorts': [2182, 2183], 'stopGraceSeconds': 10,
                 'cwd': str(engine), 'command': [self.worker.java, *self.worker.java_options, '-Xmx256m', '--add-opens=java.base/java.net=ALL-UNNAMED',
                     '-Dlogback.configurationFile=' + str(core_log_config), '-Djava.net.preferIPv4Stack=true',

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,11 @@ ADAPTERS = {
     'dataGeneratorInput': ('input', 'com.hikvision.idatafusion.adapter.input.data.DataGeneratorInput'),
     'fieldMapping': ('preproc', 'com.hikvision.idatafusion.etl.adapter.process.fieldmapping.FieldMapping'),
     'fileOutput': ('output', 'com.hikvision.idatafusion.etl.adapter.output.file.FileOutput'),
+    'fileInput': ('input', 'com.hikvision.idatafusion.etl.adapter.input.file.FileInput'),
+    'postgresqlInput': ('input', 'com.hikvision.idatafusion.etl.adapter.input.postgresql.PostgresqlInput'),
+    'postgresqlOutput': ('output', 'com.hikvision.idatafusion.etl.adapter.output.postgresql.PostgreSqlOutput'),
+    'kafkaInput': ('input', 'com.hikvision.idatafusion.etl.adapter.input.kafka.KafkaInput'),
+    'kafkaV2Output': ('output', 'com.hikvision.idatafusion.etl.adapter.output.kafkaV2.KafkaV2Output'),
 }
 TERMINAL = {'SUCCEEDED', 'FAILED', 'CANCELLED', 'INTERRUPTED', 'TIMED_OUT'}
 
@@ -25,6 +31,95 @@ class ProtocolError(Exception):
     def __init__(self, code):
         super().__init__(code)
         self.code = code
+
+
+def connector_address(value):
+    """No DNS or wildcard target is accepted in the frozen connection grant."""
+    try:
+        address = ipaddress.IPv4Address(value)
+    except (ValueError, ipaddress.AddressValueError):
+        raise ProtocolError('CONNECTOR_ADDRESS_REQUIRED') from None
+    if (not isinstance(value, str) or str(address) != value or address.is_unspecified
+            or address.is_multicast or address.is_link_local or address.is_reserved
+            or value.startswith('0.')):
+        raise ProtocolError('CONNECTOR_ADDRESS_REQUIRED')
+    return value
+
+
+def connector_port(value):
+    if type(value) is not int or not 1 <= value <= 65535 or value in (2180, 2181, 2182, 2183):
+        raise ProtocolError('CONNECTOR_PORT_REJECTED')
+    return value
+
+
+def connection_bindings(value, owner):
+    """Validate platform-owned grants separately from untrusted visual parameters."""
+    if not isinstance(value, list) or len(value) > 16:
+        raise ProtocolError('CONNECTOR_BINDING_LIMIT')
+    result, ids = [], set()
+    for binding in value:
+        required = {'connectionId', 'connectionRevision', 'ownerId', 'kind', 'endpoints'}
+        if not isinstance(binding, dict) or not required <= binding.keys() or binding.keys() - required - {'passivePorts'}:
+            raise ProtocolError('INVALID_CONNECTOR_BINDING')
+        key = positive_id(binding['connectionId'])
+        if key in ids or positive_id(binding['ownerId']) != owner:
+            raise ProtocolError('CONNECTOR_OWNER_MISMATCH')
+        ids.add(key)
+        kind = binding['kind']
+        if kind not in ('postgresql', 'ftp', 'kafka'):
+            raise ProtocolError('CONNECTOR_NOT_SUPPORTED')
+        endpoints = binding['endpoints']
+        if not isinstance(endpoints, list) or not 1 <= len(endpoints) <= (16 if kind == 'kafka' else 1):
+            raise ProtocolError('CONNECTOR_ENDPOINT_LIMIT')
+        normalized, seen = [], set()
+        for endpoint in endpoints:
+            if not isinstance(endpoint, dict) or set(endpoint) != {'host', 'address', 'port'}:
+                raise ProtocolError('INVALID_CONNECTOR_ENDPOINT')
+            address = connector_address(endpoint['address'])
+            if endpoint['host'] != address:
+                raise ProtocolError('CONNECTOR_ADDRESS_REQUIRED')
+            port = connector_port(endpoint['port'])
+            if (address, port) in seen:
+                raise ProtocolError('DUPLICATE_CONNECTOR_ENDPOINT')
+            seen.add((address, port))
+            normalized.append({'host': address, 'address': address, 'port': port})
+        item = {'connectionId': key, 'connectionRevision': positive_id(binding['connectionRevision']),
+                'ownerId': owner, 'kind': kind, 'endpoints': normalized}
+        passive = binding.get('passivePorts')
+        if kind == 'ftp':
+            if not isinstance(passive, dict) or set(passive) != {'start', 'end'}:
+                raise ProtocolError('FTP_PASSIVE_RANGE_REQUIRED')
+            start, end = connector_port(passive['start']), connector_port(passive['end'])
+            if start < 1024 or not 0 <= end - start < 128 or any(start <= p <= end for p in (2180, 2181, 2182, 2183)):
+                raise ProtocolError('FTP_PASSIVE_RANGE_REJECTED')
+            item['passivePorts'] = {'start': start, 'end': end}
+        elif passive is not None:
+            raise ProtocolError('INVALID_CONNECTOR_BINDING')
+        result.append(item)
+    if len(connector_targets(result)) > 160:
+        raise ProtocolError('CONNECTOR_ENDPOINT_LIMIT')
+    return result
+
+
+def connector_targets(bindings):
+    """Fixed byte destinations only; passive and advertised addresses are explicit."""
+    targets = set()
+    for binding in bindings:
+        for endpoint in binding['endpoints']:
+            targets.add((endpoint['address'], endpoint['port']))
+        if binding['kind'] == 'ftp':
+            passive = binding['passivePorts']
+            targets.update((binding['endpoints'][0]['address'], port)
+                           for port in range(passive['start'], passive['end'] + 1))
+    return [{'address': address, 'port': port} for address, port in sorted(targets)]
+
+
+def redaction_values(value):
+    if not isinstance(value, list) or len(value) > 64:
+        raise ProtocolError('CONNECTOR_SECRET_LIMIT')
+    if any(not isinstance(item, str) or not item or len(item) > 4096 or '\x00' in item for item in value):
+        raise ProtocolError('INVALID_CONNECTOR_SECRET')
+    return sorted(set(value), key=lambda item: (-len(item), item))
 
 
 def positive_id(value, maximum=MAX_LONG):
@@ -126,6 +221,8 @@ def reservation(request):
     if request.get('mode') not in ('test', 'run'):
         raise ProtocolError('INVALID_MODE')
     result['mode'] = request['mode']
+    if 'connectionBindings' in request:
+        result['connectionBindings'] = connection_bindings(request['connectionBindings'], result['ownerId'])
     return result
 
 
@@ -165,6 +262,65 @@ def below_output(value, root):
     return resolved
 
 
+def adapter_parameters(module):
+    parameters = module.get('config', {}).get('adapter_param', [])
+    if not isinstance(parameters, list):
+        raise ProtocolError('INVALID_ADAPTER_PARAMETER')
+    result = {}
+    for parameter in parameters:
+        if not isinstance(parameter, dict) or not isinstance(parameter.get('param_name'), str):
+            raise ProtocolError('INVALID_ADAPTER_PARAMETER')
+        key = parameter['param_name']
+        if key in result:
+            raise ProtocolError('DUPLICATE_ADAPTER_PARAMETER')
+        result[key] = parameter.get('param_value')
+    return result
+
+
+def validate_datasource_grant(module, kind, bindings):
+    """Check the generated destination against platform grants without rewriting it."""
+    config = module.get('config', {})
+    sources = config.get('datasource')
+    if not isinstance(sources, list) or len(sources) != 1:
+        raise ProtocolError('CONNECTOR_DATASOURCE_REQUIRED')
+    if config.get('datasource_param', []) != []:
+        raise ProtocolError('CONNECTOR_PARAMETERS_REJECTED')
+    source = sources[0]
+    if not isinstance(source, dict):
+        raise ProtocolError('CONNECTOR_DATASOURCE_REQUIRED')
+    key = native_id(source.get('id'))
+    binding = next((item for item in bindings if item['connectionId'] == key and item['kind'] == kind), None)
+    if binding is None:
+        raise ProtocolError('CONNECTOR_BINDING_REQUIRED')
+    endpoint = binding['endpoints'][0]
+    if (source.get('db_type') != {'postgresql': 16, 'ftp': 18, 'kafka': 8}[kind]
+            or source.get('db_ip') != endpoint['host'] or str(source.get('db_port')) != str(endpoint['port'])):
+        raise ProtocolError('CONNECTOR_ENDPOINT_MISMATCH')
+    if kind == 'postgresql':
+        database = source.get('db_sid')
+        if not isinstance(database, str) or not re.fullmatch(r'[A-Za-z0-9_$.-]{1,128}', database):
+            raise ProtocolError('CONNECTOR_DATABASE_REJECTED')
+        expected = 'jdbc:postgresql://' + endpoint['host'] + ':' + str(endpoint['port']) + '/' + database
+    else:
+        expected = {'ftp': 'ftp://', 'kafka': 'kafka2://'}[kind] + ','.join(
+            item['host'] + ':' + str(item['port']) for item in binding['endpoints'])
+        if kind == 'ftp' and source.get('db_sid'):
+            directory = source['db_sid']
+            if not isinstance(directory, str) or len(directory) > 1024 or any(c in directory for c in ('\x00', '\r', '\n')):
+                raise ProtocolError('CONNECTOR_DIRECTORY_REJECTED')
+            # Preserve AbstractDatasource.jointUrl's original slash behavior.
+            expected += '/' + directory
+    if source.get('db_url') != expected:
+        raise ProtocolError('CONNECTOR_URL_MISMATCH')
+    if kind == 'kafka':
+        params = adapter_parameters(module)
+        if any(key in ('etl.kafka.bootstrap.servers', 'etl.kafka.key.deserializer', 'etl.kafka.value.deserializer',
+                       'etl.kafka.key.serializer', 'etl.kafka.value.serializer')
+               or key.startswith(('etl.kafka.sasl.', 'etl.kafka.ssl.', 'etl.kafka.security.')) for key in params):
+            raise ProtocolError('CONNECTOR_PARAMETERS_REJECTED')
+    return binding
+
+
 def validate_compiled(compiled, record):
     if not isinstance(compiled, dict) or compiled.get('ok') is not True or compiled.get('protocolVersion') != 1:
         raise ProtocolError('INVALID_COMPILER_RESULT')
@@ -194,6 +350,9 @@ def validate_compiled(compiled, record):
             or not int(record['metadataIdBase']) <= int(native_id(snapshot.get('allocatedThrough'))) <= int(record['metadataIdBase']) + 8191
             or snapshot.get('outputsDir') != record['outputsDir']):
         raise ProtocolError('COMPILED_METADATA_MISMATCH')
+    reserved_connections = record.get('connectionBindings', [])
+    if connection_bindings(snapshot.get('connectionBindings', []), record['ownerId']) != reserved_connections:
+        raise ProtocolError('COMPILED_CONNECTION_MISMATCH')
     graph, schedule, stop = (blobs[key][1] for key in ('flowjson', 'schedule', 'stop'))
     flow = graph.get('flow', {})
     if (native_id(flow.get('id')) != record['nativeFlowId']
@@ -239,18 +398,33 @@ def validate_compiled(compiled, record):
                 for child in value:
                     reject_filename_keys(child)
         reject_filename_keys(module.get('config', {}))
-        if name == 'fileOutput':
+        params = adapter_parameters(module)
+        if ADAPTERS[name][0] == 'output':
             output_count += 1
-            params = {}
-            for parameter in module.get('config', {}).get('adapter_param', []):
-                key = parameter.get('param_name')
-                if key in params:
-                    raise ProtocolError('DUPLICATE_ADAPTER_PARAMETER')
-                params[key] = parameter.get('param_value')
-            if params.get('etl.file.serverType') != 'local' or params.get('etl.file.isUpload') != 'false':
+        if name.startswith('postgresql'):
+            validate_datasource_grant(module, 'postgresql', reserved_connections)
+        elif name.startswith('kafka'):
+            validate_datasource_grant(module, 'kafka', reserved_connections)
+        elif name == 'fileInput':
+            validate_datasource_grant(module, 'ftp', reserved_connections)
+            if (str(params.get('etl.file.server_type')).lower() != 'ftp'
+                    or params.get('etl.file.server_download') != 'true'
+                    or str(params.get('etl.file.server_passive_mode', '1')) != '1'):
+                raise ProtocolError('FTP_PASSIVE_REQUIRED')
+            scratch = Path(record['outputsDir']).parent / 'tmp'
+            below_output(params.get('etl.file.local_dir'), scratch)
+            if params.get('etl.file.backDir'):
+                below_output(params['etl.file.backDir'], scratch)
+        elif name == 'fileOutput':
+            below_output(params.get('etl.file.localDir'), record['outputsDir'])
+            if params.get('etl.file.serverType') == 'local' and params.get('etl.file.isUpload') == 'false':
+                below_output(params.get('etl.file.serverDir'), record['outputsDir'])
+            elif str(params.get('etl.file.serverType')).lower() == 'ftp' and params.get('etl.file.isUpload') == 'true':
+                validate_datasource_grant(module, 'ftp', reserved_connections)
+                if str(params.get('etl.file.ftpPassiveMode', '1')) != '1':
+                    raise ProtocolError('FTP_PASSIVE_REQUIRED')
+            else:
                 raise ProtocolError('LOCAL_OUTPUT_REQUIRED')
-            for key in ('etl.file.localDir', 'etl.file.serverDir'):
-                below_output(params.get(key), record['outputsDir'])
     if not output_count:
         raise ProtocolError('OUTPUT_REQUIRED')
     return blobs

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import ipaddress
 import os
 from pathlib import Path
 import signal
@@ -183,8 +184,21 @@ def namespace_supervisor(config_path):
     thread = threading.Thread(target=control, daemon=True)
     thread.start()
     try:
+        addresses = set()
         for proxy in config['dependencies']:
-            bridges.append(ByteBridge(socket.AF_INET, ('127.0.0.1', proxy['port']),
+            address = proxy.get('address', '127.0.0.1')
+            parsed = ipaddress.IPv4Address(address)
+            if (str(parsed) != address or parsed.is_unspecified or parsed.is_multicast
+                    or parsed.is_link_local or parsed.is_reserved or address.startswith('0.')
+                    or type(proxy['port']) is not int or not 1 <= proxy['port'] <= 65535):
+                raise ValueError('Namespace dependency must be a fixed unicast endpoint')
+            if not parsed.is_loopback and address not in addresses:
+                # The address exists only inside this new namespace; no interface
+                # or default route is added, and original protocol bytes are unchanged.
+                subprocess.run(['ip', 'address', 'add', address + '/32', 'dev', 'lo'], check=True,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                addresses.add(address)
+            bridges.append(ByteBridge(socket.AF_INET, (address, proxy['port']),
                                       socket.AF_UNIX, proxy['unixSocket']))
         stream = open(config['coreLog'], 'ab', buffering=0)
         process = subprocess.Popen(config['command'], cwd=config['cwd'], env=config['environment'],

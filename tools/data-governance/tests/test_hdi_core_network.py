@@ -155,7 +155,7 @@ class CoordinatorLeaseTests(unittest.TestCase):
                         state = (child / 'stat').read_text().split(') ', 1)[1].split()[0]
                         if state == 'Z':
                             break
-                    except FileNotFoundError:
+                    except (FileNotFoundError, ProcessLookupError):
                         break
                     time.sleep(.02)
                 else:
@@ -172,6 +172,68 @@ class CoordinatorLeaseTests(unittest.TestCase):
 
     def test_supervisor_sigkill_cannot_orphan_original_child(self):
         self.run_case(True)
+
+
+@unittest.skipUnless(sys.platform == 'linux', 'Linux connector network namespace')
+class ConnectorNamespaceTests(unittest.TestCase):
+    def test_only_granted_address_and_port_reach_the_original_byte_destination(self):
+        probe = subprocess.run(['unshare', '--user', '--map-root-user', '--net', 'true'], capture_output=True)
+        if probe.returncode:
+            self.skipTest('Unprivileged network namespaces unavailable')
+        with tempfile.TemporaryDirectory(prefix='hdi-connector-net-') as directory:
+            root = Path(directory)
+            with socket.socket() as target:
+                target.bind(('127.0.0.1', 0))
+                target.listen()
+                target.settimeout(10)
+                destination = target.getsockname()
+                received = []
+                def echo():
+                    connection, _ = target.accept()
+                    with connection:
+                        value = connection.recv(100)
+                        received.append(value)
+                        connection.sendall(b'original:' + value)
+                thread = threading.Thread(target=echo, daemon=True)
+                thread.start()
+                bridge = network.ByteBridge(socket.AF_UNIX, str(root / 'connector.sock'), socket.AF_INET, destination)
+                child = root / 'probe.py'
+                child.write_text('''import json,socket
+value={"interfaces":[n for _,n in socket.if_nameindex()]}
+with socket.create_connection(("192.0.2.55",15432),2) as s:
+ s.sendall(b"preserved-wire-bytes");value["response"]=s.recv(100).decode()
+try:
+ s=socket.create_connection(("192.0.2.55",15433),.5);s.close();value["ungrantedPortReachable"]=True
+except OSError:value["ungrantedPortReachable"]=False
+print(json.dumps(value),flush=True)
+''')
+                config = root / 'namespace.json'
+                config.write_text(json.dumps({'parentNetworkNamespace': os.readlink('/proc/self/ns/net'),
+                    'dependencies': [{'address': '192.0.2.55', 'port': 15432, 'unixSocket': bridge.address}],
+                    'coreLog': str(root / 'core.log'), 'corePorts': [], 'cwd': str(root),
+                    'command': [sys.executable, str(child)], 'environment': {'PATH': '/usr/bin:/bin'},
+                    'stopGraceSeconds': 1}))
+                config.chmod(0o600)
+                process = subprocess.Popen(['unshare', '--user', '--map-root-user', '--mount-proc', '--net',
+                    '--pid', '--fork', '--kill-child=SIGKILL', sys.executable, str(SOURCE),
+                    '--namespace-config', str(config)], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                try:
+                    process.wait(timeout=15)
+                    self.assertEqual(process.returncode, 0, process.stderr.read().decode())
+                    observed = json.loads((root / 'core.log').read_text())
+                    self.assertEqual(observed, {'interfaces': ['lo'], 'response': 'original:preserved-wire-bytes',
+                                                'ungrantedPortReachable': False})
+                    thread.join(timeout=1)
+                    self.assertEqual(received, [b'preserved-wire-bytes'])
+                    events = [json.loads(line) for line in process.stdout.read().splitlines()]
+                    self.assertEqual(events[-1]['event'], 'CORE_CLOSED')
+                    self.assertTrue(events[-1]['finalized'])
+                finally:
+                    if process.poll() is None:
+                        process.kill(); process.wait(timeout=5)
+                    for stream in (process.stdin, process.stdout, process.stderr):
+                        stream.close()
+                    bridge.close()
 
 
 if __name__ == '__main__':

@@ -48,7 +48,7 @@
 
 ## 隔离与生命周期
 
-Linux 必须支持 unprivileged user/network/PID namespaces。Core namespace 只有 lo；原 wildcard RPC/data 监听不发布到主机或 LAN。依赖经私有 0600 Unix socket 透明代理到固定的回环 Redis/ZooKeeper。当前只支持三种已验证原插件，不开放任意网络目的地；不具备隔离能力直接拒绝启动，不采用 macOS 测试 bind shim。
+Linux 必须支持 unprivileged user/network/PID namespaces。Core namespace 只有 lo；原 wildcard RPC/data 监听不发布到主机或 LAN。依赖经私有 0600 Unix socket 透明代理到固定的回环 Redis/ZooKeeper，外部连接按下节平台冻结授权逐项建立定向通道。不开放任意网络目的地；不具备隔离能力直接拒绝启动，不采用 macOS 测试 bind shim。
 
 每个运行使用独立 namespace、私有目录、原 ZK digest ACL 和原生 ID。worker 记录启动/执行/停止超时及进程身份，持有子进程对象进行终止，不运行 pkill、stopall 或厂商全局安装脚本。原进程没确认退出时不释放运行屏障；重启后未知记录需要核查，不自动派发。
 
@@ -60,7 +60,7 @@ Linux 必须支持 unprivileged user/network/PID namespaces。Core namespace 只
 
 `tls` 可指向管理员为该模块新建的私有 `serverKeystore/clientKeystore/passwordFile`；省略时为每次运行生成新 JKS。测试证书的短有效期不能当作正式部署配置。`javaRuntimeMode` 默认 `normal`；`interpreted-validation` 仅用于 QEMU TCG 上 Java 11 C1 不稳定的本机验证，会显式出现在 hello 中。正式原生 Linux 不应照抄该测试模式。
 
-本次验证包括真实原 DataGenerator → FieldMapping → FileOutput 的原生 finish、3 行 CSV 的内容/完整 SHA、分块产物、跨 owner 拒绝、重复 submit 幂等以及 held 子进程退出。运行取消已在 45 秒等待配置下验证本次 exec_id 的原生 stop 终态，随后确认进程退出且不返回中间产物；若其他运行在停止窗口未观察到原生终态则明确返回 `ORIGINAL_STOP_TIMEOUT_PROCESS_CLOSED`，不会把中间文件作为成功产物。当前 namespace 隔离的是网络与 PID，不是完整文件系统沙箱；只接受受平台编译器约束的三个已选插件。
+本次验证包括真实原 DataGenerator → FieldMapping → FileOutput 的原生 finish、3 行 CSV 的内容/完整 SHA、分块产物、跨 owner 拒绝、重复 submit 幂等以及 held 子进程退出。运行取消已在 45 秒等待配置下验证本次 exec_id 的原生 stop 终态，随后确认进程退出且不返回中间产物；若其他运行在停止窗口未观察到原生终态则明确返回 `ORIGINAL_STOP_TIMEOUT_PROCESS_CLOSED`，不会把中间文件作为成功产物。当前 namespace 隔离的是网络与 PID，不是完整文件系统沙箱；只接受受平台编译器约束、列在协议 allowlist 的原插件。
 
 
 内置协调器追加验收：无 `zookeeper` 配置时，原 bundle 的 ZooKeeper 独立启动，完整三节点 stdio 验收通过；关闭后 held supervisor 与 JVM 均结束，预先存在的实验协调器保持运行。协调 JVM 通过 stdin 租约和 Linux parent-death signal 双重约束；worker 断连正常清理，supervisor 被强制结束时只终止其 held JVM。启动保存 PID、启动 tick、argv 哈希，发现旧记录对应进程仍存活时拒绝接管。Linux 实测 49 项组件测试通过，包含 stdin EOF 与 supervisor SIGKILL 后原子进程不遗留两项；macOS 上这两项 Linux 专有测试明确跳过。
@@ -84,3 +84,26 @@ Linux 必须支持 unprivileged user/network/PID namespaces。Core namespace 只
 Core 使用原 bundle 的 `logback.xml` 派生配置，保留原 SIFT、discriminator、filter 和实际文件写入器，只将 `LOG_HOME/DURABLE_LOG_HOME` 放入本次私有日志目录，并将控制台日志交现有脱敏通道。原管理历史不被适配器伪造，也不会通过创建空文件来冒充原写日志功能。
 
 独立三行任务复验已确认原生 finish、CSV/SHA、256 MiB 缓存文件成功创建，`File too large` 与调度日志 `NoSuchFileException` 消失。原新实例仍有一次首次读取尚不存在的状态历史文件异常：`TaskUtils.findRunningFlows` 捕获后继续，随后原 SIFT 写入器实际生成非空历史文件。因此本次验收不宣称日志零错误，不增加首次启动 hook，也不修改原 JAR。
+
+
+## 数据库、FTP 与 Kafka 的连接授权
+
+新 `reserve` 可包含 `connectionBindings` 与 `redactionValues`。后者仅由平台内部连接解析产生，绝不从 Visual、浏览器参数或已保存任务快照采纳。连接授权字段示例：
+
+```json
+{
+  "connectionId": "31", "connectionRevision": "2", "ownerId": "1", "kind": "ftp",
+  "endpoints": [{"host": "127.0.0.1", "address": "127.0.0.1", "port": 2121}],
+  "passivePorts": {"start": 22100, "end": 22109}
+}
+```
+
+`kind` 为 `postgresql/ftp/kafka`，连接 ID/修订/属主均为正十进制字符串。平台从拥有者的持久连接及部署端点白名单建立授权，worker 再校验属主、固定 IPv4 和端口。首轮只接受 IPv4 字面值，host 与 address 完全相等，不在运行中解析 DNS。标准 FTP 控制端口 21 可用；FTP 必须选择原被动模式并给出部署允许的高位端口段（最多 128 个）。Kafka 必须列出全部 advertised brokers 的固定端点，未列端点无法连接。
+
+每次预留冻结完整连接授权，重复预留不得更换连接修订或凭据。原编译器 `metadataSnapshot.connectionBindings` 必须与预留授权完全相等；原 `config.datasource` 的 ID、类型、IP、端口及原 jointUrl 与授权核对，不能通过节点高级参数改写 bootstrap、认证类或自定义序列化类。原 FTP 的 jointUrl 目录斜线按原实现保留，原配置字节不重写。
+
+网络 namespace 仍只有 lo，无默认路由或外部网卡。对于非回环目标，在该私有 namespace 的 lo 增加精确 IPv4 `/32`，仅绑定授权端口，再经私有 Unix socket 透明转发到原固定地址；数据库、FTP 数据通道和 Kafka 协议不由适配层重新实现。原 Core 的管理端口 2180–2183 不能被连接授权覆盖。
+
+连接密码只进入原编译器/原执行器的私有配置，保持原 `etl.security.decrypt=false` 原生模式；平台连接库的加密存储在平台侧处理。`redactionValues` 写入运行目录 `private/connection-secrets.json`（0600），不进入公共状态响应；提交前复核其冻结摘要，原日志中的明文密码按实际值脱敏。FTP 输入下载目录限定本次 `tmp`，FTP 输出暂存文件限定本次 `outputs`，没有增加任意本地目录能力。
+
+上述协议扩展不等于所有连接插件已完成业务验收。组件测试验证授权、原字节透明性、未授权端口不可达、私有凭据与生命周期；原插件的具体行数、数据库写入、FTP 传输、Kafka 消费生产及浏览器操作须由集成验收逐项给出。
