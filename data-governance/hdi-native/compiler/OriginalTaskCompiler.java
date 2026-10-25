@@ -853,10 +853,35 @@ public final class OriginalTaskCompiler {
             return lookup(sourceTableById,a[0]);
         }));
         Object streamFields = provider("service.task.StreamFieldService", Map.of("findStreamField", a -> { key(a[0],streamId); return inputFields; }));
+        // The original no-table MQ form still has output fields. Its database service
+        // returns an empty DstTableVo, then queries fields by stream with a null table ID.
+        // Preserve those original read projections instead of treating the table as absent.
+        boolean implicitMqTarget = "rabbitmqOutput".equals(nodes.get(nodes.size()-1).get("adapterName")) && outputTableByItem.isEmpty();
+        if (implicitMqTarget) {
+            // Register the original model annotations for the original mapper query builders;
+            // this short-lived compiler has no Spring/MyBatis persistence bootstrap.
+            var mapperConfig=new tk.mybatis.mapper.entity.Config();
+            tk.mybatis.mapper.mapperhelper.EntityHelper.initEntityNameMap(EtlDstTable.class,mapperConfig);
+            tk.mybatis.mapper.mapperhelper.EntityHelper.initEntityNameMap(EtlDstTableField.class,mapperConfig);
+        }
+        var implicitTargetService = new com.hikvision.idatafusion.detl.service.task.impl.DstTableServiceImpl();
+        inject(implicitTargetService,"etlDstTableDao",provider("mapper.EtlDstTableDao",Map.of("selectByExample",a -> {
+            require(implicitMqTarget,"Unexpected implicit output table lookup");return List.of();
+        })));
+        var implicitTargetFields = new com.hikvision.idatafusion.detl.service.task.impl.DstTableFieldServiceImpl();
+        inject(implicitTargetFields,"etlDstTableFieldDao",provider("mapper.EtlDstTableFieldDao",Map.of("selectByExample",a -> {
+            require(implicitMqTarget && outputByNode.size()==1,"Unexpected implicit output field lookup");
+            List<EtlDstTableField> rows=new ArrayList<>();
+            for (DstTableFieldVo field:outputByNode.values().iterator().next()) rows.add(bean(EtlDstTableField.class,field));
+            return rows;
+        })));
         Object destinationService = provider("service.task.DstTableService", Map.of(
             "findDstTableByItemId", a -> outputTableByItem.get(Long.valueOf(text(a[0]))),
-            "findDstTable", a -> { key(a[0],streamId); if ("rabbitmqOutput".equals(nodes.get(nodes.size()-1).get("adapterName")) && outputTableByItem.isEmpty()) return null; require(outputTableByItem.size()==1,"Missing output table");return outputTableByItem.values().iterator().next(); }));
-        Object destinationFields = provider("service.task.DstTableFieldService", Map.of("findDstTableField", a -> { key(a[0],streamId);return lookup(outputByTable,a[1]); }));
+            "findDstTable", a -> { key(a[0],streamId); if (implicitMqTarget) return implicitTargetService.findDstTable(streamId); require(outputTableByItem.size()==1,"Missing output table");return outputTableByItem.values().iterator().next(); }));
+        Object destinationFields = provider("service.task.DstTableFieldService", Map.of("findDstTableField", a -> {
+            key(a[0],streamId); if (implicitMqTarget && a[1]==null) return implicitTargetFields.findDstTableField(streamId,null);
+            return lookup(outputByTable,a[1]);
+        }));
         InputServiceImpl jdbcInput = new InputServiceImpl();
         for (AdapterService service : List.of(jdbcInput)) {
             inject(service,"adapterDataService",adapterData); inject(service,"paramService",params);inject(service,"moduleDao",moduleDao); inject(service,"dataSourceManageService",dataSourceService);

@@ -21,6 +21,8 @@
 
 RabbitMQ 原 `getIgnoreDisplayParamName` 对输入/输出均返回空，不能套用 Kafka 的三个隐藏参数规则。输入格式参数为 `etl.plugin.rabbitmq.format`，输出为 `format`；输入 `rabbitmq.queue.name`、输出 `rabbitmq.exchange.name/rabbitmq.exchange.routingkey` 与 `rabbitmq.vhost` 保留原定义。无实体表时原 MqInputService 调用自己的 mockTable，输出允许原无目标表元数据。原 AMQP 消费器在 poll 返回消息前即 ACK，早于格式解析及下游写入；试运行同样实际消费，验收必须使用专用批次。空队列等待采用原参数，编译器不添加截断算法。
 
+原 RabbitMQ 输出不选实体表时，`DstTableServiceImpl.findDstTable` 仍返回空 `DstTableVo`，随后原 MQ 生成器调用 `findDstTableField(streamId,null)` 读取输出字段。编译器复用这两个原服务的无表查询投影（DAO仅返回本次保存字段），不能返回null而漏掉 `dst_table_field`。原 AMQP 实现允许空交换机并跳过交换机声明；显式交换机则须已存在或配置原自动创建选项。
+
 SFTP 使用原 `sourceType=sftp`、数据源类型18与 `ext2=sftp`，必须与冻结连接一致。原 File 输入输出的 JSch SftpConnect 硬编码 `StrictHostKeyChecking=no`，没有已接入的主机密钥固定入口；本轮保持其原行为，不能称为已启用主机密钥校验。
 
 ## 独立 MySQL 平台适配包
