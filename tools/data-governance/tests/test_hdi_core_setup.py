@@ -67,6 +67,8 @@ class SetupTests(unittest.TestCase):
             receipt = json.loads((self.args.install_root / 'private/setup-receipt.json').read_text())
             self.assertEqual(config['platformAdapters'], expected)
             self.assertEqual(receipt['inputs']['platformAdapters'], expected)
+            self.assertEqual(result['compilerArgv'][-4:], ['--platform-adapters', str(package),
+                '--platform-adapters-sha256', expected['manifestSha256']])
             verify.assert_called_once_with(package, self.bundle, expected['manifestSha256'])
             (package / 'platform-adapter-manifest.json').write_text('{"changed":true}')
             with self.assertRaisesRegex(setup.SetupError, 'EXISTING_INSTALLATION_CONFLICT'):

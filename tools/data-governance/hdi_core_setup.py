@@ -196,7 +196,8 @@ def prepare(args):
         'servicesStarted': False, 'redisConnectivityTested': False, 'workerConfig': str(config_path),
         'workerArgv': [sys.executable, str(HERE / 'hdi_core_worker.py'), '--config', str(config_path)],
         'compilerArgv': [sys.executable, str(compiler), '--bundle', str(bundle), '--java-home', str(compiler_java_home),
-                         '--runtime', str(root / 'compile')]}
+                         '--runtime', str(root / 'compile')] + (['--platform-adapters', adapter_config['root'],
+                             '--platform-adapters-sha256', adapter_config['manifestSha256']] if adapter_config else [])}
 
 
 def main(argv=None):

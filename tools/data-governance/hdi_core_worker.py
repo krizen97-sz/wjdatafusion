@@ -583,8 +583,11 @@ class Worker:
                 raise ProtocolError('WORKER_BUSY')
             compiled = strict_json(data)
             validate_compiled(compiled, record)
-            if any(item['kind'] == 'mysql' for item in record.get('connectionBindings', [])) and not getattr(self, 'platform_adapters', None):
-                raise ProtocolError('MYSQL_PLATFORM_ADAPTER_REQUIRED')
+            if any(item['kind'] == 'mysql' for item in record.get('connectionBindings', [])):
+                if not getattr(self, 'platform_adapters', None):
+                    raise ProtocolError('MYSQL_PLATFORM_ADAPTER_REQUIRED')
+                if compiled['metadataSnapshot'].get('platformAdapterManifestSha256') != self.platform_adapters['manifestSha256']:
+                    raise ProtocolError('MYSQL_PLATFORM_ADAPTER_MISMATCH')
             path = self.runs_root / record['runId'] / 'private/compiled.json'
             if path.exists() and hashlib.sha256(private_file(path, MAX_COMPILED)).hexdigest() != sha:
                 raise ProtocolError('SUBMISSION_CONFLICT')
