@@ -8,12 +8,14 @@ from pathlib import Path, PurePosixPath
 import re
 import stat
 import tempfile
+import xml.etree.ElementTree as ET
 import zipfile
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE_MANIFEST = ROOT / 'data-governance/hdi-native/manifest.detl-3.3.0.json'
 INSTANCE = 'bin/instance/'
 PUBLIC = 'bin/detl/config/public/'
+NODE_ICONS = 'bin/detl/static/public/icon/'
 TASK_SERVICE = 'bin/detl/'
 TASK_SERVICE_RESOURCES = {
     'dEtlv2.jar', 'config/mybatis-config.xml', 'config/adapter-mirror.json',
@@ -30,6 +32,7 @@ PLUGIN_META = {'adapter.properties', 'etl_plugin.json', 'version.txt', 'mybatis-
 NOTICE = 'META-INF/Open Source Software Licenses.txt'
 MAX_FILE_BYTES = 512 * 1024 * 1024
 MAX_TOTAL_BYTES = 6 * 1024 * 1024 * 1024
+MAX_ICON_BYTES = 2 * 1024 * 1024
 
 
 def digest(stream):
@@ -136,6 +139,41 @@ def plugin_file(plugin, tail):
             or tail == 'META-INF/services/javax.servlet.ServletContainerInitializer')
 
 
+def validate_node_icon(content):
+    """Inspect a public SVG without rewriting its original bytes or allowing active content."""
+    if len(content) > MAX_ICON_BYTES or any(value in content.lower() for value in (b'<!doctype', b'<!entity', b'<?xml-stylesheet')):
+        raise ValueError('Original node icon contains unsupported XML')
+    try:
+        root = ET.fromstring(content)
+    except ET.ParseError as error:
+        raise ValueError('Original node icon is not SVG XML') from error
+    svg = '{http://www.w3.org/2000/svg}'
+    shapes = {'svg', 'desc', 'title', 'defs', 'clipPath', 'rect', 'g', 'path', 'image', 'pattern', 'use',
+              'linearGradient', 'radialGradient', 'stop', 'circle', 'polygon', 'polyline', 'filter', 'feFlood',
+              'feColorMatrix', 'feOffset', 'feGaussianBlur', 'feComposite', 'feBlend', 'mask', 'ellipse',
+              'text', 'tspan', 'effect', 'foreignObject'}
+    if root.tag != svg + 'svg':
+        raise ValueError('Original node icon must have an SVG root')
+    allowed_tags = {svg + name for name in shapes} | {'{http://www.w3.org/1999/xhtml}div'}
+    for node in root.iter():
+        # Two original icons use a plain XHTML div only for a CSS backdrop-filter.
+        if node.tag not in allowed_tags:
+            raise ValueError('Original node icon contains active or unsupported elements')
+        for key, value in node.attrib.items():
+            name = key.rsplit('}', 1)[-1].casefold()
+            if name.startswith('on') or name == 'base' or '\\' in value or any(word in value.casefold() for word in ('javascript:', '@import', 'expression(')):
+                raise ValueError('Original node icon contains active attributes')
+            if name == 'style':
+                declarations = [item.split(':', 1) for item in value.split(';') if item.strip()]
+                if any(len(item) != 2 or item[0].strip() not in {'clip-path', 'height', 'width', 'backdrop-filter', '-webkit-backdrop-filter'} for item in declarations):
+                    raise ValueError('Original node icon contains unsupported CSS')
+            if name in {'href', 'src'} and not (value.startswith('#') or re.fullmatch(r'data:image/png;base64,[A-Za-z0-9+/=\s]+', value)):
+                raise ValueError('Original node icon contains an external resource')
+            for target in re.findall(r'url\((.*?)\)', value, flags=re.IGNORECASE):
+                if not target.strip(' \t\r\n\"\'').startswith('#'):
+                    raise ValueError('Original node icon contains an external resource')
+
+
 def select_files(entries, plugins, task, include_task_service=False, include_coordinator=False, include_agent=False):
     selected = {}
     skipped = []
@@ -172,6 +210,13 @@ def select_files(entries, plugins, task, include_task_service=False, include_coo
                 raise ValueError('Incomplete original plugin: ' + plugin)
     for record in task['files']:
         select(PUBLIC + record['path'], 'public/' + record['path'], 'original-task-ui', record)
+    # The original quick-add menu requests /icon/*.svg from static/public, not config/public.
+    # Keep the flat SVG directory only; never pull scripts, nested configuration or private assets.
+    for source, info in sorted(entries.items()):
+        if not info.is_dir() and source.startswith(NODE_ICONS):
+            name = source[len(NODE_ICONS):]
+            if re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*\.svg', name) and not excluded(name):
+                select(source, 'public/icon/' + name, 'original-node-icon')
     if include_task_service:
         for name in ('postgresql.svg', 'ftp.svg', 'kafka.svg', 'mysql.svg', 'rabbitmq.svg', 'default.svg'):
             source = 'bin/detl/static/public/datasource/' + name
@@ -267,6 +312,8 @@ def package(archive_path, output, plugins=(), all_plugins=False, source_manifest
                     value = result.hexdigest()
                     if count != info.file_size or expected and (count != expected['bytes'] or value != expected['sha256']):
                         raise ValueError('Original task artifact checksum mismatch: ' + source)
+                    if role == 'original-node-icon':
+                        validate_node_icon(path.read_bytes())
                     path.chmod(0o644)
                     records.append({'path': destination, 'bytes': count, 'sha256': value, 'role': role,
                                     'source': {'archiveSha256': checksum, 'entry': source}})

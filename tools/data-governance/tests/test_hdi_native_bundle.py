@@ -239,6 +239,51 @@ class NativeBundleTest(unittest.TestCase):
         self.assertFalse((root / 'zookeeper/data').exists())
         self.assertTrue(json.loads((root / 'bundle-manifest.json').read_text())['coordinatorIncluded'])
 
+    def test_original_quick_add_icons_are_flat_byte_exact_svgs_with_provenance(self):
+        icon = b'<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h1v1z"/></svg>'
+        self.contents.update({bundle.NODE_ICONS + 'fieldmapping.svg': icon,
+                              bundle.NODE_ICONS + 'javascriptprocess.svg': icon,
+                              bundle.NODE_ICONS + 'runtime.js': b'must not package scripts',
+                              bundle.NODE_ICONS + 'settings.json': b'must not package settings',
+                              bundle.NODE_ICONS + '.private.svg': icon,
+                              bundle.NODE_ICONS + 'private/secret.svg': icon,
+                              bundle.NODE_ICONS + 'nested/another.svg': icon})
+        self.build_zip(); self.allow_current_zip(); self.package(include_task_service=True)
+        root = self.root / 'out'; manifest = json.loads((root / 'bundle-manifest.json').read_text())
+        icons = [row for row in manifest['files'] if row['path'].startswith('public/icon/')]
+        self.assertEqual(['public/icon/fieldmapping.svg', 'public/icon/javascriptprocess.svg'], [row['path'] for row in icons])
+        for row in icons:
+            self.assertEqual(icon, (root / row['path']).read_bytes())
+            self.assertEqual('original-node-icon', row['role'])
+            self.assertEqual(bundle.NODE_ICONS + Path(row['path']).name, row['source']['entry'])
+            self.assertEqual(bundle.file_digest(self.archive), row['source']['archiveSha256'])
+        self.assertTrue(bundle.verify(root)['verified'])
+
+    def test_node_icon_validation_preserves_embedded_rasters_local_references_and_original_backdrop(self):
+        icon = b'''<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<image xlink:href="data:image/png;base64,iVBORw0KGgo="/><use xlink:href="#shape"/>
+<foreignObject><div xmlns="http://www.w3.org/1999/xhtml" style="clip-path:url(#mask);height:100%;width:100%;backdrop-filter:blur(6px);"/></foreignObject></svg>'''
+        self.contents[bundle.NODE_ICONS + 'fieldmapping.svg'] = icon
+        self.build_zip(); self.allow_current_zip(); self.package()
+        self.assertEqual(icon, (self.root / 'out/public/icon/fieldmapping.svg').read_bytes())
+
+    def test_node_icons_cannot_publish_script_handlers_external_links_or_entities(self):
+        invalid = [b'<script>alert(1)</script>', b'<g onload="alert(1)"/>',
+                   b'<image href="https://example.invalid/icon.png"/>',
+                   b'<use href="data:image/svg+xml;base64,PHNjcmlwdD4="/>',
+                   b'<g fill="url(https://example.invalid/icon.svg#x)"/>',
+                   b'<g xml:base="https://example.invalid/"><use href="#shape"/></g>',
+                   b'<g style="background-image:image-set(\'https://example.invalid/icon.png\');"/>']
+        for fragment in invalid:
+            with self.subTest(fragment=fragment):
+                self.contents[bundle.NODE_ICONS + 'bad.svg'] = b'<svg xmlns="http://www.w3.org/2000/svg">' + fragment + b'</svg>'
+                self.build_zip(); self.allow_current_zip()
+                with self.assertRaisesRegex(ValueError, 'node icon'):
+                    self.package()
+                self.assertFalse((self.root / 'out').exists())
+        with self.assertRaisesRegex(ValueError, 'XML'):
+            bundle.validate_node_icon(b'<!DOCTYPE svg [<!ENTITY x "private">]><svg xmlns="http://www.w3.org/2000/svg">&x;</svg>')
+
 
 if __name__ == '__main__':
     unittest.main()
