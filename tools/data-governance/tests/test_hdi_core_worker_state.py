@@ -1,5 +1,7 @@
 """Private state/API boundaries only. These tests do not simulate ETL success."""
 import importlib.util
+import base64
+import hashlib
 import json
 from pathlib import Path
 import sys
@@ -61,6 +63,43 @@ class WorkerStateTests(unittest.TestCase):
         self.assertTrue(result['finalized'])
         self.assertNotIn('nativeState', result)
         self.assertEqual(self.worker.tasks, {})
+
+    def test_connection_grants_are_frozen_and_secret_values_live_only_in_private_file(self):
+        binding = {'connectionId': '31', 'connectionRevision': '2', 'ownerId': '1', 'kind': 'postgresql',
+                   'endpoints': [{'host': '127.0.0.1', 'address': '127.0.0.1', 'port': 15432}]}
+        request = {**self.request, 'connectionBindings': [binding], 'redactionValues': ['test-secret-never-public']}
+        result = self.worker.reserve(request)
+        self.assertEqual(self.worker.reserve(request), result)
+        self.assertEqual(result['connectionBindings'], [binding])
+        path = Path(result['outputsDir']).parent
+        self.assertNotIn('test-secret-never-public', (path / 'state.json').read_text())
+        self.assertNotIn('test-secret-never-public', json.dumps(result))
+        secret = path / 'private/connection-secrets.json'
+        self.assertEqual(secret.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(json.loads(secret.read_text()), ['test-secret-never-public'])
+        with self.assertRaisesRegex(ProtocolError, 'RESERVATION_CONFLICT'):
+            self.worker.reserve({**request, 'redactionValues': ['different-secret']})
+        with self.assertRaisesRegex(ProtocolError, 'RESERVATION_CONFLICT'):
+            self.worker.reserve({**request, 'connectionBindings': [{**binding, 'connectionRevision': '3'}]})
+        secret.write_text('["changed-secret"]')
+        compiled = b'{"ok":true}'
+        with patch.object(module, 'validate_compiled'), patch.object(module, 'NativeRun') as run:
+            with self.assertRaisesRegex(ProtocolError, 'CONNECTOR_SECRETS_CHANGED'):
+                self.worker.submit({**self.request, 'compiledBase64': base64.b64encode(compiled).decode(),
+                                    'sha256': hashlib.sha256(compiled).hexdigest()})
+            run.assert_not_called()
+        self.assertEqual(self.worker.records[self.request['runId']]['state'], 'RESERVED')
+
+    def test_original_plain_connector_credentials_are_redacted_from_public_logs(self):
+        self.worker.redis_password = 'owned-redis-password'
+        self.worker.reserve(self.request)
+        record = self.worker.records[self.request['runId']]
+        task = module.NativeRun(self.worker, record, {}, ['original-ftp-password'])
+        (task.root / 'logs/core.log').write_text('original adapter config={value:original-ftp-password}\n')
+        task.log_progress(final=True)
+        text = (task.root / 'logs/safe.log').read_text()
+        self.assertNotIn('original-ftp-password', text)
+        self.assertIn('<redacted>', text)
 
     def test_native_ids_remain_reserved_even_after_cancel(self):
         self.worker.reserve(self.request)
