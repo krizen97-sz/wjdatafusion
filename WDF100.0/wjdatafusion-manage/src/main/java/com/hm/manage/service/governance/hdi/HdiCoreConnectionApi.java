@@ -117,7 +117,7 @@ public class HdiCoreConnectionApi {
             }
             case "addCommonDatasource": case "deleteCommonDatasource": {
                 String name = HdiProtocol.query(request, "datasourceName");
-                if (name == null || !Set.of("PostgreSQL", "FTP", "Kafka").contains(name)) throw bad("连接类型无效");
+                if (name == null || !Set.of("PostgreSQL", "MySQL", "FTP", "Kafka", "RabbitMQ").contains(name)) throw bad("连接类型无效");
                 Set<String> names = new java.util.LinkedHashSet<>();
                 HdiProtocol.JSON.readTree(store.getPreference(owner, "connection-types", "[]")).forEach(value -> names.add(value.asText()));
                 if (route.equals("addCommonDatasource")) names.add(name); else names.remove(name);
@@ -177,7 +177,7 @@ public class HdiCoreConnectionApi {
     }
     private List<Map<String, Object>> types() {
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (String type : List.of("PostgreSQL", "FTP", "Kafka")) {
+        for (String type : List.of("PostgreSQL", "MySQL", "FTP", "Kafka", "RabbitMQ")) {
             JsonNode value = descriptor(type, null);
             rows.add(Map.of("name", type, "dbType", value.path("dbType").intValue(), "datasourceCategory", value.path("category").asText()));
         }
@@ -196,7 +196,7 @@ public class HdiCoreConnectionApi {
     }
     private JsonNode descriptor(String type, String version) {
         String normalized = type.equalsIgnoreCase("postgresql") ? "PostgreSQL" : type;
-        if (!Set.of("PostgreSQL", "FTP", "Kafka").contains(normalized)) throw bad("当前未接入此连接类型");
+        if (!Set.of("PostgreSQL", "MySQL", "FTP", "Kafka", "RabbitMQ").contains(normalized)) throw bad("当前未接入此连接类型");
         String key = normalized + ":" + (version == null || version.equals("undefined") ? "" : version);
         return descriptors.computeIfAbsent(key, ignored -> catalog.translateConnectionForm(compiler.connectionDescription("connectionForm", normalized,
             version == null || version.equals("undefined") ? "" : version, null))).deepCopy();

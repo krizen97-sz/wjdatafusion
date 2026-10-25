@@ -31,7 +31,7 @@ public class HdiCoreTableMetadata {
         ObjectNode query = ((ObjectNode)request).deepCopy(); query.put("pageSize", 200);
         String schema = query.path("schemaCode").asText("");
         if (schema.isBlank()) schema = query.path("tableSchem").asText(query.path("tableSchema").asText(""));
-        if (source.path("dbType").asInt() == 16 && schema.isBlank()) {
+        if (Set.of(2,16).contains(source.path("dbType").asInt()) && schema.isBlank()) {
             // The original output cascader groups this unpaged result by schema. An omitted schema
             // means all visible schemas; it is not the paged queryTablePage default of public.
             List<Map<String,Object>> all = new ArrayList<>(); Set<String> schemas = new LinkedHashSet<>();
@@ -86,7 +86,7 @@ public class HdiCoreTableMetadata {
         if (source.path("dbType").asInt() == 8) {
             result.put("access", true); result.put("columns", List.of()); result.put("schemaChecked", false); return result;
         }
-        if (source.path("dbType").asInt() != 16) throw new HdiTaskFault(422, "此连接不提供目标关系表核对");
+        if (!Set.of(2,16).contains(source.path("dbType").asInt())) throw new HdiTaskFault(422, "此连接不提供目标关系表核对");
         LinkedHashMap<String,Map<String,Object>> remaining = new LinkedHashMap<>();
         for (Object item : list(actual.get("fieldUpdateRequestList"))) {
             Map<String,Object> field = copy(item); String name = text(field.get("columnName"), "目标列名");
@@ -115,10 +115,11 @@ public class HdiCoreTableMetadata {
         String name = text(request.path("tableName").asText(request.path("dbTableName").asText()), "表名称");
         String schema = request.path("tableSchem").asText(request.path("tableSchema").asText(request.path("schemaCode").asText("")));
         if (type == 16 && schema.isBlank()) schema = "public";
+        if (type == 2 && schema.isBlank()) schema = connections.get(owner,connectionId).path("databaseSid").asText();
         ObjectNode query = HdiProtocol.JSON.createObjectNode().put("dbId", connectionId).put("tableName", name).put("schemaCode", schema);
         for (Map<String,Object> row : taskTables(owner, query)) {
             if (!name.equals(row.get("tableName"))) continue;
-            if (type == 16 && !schema.equals(row.get("tableSchema"))) continue;
+            if (Set.of(2,16).contains(type) && !schema.equals(row.get("tableSchema"))) continue;
             return row;
         }
         throw new HdiTaskFault(404, "目标表或主题不存在，未创建或修改业务对象");

@@ -42,14 +42,17 @@ public class HdiCoreConnections {
     private record Version(ObjectNode datasource, String encryptedSecret) { }
     private record Normalized(ObjectNode datasource, String secret) { }
     private record Endpoint(String host, int port) { String key() { return host + ":" + port; } }
-    private static final Set<String> CONNECTION_PLUGINS = Set.of("postgresqlInput", "postgresqlOutput", "fileInput", "fileOutput", "kafkaInput", "kafkaV2Output");
-    private static final Set<String> FORM_FIELDS = Set.of("connectType", "databaseIp", "databasePort", "databaseSid", "databaseUsername", "databasePassword", "dbUrl", "address", "certification", "authentication", "Host", "Port", "FolderPath", "ConnectMode", "KerberosId", "ServerName", "DomainName", "JaasConfig", "ext1", "ext2", "ext3");
+    private static final Set<String> CONNECTION_PLUGINS = Set.of("postgresqlInput", "postgresqlOutput", "mysqlInput", "mysqlOutput", "rabbitmqInput", "rabbitmqOutput", "fileInput", "fileOutput", "kafkaInput", "kafkaV2Output");
+    private static final Set<String> FORM_FIELDS = Set.of("connectType", "databaseIp", "databasePort", "databaseSid", "databaseUsername", "databasePassword", "dbUrl", "address", "certification", "authentication", "Host", "Port", "FolderPath", "ConnectMode", "KerberosId", "ServerName", "DomainName", "JaasConfig", "ext1", "ext2", "ext3", "Ssl");
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
     private final CredentialCryptoService crypto;
     private final HdiCoreKeys keys;
     private final HdiCoreConnectionProperties policy;
     private final Semaphore metadataPermits = new Semaphore(4);
+    private HdiOriginalMetadataGateway originalMetadata;
+    @Autowired public void setOriginalMetadata(HdiOriginalMetadataGateway value) { this.originalMetadata = value; }
+    private HdiOriginalMetadataGateway originalMetadata() { if (originalMetadata == null) throw fault(503, "原连接元数据隔离环境尚未配置"); return originalMetadata; }
     private HdiKafkaMetadataGateway kafkaMetadata;
     @Autowired public void setKafkaMetadata(HdiKafkaMetadataGateway value) { this.kafkaMetadata = value; }
     private HdiKafkaMetadataGateway kafkaMetadata() {
@@ -106,9 +109,9 @@ public class HdiCoreConnections {
         ObjectNode data = get(owner, id), result = HdiProtocol.JSON.createObjectNode(); int type = data.path("dbType").asInt();
         for (String key : List.of("databaseUsername", "databasePassword", "dbUrl")) result.set(key, data.path(key));
         if (type == 18) result.set("Host", data.path("databaseIp"));
-        if (type == 18) { result.set("Port", data.path("databasePort")); result.set("FolderPath", data.path("databaseSid")); result.set("ConnectMode", data.path("ext1")); result.put("ext2", "ftp"); }
-        else { result.put("connectType", "host"); result.set("address", data.path("address"));
-            if (type == 16) result.set("databaseSid", data.path("databaseSid")); else result.put("certification", "none").put("authentication", "none"); }
+        if (type == 18) { result.set("Port", data.path("databasePort")); result.set("FolderPath", data.path("databaseSid")); result.set("ConnectMode", data.path("ext1")); result.set("ext2", data.path("ext2")); }
+        else { result.put("connectType", data.path("connectType").asText("host")); result.set("address", data.path("address"));
+            if (type == 16 || type == 2) result.set("databaseSid", data.path("databaseSid")); else if (type == 120) { result.remove("connectType"); result.put("Ssl", "0".equals(data.path("ext1").asText()) ? "1" : "0"); } else result.put("certification", "none").put("authentication", "none"); }
         return result;
     }
     public List<ObjectNode> list(long owner, JsonNode filter) {
@@ -184,7 +187,9 @@ public class HdiCoreConnections {
         acquire();
         try {
             int type = data.path("dbType").intValue(); binding(1, 1, 1, data);
-            if (type == 16) {
+            if (type == 2 || type == 120 || type == 18 && data.path("ext2").asText().equals("sftp")) {
+                originalMetadata().read(typeName(type), data.deepCopy().put("databasePassword", secret), binding(1, 1, 1, data), "test", HdiProtocol.JSON.createObjectNode());
+            } else if (type == 16) {
                 try (Connection connection = pg(data, secret); var statement = connection.prepareStatement("SELECT 1")) {
                     statement.setQueryTimeout(5); try (ResultSet result = statement.executeQuery()) { if (!result.next() || result.getInt(1) != 1) throw fault(422, "数据库连接测试失败"); }
                     connection.rollback();
@@ -205,7 +210,9 @@ public class HdiCoreConnections {
     }
 
     public List<Map<String, Object>> schemas(long owner, long id) {
-        if (get(owner, id).path("dbType").asInt() != 16) return List.of(); // FTP and Kafka have no relational schema selector.
+        int type = get(owner,id).path("dbType").asInt();
+        if (type == 2) { JsonNode result = originalMetadata(owner,id,"schemas",HdiProtocol.JSON.createObjectNode()); List<Map<String,Object>> schemas = new ArrayList<>(); for (JsonNode value : result.path("schemas")) { String catalog = value.asText(); identifier(catalog); schemas.add(Map.of("schemaId",catalog,"schemaCode",catalog,"schemaName",catalog)); } return schemas; }
+        if (type != 16) return List.of(); // Messaging/file connectors have no relational schema selector.
         return metadata(owner, id, connection -> {
             List<Map<String, Object>> result = new ArrayList<>();
             try (ResultSet rows = connection.getMetaData().getSchemas()) {
@@ -216,6 +223,8 @@ public class HdiCoreConnections {
     }
     public Map<String, Object> tables(long owner, long id, JsonNode query) {
         object(query); Current source = current(owner, id, false); requireEnabled(source); if (source.type == 8) return topics(owner, id, query);
+        if (source.type == 2) return mysqlTables(owner,id,query);
+        if (source.type == 120) return Map.of("list",List.of(),"total",0,"metadataAvailable",false); // Original AMQP datasource has no queue-enumeration service; queue/vhost remain node parameters.
         String requestedSchema = query.path("schemaCode").asText(query.path("tableSchem").asText("public")); String schema = requestedSchema.isBlank() ? "public" : requestedSchema; identifier(schema);
         String keyword = query.path("tableName").asText(""); if (keyword.length() > 128) throw fault(400, "表名称过长");
         int page = query.path("pageNo").asInt(1), size = query.path("pageSize").asInt(100); if (page < 1 || size < 1 || size > 200) throw fault(400, "分页参数无效");
@@ -230,6 +239,10 @@ public class HdiCoreConnections {
     }
     public Map<String, Object> columns(long owner, long id, JsonNode query) {
         object(query); Current source = current(owner, id, false); requireEnabled(source);
+        if (source.type == 2) {
+            JsonNode value = originalMetadata(owner,id,"columns",query); Map<String,Object> info = new LinkedHashMap<>();
+            info.put("columns",HdiProtocol.JSON.convertValue(value.path("columns"),List.class)); info.put("primaryKeys",HdiProtocol.JSON.convertValue(value.path("primaryKeys"),List.class)); info.put("targetTableName",value.path("targetTableName").asText()); return info;
+        }
         if (source.type == 8) return Map.of("columns", List.of(), "primaryKeys", List.of(), "targetTableName", query.path("tableName").asText());
         String requestedSchema = query.path("tableSchem").asText(query.path("tableSchema").asText("public")); String schema = requestedSchema.isBlank() ? "public" : requestedSchema, table = query.path("tableName").asText(); identifier(schema); identifier(table);
         return metadata(owner, id, connection -> {
@@ -241,6 +254,27 @@ public class HdiCoreConnections {
             try (ResultSet rows = connection.getMetaData().getPrimaryKeys(null, schema, table)) { while (rows.next()) primary.add(Map.of("columnName", rows.getString("COLUMN_NAME"), "keySeq", rows.getInt("KEY_SEQ"))); }
             return Map.of("columns", columns, "primaryKeys", primary, "targetTableName", table);
         });
+    }
+    private JsonNode originalMetadata(long owner,long id,String action,JsonNode query) {
+        Current row=current(owner,id,false); requireEnabled(row); Version stored=version(owner,id,row.revision); ObjectNode data=stored.datasource.deepCopy();
+        if (row.type == 2) {
+            String supplied=query.path("schemaCode").asText(query.path("tableSchem").asText(query.path("tableSchema").asText("")));
+            if (!supplied.isBlank() && !supplied.equals(data.path("databaseSid").asText())) throw fault(422,"MySQL元数据只读取当前连接的数据库");
+        }
+        ObjectNode approved=binding(owner,id,row.revision,data); data.put("databasePassword",crypto.decrypt(stored.encryptedSecret)); acquire();
+        try { return originalMetadata().read(typeName(row.type),data,approved,action,query); } finally { metadataPermits.release(); }
+    }
+    private Map<String,Object> mysqlTables(long owner,long id,JsonNode query) {
+        String keyword=query.path("tableName").asText(""); if (keyword.length()>128) throw fault(400,"表名称过长");
+        int page=query.path("pageNo").asInt(1),size=query.path("pageSize").asInt(100); if(page<1||size<1||size>200) throw fault(400,"分页参数无效");
+        JsonNode metadata=originalMetadata(owner,id,"tables",query); String catalog=metadata.path("catalog").asText(); identifier(catalog); List<Map<String,Object>> rows=new ArrayList<>();
+        for(JsonNode table:metadata.path("tables")) {
+            String name=table.path("tableName").asText(),actualCatalog=table.path("tableCat").asText(catalog);
+            if(!actualCatalog.equals(catalog)||!name.contains(keyword)) continue;
+            if(name.isBlank()||name.length()>128) throw fault(422,"MySQL表标识无效");
+            Map<String,Object> row=new LinkedHashMap<>(); row.put("id",registerTable(owner,id,catalog,name,"TABLE")); row.put("dbId",id); row.put("dbTableName",name); row.put("tableName",name); row.put("tableDisplayName",name); row.put("tableSchema",catalog); row.put("schemaCode",catalog); row.put("tableSchem",catalog); row.put("tableCat",catalog); row.put("tableOwner",catalog); row.put("tableCode",name); row.put("tableRemarks",table.path("remarks").asText("")); rows.add(row);
+        }
+        int from=(int)Math.min(rows.size(),(long)(page-1)*size); return Map.of("list",rows.subList(from,Math.min(rows.size(),from+size)),"total",rows.size());
     }
     private synchronized long registerTable(long owner, long connection, String schema, String name, String kind) {
         String key = HdiTaskStore.sha256((schema + "\0" + name + "\0" + kind).getBytes(java.nio.charset.StandardCharsets.UTF_8));
@@ -303,44 +337,60 @@ public class HdiCoreConnections {
     private Normalized normalize(JsonNode input, Version previous) {
         object(input); JsonNode parameters = input.has("parameters") ? input.get("parameters") : input; object(parameters);
         String nativeType = input.path("datasourceType").asText(""); int type = input.path("dbType").asInt(0);
-        if (type == 0) type = switch (nativeType) { case "PostgreSQL", "Postgresql" -> 16; case "FTP" -> 18; case "Kafka" -> 8; default -> throw fault(422, "当前仅支持PostgreSQL、FTP和Kafka连接"); };
-        if (!Set.of(16,18,8).contains(type)) throw fault(422, "当前仅支持PostgreSQL、FTP和Kafka连接");
+        if (type == 0) type = switch (nativeType) { case "PostgreSQL", "Postgresql" -> 16; case "MySQL" -> 2; case "FTP" -> 18; case "Kafka" -> 8; case "RabbitMQ" -> 120; default -> throw fault(422, "当前连接类型尚未接入平台"); };
+        if (!Set.of(2,16,18,8,120).contains(type)) throw fault(422, "当前连接类型尚未接入平台");
         if (!nativeType.isBlank() && !nativeType.equalsIgnoreCase(typeName(type))) throw fault(422, "连接类型不一致");
         if (input.has("parameters")) parameters.fieldNames().forEachRemaining(key -> { if (!FORM_FIELDS.contains(key)) throw fault(422, "当前连接参数尚未开放：" + key); });
-        ObjectNode data = HdiProtocol.JSON.createObjectNode(); data.put("dbType", type).put("inOutFlag", 2).put("enableFlag", 1).put("folderId", -1).put("sourceFlag", 0).put("datasourceType", typeName(type)).put("datasourceVersion", input.path("datasourceVersion").asText(type == 16 ? "9.x" : type == 18 ? "1.0" : "2.x"));
-        String expectedVersion = type == 16 ? "9.x" : type == 18 ? "1.0" : "2.x"; if (data.path("datasourceVersion").asText().isBlank()) data.put("datasourceVersion", expectedVersion); if (!data.path("datasourceVersion").asText().equals(expectedVersion)) throw fault(422, "原连接插件版本无效");
+        String expectedVersion = switch(type) { case 2 -> "8.x"; case 16 -> "9.x"; case 18 -> "1.0"; case 120 -> "3.x"; default -> "2.x"; };
+        String version = input.path("datasourceVersion").asText(expectedVersion); if (version.isBlank()) version = expectedVersion;
+        if (!version.equals(expectedVersion)) throw fault(422, "原连接插件版本无效");
+        ObjectNode data = HdiProtocol.JSON.createObjectNode().put("dbType", type).put("inOutFlag", 2).put("enableFlag", 1).put("folderId", -1).put("sourceFlag", 0).put("datasourceType", typeName(type)).put("datasourceVersion", version);
         if (optionalId(input.get("folderId")) != null && input.path("folderId").asLong() != -1) throw fault(422, "当前连接保存到平台根目录");
-        String raw = parameters.path("databasePassword").asText(""); String secret = raw;
+        String raw = parameters.path("databasePassword").asText(""), secret = raw;
         if (!raw.isEmpty() && !raw.equals("******")) secret = decryptFormPassword(raw);
         if (secret.isEmpty() || secret.equals("******")) secret = previous == null ? "" : crypto.decrypt(previous.encryptedSecret);
         if (secret.length() > 4096 || secret.indexOf('\0') >= 0 || type != 8 && secret.isEmpty()) throw fault(422, "请填写连接密码");
         String host = parameters.path("Host").asText(parameters.path("databaseIp").asText("")), port = parameters.path("Port").asText(parameters.path("databasePort").asText(""));
         String db = parameters.path("FolderPath").asText(parameters.path("databaseSid").asText("")), suppliedUrl = parameters.path("dbUrl").asText("");
-        if (type == 8) {
-            String certification = parameters.path("certification").asText("");
-            if (!Set.of("", "none").contains(parameters.path("authentication").asText(""))) throw fault(422, "当前Kafka连接不支持Ranger身份服务");
-            if (!secret.isEmpty() || !Set.of("", "none", "NONE", "PLAINTEXT", "0").contains(certification)) throw fault(422, "当前Kafka连接开放无认证模式，认证模式需单独验收");
-            String address = parameters.path("address").asText(""); if (address.isBlank() && suppliedUrl.startsWith("kafka2://")) address = suppliedUrl.substring("kafka2://".length());
+        if (type != 8 && (!Set.of("", "none").contains(parameters.path("certification").asText("")) || !Set.of("", "none").contains(parameters.path("authentication").asText("")))) throw fault(422, "当前连接不支持附加身份服务");
+        if (type == 8 || type == 120) {
+            String prefix = type == 8 ? "kafka2://" : "rabbitmq://";
+            String address = parameters.path("address").asText(""); if (address.isBlank() && suppliedUrl.startsWith(prefix)) address = suppliedUrl.substring(prefix.length());
             List<Endpoint> endpoints = parseAddresses(address); String canonical = String.join(",", endpoints.stream().map(Endpoint::key).toList());
-            if (!suppliedUrl.isBlank() && !suppliedUrl.equals("kafka2://" + canonical)) throw fault(422, "Kafka地址与URL不一致");
-            data.put("address", canonical).put("dbUrl", "kafka2://" + canonical).put("databaseIp", endpoints.get(0).host).put("databasePort", Integer.toString(endpoints.get(0).port)).put("databaseSid", "").put("databaseUsername", "").put("ext1", "").put("ext2", "").put("ext3", "");
+            if (!suppliedUrl.isBlank() && !suppliedUrl.equals(prefix) && !suppliedUrl.equals(prefix + canonical)) throw fault(422, "消息服务地址与URL不一致");
+            if (type == 8) {
+                if (!Set.of("", "none").contains(parameters.path("authentication").asText(""))) throw fault(422, "当前Kafka连接不支持Ranger身份服务");
+                if (!secret.isEmpty() || !Set.of("", "none", "NONE", "PLAINTEXT", "0").contains(parameters.path("certification").asText(""))) throw fault(422, "当前Kafka连接开放无认证模式");
+            } else if (!parameters.path("Ssl").asText("1").equals("1")) throw fault(422, "当前RabbitMQ连接使用原AMQP非TLS模式");
+            data.put("address", canonical).put("dbUrl", prefix + canonical).put("databaseIp", endpoints.get(0).host).put("databasePort", Integer.toString(endpoints.get(0).port)).put("databaseSid", "");
+            data.put("databaseUsername", type == 120 ? text(parameters.path("databaseUsername").asText(),128,"连接账号") : "").put("ext1", type == 120 ? "0" : "").put("ext2", "").put("ext3", "");
         } else {
-            if (type == 16 && parameters.hasNonNull("address") && !parameters.path("address").asText().isBlank()) { List<Endpoint> hosts = parseAddresses(parameters.path("address").asText()); if (hosts.size() != 1) throw fault(422, "当前PostgreSQL连接使用单一地址"); host = hosts.get(0).host; port = Integer.toString(hosts.get(0).port); }
-            if ((host.isBlank() || port.isBlank() || type == 16 && db.isBlank()) && !suppliedUrl.isBlank()) {
-                try { URI uri = URI.create(type == 16 ? suppliedUrl.substring(5) : suppliedUrl); if (uri.getUserInfo() != null || uri.getQuery() != null || uri.getFragment() != null) throw new IllegalArgumentException();
-                    host = uri.getHost(); port = Integer.toString(uri.getPort()); if (type == 16) db = uri.getPath().substring(1);
+            boolean sql = type == 16 || type == 2;
+            if (sql && parameters.hasNonNull("address") && !parameters.path("address").asText().isBlank()) { List<Endpoint> hosts = parseAddresses(parameters.path("address").asText()); if (hosts.size() != 1) throw fault(422, "当前关系数据库连接使用单一地址"); host = hosts.get(0).host; port = Integer.toString(hosts.get(0).port); }
+            if ((host.isBlank() || port.isBlank() || sql && db.isBlank()) && !suppliedUrl.isBlank()) {
+                try { URI uri = URI.create(sql ? suppliedUrl.substring(5) : suppliedUrl);
+                    if (uri.getUserInfo() != null || uri.getFragment() != null || uri.getQuery() != null && !(type == 2 && Set.of("useSSL=false","useSSL=false&allowPublicKeyRetrieval=true").contains(uri.getQuery()))) throw new IllegalArgumentException();
+                    host = uri.getHost(); port = Integer.toString(uri.getPort()); if (sql) db = uri.getPath().substring(1);
                 } catch (Exception error) { throw fault(422, "连接URL格式无效"); }
             }
             Endpoint endpoint = endpoint(host, port); data.put("databaseIp", endpoint.host).put("databasePort", Integer.toString(endpoint.port));
-            data.put("databaseUsername", text(parameters.path("databaseUsername").asText(), 128, "连接账号"));
-            if (type == 16) { identifier(db); data.put("databaseSid", db).put("address", endpoint.key()); data.put("dbUrl", "jdbc:postgresql://" + endpoint.key() + "/" + db); data.put("ext1", "").put("ext2", "").put("ext3", ""); }
-            else { String protocol = parameters.path("ext2").asText("ftp"); if (!protocol.equalsIgnoreCase("ftp")) throw fault(422, "当前FTP连接开放原FTP模式");
-                String mode = parameters.path("ConnectMode").asText(parameters.path("ext1").asText("1")); if (!mode.equals("1")) throw fault(422, "当前FTP连接使用被动模式");
-                if (!db.isEmpty() && (!db.startsWith("/") || db.contains("..") || db.length() > 512)) throw fault(422, "FTP根目录无效");
-                data.put("databaseSid", db).put("dbUrl", "ftp://" + endpoint.key() + (db.isEmpty() ? "" : "/" + db)).put("ext1", "1").put("ext2", "ftp").put("ext3", ""); }
+            data.put("databaseUsername", text(parameters.path("databaseUsername").asText(),128,"连接账号"));
+            if (sql) {
+                identifier(db); data.put("databaseSid", db).put("address", endpoint.key());
+                String canonical=(type == 2 ? "jdbc:mysql://" : "jdbc:postgresql://") + endpoint.key() + "/" + db + (type == 2 ? "?useSSL=false" : "");
+                String connectType=parameters.path("connectType").asText("host"); if(!Set.of("host","url").contains(connectType)) throw fault(422,"连接方式无效");
+                if(type==2 && connectType.equals("url") && suppliedUrl.equals(canonical+"&allowPublicKeyRetrieval=true")) canonical=suppliedUrl;
+                data.put("dbUrl",canonical).put("connectType",connectType); data.put("ext1", "").put("ext2", "").put("ext3", "");
+            } else {
+                String protocol = parameters.path("ext2").asText("ftp").toLowerCase(java.util.Locale.ROOT); if (!Set.of("ftp","sftp").contains(protocol)) throw fault(422, "当前文件连接仅支持FTP或SFTP");
+                String mode = parameters.path("ConnectMode").asText(parameters.path("ext1").asText("1")); if (!Set.of("0","1").contains(mode) || protocol.equals("ftp") && !mode.equals("1")) throw fault(422, "FTP需使用被动模式");
+                if (!db.isEmpty() && (!db.startsWith("/") || db.contains("..") || db.length() > 512 || db.indexOf('\0') >= 0 || db.indexOf('\r') >= 0 || db.indexOf('\n') >= 0)) throw fault(422, "文件根目录无效");
+                // FtpDatasource.jointUrl uses ftp:// even for its SFTP protocol option.
+                data.put("databaseSid", db).put("dbUrl", "ftp://" + endpoint.key() + (db.isEmpty() ? "" : "/" + db)).put("ext1", mode).put("ext2", protocol).put("ext3", "");
+            }
             if (!suppliedUrl.isBlank() && !(type == 18 && suppliedUrl.equals("ftp://")) && !suppliedUrl.equals(data.path("dbUrl").asText())) throw fault(422, "连接地址与URL不一致");
         }
-        binding(1, 1, 1, data); return new Normalized(data, secret);
+        binding(1,1,1,data); return new Normalized(data,secret);
     }
     private String decryptFormPassword(String raw) {
         try { byte[] bytes = Base64.getDecoder().decode(raw); if (bytes.length == 0 || bytes.length > 8192 || bytes.length % 256 != 0) throw new IllegalArgumentException();
@@ -348,15 +398,15 @@ public class HdiCoreConnections {
         } catch (Exception error) { throw fault(400, "连接密码密文无效，请重新输入"); }
     }
     private ObjectNode binding(long owner, long id, long revision, ObjectNode data) {
-        int type = data.path("dbType").intValue(); List<Endpoint> endpoints = type == 8 ? parseAddresses(data.path("address").asText()) : List.of(endpoint(data.path("databaseIp").asText(), data.path("databasePort").asText()));
-        ObjectNode result = HdiProtocol.JSON.createObjectNode().put("connectionId", Long.toString(id)).put("connectionRevision", Long.toString(revision)).put("ownerId", Long.toString(owner)).put("kind", type == 16 ? "postgresql" : type == 18 ? "ftp" : "kafka");
+        int type = data.path("dbType").intValue(); List<Endpoint> endpoints = type == 8 || type == 120 ? parseAddresses(data.path("address").asText()) : List.of(endpoint(data.path("databaseIp").asText(), data.path("databasePort").asText()));
+        ObjectNode result = HdiProtocol.JSON.createObjectNode().put("connectionId", Long.toString(id)).put("connectionRevision", Long.toString(revision)).put("ownerId", Long.toString(owner)).put("kind", type == 2 ? "mysql" : type == 16 ? "postgresql" : type == 120 ? "rabbitmq" : type == 18 ? (data.path("ext2").asText().equals("sftp") ? "sftp" : "ftp") : "kafka");
         if (type == 8) {
             Set<Endpoint> expanded = new LinkedHashSet<>(endpoints);
             for (Endpoint endpoint : endpoints) for (String broker : policy.getKafkaBrokers().getOrDefault(endpoint.key(), List.of())) expanded.addAll(parseAddresses(broker));
             if (expanded.size() > 16) throw fault(422, "Kafka节点数量超过范围"); endpoints = new ArrayList<>(expanded);
         }
         ArrayNode list = result.putArray("endpoints"); for (Endpoint endpoint : endpoints) { if (!policy.getAllowedEndpoints().contains(endpoint.key())) throw fault(422, "连接地址尚未加入平台允许范围"); list.addObject().put("host", endpoint.host).put("address", endpoint.host).put("port", endpoint.port); }
-        if (type == 18) { String range = policy.getFtpPassiveRanges().get(endpoints.get(0).key());
+        if (type == 18 && !data.path("ext2").asText().equals("sftp")) { String range = policy.getFtpPassiveRanges().get(endpoints.get(0).key());
             if (range == null || !range.matches("[1-9][0-9]{0,4}-[1-9][0-9]{0,4}")) throw fault(422, "请先配置FTP被动端口范围");
             String[] values = range.split("-"); int start = Integer.parseInt(values[0]), end = Integer.parseInt(values[1]);
             if (start < 1024 || end > 65535 || end < start || end - start > 31 || start <= 2183 && end >= 2180) throw fault(422, "FTP被动端口范围无效"); result.putObject("passivePorts").put("start", start).put("end", end);
@@ -375,8 +425,8 @@ public class HdiCoreConnections {
     }
     private static ObjectNode publicView(Current row, ObjectNode source, boolean configured) {
         ObjectNode value = source.deepCopy().put("id", row.id).put("_platformRevision", Long.toString(row.revision)).put("revision", row.revision).put("name", row.name).put("datasourceName", row.name).put("enableFlag", row.enabled ? 1 : 0).put("passwordConfigured", configured).put("databasePassword", configured ? "******" : "");
-        value.put("url", source.path("dbUrl").asText());
-        value.put("datasourceCategory", row.type == 16 ? "关系型数据库" : row.type == 18 ? "其它" : "消息队列");
+        value.put("url", source.path("dbUrl").asText()); value.put("sftpFlag",row.type==18 && source.path("ext2").asText().equals("sftp"));
+        value.put("datasourceCategory", (row.type == 16 || row.type == 2) ? "关系型数据库" : row.type == 18 ? "其它" : "消息队列");
         boolean currentTest = row.testedRevision == row.revision;
         value.put("status", currentTest ? row.testStatus : -1).put("errorMsg", currentTest && row.testMessage != null ? row.testMessage : "").put("supportTest", true).put("showVersion", false);
         if (currentTest && row.testedAt != null) value.put("testedAt", row.testedAt.toString()); else value.putNull("testedAt");
@@ -405,7 +455,7 @@ public class HdiCoreConnections {
     }
     private static void requireOwner(long owner) { if (owner <= 0) throw fault(401, "请先登录平台"); }
     private static void requireEnabled(Current value) { if (!value.enabled) throw fault(422, "连接已停用"); }
-    private static String typeName(int type) { return type == 16 ? "PostgreSQL" : type == 18 ? "FTP" : "Kafka"; }
+    private static String typeName(int type) { return switch(type) { case 2 -> "MySQL"; case 16 -> "PostgreSQL"; case 18 -> "FTP"; case 120 -> "RabbitMQ"; case 8 -> "Kafka"; default -> throw fault(422,"连接类型无效"); }; }
     private static long revision(JsonNode node) { return positive(node.has("_platformRevision") ? node.get("_platformRevision") : node.get("revision"), "连接版本"); }
     private static long positive(JsonNode value, String name) { Long id = optionalId(value); if (id == null) throw fault(400, name + "无效"); return id; }
     private static Long optionalId(JsonNode value) { if (value == null || value.isNull() || value.asText().isBlank() || value.asText().equals("-1") || value.asText().equals("0")) return null; try { if (!value.asText().matches("[1-9][0-9]{0,18}")) throw new IllegalArgumentException(); return Long.parseLong(value.asText()); } catch (Exception error) { throw fault(400, "连接标识无效"); } }

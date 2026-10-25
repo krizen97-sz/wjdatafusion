@@ -170,8 +170,8 @@ public class HdiCompilerClient {
 
     public JsonNode connectionDescription(String operation, String type, String version, JsonNode parameters) {
         require(Set.of("connectionForm", "connectionUrl", "connectionMetadata").contains(operation), "connection operation");
-        require(Set.of("Postgresql", "PostgreSQL", "FTP", "Kafka").contains(type), "connection type");
-        if (operation.equals("connectionMetadata")) require(type.equals("Kafka") && version == null, "metadata type");
+        require(Set.of("Postgresql", "PostgreSQL", "MySQL", "FTP", "Kafka", "RabbitMQ").contains(type), "connection type");
+        if (operation.equals("connectionMetadata")) require(Set.of("Kafka", "MySQL", "FTP", "RabbitMQ").contains(type) && version == null, "metadata type");
         ObjectNode request = json.createObjectNode().put("operation", operation).put("datasourceType", type);
         if (version != null) request.put("datasourceVersion", version);
         if (parameters != null) { require(parameters.isObject(), "connection parameters"); request.set("parameters", parameters); }
