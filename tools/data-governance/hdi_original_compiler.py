@@ -60,7 +60,7 @@ def classpath(bundle: Path) -> list[Path]:
         # The original core profile remains usable with the smaller verified bundle.
         selected.append(f'instance/etl-{plugin}-2.0.0/adapter.properties')
         selected.append(f'instance/etl-{plugin}-2.0.0/etl_plugin.json')
-    for plugin in ('postgresqlInput', 'postgresqlOutput', 'fileInput', 'kafkaInput', 'kafkaV2Output'):
+    for plugin in ('postgresqlInput', 'postgresqlOutput', 'fileInput', 'kafkaInput', 'kafkaV2Output', 'rabbitmqInput', 'rabbitmqOutput'):
         prefix = f'instance/etl-{plugin}-2.0.0/'
         if prefix + 'adapter.properties' in paths:
             selected.extend(prefix + suffix for suffix in ('adapter.properties', 'etl_plugin.json'))
@@ -78,11 +78,16 @@ def classpath(bundle: Path) -> list[Path]:
     return jars
 
 
-def execute(bundle: Path, java_home: Path, request: bytes, runtime: Path, timeout: int = 45) -> tuple[int, bytes]:
+def execute(bundle: Path, java_home: Path, request: bytes, runtime: Path, timeout: int = 45, platform_adapters: Path | None = None) -> tuple[int, bytes]:
     if len(request) > MAX_BYTES:
         raise ValueError('Compiler request exceeds 8 MiB')
     bundle = bundle.absolute()
     jars = classpath(bundle)
+    adapter_args = []
+    if platform_adapters is not None:
+        from hdi_mysql_adapter import verify as verify_platform
+        verify_platform(platform_adapters, bundle)
+        adapter_args = [str(platform_adapters.absolute())]
     for command in ('java', 'javac'):
         if not (java_home / 'bin' / command).is_file():
             raise ValueError('An explicit local JDK with java and javac is required')
@@ -102,7 +107,7 @@ def execute(bundle: Path, java_home: Path, request: bytes, runtime: Path, timeou
         if build.returncode:
             raise ValueError('Compiler adapter build failed')
         completed = subprocess.run([str(java_home / 'bin/java'), '-Xms32m', '-Xmx256m', '-cp', str(directory) + os.pathsep + cp,
-                                    'OriginalTaskCompiler', str(bundle)], cwd=directory, input=request,
+                                    'OriginalTaskCompiler', str(bundle), *adapter_args], cwd=directory, input=request,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout, env=environment)
         # Vendor logs can include graph values; do not forward their unfiltered stderr.
         if len(completed.stdout) > 32 * 1024 * 1024:
@@ -119,11 +124,12 @@ def main() -> int:
     parser.add_argument('--java-home', required=True, type=Path)
     parser.add_argument('--runtime', required=True, type=Path)
     parser.add_argument('--timeout', type=int, default=45)
+    parser.add_argument('--platform-adapters', type=Path, help='Trusted separately verified platform dialect adapter directory')
     args = parser.parse_args()
     try:
         if not 1 <= args.timeout <= 120:
             raise ValueError('Timeout must be 1..120 seconds')
-        code, result = execute(args.bundle, args.java_home, sys.stdin.buffer.read(MAX_BYTES + 1), args.runtime, args.timeout)
+        code, result = execute(args.bundle, args.java_home, sys.stdin.buffer.read(MAX_BYTES + 1), args.runtime, args.timeout, args.platform_adapters)
         sys.stdout.buffer.write(result)
         return code
     except (ValueError, OSError, subprocess.SubprocessError) as error:
