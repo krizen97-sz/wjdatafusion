@@ -65,6 +65,38 @@ class HdiCoreMoreConnectionsTest {
         assertEquals("sftp",bound.connectionBindings().get(0).path("kind").asText()); assertFalse(bound.connectionBindings().get(0).has("passivePorts"));
         assertEquals(404,assertThrows(HdiTaskFault.class,()->fixture.connections.get(8,id)).status());
     }
+    @Test void allNewTypesKeepSecretsOutOfEveryPublicReadAndFrozenReference() throws Exception {
+        for (String type : List.of("MySQL", "RabbitMQ", "FTP")) {
+            String secret = "private-" + type + "-readback-secret", encrypted = fixture.encrypt(secret);
+            ObjectNode input = form(type, type + "秘密回读");
+            ObjectNode parameters = input.putObject("parameters").put("databaseUsername", "owned-user").put("databasePassword", encrypted);
+            String plugin;
+            if (type.equals("MySQL")) {
+                parameters.put("connectType", "host").put("address", "127.0.0.1:13306").put("databaseSid", "owned_db"); plugin = "mysqlInput";
+            } else if (type.equals("RabbitMQ")) {
+                parameters.put("address", "127.0.0.1:15673").put("Ssl", "1"); plugin = "rabbitmqInput";
+            } else {
+                parameters.put("Host", "127.0.0.1").put("Port", "22022").put("FolderPath", "/input").put("ConnectMode", "0").put("ext2", "sftp"); plugin = "fileInput";
+            }
+            ObjectNode saved = fixture.connections.saveForm(7, input); long id = saved.path("id").asLong();
+            ObjectNode visual = fixture.visual(id, plugin), refs = fixture.connections.freezeReferences(7, visual);
+            for (Object publicValue : List.of(saved, fixture.connections.get(7,id), fixture.connections.list(7,null),
+                    fixture.connections.page(7,null,1,100), fixture.connections.formParameters(7,id), refs)) {
+                String serialized = HdiProtocol.JSON.writeValueAsString(publicValue);
+                assertFalse(serialized.contains(secret)); assertFalse(serialized.contains(encrypted));
+            }
+            assertEquals("******", fixture.connections.formParameters(7,id).path("databasePassword").asText());
+            String stored = fixture.jdbc.queryForObject("SELECT datasource_json FROM dg_hdi_connection_revision WHERE connection_id=?", String.class, id);
+            String cipher = fixture.jdbc.queryForObject("SELECT encrypted_secret FROM dg_hdi_connection_revision WHERE connection_id=?", String.class, id);
+            assertFalse(stored.contains(secret)); assertFalse(stored.contains("databasePassword")); assertFalse(cipher.contains(secret));
+            assertNotEquals(encrypted,cipher);
+            input.put("id",id).put("_platformRevision","1"); parameters.put("databasePassword",fixture.encrypt("******"));
+            fixture.connections.saveForm(7,input);
+            var resolved = fixture.connections.resolveForRun(7,visual,refs);
+            assertEquals(secret,resolved.connections().path(Long.toString(id)).path("datasource").path("databasePassword").asText());
+            assertEquals(404,assertThrows(HdiTaskFault.class,()->fixture.connections.formParameters(8,id)).status());
+        }
+    }
     @Test @EnabledIfEnvironmentVariable(named="HDI_MORE_CONNECTIONS_FIXTURE",matches=".+")
     void actualOriginalMysqlSftpAndRabbitClientsAreUsedThroughThePlatformGateway() throws Exception {
         String bundle=System.getenv("HDI_ORIGINAL_BUNDLE"),javaHome=System.getenv("HDI_COMPILER_JAVA_HOME"); assertNotNull(bundle);assertNotNull(javaHome);
