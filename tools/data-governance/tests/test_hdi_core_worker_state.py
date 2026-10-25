@@ -175,6 +175,46 @@ class WorkerStateTests(unittest.TestCase):
         self.assertEqual(record['state'], 'RESERVED')
         self.assertEqual(json.loads((self.worker.runs_root / record['runId'] / 'state.json').read_text())['state'], 'RESERVED')
 
+    def test_explicit_cancel_persists_intent_before_signalling_original_stop(self):
+        self.worker.reserve(self.request)
+        record = self.worker.records[self.request['runId']]
+        self.worker.persist(record, state='RUNNING')
+        cancel = Mock()
+        cancel.set.side_effect = lambda: self.assertTrue(json.loads((self.worker.runs_root / record['runId'] / 'state.json').read_text())['stopRequestedByUser'])
+        self.worker.tasks[record['runId']] = Mock(cancel=cancel)
+        self.worker.dispatch({'op': 'cancel', **self.request})
+        cancel.set.assert_called_once()
+
+    def test_confirmed_original_stop_partial_artifact_preserves_cancelled_status(self):
+        self.worker.reserve(self.request)
+        record = self.worker.records[self.request['runId']]
+        (Path(record['outputsDir']) / 'sample.csv').write_bytes(b'field\nvalue\n')
+        record.update(state='CANCELLED', nativeState='stop', finalized=True, stopRequestedByUser=True,
+                      artifactCompleteness='PARTIAL', artifacts=results_manifest(record['outputsDir']))
+        result = self.worker.artifact(record, {'artifactId': record['artifacts'][0]['artifactId']})
+        self.assertEqual(base64.b64decode(result['base64']), b'field\nvalue\n')
+        self.assertEqual(self.worker.view(record)['state'], 'CANCELLED')
+        self.assertEqual(self.worker.view(record)['artifactCompleteness'], 'PARTIAL')
+        (Path(record['outputsDir']) / 'sample.csv').write_bytes(b'field\nother\n')
+        with self.assertRaisesRegex(ProtocolError, 'ARTIFACT_CHANGED'):
+            self.worker.artifact(record, {'artifactId': record['artifacts'][0]['artifactId']})
+
+    def test_partial_results_never_open_shutdown_timeout_failed_or_unconfirmed_states(self):
+        self.worker.reserve(self.request)
+        record = self.worker.records[self.request['runId']]
+        original = {**record, 'state': 'CANCELLED', 'nativeState': 'stop', 'finalized': True,
+                    'stopRequestedByUser': True, 'artifactCompleteness': 'PARTIAL'}
+        for changed in ({'stopRequestedByUser': False}, {'stopRequestedByUser': None}, {'state': 'TIMED_OUT'},
+                        {'state': 'FAILED'}, {'state': 'INTERRUPTED'}, {'nativeState': 'running'},
+                        {'finalized': False}, {'errorCode': 'OUTPUT_LIMIT'}, {'errorCode': 'OUTPUT_VALIDATION_FAILED'},
+                        {'errorCode': 'ORIGINAL_STOP_TIMEOUT_PROCESS_CLOSED'}, {'recoveryRequired': True}):
+            candidate = {**original, **changed}
+            self.assertFalse(module.explicit_original_stop(candidate))
+            with self.assertRaisesRegex(ProtocolError, 'ARTIFACT_NOT_AVAILABLE'):
+                self.worker.artifact(candidate, {'artifactId': 'unavailable'})
+        with self.assertRaisesRegex(ProtocolError, 'ARTIFACT_NOT_AVAILABLE'):
+            self.worker.artifact({**original, 'artifactCompleteness': None}, {'artifactId': 'unavailable'})
+
     def test_same_size_artifact_change_is_not_served(self):
         self.worker.reserve(self.request)
         record = self.worker.records[self.request['runId']]

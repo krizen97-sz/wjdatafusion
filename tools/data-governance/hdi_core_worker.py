@@ -194,6 +194,13 @@ def private_directory(path):
     return path
 
 
+def explicit_original_stop(record):
+    """Only the user's stop acknowledged by this original exec permits partial files."""
+    return (record.get('stopRequestedByUser') is True and record.get('state') == 'CANCELLED'
+            and record.get('nativeState') == 'stop' and record.get('finalized') is True
+            and not record.get('errorCode') and not record.get('recoveryRequired'))
+
+
 def identity(pid):
     """Linux start ticks + exact argv; never treat a saved PID as ownership."""
     try:
@@ -501,7 +508,7 @@ class Worker:
         keys = ('runId', 'businessTaskId', 'revision', 'ownerId', 'nativeFlowId', 'nativeInstanceId',
                 'execId', 'workspaceId', 'metadataIdBase', 'state', 'finalized', 'recoveryRequired',
                 'nativeState', 'errorCode', 'outputsDir', 'authorizedOutputRoot', 'artifacts', 'updatedAt',
-                'connectionBindings', 'outputWarningCodes')
+                'connectionBindings', 'outputWarningCodes', 'artifactCompleteness')
         result = {key: record[key] for key in keys if key in record}
         if 'artifacts' in result:
             result['artifacts'] = [{key: item[key] for key in ('artifactId', 'name', 'bytes', 'sha256')}
@@ -635,6 +642,7 @@ class Worker:
                 elif record['state'] not in TERMINAL:
                     if record['state'] == 'UNKNOWN':
                         raise ProtocolError('RECOVERY_REQUIRED')
+                    self.persist(record, stopRequestedByUser=True)
                     self.tasks[record['runId']].cancel.set()
                 return self.view(record)
             if op == 'logs':
@@ -673,7 +681,8 @@ class Worker:
                 'eof': next_cursor == size and bool(record['finalized'])}
 
     def artifact(self, record, request):
-        if record['state'] != 'SUCCEEDED' or record.get('finalized') is not True:
+        partial = record.get('artifactCompleteness') == 'PARTIAL' and explicit_original_stop(record)
+        if (record['state'] != 'SUCCEEDED' and not partial) or record.get('finalized') is not True:
             raise ProtocolError('ARTIFACT_NOT_AVAILABLE')
         item = next((a for a in record['artifacts'] if a['artifactId'] == request.get('artifactId')), None)
         if item is None:
@@ -1017,17 +1026,24 @@ class NativeRun:
                     confirmed = False
                 if budget.error:
                     outcome, error = 'FAILED', budget.error
-            if outcome == 'SUCCEEDED' and confirmed:
+            completeness = None
+            candidate = {**self.record, 'state': outcome, 'finalized': confirmed, 'errorCode': error,
+                         'nativeState': native.get('status') if native else self.record.get('nativeState')}
+            partial = explicit_original_stop(candidate)
+            if confirmed and (outcome == 'SUCCEEDED' or partial):
                 try:
                     artifacts = results_manifest(self.record['outputsDir'])
+                    completeness = 'PARTIAL' if partial else 'COMPLETE'
                 except Exception:
-                    outcome, error = 'FAILED', 'OUTPUT_VALIDATION_FAILED'
+                    if outcome == 'SUCCEEDED':
+                        outcome = 'FAILED'
+                    error = 'OUTPUT_VALIDATION_FAILED'
             try:
                 if not confirmed:
                     outcome, error = 'UNKNOWN', 'STOP_UNCONFIRMED'
                 self.update(state=outcome, finalized=confirmed, errorCode=error,
                             nativeState=native.get('status') if native else self.record.get('nativeState'),
-                            artifacts=artifacts, recoveryRequired=not confirmed)
+                            artifacts=artifacts, artifactCompleteness=completeness, recoveryRequired=not confirmed)
             except Exception:
                 # Retain the previous durable intent. Do not pretend a failed final write completed.
                 with self.worker.guard:
