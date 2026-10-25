@@ -30,6 +30,8 @@ class SetupTests(unittest.TestCase):
         self.compiler_source = self.root / 'source/data-governance/hdi-native/compiler/OriginalTaskCompiler.java'
         self.compiler_source.parent.mkdir(parents=True)
         self.compiler_source.write_text('// compiler source')
+        self.connection_form_source = self.compiler_source.parent / 'OriginalConnectionForms.java'
+        self.connection_form_source.write_text('// original connection form adapter')
         self.password = self.root / 'redis-password'
         self.password.write_text('never-print-or-copy-this-password')
         self.password.chmod(0o600)
@@ -69,6 +71,9 @@ class SetupTests(unittest.TestCase):
                 self.assertNotIn(self.password.read_bytes(), path.read_bytes())
         self.assertNotIn(self.password.read_text(), json.dumps(result))
         self.assertEqual(result['compilerArgv'][-2:], ['--runtime', str(self.args.install_root / 'compile')])
+        receipt = json.loads((self.args.install_root / 'private/setup-receipt.json').read_text())
+        self.assertEqual(receipt['receiptVersion'], 2)
+        self.assertEqual(receipt['inputs']['connectionFormsSourceSha256'], setup.sha(self.connection_form_source))
 
     def test_repeat_only_verifies_and_preserves_active_state(self):
         first = setup.prepare(self.args)
@@ -115,6 +120,62 @@ class SetupTests(unittest.TestCase):
         self.compiler_source.write_text('// different compiler revision')
         with self.assertRaisesRegex(setup.SetupError, 'EXISTING_INSTALLATION_CONFLICT'):
             setup.prepare(self.args)
+        self.build.assert_called_once()
+
+    def test_missing_connection_form_source_is_rejected_before_writes(self):
+        self.connection_form_source.unlink()
+        with self.assertRaisesRegex(setup.SetupError, 'INTEGRATED_SOURCE_FILES_REQUIRED'):
+            setup.prepare(self.args)
+        self.assertFalse(self.args.install_root.exists())
+        self.preflight.assert_not_called()
+        self.build.assert_not_called()
+
+    def test_changed_connection_form_source_is_conflict_without_overwriting_installation(self):
+        setup.prepare(self.args)
+        before = {str(p): (p.read_bytes(), p.stat().st_mtime_ns) for p in self.args.install_root.rglob('*') if p.is_file()}
+        self.connection_form_source.write_text('// changed connection adapter revision')
+        with self.assertRaisesRegex(setup.SetupError, 'EXISTING_INSTALLATION_CONFLICT'):
+            setup.prepare(self.args)
+        self.assertEqual(before, {str(p): (p.read_bytes(), p.stat().st_mtime_ns) for p in self.args.install_root.rglob('*') if p.is_file()})
+        self.build.assert_called_once()
+
+    def test_symlink_connection_form_source_is_not_accepted(self):
+        moved = self.root / 'foreign-connection-forms.java'
+        self.connection_form_source.rename(moved)
+        self.connection_form_source.symlink_to(moved)
+        with self.assertRaisesRegex(setup.SetupError, 'SYMLINK_OR_NONCANONICAL_PATH'):
+            setup.prepare(self.args)
+        self.assertFalse(self.args.install_root.exists())
+        self.build.assert_not_called()
+
+    def test_legacy_receipt_is_explicitly_rejected_without_upgrading_files(self):
+        setup.prepare(self.args)
+        path = self.args.install_root / 'private/setup-receipt.json'
+        legacy = json.loads(path.read_text())
+        del legacy['receiptVersion']
+        del legacy['inputs']['connectionFormsSourceSha256']
+        path.write_text(json.dumps(legacy))
+        for explicit_version in (None, 1):
+            with self.subTest(version=explicit_version):
+                if explicit_version is not None:
+                    legacy['receiptVersion'] = explicit_version
+                    path.write_text(json.dumps(legacy))
+                before = {str(p): (p.read_bytes(), p.stat().st_mtime_ns) for p in self.args.install_root.rglob('*') if p.is_file()}
+                self.args.verify_only = True
+                with self.assertRaisesRegex(setup.SetupError, 'LEGACY_SETUP_RECEIPT_REQUIRES_NEW_INSTALLATION'):
+                    setup.prepare(self.args)
+                self.assertEqual(before, {str(p): (p.read_bytes(), p.stat().st_mtime_ns) for p in self.args.install_root.rglob('*') if p.is_file()})
+        self.build.assert_called_once()
+
+    def test_unknown_receipt_version_is_not_treated_as_verified(self):
+        setup.prepare(self.args)
+        path = self.args.install_root / 'private/setup-receipt.json'
+        receipt = json.loads(path.read_text())
+        receipt['receiptVersion'] = 3
+        path.write_text(json.dumps(receipt))
+        with self.assertRaisesRegex(setup.SetupError, 'UNSUPPORTED_SETUP_RECEIPT_VERSION'):
+            setup.prepare(self.args)
+        self.assertEqual(json.loads(path.read_text()), receipt)
         self.build.assert_called_once()
 
     def test_foreign_directory_is_not_adopted_or_modified(self):

@@ -20,6 +20,7 @@ from hdi_core_protocol import private_file, strict_json
 HERE = Path(__file__).resolve().parent
 BUILD = HERE.parents[1] / 'data-governance/hdi-native/core-runtime/build.py'
 SOURCE = BUILD.parent / 'src/CoreMetadataBridge.java'
+RECEIPT_VERSION = 2
 
 
 class SetupError(Exception):
@@ -107,7 +108,8 @@ def prepare(args):
     password_file = plain_path(args.redis_password_file)
     compiler = plain_path(args.compiler_launcher or HERE / 'hdi_original_compiler.py')
     compiler_source = plain_path(compiler.parents[2] / 'data-governance/hdi-native/compiler/OriginalTaskCompiler.java')
-    if not compiler.is_file() or not compiler_source.is_file() or not BUILD.is_file() or not SOURCE.is_file():
+    connection_form_source = plain_path(compiler_source.parent / 'OriginalConnectionForms.java')
+    if not all(path.is_file() for path in (compiler, compiler_source, connection_form_source, BUILD, SOURCE)):
         raise SetupError('INTEGRATED_SOURCE_FILES_REQUIRED')
     info = password_file.stat()
     if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077
@@ -122,6 +124,7 @@ def prepare(args):
         'bundle': str(bundle), 'bundleManifestSha256': sha(bundle / 'bundle-manifest.json'),
         'javaHome': str(java_home), 'compilerLauncher': str(compiler), 'compilerLauncherSha256': sha(compiler),
         'compilerSourceSha256': sha(compiler_source),
+        'connectionFormsSourceSha256': sha(connection_form_source),
         'workerLauncher': str(HERE / 'hdi_core_worker.py'), 'controlSourceSha256': sha(SOURCE),
         'redis': {'host': '127.0.0.1', 'port': args.redis_port, 'database': args.redis_database,
                   'passwordFile': str(password_file)}}
@@ -133,6 +136,11 @@ def prepare(args):
         for path in (root, root / 'private', root / 'state', root / 'compile', root / 'control'):
             private_directory(path)
         receipt = strict_json(private_file(receipt_path))
+        version = receipt.get('receiptVersion')
+        if version is None or type(version) is int and version == 1:
+            raise SetupError('LEGACY_SETUP_RECEIPT_REQUIRES_NEW_INSTALLATION')
+        if type(version) is not int or version != RECEIPT_VERSION:
+            raise SetupError('UNSUPPORTED_SETUP_RECEIPT_VERSION')
         private_file(config_path)
         private_file(jar, 32 * 1024 * 1024)
         if receipt.get('inputs') != inputs or receipt.get('jarSha256') != sha(jar) or receipt.get('configSha256') != sha(config_path):
@@ -155,7 +163,8 @@ def prepare(args):
             'redis': inputs['redis'], 'maxConcurrentRuns': 1, 'startupTimeoutSeconds': 120,
             'executionTimeoutSeconds': 300, 'stopTimeoutSeconds': 45, 'javaRuntimeMode': 'normal'}
         new_json(config_path, config)
-        new_json(receipt_path, {'inputs': inputs, 'jarSha256': sha(jar), 'configSha256': sha(config_path)})
+        new_json(receipt_path, {'receiptVersion': RECEIPT_VERSION, 'inputs': inputs,
+            'jarSha256': sha(jar), 'configSha256': sha(config_path)})
     return {'protocolVersion': 1, 'ok': True, 'status': 'VERIFIED' if existing else 'PREPARED',
         'servicesStarted': False, 'redisConnectivityTested': False, 'workerConfig': str(config_path),
         'workerArgv': [sys.executable, str(HERE / 'hdi_core_worker.py'), '--config', str(config_path)],
