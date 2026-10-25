@@ -240,7 +240,8 @@ class OriginalSdkTests(unittest.TestCase):
                 elif output_plugin == 'rabbitmqOutput':
                     module = next(m for m in modules if m['adapter']['adapter_name'] == 'rabbitmqOutput')
                     self.assertEqual(module['config']['datasource'][0]['db_type'], 120)
-                    self.assertNotIn('dst_table', module['config']['datasource'][0])
+                    self.assertEqual(module['config']['datasource'][0]['dst_table'], {})
+                    self.assertEqual([f['field_name'] for f in module['config']['datasource'][0]['dst_table_field']], ['mapped_message'])
                     self.assertEqual({p['param_name']:p['param_value'] for p in module['config']['adapter_param']}['format'], 'json')
                 else:
                     adapter = 'fileInput' if input_plugin == 'sftpFileInput' else 'fileOutput'
