@@ -19,6 +19,8 @@
 
 PostgreSQL 选表输入必须保留原浏览器生成的 `fieldExpression=columnName`，`srcTableType=1` 和 `srcTableId`；本次执行只重绑 `srcTableId` 到独立元数据块，不补写 SQL 表达式。空表达式会被原 SQL 引擎解释为 `select as ...`，现在在执行前明确拒绝。原输出表单的 `dataCleansing` 禁用值是字符串 `"0"`，不是布尔值或 `"false"`；原 Core 按整数读取该值。当前 profile 拒绝清空目标数据，并拒绝非法值。显式写入方式沿用原枚举 `INSERT`，不把任意大小写或未支持模式静默归一化。
 
+原 JDBC / 文件输出按 `fieldName` 读取上游行值。仅把目标字段名改为另一个名称而把 `fieldExpression` 留成源字段，并不会执行改名，可能写入 NULL。当前直接字段 profile 要求目标字段名与上游一致；改名必须显式使用原 `fieldMapping` 节点，编译器不补写字段转换或 SQL。
+
 原输出参数必须经过原 `ParamManageServiceImpl.saveAdapterParam` 保存投影：`addEtlColumn=0` / 缺省会生成 `etl.plugin.extend.fields=false`，对应大小写选项生成 `etl.plugin.extend.fields.upper`。本适配调用原方法，仅截获其 `saveNodeParam` 的持久化出口，不手写这套投影规则。PostgreSQL/Kafka 可在原高级参数显式选择 `etl.plugin.partial.failed.stop.enable=true`；原默认是 false，关闭时原引擎可能跳过失败数据后正常 finish，因此真实验收必须另核目标行数/消息数，不能以 finish 等同写入成功。
 
 兼容原浏览器的缺省 DTO：`transformFieldVoList.processType` 可以缺失，原 `FieldMappingServiceImpl` 对同名同类型的字段不生成转换项，改名时沿用原非 `keep` 默认；本适配不填造处理规则。输出字段可以没有 `fieldExpression` / `enableFlag`，编译元数据通过原 `DstTableFieldServiceImpl.batchInsert` 的实际投影生成字段顺序、启用标志和本次 stream/node 归属，原字段表达式继续保持缺省。该 DAO 的批量写入仅捕获到本次不可变快照，不连接数据库。字段名仍须来自上游，显式 FEL 表达式不开放。

@@ -402,7 +402,9 @@ public final class OriginalTaskCompiler {
             // The original file plugin selects row values by fieldName. Its original
             // DstTableFieldService accepts an absent expression and does not synthesize one.
             // Keep that DTO shape; an explicit expression still cannot enable arbitrary FEL.
-            supported((empty(field.get("fieldExpression")) ? fields.contains(text(field.get("fieldName"))) : fields.contains(text(field.get("fieldExpression")))), "Output fields must directly reference an available field");
+            // Original JDBC and file outputs bind row values by fieldName. A different
+            // fieldExpression does not rename a row key; the original fieldMapping node does.
+            supported(fields.contains(text(field.get("fieldName"))) && (empty(field.get("fieldExpression")) || Objects.equals(field.get("fieldName"),field.get("fieldExpression"))), "Output fields must match upstream names; use the original field mapping node to rename fields");
         }
     }
     static void noPrimaryFilename(Map<String,Object> field) {
