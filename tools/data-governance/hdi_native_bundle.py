@@ -173,6 +173,11 @@ def select_files(entries, plugins, task, include_task_service=False, include_coo
     for record in task['files']:
         select(PUBLIC + record['path'], 'public/' + record['path'], 'original-task-ui', record)
     if include_task_service:
+        # Original connection forms use this dictionary, separate from the task UI translations.
+        for locale in ('zh_CN', 'en_US'):
+            source = f'language/{locale}/datasource_translate.properties'
+            if source in entries:
+                select(source, f'task-service/i18n/{locale}/datasource_translate.properties', 'original-connection-ui')
         for name in sorted(COMPONENT_DESCRIPTORS):
             select('META-INF/' + name, 'component-descriptors/' + name, 'original-component-descriptor')
         for tail in sorted(TASK_SERVICE_RESOURCES):
