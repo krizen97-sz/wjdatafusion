@@ -39,12 +39,19 @@ final class HdiCorePlatformAdapters {
 
     List<Registration> registrations() {
         String configured = properties.getPlatformAdaptersDir();
-        if (configured == null || configured.isBlank()) return List.of();
+        String expected = properties.getPlatformAdaptersManifestSha256();
+        if (configured == null || configured.isBlank()) {
+            if (expected != null && !expected.isBlank()) throw invalid();
+            return List.of();
+        }
+        if (expected == null || !expected.matches("[a-f0-9]{64}")) throw invalid();
         try {
             Path root = Path.of(configured).toAbsolutePath().normalize();
             for (Path parent = root; parent != null; parent = parent.getParent()) if (Files.isSymbolicLink(parent)) throw invalid();
             if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) throw invalid();
-            JsonNode manifest = JSON.readTree(read(root, "platform-adapter-manifest.json", 256 * 1024));
+            byte[] manifestBytes = read(root, "platform-adapter-manifest.json", 256 * 1024);
+            if (!sha(manifestBytes).equals(expected)) throw invalid();
+            JsonNode manifest = JSON.readTree(manifestBytes);
             if (!manifest.path("schemaVersion").isIntegralNumber() || manifest.path("schemaVersion").asInt() != 1 || !"rynew-hdi-jdbc-platform-adapters".equals(manifest.path("kind").asText())
                     || !originals.sourceArchiveSha256().equals(manifest.path("sourceArchiveSha256").asText())
                     || !manifest.path("files").isArray() || manifest.path("files").isEmpty() || manifest.path("files").size() > 128

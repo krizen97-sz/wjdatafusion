@@ -72,7 +72,8 @@ class HdiCorePlatformAdaptersTest {
         HdiCoreAssets assets = new HdiCoreAssets(original.properties);
         assertNull(assets.read("/detl/plugins/mysqlInput/etl_plugin.json"));
         assertNull(assets.read("/detl/lib/rynew-mysql-jdbc-adapter.jar"));
-        original.properties.setPlatformAdaptersDir(""); assertTrue(reader.registrations().isEmpty());
+        original.properties.setPlatformAdaptersDir(""); original.properties.setPlatformAdaptersManifestSha256("");
+        assertTrue(reader.registrations().isEmpty());
     }
 
     @Test void tamperedArtifactOrOriginalDependencyRejectsTheWholeRegistration() throws Exception {
@@ -104,17 +105,29 @@ class HdiCorePlatformAdaptersTest {
         ((ObjectNode)manifest.path("files").get(0)).put("path", "../outside.jar"); saveManifest(); assertUnavailable();
     }
 
+    @Test void replacingAReceiptCannotChangeTheConfiguredDefinitionOrOmitItsPin() throws Exception {
+        manifest.put("buildNote", "replacement");
+        Files.writeString(extension.resolve("platform-adapter-manifest.json"), manifest.toString());
+        assertUnavailable();
+        original.properties.setPlatformAdaptersManifestSha256(""); assertUnavailable();
+    }
+
     @Test @EnabledIfSystemProperty(named = "hdi.platform.adapters", matches = ".+")
     void actualBuiltAdaptationUsesOriginalDependenciesAndOnlyTwoFixedMysqlClasses() {
         HdiCoreProperties properties = new HdiCoreProperties(); properties.setBundleDir(System.getProperty("hdi.core.bundle"));
         properties.setPlatformAdaptersDir(System.getProperty("hdi.platform.adapters"));
+        properties.setPlatformAdaptersManifestSha256(System.getProperty("hdi.platform.adapters.sha256"));
         var registrations = new HdiCorePlatformAdapters(properties, new HdiCoreAssets(properties)).registrations();
         assertEquals(List.of("mysqlInput", "mysqlOutput"), registrations.stream().map(HdiCorePlatformAdapters.Registration::name).toList());
         assertTrue(registrations.stream().allMatch(item -> item.definition().path("adapterParams").size() > 0));
     }
 
     private void assertUnavailable() { assertEquals(503, assertThrows(HdiTaskFault.class, reader::registrations).status()); }
-    private void saveManifest() throws Exception { Files.writeString(extension.resolve("platform-adapter-manifest.json"), manifest.toString()); }
+    private void saveManifest() throws Exception {
+        byte[] bytes = manifest.toString().getBytes(StandardCharsets.UTF_8);
+        Files.write(extension.resolve("platform-adapter-manifest.json"), bytes);
+        original.properties.setPlatformAdaptersManifestSha256(sha(bytes));
+    }
     private void put(List<Map<String, Object>> files, String name, byte[] bytes, String origin) throws Exception {
         Path file = extension.resolve(name); Files.createDirectories(file.getParent()); Files.write(file, bytes);
         files.add(Map.of("path", name, "bytes", bytes.length, "sha256", sha(bytes), "origin", origin));

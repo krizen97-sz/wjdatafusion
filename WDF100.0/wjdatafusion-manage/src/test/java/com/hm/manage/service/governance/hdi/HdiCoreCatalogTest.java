@@ -95,6 +95,7 @@ class HdiCoreCatalogTest {
     void verifiesTheActualPackagedVendorCatalogWithoutRunningVendorCode() {
         HdiCoreProperties properties = new HdiCoreProperties(); properties.setBundleDir(System.getProperty("hdi.core.bundle"));
         properties.setPlatformAdaptersDir(System.getProperty("hdi.platform.adapters", ""));
+        properties.setPlatformAdaptersManifestSha256(System.getProperty("hdi.platform.adapters.sha256", ""));
         HdiCoreCatalog real = new HdiCoreCatalog(properties, new HdiCoreAssets(properties));
         assertTrue(List.of(3, 8, 10, 12).contains(real.getAdapters().size()));
         boolean rabbit = real.getAdapters().stream().anyMatch(row -> "rabbitmqInput".equals(row.get("adapterName")));
