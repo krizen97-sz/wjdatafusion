@@ -57,6 +57,31 @@ class HdiCompilerClientTest {
         }
     }
 
+    @Test void mysqlPreparationRequiresTheConfiguredPinAndNeverAcceptsAnUnboundDefinition() {
+        ObjectNode visual = (ObjectNode)visual(); visual.withObject("nodes").putObject("110").put("adapterName", "mysqlInput");
+        properties.setPlatformAdaptersManifestSha256("a".repeat(64));
+        command("mysql-pin"); assertTrue(client().prepare(context, visual).path("ok").asBoolean());
+        for (String mode : List.of("prepare", "mysql-pin-wrong", "mysql-pin-malformed")) {
+            command(mode); assertEquals(502, assertThrows(HdiTaskFault.class, () -> client().prepare(context, visual)).status());
+        }
+        command("adapter-revision-unavailable");
+        HdiTaskFault unavailable = assertThrows(HdiTaskFault.class, () -> client().prepare(context, visual));
+        assertEquals(409, unavailable.status()); assertTrue(unavailable.getMessage().contains("冻结"));
+    }
+
+    @Test void compiledOutputCannotChangeTheFrozenPlatformAdapterRevision() throws Exception {
+        Fixture fixture = fixture(); ObjectNode frozen = (ObjectNode)JSON.readTree(fixture.snapshot());
+        frozen.put("platformAdapterManifestSha256", "a".repeat(64)); String snapshot = frozen.toString();
+        for (String pin : List.of("a".repeat(64), "b".repeat(64), "")) {
+            ObjectNode response = fixture.response().deepCopy(); response.put("snapshotSha256", sha(snapshot));
+            if (!pin.isEmpty()) ((ObjectNode)response.path("metadataSnapshot")).put("platformAdapterManifestSha256", pin);
+            Path result = root.resolve("compiled-pin.json"); Files.writeString(result, response.toString()); command("from-file");
+            List<String> argv = new ArrayList<>(properties.getCompilerCommand()); argv.add(result.toString()); properties.setCompilerCommand(argv);
+            if (pin.equals("a".repeat(64))) assertTrue(client().compile(snapshot, sha(snapshot), fixture.run()).path("ok").asBoolean());
+            else assertEquals(502, assertThrows(HdiTaskFault.class, () -> client().compile(snapshot, sha(snapshot), fixture.run())).status());
+        }
+    }
+
     @Test void rawVendorFailuresAreNeverShownInUserErrorsAndDiagnosticsArePrivateAndBounded() throws Exception {
         command("unsupported"); HdiTaskFault fault = assertThrows(HdiTaskFault.class, () -> client().prepare(context, visual()));
         assertEquals(422, fault.status()); assertFalse(fault.toString().contains("credential-secret"));
@@ -269,12 +294,17 @@ class HdiCompilerClientTest {
                 System.err.print("credential-secret".repeat(10000));
                 System.out.print("{\"ok\":false,\"protocolVersion\":1,\"code\":\"UNSUPPORTED_GRAPH\",\"message\":\"credential-secret\"}"); System.exit(2);
             }
+            if (mode.equals("adapter-revision-unavailable")) {
+                System.out.print("{\"ok\":false,\"protocolVersion\":1,\"code\":\"ADAPTER_REVISION_UNAVAILABLE\",\"message\":\"credential-secret\"}"); System.exit(2);
+            }
             if (mode.equals("from-file")) { System.out.print(Files.readString(Path.of(arguments[2]))); return; }
             ObjectNode context = request.path("context").deepCopy(), visual = request.path("visual").deepCopy();
             visual.put("flowId", Long.parseLong(context.path("businessTaskId").asText()));
             visual.set("flowVo", JSON.valueToTree(Map.of("id", 17, "groupId", 1, "userId", 4, "projectCode", "test-project")));
             if (mode.equals("owner-tamper")) context.put("ownerId", "999");
-            String snapshot = JSON.writeValueAsString(Map.of("protocolVersion", 1, "context", context, "visual", visual));
+            ObjectNode frozen = JSON.valueToTree(Map.of("protocolVersion", 1, "context", context, "visual", visual));
+            if (mode.startsWith("mysql-pin")) frozen.put("platformAdapterManifestSha256", mode.equals("mysql-pin") ? "a".repeat(64) : mode.equals("mysql-pin-wrong") ? "b".repeat(64) : "invalid");
+            String snapshot = frozen.toString();
             ObjectNode result = JSON.createObjectNode().put("ok", true).put("protocolVersion", 1).put("operation", "prepare").put("snapshotJson", snapshot).put("snapshotSha256", sha(snapshot));
             result.set("canonicalVisual", visual); result.set("diagnostics", JSON.createArrayNode());
             if (mode.equals("wrong-protocol")) result.put("protocolVersion", 2);

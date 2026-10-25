@@ -71,6 +71,11 @@ public class HdiCompilerClient {
         JsonNode response = invoke(request);
         require("prepare".equals(response.path("operation").asText()), "operation");
         JsonNode snapshot = checkedSnapshot(response.path("snapshotJson"), response.path("snapshotSha256"));
+        boolean mysql = false;
+        for (JsonNode node : snapshot.path("visual").path("nodes"))
+            if (Set.of("mysqlInput", "mysqlOutput").contains(node.path("adapterName").asText())) mysql = true;
+        if (mysql) require(snapshot.path("platformAdapterManifestSha256").isTextual()
+            && snapshot.path("platformAdapterManifestSha256").asText().equals(properties.getPlatformAdaptersManifestSha256()), "prepared platform adapter revision");
         require(context.equals(snapshot.path("context")), "context");
         if (trustedConnectionRefs != null && (!trustedConnectionRefs.isEmpty() || snapshot.has("connectionRefs"))) require(trustedConnectionRefs.equals(snapshot.path("connectionRefs")), "frozen connection versions");
         else require(!snapshot.has("connectionRefs") || snapshot.path("connectionRefs").isEmpty(), "unexpected connection versions");
@@ -139,6 +144,7 @@ public class HdiCompilerClient {
         require(identity(schedule.path("strategy_flow").path("etl_schedule").path("node_id"), run.path("nativeFlowId").asText()), "schedule node");
         require(response.path("metadataSnapshot").path("outputsDir").equals(run.path("outputsDir")), "output directory");
         require(response.path("metadataSnapshot").path("metadataIdBase").equals(run.path("metadataIdBase")), "metadata block");
+        require(snapshot.path("platformAdapterManifestSha256").equals(response.path("metadataSnapshot").path("platformAdapterManifestSha256")), "compiled platform adapter revision");
         validateMappings(response.path("nodeMappings"), flow, snapshot.path("visual"), run);
         return response;
     }
@@ -157,6 +163,8 @@ public class HdiCompilerClient {
         JsonNode snapshot = read(bytes);
         require(snapshot.path("protocolVersion").isInt() && snapshot.path("protocolVersion").intValue() == 1 && snapshot.path("context").isObject() && snapshot.path("visual").isObject(), "snapshot schema");
         if (snapshot.has("connectionRefs")) connectionRefs(snapshot.path("connectionRefs"));
+        if (snapshot.has("platformAdapterManifestSha256")) require(snapshot.path("platformAdapterManifestSha256").isTextual()
+            && snapshot.path("platformAdapterManifestSha256").asText().matches("[a-f0-9]{64}"), "platform adapter digest");
         @SuppressWarnings("unchecked") Map<String,Object> values = json.convertValue(snapshot.path("context"), Map.class);
         context(values);
         return snapshot;
@@ -277,6 +285,7 @@ public class HdiCompilerClient {
                     throw new HdiTaskFault(422, "当前原引擎接入范围不支持此流程节点、连接或参数配置");
                 }
                 if (code.equals("INVALID_INPUT")) throw new HdiTaskFault(422, "流程配置不完整或参数超出当前执行范围，请检查节点配置");
+                if (code.equals("ADAPTER_REVISION_UNAVAILABLE")) throw new HdiTaskFault(409, "任务冻结的MySQL适配版本不可用，请恢复对应适配包，或核对配置后重新保存并发布");
                 if (code.equals("COMPILER_UNAVAILABLE")) throw new HdiTaskFault(503, "原任务编译器不可用，请检查本机运行环境");
                 throw new HdiTaskFault(502, "原任务配置生成失败，请查看私有诊断日志");
             }
