@@ -169,8 +169,9 @@ public class HdiCompilerClient {
     }
 
     public JsonNode connectionDescription(String operation, String type, String version, JsonNode parameters) {
-        require(Set.of("connectionForm", "connectionUrl").contains(operation), "connection operation");
+        require(Set.of("connectionForm", "connectionUrl", "connectionMetadata").contains(operation), "connection operation");
         require(Set.of("Postgresql", "PostgreSQL", "FTP", "Kafka").contains(type), "connection type");
+        if (operation.equals("connectionMetadata")) require(type.equals("Kafka") && version == null, "metadata type");
         ObjectNode request = json.createObjectNode().put("operation", operation).put("datasourceType", type);
         if (version != null) request.put("datasourceVersion", version);
         if (parameters != null) { require(parameters.isObject(), "connection parameters"); request.set("parameters", parameters); }
@@ -187,6 +188,8 @@ public class HdiCompilerClient {
         } finally { if (acquired) connectionInvocation.release(); connectionQueue.release(); }
         require(operation.equals(response.path("operation").asText()) && type.equals(response.path("datasourceType").asText()), "connection description binding");
         if (operation.equals("connectionForm")) require(response.path("form").path("formItems").isArray(), "original connection form");
+        else if (operation.equals("connectionMetadata")) require(response.path("metadata").isObject()
+            && parameters.path("action").equals(response.path("action")), "original metadata response");
         else require(response.path("url").isTextual(), "original connection URL");
         return response;
     }

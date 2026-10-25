@@ -27,7 +27,8 @@ import java.util.*;
 import java.util.function.Function;
 
 /** Platform metadata adapter. Vendor DTOs, configuration generators and runtime algorithms are unchanged.
- * One request per JVM; no database, identity server, ZooKeeper or network connection is opened here.
+ * One request per JVM. Task compilation opens no database, identity service or ZooKeeper;
+ * connectionMetadata delegates read-only Kafka access to the child-only network guard.
  */
 public final class OriginalTaskCompiler {
     static final String P = "com.hikvision.idatafusion.detl.";
@@ -852,7 +853,7 @@ public final class OriginalTaskCompiler {
             byte[] input = System.in.readNBytes(MAX_BYTES + 1); require(input.length <= MAX_BYTES, "Request exceeds 8 MiB");
             Map<String,Object> request = parse(new String(input, StandardCharsets.UTF_8));
             String operation = text(request.get("operation"));
-            require(Set.of("prepare", "compile", "schedule", "connectionForm", "connectionUrl").contains(operation), "Unknown operation");
+            require(Set.of("prepare", "compile", "schedule", "connectionForm", "connectionUrl", "connectionMetadata").contains(operation), "Unknown operation");
             @SuppressWarnings("unchecked") Map<String,Object> result = operation.startsWith("connection")
                 ? (Map<String,Object>)Class.forName("OriginalConnectionForms").getMethod("handle",Map.class).invoke(null,request)
                 : operation.equals("prepare") ? prepare(request) : operation.equals("schedule") ? schedule(request) : compile(request, Path.of(args[0]));

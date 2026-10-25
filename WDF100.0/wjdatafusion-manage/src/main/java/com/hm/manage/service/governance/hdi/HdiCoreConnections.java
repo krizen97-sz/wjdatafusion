@@ -21,10 +21,8 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.apache.commons.net.ftp.FTPClient;
-import org.apache.kafka.clients.admin.AdminClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -52,6 +50,12 @@ public class HdiCoreConnections {
     private final HdiCoreKeys keys;
     private final HdiCoreConnectionProperties policy;
     private final Semaphore metadataPermits = new Semaphore(4);
+    private HdiKafkaMetadataGateway kafkaMetadata;
+    @Autowired public void setKafkaMetadata(HdiKafkaMetadataGateway value) { this.kafkaMetadata = value; }
+    private HdiKafkaMetadataGateway kafkaMetadata() {
+        if (kafkaMetadata == null) throw fault(503, "Kafka元数据隔离环境尚未配置");
+        return kafkaMetadata;
+    }
 
     @Autowired public HdiCoreConnections(@Qualifier("masterDataSource") DataSource source, CredentialCryptoService crypto,
             HdiCoreKeys keys, HdiCoreConnectionProperties policy) {
@@ -192,13 +196,7 @@ public class HdiCoreConnections {
                     ftp.logout();
                 } finally { if (ftp.isConnected()) ftp.disconnect(); }
             } else {
-                Properties config = new Properties(); config.put("bootstrap.servers", data.path("address").asText()); config.put("request.timeout.ms", "4000"); config.put("default.api.timeout.ms", "6000"); config.put("retries", "0");
-                AdminClient client = AdminClient.create(config);
-                try {
-                    Set<String> allowed = new LinkedHashSet<>(); for (JsonNode endpoint : binding(1, 1, 1, data).path("endpoints")) allowed.add(endpoint.path("host").asText() + ":" + endpoint.path("port").asInt());
-                    var nodes = client.describeCluster().nodes().get(6, TimeUnit.SECONDS); if (nodes.isEmpty()) throw fault(422, "Kafka未返回可用节点");
-                    for (var node : nodes) if (!allowed.contains(node.host() + ":" + node.port())) throw fault(422, "Kafka公布的节点不在已配置范围内");
-                } finally { client.close(java.time.Duration.ofSeconds(1)); }
+                kafkaMetadata().read(data.path("address").asText(), binding(1, 1, 1, data), false);
             }
             return true;
         } catch (HdiTaskFault error) { throw error; }
@@ -275,18 +273,16 @@ public class HdiCoreConnections {
         Current row = current(owner, id, false); requireEnabled(row); Version stored = version(owner, id, row.revision); ObjectNode bound = binding(owner, id, row.revision, stored.datasource);
         String keyword = query.path("tableName").asText(""); if (keyword.length() > 249) throw fault(400, "主题名称过长");
         int page = query.path("pageNo").asInt(1), size = query.path("pageSize").asInt(100); if (page < 1 || size < 1 || size > 200) throw fault(400, "分页参数无效");
-        acquire(); AdminClient client = null;
+        acquire();
         try {
-            Properties config = new Properties(); config.put("bootstrap.servers", stored.datasource.path("address").asText()); config.put("request.timeout.ms", "4000"); config.put("default.api.timeout.ms", "6000"); config.put("retries", "0"); client = AdminClient.create(config);
-            Set<String> allowed = new LinkedHashSet<>(); for (JsonNode endpoint : bound.path("endpoints")) allowed.add(endpoint.path("host").asText() + ":" + endpoint.path("port").asInt());
-            for (var node : client.describeCluster().nodes().get(6, TimeUnit.SECONDS)) if (!allowed.contains(node.host() + ":" + node.port())) throw fault(422, "Kafka公布的节点不在已配置范围内");
-            var names = client.listTopics().names().get(6, TimeUnit.SECONDS); if (names.size() > 1000) throw fault(422, "Kafka主题超过当前浏览范围");
+            JsonNode metadata = kafkaMetadata().read(stored.datasource.path("address").asText(), bound, true);
+            Set<String> names = new LinkedHashSet<>(); metadata.path("topics").forEach(value -> names.add(value.asText()));
             List<Map<String,Object>> rows = new ArrayList<>();
             for (String name : names.stream().sorted().toList()) if (name.contains(keyword)) { Map<String,Object> table = new LinkedHashMap<>(); table.put("id", registerTable(owner, id, "", name, "TOPIC")); table.put("dbId", id); table.put("tableName", name); table.put("dbTableName", name); table.put("tableDisplayName", name); table.put("tableCode", name); table.put("tableSchema", ""); table.put("tableSchem", ""); table.put("schemaCode", ""); rows.add(table); }
             int from = (int)Math.min(rows.size(), (long)(page - 1) * size); return Map.of("list", rows.subList(from, Math.min(rows.size(), from + size)), "total", rows.size());
         } catch (HdiTaskFault error) { throw error; }
         catch (Exception error) { throw fault(422, "Kafka主题读取失败，请检查连接和节点配置"); }
-        finally { if (client != null) client.close(java.time.Duration.ofSeconds(1)); metadataPermits.release(); }
+        finally { metadataPermits.release(); }
     }
     private interface Metadata<T> { T read(Connection connection) throws Exception; }
     private <T> T metadata(long owner, long id, Metadata<T> action) {
