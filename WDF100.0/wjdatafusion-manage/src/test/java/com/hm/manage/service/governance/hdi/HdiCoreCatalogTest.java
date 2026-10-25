@@ -137,6 +137,8 @@ class HdiCoreCatalogTest {
             assertEquals(List.of(9L, 10L), real.getAdapters().subList(8, 10).stream().map(row -> row.get("id")).toList());
             assertTrue(real.getAdapters().subList(8, 10).stream().allMatch(row -> "120".equals(row.get("dbTypeId"))));
             assertTrue(options.stream().anyMatch(row -> "RabbitMQ".equals(row.get("code")) && "120".equals(row.get("value"))));
+            assertEquals(Map.of("adapterIncr", "true", "adapterExtField", "false", "adapterTableUse", "false", "adapterTableTruncate", "false"), real.getAdapterUiInfo("rabbitmqInput"));
+            assertEquals(Map.of("adapterIncr", "false", "adapterExtField", "true", "adapterTableUse", "false", "adapterTableTruncate", "false"), real.getAdapterUiInfo("rabbitmqOutput"));
         }
         if (mysql) {
             var adapters = real.getAdapters().stream().filter(row -> row.get("adapterName").toString().startsWith("mysql")).toList();
@@ -144,6 +146,8 @@ class HdiCoreCatalogTest {
             assertEquals(List.of(11L, 12L), adapters.stream().map(row -> row.get("id")).toList());
             assertTrue(adapters.stream().allMatch(row -> "2".equals(row.get("dbTypeId")) && "platform-jdbc-adaptation".equals(row.get("implementationOrigin"))));
             assertTrue(options.stream().anyMatch(row -> "MySql".equalsIgnoreCase(row.get("code").toString()) && "2".equals(row.get("value"))));
+            assertEquals(Map.of("adapterIncr", "true", "adapterExtField", "false", "adapterTableUse", "false", "adapterTableTruncate", "false"), real.getAdapterUiInfo("mysqlInput"));
+            assertEquals(Map.of("adapterIncr", "false", "adapterExtField", "true", "adapterTableUse", "true", "adapterTableTruncate", "true"), real.getAdapterUiInfo("mysqlOutput"));
         }
         assertTrue(real.listParams(6, "fileOutput", "output").stream().noneMatch(row -> "etl.file.fileType".equals(row.get("paramName"))));
         var selectedFileType = real.listParams(6, "fileOutput", "output", java.util.Set.of("etl.file.fileType")).stream()

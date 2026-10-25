@@ -49,6 +49,7 @@ public final class HdiCoreCatalog {
     private static final String DATA_JAR = "task-service/dEtlv2.jar";
     private static final String SQL_ROOT = "db/migration/V200/";
     private static final String RABBIT_SOURCE_SQL = "V1.0.22__ETL2_2.1.1_b4.sql";
+    private static final String ADAPTER_UI_SQL = "V1.0.63__ETL2_2.3.1_b6.sql";
     private static final List<String> TYPE_SQL = List.of("V1.0.1__INIT_DATA.sql", "V1.0.10__ETL2_0511.sql",
         "V1.0.13__ETL2_2.1.0_b3.sql", "V1.0.18__ETL2_2.1.1_b1.sql", "V1.0.19__ETL2_2.1.1_b1_0812.sql",
         "V1.0.20__ETL2_2.1.1_b2.sql", "V1.0.23__ETL2_2.1.1_r2.sql", "V1.0.26__ETL2_2.1.2_b3.sql");
@@ -120,11 +121,23 @@ public final class HdiCoreCatalog {
         return value.deepCopy();
     }
 
-    /** Original getAdapterUiInfo exposes parsed adapterUIParams; an absent optional section is an empty map. */
+    /** The original UI uses etl_adapter_ext; newer plugin declarations can supply these settings too. */
     public Map<String, Object> getAdapterUiInfo(String adapterName) {
         if (adapterName == null || !SUPPORTED.contains(adapterName)) throw badQuery();
         Plugin plugin = plugins().stream().filter(p -> adapterName.equals(text(p.definition, "adapterName"))).findFirst().orElseThrow(HdiCoreCatalog::unavailable);
         JsonNode info = plugin.definition.get("adapterUIParams");
+        if ((info == null || info.isNull() || info.isObject() && info.isEmpty())
+                && Set.of("rabbitmqInput", "rabbitmqOutput", "mysqlInput", "mysqlOutput").contains(adapterName)) {
+            // These packaged plugins have no adapterUIParams. Preserve their exact original
+            // etl_adapter_ext migration values instead of inventing generic form defaults.
+            String sql = sqlResources(List.of(ADAPTER_UI_SQL)).get(ADAPTER_UI_SQL);
+            Matcher row = Pattern.compile("(?is)SELECT\\s+'" + Pattern.quote(adapterName)
+                + "'\\s*,\\s*b\\.id\\s*,\\s*'((?:''|[^'])*)'\\s*,\\s*1\\s+from\\s+etl_adapter\\b").matcher(sql);
+            if (!row.find()) throw unavailable();
+            String original = row.group(1).replace("''", "'");
+            if (row.find()) throw unavailable();
+            info = json(original.getBytes(StandardCharsets.UTF_8));
+        }
         if (info == null || info.isNull()) return Map.of();
         if (!info.isObject()) throw unavailable();
         @SuppressWarnings("unchecked") Map<String, Object> result = JSON.convertValue(info, Map.class);

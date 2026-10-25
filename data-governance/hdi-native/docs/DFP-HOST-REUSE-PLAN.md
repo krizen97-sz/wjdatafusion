@@ -85,3 +85,14 @@ ready只代表原TaskList/ProcessMain实例完成Vue挂载，不代表后端任�
 | 平台侧栏内仍能阅读连接卡片、操作和筛选 | 原DatasourceTable的卡片、HUI工具栏及窗口resize处理 | 保留原DOM、事件与控件，仅在iframe宿主按可用宽度换行 | HdiTaskWorkspace.vue、components/iFrame/index.vue、document/workspace/index.vue | 原卡片固定25%、右侧筛选绝对定位会压缩较窄iframe；将该组件限定为两列/单列，工具栏上下排列 |
 
 范围只限 `task-host.html` 中原组件的 `data-v-51501056` 样式作用域；不修改bundle原字节、不新增组件或颜色、不影响画布和平台全局样式。使用原窗口resize方法重新计算列表高度。验证真实Chrome不同窗口宽度、原连接测试、表单打开及控制台，并运行UI Guard与完整前端验证。
+
+## MySQL、RabbitMQ、SFTP 的原表单装配
+
+| 页面需要 | 现有实现 | 选择 | 参考文件 | 必需适配 |
+| --- | --- | --- | --- | --- |
+| MySQL与RabbitMQ连接参数及测试 | 原数据源通用表单、原Datasource参数定义 | 原字段、URL模式、RSA提交 | 原module79553、OriginalConnectionForms、HdiCoreConnectionApi | 新类型与平台连接存储/端点约束接线 |
+| SFTP文件参数 | 原FTP数据源ext2协议选择、原File节点表单 | 原SFTP选项、FileInput/FileOutput | 原File表单、HdiCoreConnectionApi | 保留原FTP形式的dbUrl，协议由原ext2/sourceType确定 |
+| 插件显示与表配置开关 | 原etl_adapter_ext.ui_info、原插件adapterUIParams | 保留原字符串开关及节点表单 | HdiCoreCatalog、原GroupAdapterManageServiceImpl/PackageTaskConfigServiceImpl | 非空插件声明优先；MySQL/Rabbit缺失或空声明时读取原V1.0.63迁移中的ui_info |
+| MySQL处理实现来源 | 原JDBC读写基类、用户批准的最小方言子类 | 独立平台适配包，显示“原JDBC适配” | platform-adapters/mysql、HdiCorePlatformAdapters | 仅驱动、URL前缀、标识符引号三方法；单独的manifest固定版本，不伪装原专用MySQL插件 |
+
+复用现有平台宿主、原数据源/画布/字段组件与运行记录抽屉，不新增UI框架或另一套节点表单。原RabbitMQ数据源字典在V1.0.22新增，sort本来为NULL；原表单开关从V1.0.63取出并保持字符串类型，不凭空设置默认值。上述代码装配验证与真实浏览器输入输出验收分别记录，不把元数据读取成功当作运行成功。
