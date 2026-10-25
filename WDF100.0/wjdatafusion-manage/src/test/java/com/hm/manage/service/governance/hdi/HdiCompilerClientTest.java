@@ -122,6 +122,30 @@ class HdiCompilerClientTest {
         assertEquals(504, first.get(3, TimeUnit.SECONDS).status());
     }
 
+    @Test void boundedPendingRequestWaitsForTheExistingProcessSlotAndExecutesExactlyOnce() throws Exception {
+        command("slow-prepare");
+        HdiCompilerClient client = new HdiCompilerClient(properties, Duration.ofSeconds(4), 65536, 1, 1, Duration.ofSeconds(3));
+        CompletableFuture<JsonNode> first = CompletableFuture.supplyAsync(() -> client.prepare(context, visual()));
+        long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (!Files.exists(root.resolve("started")) && System.nanoTime() < end) Thread.sleep(10);
+        assertTrue(Files.exists(root.resolve("started")));
+        assertTrue(client.prepare(context, visual()).path("ok").asBoolean());
+        assertTrue(first.get(4, TimeUnit.SECONDS).path("ok").asBoolean());
+        assertEquals(2, Files.readAllLines(root.resolve("started-invocations")).size());
+    }
+
+    @Test void waitingTimeoutReleasesAdmissionWithoutSpawningOrReplayingAProcess() throws Exception {
+        command("hang"); HdiCompilerClient client = new HdiCompilerClient(properties, Duration.ofMillis(1200), 65536, 1, 1, Duration.ofMillis(80));
+        CompletableFuture<HdiTaskFault> first = CompletableFuture.supplyAsync(() -> assertThrows(HdiTaskFault.class, () -> client.prepare(context, visual())));
+        long end = System.nanoTime() + TimeUnit.SECONDS.toNanos(2);
+        while (!Files.exists(root.resolve("started")) && System.nanoTime() < end) Thread.sleep(10);
+        assertTrue(Files.exists(root.resolve("started"))); String pid = Files.readString(root.resolve("started"));
+        HdiTaskFault waited = assertThrows(HdiTaskFault.class, () -> client.prepare(context, visual()));
+        assertEquals(503, waited.status()); assertTrue(waited.getMessage().contains("等待超时"));
+        assertEquals(pid, Files.readString(root.resolve("started"))); assertEquals(504, first.get(3, TimeUnit.SECONDS).status());
+        command("prepare"); assertTrue(client.prepare(context, visual()).path("ok").asBoolean());
+    }
+
     @Test void timeoutTerminatesOwnedCompilerChildWithoutTouchingUnrelatedProcess() throws Exception {
         Process unrelated = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin/java").toString(), "-cp",
             System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")), FakeCompiler.class.getName(), "hold", root.resolve("unrelated").toString()).start();
@@ -278,6 +302,11 @@ class HdiCompilerClientTest {
                 Thread.sleep(10000); return;
             }
             if (mode.equals("hang") || mode.equals("hold")) { Thread.sleep(10000); return; }
+            if (mode.equals("slow-prepare")) {
+                Files.writeString(Path.of(arguments[1] + "-invocations"), ProcessHandle.current().pid() + "\n",
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+                Thread.sleep(600);
+            }
             JsonNode request = JSON.readTree(System.in.readAllBytes());
             if (request.path("operation").asText().equals("schedule")) {
                 ObjectNode response = JSON.createObjectNode().put("ok", true).put("protocolVersion", 1).put("operation", "schedule").put("mode", "CRON").put("zoneId", request.path("zoneId").asText());

@@ -49,13 +49,20 @@ public class HdiCompilerClient {
     private final Duration timeout;
     private final int maxStdout;
     private final Semaphore slots;
+    private final Semaphore invocationQueue;
+    private final Duration queueWait;
     private final Semaphore connectionQueue = new Semaphore(12, true);
     private final Semaphore connectionInvocation = new Semaphore(1, true);
 
     @Autowired
-    public HdiCompilerClient(HdiCoreProperties properties) { this(properties, Duration.ofSeconds(45), MAX_STDOUT, 2); }
+    public HdiCompilerClient(HdiCoreProperties properties) { this(properties, Duration.ofSeconds(45), MAX_STDOUT, 2, 4, Duration.ofSeconds(10)); }
     HdiCompilerClient(HdiCoreProperties properties, Duration timeout, int maxStdout, int concurrency) {
-        this.properties = properties; this.timeout = timeout; this.maxStdout = maxStdout; slots = new Semaphore(concurrency);
+        this(properties, timeout, maxStdout, concurrency, 0, Duration.ZERO);
+    }
+    HdiCompilerClient(HdiCoreProperties properties, Duration timeout, int maxStdout, int concurrency, int pending, Duration queueWait) {
+        if (concurrency < 1 || pending < 0 || queueWait.isNegative()) throw new IllegalArgumentException("Invalid compiler admission limits");
+        this.properties = properties; this.timeout = timeout; this.maxStdout = maxStdout;
+        slots = new Semaphore(concurrency, true); invocationQueue = new Semaphore(concurrency + pending, true); this.queueWait = queueWait;
     }
 
     public JsonNode prepare(Map<String,Object> trustedContext, JsonNode visual) {
@@ -245,7 +252,7 @@ public class HdiCompilerClient {
         byte[] input;
         try { input = json.writeValueAsBytes(request); } catch (IOException failure) { throw protocol(); }
         if (input.length > MAX_REQUEST) throw new HdiTaskFault(413, "流程编译请求超过大小限制");
-        if (!slots.tryAcquire()) throw new HdiTaskFault(503, "原任务编译器繁忙，请稍后重试");
+        acquireInvocation();
         Process process = null; ExecutorService io = Executors.newFixedThreadPool(3, runnable -> {
             Thread thread = new Thread(runnable, "hdi-compiler-io"); thread.setDaemon(true); return thread;
         });
@@ -298,8 +305,20 @@ public class HdiCompilerClient {
         catch (ExecutionException failure) { throw protocol(); }
         finally {
             if (process != null) terminateOwned(process, children);
-            io.shutdownNow(); slots.release();
+            io.shutdownNow(); slots.release(); invocationQueue.release();
         }
+    }
+
+    private void acquireInvocation() {
+        // Queue only authorized, bounded requests; never start extra JVMs or retry an invocation.
+        if (!invocationQueue.tryAcquire()) throw new HdiTaskFault(503, "原任务编译器繁忙，请稍后重试");
+        boolean acquired = false;
+        try {
+            acquired = slots.tryAcquire(queueWait.toMillis(), TimeUnit.MILLISECONDS);
+            if (!acquired) throw new HdiTaskFault(503, "原任务编译等待超时，请稍后重试");
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt(); throw new HdiTaskFault(503, "等待原任务编译已中断");
+        } finally { if (!acquired) invocationQueue.release(); }
     }
 
     private static void completed(Future<?> result) throws ExecutionException, InterruptedException { result.get(); }
