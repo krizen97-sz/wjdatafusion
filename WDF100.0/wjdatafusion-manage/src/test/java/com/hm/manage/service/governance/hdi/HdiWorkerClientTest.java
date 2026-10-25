@@ -12,6 +12,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -83,6 +85,56 @@ class HdiWorkerClientTest {
             assertThrows(HdiWorkerClient.Failure.class, client::hello);
         }
     }
+    @Test void coldHelloHasSeparateBudgetButLaterHelloKeepsNormalDeadline() throws Exception {
+        mode("slow-hello");
+        try (HdiWorkerClient client = new HdiWorkerClient(properties, Duration.ofMillis(300), Duration.ofSeconds(5))) {
+            assertTrue(client.hello().path("ready").asBoolean());
+            var failure = assertThrows(HdiWorkerClient.Failure.class, client::hello);
+            assertEquals("WORKER_TIMEOUT", failure.code()); assertTrue(failure.uncertain());
+            assertThrows(HdiWorkerClient.Failure.class, client::hello);
+        }
+        assertEquals(List.of("hello", "hello"), Files.readAllLines(root.resolve("requests")));
+    }
+    @Test void coldHelloTimeoutDoesNotSendReserveOrRestartWorker() throws Exception {
+        mode("slow-hello");
+        try (HdiWorkerClient client = new HdiWorkerClient(properties, Duration.ofSeconds(5), Duration.ofMillis(300))) {
+            var failure = assertThrows(HdiWorkerClient.Failure.class, () -> client.reserve(run()));
+            assertEquals("WORKER_TIMEOUT", failure.code()); assertTrue(failure.uncertain());
+            assertThrows(HdiWorkerClient.Failure.class, client::hello);
+        }
+        assertEquals(List.of("hello"), Files.readAllLines(root.resolve("requests")));
+    }
+    @Test void longerStartupBudgetDoesNotExtendOrReplaySubmit() throws Exception {
+        mode("timeout-submit");
+        try (HdiWorkerClient client = new HdiWorkerClient(properties, Duration.ofMillis(300), Duration.ofSeconds(5))) {
+            HdiTaskStore.Run run = run(); client.reserve(run);
+            var failure = assertThrows(HdiWorkerClient.Failure.class, () -> client.submit(run, HdiProtocol.JSON.createObjectNode()));
+            assertEquals("WORKER_TIMEOUT", failure.code()); assertTrue(failure.uncertain());
+            assertThrows(HdiWorkerClient.Failure.class, () -> client.submit(run, HdiProtocol.JSON.createObjectNode()));
+        }
+        assertEquals(List.of("hello", "reserve", "submit"), Files.readAllLines(root.resolve("requests")));
+    }
+    @Test void startupConfigurationIsBounded() {
+        assertEquals(180, properties.getWorkerStartupTimeoutSeconds());
+        properties.setWorkerStartupTimeoutSeconds(60); assertEquals(60, properties.getWorkerStartupTimeoutSeconds());
+        properties.setWorkerStartupTimeoutSeconds(300); assertEquals(300, properties.getWorkerStartupTimeoutSeconds());
+        for (int invalid : new int[]{-1, 0, 59, 301, Integer.MAX_VALUE})
+            assertThrows(IllegalArgumentException.class, () -> properties.setWorkerStartupTimeoutSeconds(invalid));
+    }
+    @Test void concurrentColdRequestsShareOneWorkerAndWaitForConfirmedGreeting() throws Exception {
+        mode("slow-first-hello"); var callers = Executors.newFixedThreadPool(2);
+        try (HdiWorkerClient client = new HdiWorkerClient(properties, Duration.ofMillis(300), Duration.ofSeconds(5))) {
+            var hello = callers.submit(client::hello);
+            long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+            while (!Files.exists(root.resolve("requests")) && System.nanoTime() < deadline) Thread.sleep(20);
+            assertTrue(Files.exists(root.resolve("requests")));
+            HdiTaskStore.Run run = run(); var reserve = callers.submit(() -> client.reserve(run));
+            assertTrue(hello.get(5, TimeUnit.SECONDS).path("ready").asBoolean());
+            assertEquals(run.id(), reserve.get(5, TimeUnit.SECONDS).path("runId").asText());
+        } finally { callers.shutdownNow(); }
+        assertEquals(List.of("started"), Files.readAllLines(root.resolve("requests.starts")));
+        assertEquals(List.of("hello", "reserve", "shutdown"), Files.readAllLines(root.resolve("requests")));
+    }
     @Test void disabledOrSharedStateNeverStartsWorker() throws Exception {
         properties.setEnabled(false);
         try (HdiWorkerClient client = new HdiWorkerClient(properties)) { assertFalse(assertThrows(HdiWorkerClient.Failure.class, client::hello).uncertain()); }
@@ -92,12 +144,17 @@ class HdiWorkerClientTest {
     }
     public static class FakeWorker {
         public static void main(String[] args) throws Exception {
-            String mode = args[0]; Path requests = Path.of(args[1]); ObjectNode view = null;
+            String mode = args[0]; Path requests = Path.of(args[1]); ObjectNode view = null; boolean first = true;
+            Files.writeString(requests.resolveSibling(requests.getFileName() + ".starts"), "started\n",
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
             try (BufferedReader input = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = input.readLine()) != null) {
                     JsonNode request = HdiProtocol.JSON.readTree(line); String op = request.path("op").asText();
                     Files.writeString(requests, op + "\n", java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+                    if (op.equals("hello") && (mode.equals("slow-hello") || mode.equals("slow-first-hello") && first)) Thread.sleep(1000);
+                    first = false;
+                    if (op.equals("submit") && mode.equals("timeout-submit")) { Thread.sleep(1000); return; }
                     if (op.equals("submit") && mode.equals("disconnect-submit")) return;
                     if (op.equals("reserve") && mode.equals("timeout")) { Thread.sleep(1000); return; }
                     ObjectNode response = HdiProtocol.JSON.createObjectNode().put("protocolVersion", 1).put("requestId", request.path("requestId").asText()).put("ok", true);
