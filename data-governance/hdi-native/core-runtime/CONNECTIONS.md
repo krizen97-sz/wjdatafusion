@@ -4,7 +4,7 @@
 
 先执行独立脚本 `WDF100.0/sql/data_governance_hdi_connections_upgrade_20261025.sql`，新增当前连接、不可变连接版本、实际表/主题标识登记三张表。每个用户最多100条未删除连接。连接密码接收原表单 RSA 密文，复用平台 `CredentialCryptoService` AES-GCM 加密保存；查询仅返回 `******` 和 `passwordConfigured`。原表单编辑重新加密 `******` 时保持旧密码。密码不进入任务 visual 或公开快照。
 
-本轮原数据源：PostgreSQL/dbType16/9.x，FTP/dbType18/1.0，Kafka/dbType8/2.x。FTP使用被动模式，Kafka使用无认证模式；SFTP、Kerberos、Ranger、SASL和自定义JDBC参数需要独立接入与验收，不能把未支持配置静默降级。
+原数据源包括 PostgreSQL/dbType16/9.x、MySQL/dbType2/8.x、FTP/dbType18/1.0、Kafka/dbType8/2.x、RabbitMQ/dbType120/3.x。SFTP沿原FTP数据源表单的 `ext2=sftp`，不另造数据源类型；FTP使用被动模式，SFTP使用原密码认证。Kafka使用无认证模式，RabbitMQ使用显式账号密码的原AMQP模式；Kerberos、Ranger、SASL、RabbitMQ TLS和任意JDBC参数仍未开放。
 
 ## 与原表单的连接
 
@@ -13,9 +13,14 @@
 - PostgreSQL：`connectType`、`address`、`databaseSid`、`databaseUsername`、`databasePassword`，或原URL模式。
 - FTP：`Host`、`Port`、`FolderPath`、`ConnectMode=1`、`ext2=ftp`及账号密码。原 `jointUrl` 对 `/incoming` 拼出 `ftp://IP:port//incoming`，双斜线为原实现行为，保留不重写。
 - Kafka：`address`、`connectType`、`certification=none`、`authentication=none`。原测试按钮会携带隐藏的JAAS模板；无认证模式不使用该隐藏内容。
+- MySQL：原 `MysqlDatasource` 表单，`connectType=host/url`、`address`、`databaseSid`、账号密码。原驱动是包内 MariaDB 2.7.5，host模式仍生成 `jdbc:mysql://IP:port/database?useSSL=false`。使用原URL模式时，可显式指定这一模板加 `&allowPublicKeyRetrieval=true` 供冷 `caching_sha2_password` 认证；端点仍必须在部署允许清单，参数不会被默认加进host模式，也不接受任意JDBC参数。该附加选项已用本机全新账号首次登录验证，不以预热缓存掩盖认证失败。
+- RabbitMQ：原 `address`、`databaseUsername`、`databasePassword`、`Ssl`、`dbUrl`；`Ssl=1` 是原“否”，存入原DTO的 `ext1=0`。队列、vhost、exchange和routing key属于原节点参数。原连接SDK测试仅连接默认 `/` vhost，账号需有该vhost连接权限；本地fixture只授予默认vhost的空资源权限，业务仍用专用vhost。该原连接SDK没有队列枚举服务，平台不会返回虚构的队列列表。
+- SFTP：仍使用 `Host/Port/FolderPath/ConnectMode/ext2`；`ext2=sftp` 时只批准SSH端口，不分配FTP被动端口。原 `FtpDatasource.jointUrl` 即使SFTP也使用 `ftp://` 前缀并保留原目录双斜线，协议取自 `ext2`。
 - 编辑读取 `get` 的 `_platformRevision`，调用 `formParameters` 填充原 formItems.value，保留原字段名及密码占位，不创建第二套表单。
 
 平台兼容接口可直接调用 `list/page/nameExists/get/saveForm/delete/testForm/testById/schemas/tables/columns/getTable`。元数据采用实际 JDBC DatabaseMetaData，按连接属主校验，无伪造表字段。连接测试不写数据库表、不上传FTP文件、不生产或消费Kafka消息；真正节点运行仍由原 Core 负责。
+
+MySQL、RabbitMQ、SFTP的新连接测试进入已有的一次性SDK子JVM，在任何连接前安装精确端点守卫；不为主平台JVM增加协议客户端直连回退。原注解注入器会调用旧管理加密服务，因此先以空密码注入原非敏感表单字段，再调用原 `setDatabasePassword` 传入平台已经解密的凭据。RabbitMQ额外调用原 `setAddress` 初始化原客户端的host/port，而不是自行实现AMQP测试。MySQL实际连接使用原 `MysqlDatasource.getDriver`，表/字段读取调用原 `DatabaseUtils`；MySQL逻辑schema来自真实 `Connection.getCatalog` / `TABLE_CAT`，不伪造public。原管理服务的字段类型小写展示投影保留。
 
 ## 冻结和执行
 
