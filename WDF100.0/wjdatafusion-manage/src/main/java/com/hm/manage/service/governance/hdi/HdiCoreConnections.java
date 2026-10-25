@@ -153,6 +153,12 @@ public class HdiCoreConnections {
             ObjectNode value = connections.putObject(Long.toString(id)); value.set("datasource", data); value.putArray("datasourceParamVoList"); value.put("connectionRevision", Long.toString(frozen));
             bindings.add(binding(owner, id, frozen, data)); if (!secret.isEmpty()) secrets.add(secret);
         }
+        Set<String> targets = new LinkedHashSet<>();
+        for (JsonNode binding : bindings) {
+            for (JsonNode endpoint : binding.path("endpoints")) targets.add(endpoint.path("host").asText() + ":" + endpoint.path("port").asInt());
+            if (binding.has("passivePorts")) for (int port = binding.path("passivePorts").path("start").asInt(); port <= binding.path("passivePorts").path("end").asInt(); port++) targets.add(binding.path("endpoints").get(0).path("host").asText() + ":" + port);
+        }
+        if (targets.size() > 160) throw fault(422, "任务连接端点数量超过执行器范围");
         return new Resolved(connections, bindings, secrets.stream().sorted(Comparator.comparingInt(String::length).reversed()).toList());
     }
 
@@ -310,7 +316,7 @@ public class HdiCoreConnections {
         String raw = parameters.path("databasePassword").asText(""); String secret = raw;
         if (!raw.isEmpty() && !raw.equals("******")) secret = decryptFormPassword(raw);
         if (secret.isEmpty() || secret.equals("******")) secret = previous == null ? "" : crypto.decrypt(previous.encryptedSecret);
-        if (secret.length() > 4096 || type != 8 && secret.isEmpty()) throw fault(422, "请填写连接密码");
+        if (secret.length() > 4096 || secret.indexOf('\0') >= 0 || type != 8 && secret.isEmpty()) throw fault(422, "请填写连接密码");
         String host = parameters.path("Host").asText(parameters.path("databaseIp").asText("")), port = parameters.path("Port").asText(parameters.path("databasePort").asText(""));
         String db = parameters.path("FolderPath").asText(parameters.path("databaseSid").asText("")), suppliedUrl = parameters.path("dbUrl").asText("");
         if (type == 8) {
@@ -356,7 +362,7 @@ public class HdiCoreConnections {
         if (type == 18) { String range = policy.getFtpPassiveRanges().get(endpoints.get(0).key());
             if (range == null || !range.matches("[1-9][0-9]{0,4}-[1-9][0-9]{0,4}")) throw fault(422, "请先配置FTP被动端口范围");
             String[] values = range.split("-"); int start = Integer.parseInt(values[0]), end = Integer.parseInt(values[1]);
-            if (start < 1024 || end > 65535 || end < start || end - start > 31) throw fault(422, "FTP被动端口范围无效"); result.putObject("passivePorts").put("start", start).put("end", end);
+            if (start < 1024 || end > 65535 || end < start || end - start > 31 || start <= 2183 && end >= 2180) throw fault(422, "FTP被动端口范围无效"); result.putObject("passivePorts").put("start", start).put("end", end);
         }
         return result;
     }
@@ -367,7 +373,7 @@ public class HdiCoreConnections {
     private static Endpoint endpoint(String host, String port) {
         if (host == null || !host.matches("(?:0|[1-9][0-9]{0,2})(?:\\.(?:0|[1-9][0-9]{0,2})){3}")) throw fault(422, "当前连接须填写明确IPv4地址");
         String[] parts = host.split("\\."); for (String part : parts) if (Integer.parseInt(part) > 255) throw fault(422, "IPv4地址无效");
-        int first = Integer.parseInt(parts[0]); if (first == 0 || first >= 224 || host.equals("169.254.169.254")) throw fault(422, "连接地址无效");
+        int first = Integer.parseInt(parts[0]); if (first == 0 || first >= 224 || host.startsWith("169.254.")) throw fault(422, "连接地址无效");
         if (port == null || !port.matches("[1-9][0-9]{0,4}")) throw fault(422, "连接端口无效"); int number = Integer.parseInt(port); if (number < 1 || number > 65535 || number >= 2180 && number <= 2183) throw fault(422, "连接端口无效或与执行器保留端口冲突"); return new Endpoint(host, number);
     }
     private static ObjectNode publicView(Current row, ObjectNode source, boolean configured) {
@@ -397,7 +403,7 @@ public class HdiCoreConnections {
             }
             if (id != null) result.add(id);
             for (JsonNode table : node.path("srcTableUseVoList")) { Long nested = optionalId(table.get("srcDbId")); if (nested != null) { if (id != null && !id.equals(nested)) throw fault(422, "节点连接引用不一致"); result.add(nested); } }
-        } if (result.size() > 32) throw fault(422, "任务连接数量超过范围"); return result;
+        } if (result.size() > 16) throw fault(422, "任务连接数量超过范围"); return result;
     }
     private static void requireOwner(long owner) { if (owner <= 0) throw fault(401, "请先登录平台"); }
     private static void requireEnabled(Current value) { if (!value.enabled) throw fault(422, "连接已停用"); }
