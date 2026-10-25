@@ -723,7 +723,9 @@ public final class OriginalTaskCompiler {
                     sourceFieldsByTable.put(offset+5,new DataGeneratorInputServiceImpl().getFieldList(inputFields,offset+5));
                     node.put("srcTableUseVoList",List.of(use));
                 }
-                Map<Long,Long> tableUses=sourceTableById.containsKey(offset+5) ? Map.of(offset+5,offset+6) : Map.of();
+                // The original saver probes a nullable srcTableId, so use its nullable-map contract.
+                Map<Long,Long> tableUses=new LinkedHashMap<>();
+                if (sourceTableById.containsKey(offset+5)) tableUses.put(offset+5,offset+6);
                 List<StreamFieldVo> savedFields=savedInputFields(inputFields,streamId,tableUses);
                 inputFields.clear();inputFields.addAll(savedFields);
                 if (sourceTableById.containsKey(offset+5)) sourceFieldsByTable.put(offset+5,new DataGeneratorInputServiceImpl().getFieldList(inputFields,offset+5));
