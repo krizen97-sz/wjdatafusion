@@ -237,6 +237,17 @@ class OriginalSdkTests(unittest.TestCase):
             request=self.compile_request(prepared);request['runContext']['connections']=connections
             result=self.invoke(request);self.assertFalse(result['ok']);self.assertEqual(result['code'],'UNSUPPORTED_GRAPH')
 
+    def test_original_browser_database_node_without_adapter_data_compiles(self):
+        visual,connections=connector_visual('postgresqlInput','fileOutput')
+        visual['nodes']['110'].pop('adapterData')
+        visual['nodes']['110']['srcTableUseVoList'][0]['incrType']=''
+        visual['nodes'].pop('120')
+        visual['links']=[{'source':110,'target':130,'connectStatus':0}]
+        visual['nodes']['130']['dstTableFieldVoList'][0].update(fieldName='message',fieldExpression='message')
+        prepared=self.prepare_connectors(visual,connections);self.assertTrue(prepared['ok'],prepared)
+        request=self.compile_request(prepared);request['runContext']['connections']=connections
+        result=self.invoke(request);self.assertTrue(result['ok'],result)
+
     def test_frozen_connector_revision_and_identity_cannot_be_replaced(self):
         visual, connections=connector_visual('postgresqlInput','fileOutput')
         prepared=self.prepare_connectors(visual,connections);self.assertTrue(prepared['ok'],prepared)
