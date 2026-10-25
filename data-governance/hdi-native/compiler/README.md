@@ -12,10 +12,22 @@
 | --- | --- | --- | --- |
 | 本地生成/映射/输出 | dataGeneratorInput / fieldMapping / fileOutput | DataGeneratorInputServiceImpl / FieldMappingServiceImpl / FileOutputServiceImpl | 原有本地流程兼容 |
 | PostgreSQL | postgresqlInput / postgresqlOutput | InputServiceImpl / OutputServiceImpl | 选择单表全量读取、向既有表插入；不自动建表/清空 |
-| FTP | fileInput / fileOutput | FileInputServiceImpl / FileOutputServiceImpl | 原FTP绝对目录、CSV/行文件；本地下载暂存与输出归档目录由平台绑定 |
+| FTP / SFTP | fileInput / fileOutput | FileInputServiceImpl / FileOutputServiceImpl | 原FTP/SFTP绝对目录、CSV/行文件；本地下载暂存与输出归档目录由平台绑定 |
 | Kafka | kafkaInput / kafkaV2Output | MqInputServiceImpl / MqOutputServiceImpl | 单一明确topic、原JSON/string消息格式；不开放任意认证/序列化器覆盖 |
+| RabbitMQ | rabbitmqInput / rabbitmqOutput | MqInputServiceImpl / MqOutputServiceImpl | 原AMQP、JSON/string；队列、交换机和路由键通过原高级参数配置 |
+| MySQL | mysqlInput / mysqlOutput 平台方言适配 | InputServiceImpl / OutputServiceImpl | 原JdbcInput/JdbcOutput算法，平台子类仅选择驱动、URL前缀和标识符引号；单表全量/既有表INSERT |
 
-原包没有本次可验证的独立 MySQL 输入输出插件，因此不把 PostgreSQL 插件冒充为 MySQL 实现。上述表仅证明编译接入能力；真实网络、原插件执行以及浏览器闭环必须另行验收。
+原包没有独立 MySQL 输入输出插件。原 `etl-jdbcInput-2.0.0.jar` 与 `etl-jdbcOutput-2.0.0.jar` 提供通用基类，但其 `getDriverClassName/getJdbcUrlPrefix` 返回空；直接实例化会在原 `getConnect` 的 `Class.forName("")` 失败。经用户明确授权，平台新增两个最小子类，仅重载 `getDriverClassName`（原 MysqlDatasource 同款 `org.mariadb.jdbc.Driver`）、`getJdbcUrlPrefix`（`jdbc:mysql://`）和 `getCaseChar`（反引号）。原 SQL 生成、读取、写入、重试、错误处理及所有厂商 JAR 字节保持原实现；这不是声称已找到原专用 MySQL 插件。上述表证明编译接入能力；真实网络、插件执行以及浏览器闭环必须另行验收。
+
+RabbitMQ 原 `getIgnoreDisplayParamName` 对输入/输出均返回空，不能套用 Kafka 的三个隐藏参数规则。输入格式参数为 `etl.plugin.rabbitmq.format`，输出为 `format`；输入 `rabbitmq.queue.name`、输出 `rabbitmq.exchange.name/rabbitmq.exchange.routingkey` 与 `rabbitmq.vhost` 保留原定义。无实体表时原 MqInputService 调用自己的 mockTable，输出允许原无目标表元数据。原 AMQP 消费器在 poll 返回消息前即 ACK，早于格式解析及下游写入；试运行同样实际消费，验收必须使用专用批次。空队列等待采用原参数，编译器不添加截断算法。
+
+SFTP 使用原 `sourceType=sftp`、数据源类型18与 `ext2=sftp`，必须与冻结连接一致。原 File 输入输出的 JSch SftpConnect 硬编码 `StrictHostKeyChecking=no`，没有已接入的主机密钥固定入口；本轮保持其原行为，不能称为已启用主机密钥校验。
+
+## 独立 MySQL 平台适配包
+
+使用 `tools/data-governance/hdi_mysql_adapter.py --bundle <原包> --java-home <JDK> --output <新独立目录>` 构建。产物包含两个Java源码、平台构建JAR、平台注册描述和 `platform-adapter-manifest.json`，不会写入原 bundle。manifest以 `origin=platform-build/platform-registration` 区分平台文件，原依赖只引用原 bundle 的路径与SHA；worker验证后装入每次运行的私有插件目录。原JDBC输出JAR内历史properties的className带有多余 `.output`，适配明确继承实际存在的 `com.hikvision.idatafusion.etl.adapter.output.jdbc.JdbcOutput`，不修改原文件。
+
+原通用JDBC JAR没有独立参数JSON。平台描述从原PostgreSQL描述保留在原JDBC及跨JAR依赖class常量池中有引用的参数项，标签、类型、默认值及可选值原样复制；`parameter-provenance.json`逐项记录保留/未暴露原因和原class来源。未匹配不代表原实现不支持，仅不在本次最小profile暴露。编译器可信启动参数 `--platform-adapters <独立目录>` 校验该独立receipt；浏览器不能指定此目录或类名。
 
 PostgreSQL 选表输入必须保留原浏览器生成的 `fieldExpression=columnName`，`srcTableType=1` 和 `srcTableId`；本次执行只重绑 `srcTableId` 到独立元数据块，不补写 SQL 表达式。原 `StreamFieldServiceImpl.saveStreamFields` 会为缺省/空表达式填入字段名；编译器现复用该保存投影，并仅捕获本次 DAO 写入，不能跳过此步把空表达式直接交给原 SQL 引擎。非同名 SQL 表达式仍在执行前拒绝。原输出表单的 `dataCleansing` 禁用值是字符串 `"0"`，不是布尔值或 `"false"`；原 Core 按整数读取该值。当前 profile 拒绝清空目标数据，并拒绝非法值。显式写入方式沿用原枚举 `INSERT`，不把任意大小写或未支持模式静默归一化。
 
@@ -143,6 +155,7 @@ outputsDir 必须是 authorizedOutputRoot 下的独立子目录。二者只能�
 ```sh
 HDI_ORIGINAL_BUNDLE=/absolute/original-bundle \
 HDI_COMPILER_JAVA_HOME=/absolute/jdk-17 \
+HDI_PLATFORM_ADAPTERS=/absolute/separate-platform-adapters \
 python3 -m unittest discover -s tools/data-governance -p test_hdi_original_compiler.py -v
 ```
 

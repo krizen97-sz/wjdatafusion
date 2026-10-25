@@ -117,6 +117,41 @@ def connector_visual(input_plugin='dataGeneratorInput', output_plugin='fileOutpu
     return visual, connections
 
 
+def more_connector_visual(input_plugin='dataGeneratorInput', output_plugin='fileOutput'):
+    original_input = 'postgresqlInput' if input_plugin == 'mysqlInput' else 'kafkaInput' if input_plugin == 'rabbitmqInput' else 'fileInput' if input_plugin == 'sftpFileInput' else input_plugin
+    original_output = 'postgresqlOutput' if output_plugin == 'mysqlOutput' else 'kafkaV2Output' if output_plugin == 'rabbitmqOutput' else 'ftpFileOutput' if output_plugin == 'sftpFileOutput' else output_plugin
+    visual, connections = connector_visual(original_input, original_output)
+    for requested, node_id, connection_id in [(input_plugin, '110', '71'), (output_plugin, '130', '72')]:
+        node = visual['nodes'][node_id]
+        if requested.startswith('mysql'):
+            node['adapterName'] = requested
+            source = connections[connection_id]['datasource']
+            source.update(dbType=2, databasePort='13306', dbUrl='jdbc:mysql://127.0.0.1:13306/hdi_fixture?useSSL=false')
+            if requested.endswith('Input'):
+                node['srcTableUseVoList'][0].update(tableOwner='hdi_fixture', tableSchem='hdi_fixture')
+            else:
+                node['dstTableVo']['tableOwner'] = 'hdi_fixture'
+        elif requested.startswith('rabbitmq'):
+            node['adapterName'] = requested
+            source = connections[connection_id]['datasource']
+            source.update(dbType=120, databasePort='5672', dbUrl='rabbitmq://127.0.0.1:5672', ext1='0', ext2='')
+            node['adapterParamVoList'] = [dict(paramName='rabbitmq.protocol.type', paramValue='amqp'), dict(paramName='rabbitmq.vhost', paramValue='/')]
+            if requested.endswith('Input'):
+                node['srcTableUseVoList'] = []
+                node['adapterParamVoList'] += [dict(paramName='rabbitmq.queue.name', paramValue='hdi-source'), dict(paramName='etl.plugin.rabbitmq.format', paramValue='json')]
+            else:
+                node['dstTableVo'] = None
+                node['adapterParamVoList'] += [dict(paramName='rabbitmq.exchange.name', paramValue=''), dict(paramName='rabbitmq.exchange.routingkey', paramValue='hdi-target'), dict(paramName='format', paramValue='json')]
+        elif requested.startswith('sftp'):
+            source = connections[connection_id]['datasource']
+            source.update(databasePort='2222', dbUrl='ftp://127.0.0.1:2222/hdi_fixture', ext2='sftp')
+            node['adapterData']['sourceType'] = 'sftp'
+            node['adapterData']['localDir'] = ''
+            if requested.endswith('Output'):
+                node['dstTableVo'] = None
+    return visual, connections
+
+
 class LauncherUnitTests(unittest.TestCase):
     def test_traversal_and_symlink_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -142,6 +177,7 @@ class OriginalSdkTests(unittest.TestCase):
     def setUpClass(cls):
         cls.bundle = Path(os.environ['HDI_ORIGINAL_BUNDLE'])
         cls.java = Path(os.environ['HDI_COMPILER_JAVA_HOME'])
+        cls.platform = Path(os.environ['HDI_PLATFORM_ADAPTERS']) if os.environ.get('HDI_PLATFORM_ADAPTERS') else None
         cls.temporary = tempfile.TemporaryDirectory(prefix='original-compiler-tests-')
         cls.root = Path(cls.temporary.name).resolve()
         jars = launcher.classpath(cls.bundle)
@@ -157,7 +193,7 @@ class OriginalSdkTests(unittest.TestCase):
     def invoke(self, payload):
         raw = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
         result = subprocess.run([str(self.java / 'bin/java'), '-Xmx256m', '-cp', self.cp,
-                                 'OriginalTaskCompiler', str(self.bundle)], input=raw.encode(),
+                                 'OriginalTaskCompiler', str(self.bundle), *([str(self.platform)] if self.platform else [])], input=raw.encode(),
                                 cwd=self.root, capture_output=True, timeout=25)
         parsed = json.loads(result.stdout)
         self.assertEqual(result.returncode == 0, parsed['ok'])
@@ -177,6 +213,103 @@ class OriginalSdkTests(unittest.TestCase):
     def prepare_connectors(self, visual, connections):
         refs = {key:value['connectionRevision'] for key,value in connections.items()}
         return self.invoke(dict(operation='prepare', context=self.context, visual=visual, trustedConnectionRefs=refs))
+
+    def test_original_rabbitmq_and_sftp_generators(self):
+        if not (self.bundle/'instance/etl-rabbitmqInput-2.0.0').is_dir():
+            self.skipTest('Original RabbitMQ bundle required')
+        for input_plugin, output_plugin in [('rabbitmqInput','fileOutput'), ('dataGeneratorInput','rabbitmqOutput'), ('sftpFileInput','fileOutput'), ('dataGeneratorInput','sftpFileOutput')]:
+            with self.subTest(input=input_plugin, output=output_plugin):
+                visual, connections = more_connector_visual(input_plugin, output_plugin)
+                prepared = self.prepare_connectors(visual, connections)
+                self.assertTrue(prepared['ok'], prepared)
+                request = self.compile_request(prepared)
+                request['runContext']['connections'] = connections
+                result = self.invoke(request)
+                self.assertTrue(result['ok'], result)
+                native = json.loads(base64.b64decode(result['flowjson']['base64']))
+                modules = [m for stream in native['streams'] for m in stream['modules']]
+                if input_plugin == 'rabbitmqInput':
+                    module = next(m for m in modules if m['adapter']['adapter_name'] == 'rabbitmqInput')
+                    self.assertEqual(module['config']['datasource'][0]['db_type'], 120)
+                    self.assertEqual({p['param_name']:p['param_value'] for p in module['config']['adapter_param']}['rabbitmq.queue.name'], 'hdi-source')
+                elif output_plugin == 'rabbitmqOutput':
+                    module = next(m for m in modules if m['adapter']['adapter_name'] == 'rabbitmqOutput')
+                    self.assertEqual(module['config']['datasource'][0]['db_type'], 120)
+                    self.assertNotIn('dst_table', module['config']['datasource'][0])
+                    self.assertEqual({p['param_name']:p['param_value'] for p in module['config']['adapter_param']}['format'], 'json')
+                else:
+                    adapter = 'fileInput' if input_plugin == 'sftpFileInput' else 'fileOutput'
+                    module = next(m for m in modules if m['adapter']['adapter_name'] == adapter)
+                    self.assertEqual(module['config']['datasource'][0]['db_type'], 18)
+                    self.assertEqual(module['config']['datasource'][0]['ext2'], 'sftp')
+                    params = {p['param_name']:p['param_value'] for p in module['config']['adapter_param']}
+                    self.assertEqual(params['etl.file.serverType' if adapter == 'fileOutput' else 'etl.file.server_type'], 'sftp')
+
+    def test_mysql_dialect_uses_original_jdbc_generators(self):
+        if self.platform is None:
+            self.skipTest('Separately built MySQL dialect adapters required')
+        for ip, op in [('mysqlInput','fileOutput'), ('dataGeneratorInput','mysqlOutput')]:
+            visual, connections = more_connector_visual(ip,op)
+            request = self.compile_request(self.prepare_connectors(visual,connections))
+            request['runContext']['connections'] = connections
+            result = self.invoke(request)
+            self.assertTrue(result['ok'],result)
+            native = json.loads(base64.b64decode(result['flowjson']['base64']))
+            module = next(m for s in native['streams'] for m in s['modules'] if m['adapter']['adapter_name'].startswith('mysql'))
+            self.assertEqual(module['adapter']['adapter_class_name'],'com.rynew.hdi.adapter.Mysql'+('Input' if ip=='mysqlInput' else 'Output'))
+            self.assertEqual(module['config']['datasource'][0]['db_type'],2)
+            self.assertEqual(module['config']['datasource'][0]['db_url'],'jdbc:mysql://127.0.0.1:13306/hdi_fixture?useSSL=false')
+
+    def test_mysql_jar_only_overrides_driver_and_dialect_selection(self):
+        if self.platform is None:
+            self.skipTest('Separately built MySQL dialect adapters required')
+        from hdi_mysql_adapter import verify
+        receipt = verify(self.platform,self.bundle)
+        deps = sorted({str(self.bundle/d['bundlePath']) for p in receipt['plugins'] for d in p['dependencies']})
+        source = self.root/'DialectProbe.java'
+        source.write_text('''import java.util.*;
+public class DialectProbe { public static void main(String[] args) throws Exception {
+  for (String suffix : List.of("Input","Output")) {
+    Class<?> c=Class.forName("com.rynew.hdi.adapter.Mysql"+suffix);
+    Set<String> names=new TreeSet<>(); for(var m:c.getDeclaredMethods()) names.add(m.getName());
+    if (!names.equals(Set.of("getDriverClassName","getJdbcUrlPrefix","getCaseChar"))) throw new AssertionError(names);
+    String expected="com.hikvision.idatafusion.etl.adapter."+suffix.toLowerCase()+".jdbc.Jdbc"+suffix;
+    if (!c.getSuperclass().getName().equals(expected)) throw new AssertionError(c.getSuperclass());
+    Object instance=c.getConstructor().newInstance();
+    if (!"org.mariadb.jdbc.Driver".equals(c.getMethod("getDriverClassName").invoke(instance))) throw new AssertionError();
+    if (!"jdbc:mysql://".equals(c.getMethod("getJdbcUrlPrefix").invoke(instance))) throw new AssertionError();
+    if (!"`".equals(c.getMethod("getCaseChar").invoke(instance))) throw new AssertionError();
+  }
+  var driver=(java.sql.Driver)Class.forName("org.mariadb.jdbc.Driver").getConstructor().newInstance();
+  if (!driver.acceptsURL("jdbc:mysql://127.0.0.1:13306/hdi_fixture?useSSL=false")) throw new AssertionError();
+  System.out.println("DIALECT_ONLY_VERIFIED");
+}}''')
+        cp=os.pathsep.join([str(self.platform/'lib/rynew-mysql-jdbc-adapter.jar'),*deps,self.cp])
+        result=subprocess.run([str(self.java/'bin/java'),'-cp',cp,str(source)],capture_output=True,text=True,timeout=25,cwd=self.root)
+        self.assertEqual(result.returncode,0,result.stderr[-2000:])
+        self.assertIn('DIALECT_ONLY_VERIFIED',result.stdout)
+
+    def test_sftp_form_must_match_frozen_protocol(self):
+        visual, connections = more_connector_visual('sftpFileInput')
+        connections['71']['datasource']['ext2'] = 'ftp'
+        request = self.compile_request(self.prepare_connectors(visual, connections))
+        request['runContext']['connections'] = connections
+        result = self.invoke(request)
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['code'], 'INVALID_INPUT')
+
+    def test_rabbitmq_unsupported_protocol_and_encoding_are_rejected(self):
+        if not (self.bundle/'instance/etl-rabbitmqInput-2.0.0').is_dir():
+            self.skipTest('Original RabbitMQ bundle required')
+        for name, value in [('rabbitmq.protocol.type','mqtt'), ('etl.plugin.rabbitmq.format','bson')]:
+            visual, connections = more_connector_visual('rabbitmqInput')
+            for parameter in visual['nodes']['110']['adapterParamVoList']:
+                if parameter['paramName'] == name: parameter['paramValue'] = value
+            request = self.compile_request(self.prepare_connectors(visual, connections))
+            request['runContext']['connections'] = connections
+            result = self.invoke(request)
+            self.assertFalse(result['ok'])
+            self.assertEqual(result['code'], 'UNSUPPORTED_GRAPH')
 
     def test_original_connector_generators_preserve_database_ftp_and_kafka_metadata(self):
         if not (self.bundle/'instance/etl-postgresqlInput-2.0.0').is_dir():

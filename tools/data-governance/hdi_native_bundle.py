@@ -173,7 +173,7 @@ def select_files(entries, plugins, task, include_task_service=False, include_coo
     for record in task['files']:
         select(PUBLIC + record['path'], 'public/' + record['path'], 'original-task-ui', record)
     if include_task_service:
-        for name in ('postgresql.svg', 'ftp.svg', 'kafka.svg', 'default.svg'):
+        for name in ('postgresql.svg', 'ftp.svg', 'kafka.svg', 'mysql.svg', 'rabbitmq.svg', 'default.svg'):
             source = 'bin/detl/static/public/datasource/' + name
             if source in entries:
                 select(source, 'public/datasource/' + name, 'original-connection-ui')

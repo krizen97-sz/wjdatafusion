@@ -36,19 +36,28 @@ public final class OriginalTaskCompiler {
         .enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     static final int MAX_BYTES = 8 * 1024 * 1024;
     static final String MANAGED_OUTPUT = "/平台输出";
-    static final Set<String> INPUTS = Set.of("dataGeneratorInput", "postgresqlInput", "fileInput", "kafkaInput");
-    static final Set<String> OUTPUTS = Set.of("fileOutput", "postgresqlOutput", "kafkaV2Output");
-    static final Set<String> PLUGINS = Set.of("dataGeneratorInput", "fieldMapping", "fileOutput", "postgresqlInput", "postgresqlOutput", "fileInput", "kafkaInput", "kafkaV2Output");
-    static final Map<String, String> TYPES = Map.of("dataGeneratorInput", "input", "fieldMapping", "preproc", "fileOutput", "output", "postgresqlInput", "input", "postgresqlOutput", "output", "fileInput", "input", "kafkaInput", "input", "kafkaV2Output", "output");
-    static final Map<String, String> CLASSES = Map.of(
-        "dataGeneratorInput", "com.hikvision.idatafusion.adapter.input.data.DataGeneratorInput",
-        "fieldMapping", "com.hikvision.idatafusion.etl.adapter.process.fieldmapping.FieldMapping",
-        "fileOutput", "com.hikvision.idatafusion.etl.adapter.output.file.FileOutput",
-        "fileInput", "com.hikvision.idatafusion.etl.adapter.input.file.FileInput",
-        "postgresqlInput", "com.hikvision.idatafusion.etl.adapter.input.postgresql.PostgresqlInput",
-        "postgresqlOutput", "com.hikvision.idatafusion.etl.adapter.output.postgresql.PostgreSqlOutput",
-        "kafkaInput", "com.hikvision.idatafusion.etl.adapter.input.kafka.KafkaInput",
-        "kafkaV2Output", "com.hikvision.idatafusion.etl.adapter.output.kafkaV2.KafkaV2Output");
+    static final Set<String> INPUTS = Set.of("dataGeneratorInput", "postgresqlInput", "fileInput", "kafkaInput", "rabbitmqInput", "mysqlInput");
+    static final Set<String> OUTPUTS = Set.of("fileOutput", "postgresqlOutput", "kafkaV2Output", "rabbitmqOutput", "mysqlOutput");
+    static final Set<String> PLUGINS = Set.of("dataGeneratorInput", "fieldMapping", "fileOutput", "postgresqlInput", "postgresqlOutput", "fileInput", "kafkaInput", "kafkaV2Output", "rabbitmqInput", "rabbitmqOutput", "mysqlInput", "mysqlOutput");
+    static final Map<String, String> TYPES = Map.ofEntries(
+        Map.entry("dataGeneratorInput", "input"), Map.entry("fieldMapping", "preproc"), Map.entry("fileOutput", "output"),
+        Map.entry("postgresqlInput", "input"), Map.entry("postgresqlOutput", "output"), Map.entry("fileInput", "input"),
+        Map.entry("kafkaInput", "input"), Map.entry("kafkaV2Output", "output"), Map.entry("rabbitmqInput", "input"),
+        Map.entry("rabbitmqOutput", "output"), Map.entry("mysqlInput", "input"), Map.entry("mysqlOutput", "output"));
+    static final Map<String, String> CLASSES = Map.ofEntries(
+        Map.entry("dataGeneratorInput", "com.hikvision.idatafusion.adapter.input.data.DataGeneratorInput"),
+        Map.entry("fieldMapping", "com.hikvision.idatafusion.etl.adapter.process.fieldmapping.FieldMapping"),
+        Map.entry("fileOutput", "com.hikvision.idatafusion.etl.adapter.output.file.FileOutput"),
+        Map.entry("fileInput", "com.hikvision.idatafusion.etl.adapter.input.file.FileInput"),
+        Map.entry("postgresqlInput", "com.hikvision.idatafusion.etl.adapter.input.postgresql.PostgresqlInput"),
+        Map.entry("postgresqlOutput", "com.hikvision.idatafusion.etl.adapter.output.postgresql.PostgreSqlOutput"),
+        Map.entry("kafkaInput", "com.hikvision.idatafusion.etl.adapter.input.kafka.KafkaInput"),
+        Map.entry("kafkaV2Output", "com.hikvision.idatafusion.etl.adapter.output.kafkaV2.KafkaV2Output"),
+        Map.entry("rabbitmqInput", "com.hikvision.idatafusion.etl.adapter.input.rabbitmq.RabbitmqInput"),
+        Map.entry("rabbitmqOutput", "com.hikvision.idatafusion.etl.adapter.output.rabbitmq.RabbitmqOutput"),
+        Map.entry("mysqlInput", "com.rynew.hdi.adapter.MysqlInput"), Map.entry("mysqlOutput", "com.rynew.hdi.adapter.MysqlOutput"));
+    static Path platformAdapters;
+    static Map<String,Object> platformManifest;
     static final Set<String> GENERATOR_PARAMS = Set.of("etl.plugin.input.generator.data.size");
     static final Set<String> FILE_PARAMS = Set.of("etl.file.maxRow", "etl.file.flushTime");
     static final Set<String> EMPTY_REFERENCES = Set.of("sqlStr", "runtimeJson", "referenceConfigAdapter",
@@ -280,7 +289,7 @@ public final class OriginalTaskCompiler {
         Set<String> allowed = plugin.equals("dataGeneratorInput") ? GENERATOR_PARAMS : plugin.equals("fileOutput") ? FILE_PARAMS : Set.of();
         Map<String,String> defaults = new LinkedHashMap<>();
         Map<String,Map<String,Object>> definitions = new LinkedHashMap<>();
-        Map<String,Object> descriptor = parse(Files.readString(bundle.resolve("instance/etl-" + plugin + "-2.0.0/etl_plugin.json")));
+        Map<String,Object> descriptor = parse(Files.readString(pluginPath(bundle, plugin, "etl_plugin.json")));
         for (Object rawParam : list(descriptor.get("adapterParams"), "original parameter catalog")) {
             Map<String,Object> p = object(rawParam, "original parameter"); defaults.put(text(p.get("name")), text(p.get("defaultValue"))); definitions.put(text(p.get("name")),p);
         }
@@ -315,7 +324,15 @@ public final class OriginalTaskCompiler {
                 require(value.length() <= 4096, "Plugin parameter exceeds the value limit");
                 if (name.equals("etl.plugin.partial.failed.stop.enable")) supported(Set.of("true","false").contains(value),"Original failure-stop switch must be true or false");
                 else if (name.equals("etl.kafka.auto.offset.reset")) supported(Set.of("earliest","latest","none").contains(value),"Invalid original Kafka offset choice");
-                else if (name.equals("format")) supported(Set.of("json","string").contains(value),"Only JSON/string message format is supported");
+                else if (name.equals("format") || name.equals("etl.plugin.rabbitmq.format")) supported(Set.of("json","string").contains(value),"Only original JSON/string message format is supported");
+                else if (name.equals("rabbitmq.protocol.type")) supported("amqp".equals(value),"This RabbitMQ profile uses the original AMQP implementation");
+                else if (Set.of("rabbitmq.vhost", "rabbitmq.queue.name", "rabbitmq.exchange.name", "rabbitmq.exchange.routingkey", "etl.plugin.amqp.exchange.name", "etl.plugin.amqp.routing.key").contains(name))
+                    require(value.length() <= 255 && !value.matches("(?s).*[\\p{Cntrl}].*"),"Invalid original RabbitMQ resource name");
+                else if (Set.of("rabbitmq.message.field", "etl.plugin.rabbitmq.string.field").contains(name)) {
+                    if (!value.isEmpty()) identifier(value,"Message field");
+                }
+                else if (Set.of("etl.plugin.rabbitmq.connect.timeout", "etl.plugin.rabbitmq.no.data.max.time", "etl.plugin.rmq.reconnect.interval", "etl.plugin.rabbitmq.publish.timeout.ms").contains(name))
+                    require(value.matches("[0-9]{1,7}") && Long.parseLong(value) <= 3600000,"Bounded original RabbitMQ timeout required");
                 else if (name.equals("etl.plugin.sql.query.limit")) require(value.isEmpty() || value.matches("[1-9][0-9]{0,6}"),"Bounded query row limit required");
                 else if (name.equals("etl.kafka.group.id")) require(value.equals(defaults.get(name)) || value.matches("[A-Za-z0-9_.-]{1,128}"),"Invalid Kafka group ID");
                 else supported(Objects.equals(defaults.get(name),value),"Non-default advanced connector parameter requires explicit support: "+name);
@@ -429,11 +446,11 @@ public final class OriginalTaskCompiler {
         for (String key : EMPTY_REFERENCES) supported(empty(node.get(key)), "External reference is not supported: " + key);
         String plugin = text(node.get("adapterName"));
         supported(list(node.get("datasourceParamVoList"), "datasource parameters").isEmpty(), "Datasource overrides must use a platform connection");
-        boolean external = Set.of("postgresqlInput","postgresqlOutput","fileInput","kafkaInput","kafkaV2Output").contains(plugin)
+        boolean external = Set.of("postgresqlInput","postgresqlOutput","fileInput","kafkaInput","kafkaV2Output","rabbitmqInput","rabbitmqOutput","mysqlInput","mysqlOutput").contains(plugin)
             || plugin.equals("fileOutput") && !"local".equals(object(node.get("adapterData"),"file output").get("sourceType"));
         if (external) id(node.get("dbId"),"Selected platform connection");
         else supported(empty(node.get("dbId")),"This local plugin must not carry an unrelated connection");
-        if (!Set.of("postgresqlInput","fileInput","kafkaInput").contains(plugin)) supported(empty(node.get("srcTableUseVoList")),"This node cannot carry source-table references");
+        if (!Set.of("postgresqlInput","fileInput","kafkaInput","rabbitmqInput","mysqlInput").contains(plugin)) supported(empty(node.get("srcTableUseVoList")),"This node cannot carry source-table references");
         if (OUTPUTS.contains(plugin) && node.get("dstTableVo") instanceof Map) {
             Map<String,Object> table=object(node.get("dstTableVo"),"dstTableVo");
             supported(empty(table.get("dataCleansing")) || "0".equals(text(table.get("dataCleansing"))),"Use the original disabled cleansing value 0; automatic target clearing is not supported");
@@ -456,10 +473,10 @@ public final class OriginalTaskCompiler {
                 // only tests equalsIgnoreCase("keep") for a rename. Null is its form default.
                 supported((empty(field.get("processType")) || Set.of("move", "keep").contains(text(field.get("processType")).toLowerCase(Locale.ROOT))) && empty(field.get("condExpression")) && empty(field.get("processClassName")) && empty(field.get("redisKey")) && empty(field.get("bussinessRedisKey")), "Only original move/keep mappings without external functions are supported");
             }
-        } else if (plugin.equals("postgresqlInput") || plugin.equals("kafkaInput")) {
+        } else if (plugin.equals("postgresqlInput") || plugin.equals("mysqlInput") || plugin.equals("kafkaInput")) {
             List<Object> tables = list(node.get("srcTableUseVoList"),"source tables"); require(tables.size()==1,"Select exactly one original table or topic");
             Map<String,Object> table=object(tables.get(0),"source table");
-            if (plugin.equals("postgresqlInput")) {
+            if (plugin.equals("postgresqlInput") || plugin.equals("mysqlInput")) {
                 identifier(table.get("tableName"),"Source table");identifier(table.get("tableSchem") == null ? table.get("tableOwner") : table.get("tableSchem"),"Source schema");
                 supported(empty(table.get("tableSql")) && !"lifecycle".equals(table.get("tableConfigType")),"This database profile reads a selected table");
                 for (Object raw : list(node.get("streamFieldVoList"),"database fields")) {
@@ -471,9 +488,9 @@ public final class OriginalTaskCompiler {
             supported(empty(table.get("incrType")) || "0".equals(text(table.get("incrType"))),"This connector profile runs full inputs");
             require(!list(node.get("streamFieldVoList"),"stream fields").isEmpty(),"Input fields are required");
             supported(empty(node.get("adapterData")),"Non-default raw input adapterData is not supported");
-        } else if (plugin.equals("postgresqlOutput") || plugin.equals("kafkaV2Output")) {
+        } else if (plugin.equals("postgresqlOutput") || plugin.equals("mysqlOutput") || plugin.equals("kafkaV2Output")) {
             Map<String,Object> table=object(node.get("dstTableVo"),"dstTableVo");
-            if (plugin.equals("postgresqlOutput")) {
+            if (plugin.equals("postgresqlOutput") || plugin.equals("mysqlOutput")) {
                 identifier(table.get("tableName"),"Target table"); identifier(table.get("tableOwner"),"Target schema");
                 supported(empty(table.get("addCreateSql")),"Automatic creation SQL requires a separate reviewed operation");
                 supported(empty(table.get("writeOperation")) || "INSERT".equals(table.get("writeOperation")),"Choose the original INSERT write operation");
@@ -484,9 +501,19 @@ public final class OriginalTaskCompiler {
             }
             require(!list(node.get("dstTableFieldVoList"),"output fields").isEmpty(),"Output fields are required");
             supported(empty(node.get("adapterData")),"Non-default raw output adapterData is not supported");
+        } else if (plugin.startsWith("rabbitmq")) {
+            // RabbitMQ's original forms configure AMQP resources in adapter parameters;
+            // MqInputServiceImpl supplies its own mock table when no source table is selected.
+            supported(empty(node.get("adapterData")),"Non-default raw RabbitMQ adapterData is not supported");
+            supported(empty(node.get("srcTableUseVoList")),"RabbitMQ queues use the original queue parameter, not a database table");
+            require(!list(node.get(INPUTS.contains(plugin) ? "streamFieldVoList" : "dstTableFieldVoList"),"message fields").isEmpty(),"Message fields are required");
+            if (node.get("dstTableVo") instanceof Map) {
+                Map<String,Object> table=object(node.get("dstTableVo"),"RabbitMQ output table metadata");
+                supported(empty(table.get("avroSchemaUrl")),"Remote Avro schema is not supported");
+            }
         } else if (plugin.equals("fileInput")) {
             Map<String,Object> config=object(node.get("adapterData"),"fileInput.adapterData");
-            supported("ftp".equals(config.get("sourceType")),"This file input profile uses the original FTP input");
+            supported(Set.of("ftp","sftp").contains(text(config.get("sourceType"))),"Choose original FTP or SFTP input");
             remoteDirectory(config.get("absoluteDir"));
             supported(empty(config.get("relativeDir")) && "2".equals(text(config.get("sourcePathType"))),"Choose an explicit absolute FTP directory");
             supported(empty(config.get("localDir")) || MANAGED_OUTPUT.equals(config.get("localDir")),"Local download staging is platform managed");
@@ -496,7 +523,7 @@ public final class OriginalTaskCompiler {
             require(!list(node.get("streamFieldVoList"),"input fields").isEmpty(),"FTP input fields are required");
         } else {
             Map<String,Object> config = object(node.get("adapterData"), "fileOutput.adapterData");
-            supported(Set.of("local","ftp").contains(text(config.get("sourceType"))), "Choose original local or FTP output");
+            supported(Set.of("local","ftp","sftp").contains(text(config.get("sourceType"))), "Choose original local, FTP or SFTP output");
             boolean local="local".equals(config.get("sourceType"));
             if (!local) { remoteDirectory(config.get("absoluteDir")); supported("2".equals(text(config.get("sourcePathType"))),"Choose an explicit absolute FTP directory"); }
             boolean managedSelected = false;
@@ -590,9 +617,26 @@ public final class OriginalTaskCompiler {
         }
         public String deleteNode(String path) { require(oldPath.equals(path), "Unexpected original legacy metadata deletion"); return path; }
     }
+    static Path pluginPath(Path bundle, String plugin, String name) throws IOException {
+        if (!plugin.startsWith("mysql")) return bundle.resolve("instance/etl-" + plugin + "-2.0.0/" + name);
+        supported(platformAdapters != null && platformManifest != null,"The separately built platform MySQL dialect adapter is not installed");
+        require(Integer.valueOf(1).equals(platformManifest.get("schemaVersion")) && "rynew-hdi-jdbc-platform-adapters".equals(platformManifest.get("kind")),"Unexpected platform adapter manifest");
+        String relative="plugins/"+plugin+"/"+name;
+        Path path=platformAdapters.resolve(relative);
+        for (Path part=path;part!=null;part=part.getParent()) require(!Files.isSymbolicLink(part),"Platform adapter symlinks are forbidden");
+        Map<String,Object> record=null;
+        for (Object raw:list(platformManifest.get("files"),"platform artifacts")) {
+            Map<String,Object> candidate=object(raw,"platform artifact");
+            if (relative.equals(candidate.get("path"))) { require(record==null,"Duplicate platform artifact");record=candidate; }
+        }
+        require(record!=null,"Unlisted platform registration");
+        byte[] bytes=Files.readAllBytes(path);
+        require(Long.parseLong(text(record.get("bytes")))==bytes.length && sha(bytes).equals(record.get("sha256")),"Platform registration digest mismatch");
+        return path;
+    }
     static Properties catalog(Path bundle, String plugin) throws IOException {
         Properties value = new Properties();
-        try (InputStream in = Files.newInputStream(bundle.resolve("instance/etl-" + plugin + "-2.0.0/adapter.properties"))) { value.load(in); }
+        try (InputStream in = Files.newInputStream(pluginPath(bundle, plugin, "adapter.properties"))) { value.load(in); }
         require(plugin.equals(value.getProperty("adapterName")) && "2.0.0".equals(value.getProperty("version")) && TYPES.get(plugin).equals(value.getProperty("adapterType")) && CLASSES.get(plugin).equals(value.getProperty("className")) && "java".equals(value.getProperty("adapterLanguage")), "Original plugin catalog does not match this verified profile");
         return value;
     }
@@ -652,7 +696,7 @@ public final class OriginalTaskCompiler {
             Map<String,Object> rawDatasource = object(binding.get("datasource"), "datasource");
             require(id(rawDatasource.get("id"), "datasource.id") == connectionId, "Connection identity mismatch");
             DatasourceDto source = bean(DatasourceDto.class, rawDatasource);
-            require(Set.of(16,18,8).contains(source.getDbType()), "Unsupported original datasource type");
+            require(Set.of(16,18,8,120,2).contains(source.getDbType()), "Unsupported original datasource type");
             datasourceById.put(connectionId, source);
             supported(list(binding.get("datasourceParamVoList"), "connection parameters").isEmpty(), "Connection-level parameter overrides are not yet supported");
             datasourceParameters.put(connectionId, List.of());
@@ -689,8 +733,9 @@ public final class OriginalTaskCompiler {
             Long connectionId = empty(node.get("dbId")) ? null : id(node.get("dbId"), "node.dbId");
             if (connectionId != null) {
                 DatasourceDto source = lookup(datasourceById, connectionId);
-                int expected = plugin.startsWith("postgresql") ? 16 : plugin.startsWith("kafka") ? 8 : 18;
+                int expected = plugin.startsWith("mysql") ? 2 : plugin.startsWith("postgresql") ? 16 : plugin.startsWith("kafka") ? 8 : plugin.startsWith("rabbitmq") ? 120 : 18;
                 require(source.getDbType() == expected, "Selected connection type does not match the original plugin");
+                if (expected == 18) require(text(source.getExt2()).equals(text(object(node.get("adapterData"),"file configuration").get("sourceType"))),"File source protocol must match the frozen original connection");
                 datasourceParamsByItem.put(itemId, new ArrayList<>(lookup(datasourceParameters, connectionId)));
             } else datasourceParamsByItem.put(itemId, new ArrayList<>());
             node.put("moduleInstanceList", List.of(map("id", instanceId))); node.put("adapterVersion", properties.getProperty("version"));
@@ -794,7 +839,7 @@ public final class OriginalTaskCompiler {
         Object streamFields = provider("service.task.StreamFieldService", Map.of("findStreamField", a -> { key(a[0],streamId); return inputFields; }));
         Object destinationService = provider("service.task.DstTableService", Map.of(
             "findDstTableByItemId", a -> outputTableByItem.get(Long.valueOf(text(a[0]))),
-            "findDstTable", a -> { key(a[0],streamId); require(outputTableByItem.size()==1,"Missing output table");return outputTableByItem.values().iterator().next(); }));
+            "findDstTable", a -> { key(a[0],streamId); if ("rabbitmqOutput".equals(nodes.get(nodes.size()-1).get("adapterName")) && outputTableByItem.isEmpty()) return null; require(outputTableByItem.size()==1,"Missing output table");return outputTableByItem.values().iterator().next(); }));
         Object destinationFields = provider("service.task.DstTableFieldService", Map.of("findDstTableField", a -> { key(a[0],streamId);return lookup(outputByTable,a[1]); }));
         InputServiceImpl jdbcInput = new InputServiceImpl();
         for (AdapterService service : List.of(jdbcInput)) {
@@ -849,7 +894,8 @@ public final class OriginalTaskCompiler {
     public static void main(String[] args) throws Exception {
         PrintStream protocol = System.out; System.setOut(System.err);
         try {
-            require(args.length == 1, "Expected bundle root argument");
+            require(args.length == 1 || args.length == 2, "Expected bundle root and optional platform adapter root");
+            if (args.length == 2) { platformAdapters = Path.of(args[1]).toAbsolutePath().normalize(); platformManifest = parse(Files.readString(platformAdapters.resolve("platform-adapter-manifest.json"))); }
             byte[] input = System.in.readNBytes(MAX_BYTES + 1); require(input.length <= MAX_BYTES, "Request exceeds 8 MiB");
             Map<String,Object> request = parse(new String(input, StandardCharsets.UTF_8));
             String operation = text(request.get("operation"));
