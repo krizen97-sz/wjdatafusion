@@ -94,8 +94,11 @@ class HdiCoreCatalogTest {
     @Test @EnabledIfSystemProperty(named = "hdi.core.bundle", matches = ".+")
     void verifiesTheActualPackagedVendorCatalogWithoutRunningVendorCode() {
         HdiCoreProperties properties = new HdiCoreProperties(); properties.setBundleDir(System.getProperty("hdi.core.bundle"));
+        properties.setPlatformAdaptersDir(System.getProperty("hdi.platform.adapters", ""));
         HdiCoreCatalog real = new HdiCoreCatalog(properties, new HdiCoreAssets(properties));
-        assertTrue(List.of(3, 8, 10).contains(real.getAdapters().size()));
+        assertTrue(List.of(3, 8, 10, 12).contains(real.getAdapters().size()));
+        boolean rabbit = real.getAdapters().stream().anyMatch(row -> "rabbitmqInput".equals(row.get("adapterName")));
+        boolean mysql = real.getAdapters().stream().anyMatch(row -> "mysqlInput".equals(row.get("adapterName")));
         assertTrue(real.getAdapterUiInfo("dataGeneratorInput").isEmpty());
         assertTrue(real.getAdapterUiInfo("fieldMapping").isEmpty());
         assertEquals(Map.of("adapterExtField", "false", "adapterTableUse", "false", "adapterTableTruncate", "false"), real.getAdapterUiInfo("fileOutput"));
@@ -122,17 +125,24 @@ class HdiCoreCatalogTest {
                 assertFalse(real.listParams(6, name, type).isEmpty(), name);
             }
             assertEquals(List.of(1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L), real.getAdapters().subList(0, 8).stream().map(row -> row.get("id")).toList());
-            assertEquals(real.getAdapters().size() == 8 ? 3 : 4, options.size());
+            assertEquals(3 + (rabbit ? 1 : 0) + (mysql ? 1 : 0), options.size());
             assertEquals("16", real.getAdapters().get(3).get("dbTypeId"));
             assertEquals("8", real.getAdapters().get(7).get("dbTypeId"));
             assertTrue(real.listParams(6, "fileInput", "input").stream().noneMatch(row -> "etl.file.serverType".equals(row.get("paramName"))));
             assertTrue(real.listParams(6, "kafkaV2Output", "output").stream().noneMatch(row -> java.util.Set.of("format", "schema.registry.url", "kafka.message.field").contains(row.get("paramName"))));
         }
-        if (real.getAdapters().size() == 10) {
+        if (rabbit) {
             assertEquals(List.of("rabbitmqInput", "rabbitmqOutput"), real.getAdapters().subList(8, 10).stream().map(row -> row.get("adapterName")).toList());
             assertEquals(List.of(9L, 10L), real.getAdapters().subList(8, 10).stream().map(row -> row.get("id")).toList());
             assertTrue(real.getAdapters().subList(8, 10).stream().allMatch(row -> "120".equals(row.get("dbTypeId"))));
             assertTrue(options.stream().anyMatch(row -> "RabbitMQ".equals(row.get("code")) && "120".equals(row.get("value"))));
+        }
+        if (mysql) {
+            var adapters = real.getAdapters().stream().filter(row -> row.get("adapterName").toString().startsWith("mysql")).toList();
+            assertEquals(List.of("mysqlInput", "mysqlOutput"), adapters.stream().map(row -> row.get("adapterName")).toList());
+            assertEquals(List.of(11L, 12L), adapters.stream().map(row -> row.get("id")).toList());
+            assertTrue(adapters.stream().allMatch(row -> "2".equals(row.get("dbTypeId")) && "platform-jdbc-adaptation".equals(row.get("implementationOrigin"))));
+            assertTrue(options.stream().anyMatch(row -> "MySql".equalsIgnoreCase(row.get("code").toString()) && "2".equals(row.get("value"))));
         }
         assertTrue(real.listParams(6, "fileOutput", "output").stream().noneMatch(row -> "etl.file.fileType".equals(row.get("paramName"))));
         var selectedFileType = real.listParams(6, "fileOutput", "output", java.util.Set.of("etl.file.fileType")).stream()

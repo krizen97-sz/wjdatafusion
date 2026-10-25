@@ -38,22 +38,28 @@ public final class HdiCoreCatalog {
     private static final List<String> BASE = List.of("dataGeneratorInput", "fieldMapping", "fileOutput");
     // Append registry identities so existing saved canvases retain their original platform IDs.
     private static final List<String> SUPPORTED = List.of("dataGeneratorInput", "fieldMapping", "fileOutput",
-        "postgresqlInput", "postgresqlOutput", "fileInput", "kafkaInput", "kafkaV2Output", "rabbitmqInput", "rabbitmqOutput");
-    private static final Map<String, String> TYPES = Map.of("dataGeneratorInput", "input", "fieldMapping", "preproc", "fileOutput", "output",
-        "postgresqlInput", "input", "postgresqlOutput", "output", "fileInput", "input", "kafkaInput", "input", "kafkaV2Output", "output",
-        "rabbitmqInput", "input", "rabbitmqOutput", "output");
+        "postgresqlInput", "postgresqlOutput", "fileInput", "kafkaInput", "kafkaV2Output", "rabbitmqInput", "rabbitmqOutput", "mysqlInput", "mysqlOutput");
+    private static final Map<String, String> TYPES = Map.ofEntries(
+        Map.entry("dataGeneratorInput", "input"), Map.entry("fieldMapping", "preproc"), Map.entry("fileOutput", "output"),
+        Map.entry("postgresqlInput", "input"), Map.entry("postgresqlOutput", "output"), Map.entry("fileInput", "input"),
+        Map.entry("kafkaInput", "input"), Map.entry("kafkaV2Output", "output"), Map.entry("rabbitmqInput", "input"),
+        Map.entry("rabbitmqOutput", "output"), Map.entry("mysqlInput", "input"), Map.entry("mysqlOutput", "output"));
     private static final Map<String, String> ORIGINAL_ICONS = Map.of("input", "/static/img/defaultinput.e71f57a7.svg",
         "preproc", "/static/img/defaultpreproc.26462e9c.svg", "output", "/static/img/defaultoutput.bfb8531e.svg");
     private static final String DATA_JAR = "task-service/dEtlv2.jar";
     private static final String SQL_ROOT = "db/migration/V200/";
+    private static final String RABBIT_SOURCE_SQL = "V1.0.22__ETL2_2.1.1_b4.sql";
     private static final List<String> TYPE_SQL = List.of("V1.0.1__INIT_DATA.sql", "V1.0.10__ETL2_0511.sql",
         "V1.0.13__ETL2_2.1.0_b3.sql", "V1.0.18__ETL2_2.1.1_b1.sql", "V1.0.19__ETL2_2.1.1_b1_0812.sql",
         "V1.0.20__ETL2_2.1.1_b2.sql", "V1.0.23__ETL2_2.1.1_r2.sql", "V1.0.26__ETL2_2.1.2_b3.sql");
     private static final Pattern INSERT = Pattern.compile("(?is)insert\\s+into\\s+(?:public\\.)?sys_code\\s*\\(([^)]*)\\)\\s*values\\s*(.*?);");
     private static final Pattern DESCRIPTION = Pattern.compile("(?is)update\\s+sys_code\\s+set\\s+description\\s*=\\s*'([^']*)'\\s+where\\s+pid\\s*=\\s*200\\s+and\\s+(?:lower\\(name\\)|name)\\s+in\\s*\\(([^)]*)\\)");
     private final HdiCoreAssets assets;
+    private final HdiCorePlatformAdapters platformAdapters;
 
-    public HdiCoreCatalog(HdiCoreProperties properties, HdiCoreAssets assets) { this.assets = Objects.requireNonNull(assets); }
+    public HdiCoreCatalog(HdiCoreProperties properties, HdiCoreAssets assets) {
+        this.assets = Objects.requireNonNull(assets); this.platformAdapters = new HdiCorePlatformAdapters(properties, assets);
+    }
     private record Plugin(long id, String folder, JsonNode definition, Properties properties) { }
 
     public List<Map<String, Object>> getAdapters() {
@@ -76,6 +82,7 @@ public final class HdiCoreCatalog {
             item.put("languageTypeDesc", "java"); item.put("dbTypeId", dbType == null ? null : dbType.toString());
             item.put("addComment", scalar(def.get("adapterComment")));
             item.put("packageName", plugin.folder.substring(plugin.folder.lastIndexOf('/') + 1));
+            item.put("implementationOrigin", plugin.folder.startsWith("plugins/") ? "platform-jdbc-adaptation" : "original-detl");
             for (String name : List.of("buildVersion", "pluginResourceType", "pluginFieldSyncMode", "referenceConfigAdapter", "adapterSubType"))
                 if (props.containsKey(name)) item.put(name, props.getProperty(name));
             if (def.has("adapterUIParams")) item.put("adapterUIParams", JSON.convertValue(def.get("adapterUIParams"), Map.class));
@@ -86,9 +93,17 @@ public final class HdiCoreCatalog {
 
     private Integer datasourceTypeId(String type) {
         if (type == null || type.isBlank()) return null;
-        for (Map<String, Object> row : seedRows(sqlResources().get(TYPE_SQL.get(0)), 54))
+        for (Map<String, Object> row : datasourceRows("RabbitMQ".equalsIgnoreCase(type)))
             if (type.equalsIgnoreCase(row.get("code").toString())) return Integer.valueOf(row.get("value").toString());
         throw unavailable();
+    }
+
+    private List<Map<String, Object>> datasourceRows(boolean rabbit) {
+        List<String> names = rabbit ? List.of(TYPE_SQL.get(0), RABBIT_SOURCE_SQL) : List.of(TYPE_SQL.get(0));
+        List<Map<String, Object>> rows = new ArrayList<>();
+        // RabbitMQ is added by a later original migration and intentionally has a NULL sort.
+        for (String sql : sqlResources(names).values()) rows.addAll(seedRows(sql, 54, false));
+        return rows;
     }
 
     /** Apply the same packaged datasource dictionary used by the original connection service. */
@@ -276,7 +291,7 @@ public final class HdiCoreCatalog {
             if (type != null && !type.isEmpty()) required.add(type);
         }
         List<Map<String, Object>> result = new ArrayList<>();
-        for (Map<String, Object> row : seedRows(sqlResources().get(TYPE_SQL.get(0)), 54)) {
+        for (Map<String, Object> row : datasourceRows(required.stream().anyMatch(type -> "RabbitMQ".equalsIgnoreCase(type)))) {
             if (!required.removeIf(type -> type.equalsIgnoreCase(row.get("code").toString()))) continue;
             Map<String, Object> option = new LinkedHashMap<>();
             option.put("name", row.get("name")); option.put("value", row.get("value")); option.put("code", row.get("code")); option.put("comment", null);
@@ -364,6 +379,10 @@ public final class HdiCoreCatalog {
             found.put(name, new Plugin(SUPPORTED.indexOf(name) + 1L, folder, def, props));
         }
         if (!found.keySet().containsAll(BASE)) throw unavailable();
+        for (HdiCorePlatformAdapters.Registration adapter : platformAdapters.registrations()) {
+            if (found.containsKey(adapter.name())) throw unavailable();
+            found.put(adapter.name(), new Plugin(SUPPORTED.indexOf(adapter.name()) + 1L, adapter.folder(), adapter.definition(), adapter.properties()));
+        }
         // A verified basic installation remains usable; never advertise connector JARs that are absent.
         return SUPPORTED.stream().filter(found::containsKey).map(found::get).toList();
     }
@@ -420,6 +439,9 @@ public final class HdiCoreCatalog {
     }
 
     private static List<Map<String, Object>> seedRows(String sql, int parent) {
+        return seedRows(sql, parent, true);
+    }
+    private static List<Map<String, Object>> seedRows(String sql, int parent, boolean requireSort) {
         List<Map<String, Object>> rows = new ArrayList<>(); Matcher insert = INSERT.matcher(sql);
         while (insert.find()) {
             List<String> columns = splitValues(insert.group(1)).stream().map(v -> v.replace("\"", "").trim()).toList();
@@ -435,7 +457,8 @@ public final class HdiCoreCatalog {
                     if (column.equals("has_child")) row.put("hasChild", literal(values.get(i)));
                     if (column.equals("has_detailed")) row.put("hasDetailed", literal(values.get(i)));
                 }
-                if (row.get("name") == null || row.get("value") == null || row.get("code") == null || !(row.get("sort") instanceof Number)) throw unavailable();
+                if (row.get("name") == null || row.get("value") == null || row.get("code") == null
+                        || (requireSort || row.get("sort") != null) && !(row.get("sort") instanceof Number)) throw unavailable();
                 row.put("value", row.get("value").toString()); rows.add(row);
             }
         }

@@ -404,7 +404,7 @@ class HdiCoreApiTest {
 
     @Test void fullRunPreflightAdmitsEveryOriginalConnectorButDoesNotEnableIncrementalOrUnknownPlugins() throws Exception {
         long id = create("原连接预检");
-        for (String adapter : List.of("dataGeneratorInput", "fieldMapping", "fileOutput", "fileInput", "postgresqlInput", "postgresqlOutput", "kafkaInput", "kafkaV2Output", "rabbitmqInput", "rabbitmqOutput")) {
+        for (String adapter : List.of("dataGeneratorInput", "fieldMapping", "fileOutput", "fileInput", "postgresqlInput", "postgresqlOutput", "kafkaInput", "kafkaV2Output", "rabbitmqInput", "rabbitmqOutput", "mysqlInput", "mysqlOutput")) {
             ObjectNode visual = (ObjectNode)read(id); visual.withObject("nodes").set("101", HdiProtocol.JSON.createObjectNode().put("id", 101).put("adapterName", adapter));
             json(request(post("/detl/flow/saveFlowVisual/save").contentType("application/json").content(encoded(visual)), editorSession, true), 200);
             JsonNode result = json(request(post("/detl/flow/checkBeforeStart").param("flowId", Long.toString(id)).param("flowIncrStatus", "1"), editorSession, true), 200).path("data");

@@ -178,7 +178,7 @@ public class HdiCoreApi {
                 if (!"1".equals(HdiProtocol.query(request, "flowIncrStatus"))) throw new HdiTaskFault(422, "当前原节点任务仅支持全量运行");
                 // These installed original connectors are admitted only in the full-run profile, without a platform incremental checkpoint.
                 JsonNode visual = parse(store.revision(owner, task.id(), task.revision()).visualJson());
-                for (JsonNode node : visual.path("nodes")) if (!Set.of("dataGeneratorInput", "fieldMapping", "fileOutput", "fileInput", "postgresqlInput", "postgresqlOutput", "kafkaInput", "kafkaV2Output", "rabbitmqInput", "rabbitmqOutput").contains(node.path("adapterName").asText())) throw unsupported();
+                for (JsonNode node : visual.path("nodes")) if (!Set.of("dataGeneratorInput", "fieldMapping", "fileOutput", "fileInput", "postgresqlInput", "postgresqlOutput", "kafkaInput", "kafkaV2Output", "rabbitmqInput", "rabbitmqOutput", "mysqlInput", "mysqlOutput").contains(node.path("adapterName").asText())) throw unsupported();
                 return path.endsWith("checkFlowIncrConfig") ? true : Map.of("incrConfigComplete", true, "storageDataBatchNum", 0);
             }
             case "/flow/findFlowPage": return list(request, method, user);

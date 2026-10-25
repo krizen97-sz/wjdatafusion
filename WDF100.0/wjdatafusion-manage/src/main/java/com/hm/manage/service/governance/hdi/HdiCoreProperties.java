@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 public class HdiCoreProperties {
     private boolean enabled;
     private String bundleDir = "";
+    private String platformAdaptersDir = "";
     private String hostDir = "";
     private String stateDir = "";
     private String publicOrigin = "";
@@ -23,6 +24,8 @@ public class HdiCoreProperties {
     public void setEnabled(boolean value) { enabled = value; }
     public String getBundleDir() { return bundleDir; }
     public void setBundleDir(String value) { bundleDir = value; }
+    public String getPlatformAdaptersDir() { return platformAdaptersDir; }
+    public void setPlatformAdaptersDir(String value) { platformAdaptersDir = value; }
     public String getHostDir() { return hostDir; }
     public void setHostDir(String value) { hostDir = value; }
     public String getStateDir() { return stateDir; }

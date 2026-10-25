@@ -56,6 +56,15 @@ public final class HdiCoreAssets {
 
     Set<String> originalPaths() { return index().entries.keySet(); }
 
+    String sourceArchiveSha256() {
+        try {
+            JsonNode manifest = JSON.readTree(readBounded(file(root(properties.getBundleDir()), "bundle-manifest.json"), MANIFEST_LIMIT));
+            String hash = manifest.path("sourceArchiveSha256").asText();
+            if (!hash.matches("[a-f0-9]{64}")) throw unavailable();
+            return hash;
+        } catch (IOException invalid) { throw unavailable(); }
+    }
+
     private Index index() {
         Path root = root(properties.getBundleDir());
         try {
