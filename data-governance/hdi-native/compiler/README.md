@@ -21,7 +21,7 @@ PostgreSQL 选表输入必须保留原浏览器生成的 `fieldExpression=column
 
 原 JDBC / 文件输出按 `fieldName` 读取上游行值。仅把目标字段名改为另一个名称而把 `fieldExpression` 留成源字段，并不会执行改名，可能写入 NULL。当前直接字段 profile 要求目标字段名与上游一致，且 `fieldSrcType` 为原直接来源 0/缺省；改名必须显式使用原 `fieldMapping` 节点。原浏览器可能从固定数据生成器继承字面 `fieldExpression`，该直接来源下不执行它，元数据原样保留；非 0 来源继续拒绝，编译器不补写字段转换或 SQL。
 
-同步 File 输出原表单会追加 `_RESULT_CODE_`、`_RESULT_MSG_`、`_RESULT_DATA_` 三个隐藏响应字段；原 `FileOutput.synchronousProcessData` 确实产生这些响应，它们不是普通上游字段。编译器仅对原同步 File 输出接受这三个精确字段并保留原 `DstTableFieldServiceImpl.batchInsert` 的顺序与启用标志，不根据 `isNew` 猜测删除。输入字段通过原 `saveStreamFields` 保留列表顺序和缺省值；该服务不补 `fieldOrder`，本适配也不编造。无选表的原 FileInput 使用原 `mockTableUse/mockTable` 占位行为，DAO 仅对该原占位 ID 返回缺行，其余非冻结 ID 继续拒绝。
+同步 File 输出原表单会追加 `_RESULT_CODE_`、`_RESULT_MSG_`、`_RESULT_DATA_` 三个隐藏响应字段；原 `FileOutput.synchronousProcessData` 确实产生这些响应，它们不是普通上游字段。编译器仅对原同步 File 输出接受这三个精确字段并保留原 `DstTableFieldServiceImpl.batchInsert` 的顺序与启用标志，不根据 `isNew` 猜测删除。输入字段通过原 `saveStreamFields` 保留列表顺序和缺省值；该服务不补 `fieldOrder`，本适配也不编造。无选表的原 FileInput 使用原 `mockTableUse/mockTable` 占位行为，DAO 仅对该原占位 ID 返回缺行，其余非冻结 ID 继续拒绝。 用户可使用原“是否忽略”开关（`passThrough=1`）将这三个响应字段排除在物理文件列之外；原 `batchInsert` 跳过它们，原同步方法仍回填响应，任务快照中的五字段与忽略标志继续保留。编译器不自动代用户勾选。FTP输出原表单无 `dstTableVo` 和可见本地缓存路径时，沿用原输出服务的占位目标表与按节点字段读取，缓存仍绑定本次私有 outputs，远端目录保持用户选择。
 
 原输出参数必须经过原 `ParamManageServiceImpl.saveAdapterParam` 保存投影：`addEtlColumn=0` / 缺省会生成 `etl.plugin.extend.fields=false`，对应大小写选项生成 `etl.plugin.extend.fields.upper`。本适配调用原方法，仅截获其 `saveNodeParam` 的持久化出口，不手写这套投影规则。PostgreSQL/Kafka 可在原高级参数显式选择 `etl.plugin.partial.failed.stop.enable=true`；原默认是 false，关闭时原引擎可能跳过失败数据后正常 finish，因此真实验收必须另核目标行数/消息数，不能以 finish 等同写入成功。另已实证原 `JdbcOutput.stopCheck` 对 `returnCount==0` 不触发 fatal，即使开关为 true，全部行被约束拒绝时也可能记录 insert 0 / skip N 后 finish；平台必须保留原状态与实际写入异常的区别，不能伪造原 FAILED。
 

@@ -695,7 +695,7 @@ public final class OriginalTaskCompiler {
             if (OUTPUTS.contains(plugin)) {
                 List<DstTableFieldVo> outputFields = savedOutputFields(node.get("dstTableFieldVoList"), streamId, nodeId);
                 outputByNode.put(nodeId, outputFields);
-                if (connectionId != null) {
+                if (connectionId != null && node.get("dstTableVo") != null) {
                     Map<String,Object> table = new LinkedHashMap<>(object(node.get("dstTableVo"), "dstTableVo"));
                     require(empty(table.get("dbId")) || id(table.get("dbId"), "dstTableVo.dbId") == connectionId, "Output table connection mismatch");
                     table.putAll(map("id", offset+5, "dbId", connectionId, "streamId", streamId));

@@ -268,6 +268,14 @@ class OriginalSdkTests(unittest.TestCase):
         output=modules[1]['config']['datasource'][0]['dst_table_field']
         self.assertEqual([f['field_name'] for f in output],['message','_RESULT_CODE_','_RESULT_MSG_','_RESULT_DATA_'])
         self.assertEqual([f['field_order'] for f in output],[0,1,2,3])
+        for field in out['dstTableFieldVoList'][1:]:field['passThrough']=1
+        prepared=self.prepare_connectors(visual,connections);request=self.compile_request(prepared);request['runContext']['connections']=connections
+        ignored=self.invoke(request);self.assertTrue(ignored['ok'],ignored)
+        ignored_native=json.loads(base64.b64decode(ignored['flowjson']['base64']))
+        self.assertEqual([f['field_name'] for f in ignored_native['streams'][0]['modules'][1]['config']['datasource'][0]['dst_table_field']],['message'])
+        runtime_output=list(ignored['metadataSnapshot']['runtimeVisual']['nodes'].values())[-1]
+        self.assertEqual(len(runtime_output['dstTableFieldVoList']),4)
+        self.assertEqual([f['passThrough'] for f in runtime_output['dstTableFieldVoList'][1:]],[1,1,1])
         out['dstTableFieldVoList'][-1]['fieldName']='_RESULT_UNSUPPORTED_'
         prepared=self.prepare_connectors(visual,connections);request=self.compile_request(prepared);request['runContext']['connections']=connections
         self.assertFalse(self.invoke(request)['ok'])
@@ -283,6 +291,20 @@ class OriginalSdkTests(unittest.TestCase):
         visual['nodes']['130']['dstTableFieldVoList'][0]['fieldSrcType']=1
         prepared=self.prepare_connectors(visual,connections);request=self.compile_request(prepared);request['runContext']['connections']=connections
         self.assertFalse(self.invoke(request)['ok'])
+
+    def test_original_ftp_output_has_no_target_table_or_visible_local_cache_field(self):
+        visual,connections=connector_visual('dataGeneratorInput','ftpFileOutput')
+        visual['nodes']['130'].pop('dstTableVo')
+        visual['nodes']['130']['adapterData']['localDir']=''
+        prepared=self.prepare_connectors(visual,connections);request=self.compile_request(prepared);request['runContext']['connections']=connections
+        result=self.invoke(request);self.assertTrue(result['ok'],result)
+        native=json.loads(base64.b64decode(result['flowjson']['base64']))
+        output=native['streams'][0]['modules'][-1]['config']
+        self.assertEqual(output['datasource'][0]['dst_table'],{'stream_id':int(request['runContext']['metadataIdBase'])})
+        self.assertEqual(output['datasource'][0]['id'],72)
+        params={p['param_name']:p['param_value'] for p in output['adapter_param']}
+        self.assertEqual(params['etl.file.localDir'],request['runContext']['outputsDir'])
+        self.assertEqual(params['etl.file.serverDir'],'/outbox')
 
     def test_frozen_connector_revision_and_identity_cannot_be_replaced(self):
         visual, connections=connector_visual('postgresqlInput','fileOutput')
