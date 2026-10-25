@@ -402,6 +402,10 @@ public final class OriginalTaskCompiler {
         if (external) id(node.get("dbId"),"Selected platform connection");
         else supported(empty(node.get("dbId")),"This local plugin must not carry an unrelated connection");
         if (!Set.of("postgresqlInput","fileInput","kafkaInput").contains(plugin)) supported(empty(node.get("srcTableUseVoList")),"This node cannot carry source-table references");
+        if (OUTPUTS.contains(plugin) && node.get("dstTableVo") instanceof Map) {
+            Map<String,Object> table=object(node.get("dstTableVo"),"dstTableVo");
+            supported(empty(table.get("dataCleansing")) || "0".equals(text(table.get("dataCleansing"))),"Use the original disabled cleansing value 0; automatic target clearing is not supported");
+        }
         if (plugin.equals("dataGeneratorInput")) {
             List<Object> fields = list(node.get("adapterData"), "generator.adapterData");
             require(!fields.isEmpty() && fields.size() <= 512, "Generator must contain 1..512 fields");
@@ -426,6 +430,11 @@ public final class OriginalTaskCompiler {
             if (plugin.equals("postgresqlInput")) {
                 identifier(table.get("tableName"),"Source table");identifier(table.get("tableSchem") == null ? table.get("tableOwner") : table.get("tableSchem"),"Source schema");
                 supported(empty(table.get("tableSql")) && !"lifecycle".equals(table.get("tableConfigType")),"This database profile reads a selected table");
+                for (Object raw : list(node.get("streamFieldVoList"),"database fields")) {
+                    Map<String,Object> field=object(raw,"database field");
+                    identifier(field.get("fieldName"),"Database field");
+                    supported(Objects.equals(field.get("fieldName"),field.get("fieldExpression")),"Selected-table fields must retain the original column-name expression");
+                }
             } else require(text(table.get("tableName")).matches("[A-Za-z0-9_.-]{1,249}"),"Select one explicit Kafka topic");
             supported(empty(table.get("incrType")) || "0".equals(text(table.get("incrType"))),"This connector profile runs full inputs");
             require(!list(node.get("streamFieldVoList"),"stream fields").isEmpty(),"Input fields are required");
@@ -434,8 +443,8 @@ public final class OriginalTaskCompiler {
             Map<String,Object> table=object(node.get("dstTableVo"),"dstTableVo");
             if (plugin.equals("postgresqlOutput")) {
                 identifier(table.get("tableName"),"Target table"); identifier(table.get("tableOwner"),"Target schema");
-                for (String flag : List.of("addCreateSql","dataCleansing")) supported(empty(table.get(flag)) || Set.of("false","0").contains(text(table.get(flag))),"Automatic creation/cleansing requires a separate reviewed operation");
-                supported(empty(table.get("writeOperation")) || "insert".equalsIgnoreCase(text(table.get("writeOperation"))),"This database output profile inserts rows");
+                supported(empty(table.get("addCreateSql")),"Automatic creation SQL requires a separate reviewed operation");
+                supported(empty(table.get("writeOperation")) || "INSERT".equals(table.get("writeOperation")),"Choose the original INSERT write operation");
             } else {
                 require(text(table.get("tableName")).matches("[A-Za-z0-9_.-]{1,249}"),"Select one explicit Kafka topic");
                 supported(Set.of("json","text").contains(text(table.get("messageFormat"))),"Select the original JSON/text message format");
@@ -657,7 +666,10 @@ public final class OriginalTaskCompiler {
                 if (plugin.equals("fileInput")) object(node.get("adapterData"), "file input").put("localDir", output.getParent().resolve("tmp/downloads").toString());
                 for (Object raw : list(node.get("streamFieldVoList"), "input fields")) {
                     Map<String,Object> f = new LinkedHashMap<>(object(raw,"stream field"));
-                    if (connectionId != null) f.put("tableId", offset+5);
+                    if (connectionId != null) {
+                        f.remove("tableId"); // StreamFieldVo uses srcTableId, as emitted by the original browser.
+                        f.put("srcTableId", offset+5);
+                    }
                     f.put("streamId", streamId); inputFields.add(bean(StreamFieldVo.class,f));
                 }
                 if (connectionId != null && !list(node.get("srcTableUseVoList"), "source tables").isEmpty()) {

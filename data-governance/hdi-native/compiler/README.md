@@ -17,6 +17,8 @@
 
 原包没有本次可验证的独立 MySQL 输入输出插件，因此不把 PostgreSQL 插件冒充为 MySQL 实现。上述表仅证明编译接入能力；真实网络、原插件执行以及浏览器闭环必须另行验收。
 
+PostgreSQL 选表输入必须保留原浏览器生成的 `fieldExpression=columnName`，`srcTableType=1` 和 `srcTableId`；本次执行只重绑 `srcTableId` 到独立元数据块，不补写 SQL 表达式。空表达式会被原 SQL 引擎解释为 `select as ...`，现在在执行前明确拒绝。原输出表单的 `dataCleansing` 禁用值是字符串 `"0"`，不是布尔值或 `"false"`；原 Core 按整数读取该值。当前 profile 拒绝清空目标数据，并拒绝非法值。显式写入方式沿用原枚举 `INSERT`，不把任意大小写或未支持模式静默归一化。
+
 兼容原浏览器的缺省 DTO：`transformFieldVoList.processType` 可以缺失，原 `FieldMappingServiceImpl` 对同名同类型的字段不生成转换项，改名时沿用原非 `keep` 默认；本适配不填造处理规则。输出字段可以没有 `fieldExpression` / `enableFlag`，编译元数据通过原 `DstTableFieldServiceImpl.batchInsert` 的实际投影生成字段顺序、启用标志和本次 stream/node 归属，原字段表达式继续保持缺省。该 DAO 的批量写入仅捕获到本次不可变快照，不连接数据库。字段名仍须来自上游，显式 FEL 表达式不开放。
 
 原 `TransformFieldServiceImpl.upsertTransformField` 只复制 DTO 并设置 itemId、enableFlag、fieldDstOrder，不补 `processType`。已核真实原浏览器改名形状（`fieldSyncStatus=sync`、`condExpression=""`、无 processType）：原生成器为 `message → mapped_message` 生成一条明确的源/目标字段映射，不会把改名当成空透传；同名同类型才省略转换项。此验证仅证明原 SDK 编译结果，实际运行另由原 Core 验收。
