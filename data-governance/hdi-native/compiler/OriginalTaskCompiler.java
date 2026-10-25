@@ -305,7 +305,8 @@ public final class OriginalTaskCompiler {
                 supported(!name.matches("(?i).*(password|username|bootstrap.servers|jdbc.url|server_ip|server_port|local_dir|server_dir).*"), "Connection and local paths must come from the platform binding and original form");
                 supported(!value.contains("${") && !value.contains("#{") || value.equals(defaults.get(name)), "Dynamic custom parameters are not supported");
                 require(value.length() <= 4096, "Plugin parameter exceeds the value limit");
-                if (name.equals("etl.kafka.auto.offset.reset")) supported(Set.of("earliest","latest","none").contains(value),"Invalid original Kafka offset choice");
+                if (name.equals("etl.plugin.partial.failed.stop.enable")) supported(Set.of("true","false").contains(value),"Original failure-stop switch must be true or false");
+                else if (name.equals("etl.kafka.auto.offset.reset")) supported(Set.of("earliest","latest","none").contains(value),"Invalid original Kafka offset choice");
                 else if (name.equals("format")) supported(Set.of("json","text").contains(value),"Only JSON/text message format is supported");
                 else if (name.equals("etl.plugin.sql.query.limit")) require(value.isEmpty() || value.matches("[1-9][0-9]{0,6}"),"Bounded query row limit required");
                 else if (name.equals("etl.kafka.group.id")) require(value.equals(defaults.get(name)) || value.matches("[A-Za-z0-9_.-]{1,128}"),"Invalid Kafka group ID");
@@ -323,6 +324,22 @@ public final class OriginalTaskCompiler {
             result.add(new EtlParam("etl.plugin.input.generator.data.size", originalDefault));
         }
         return result;
+    }
+    /** Reuse the vendor's save projection; only its persistence destination is replaced. */
+    public static final class SavedAdapterParameters extends com.hikvision.idatafusion.detl.service.globalconfig.impl.ParamManageServiceImpl {
+        final List<EtlParam> captured = new ArrayList<>();
+        @Override public void saveNodeParam(List<ParamVo> values, com.hikvision.idatafusion.detl.common.PropertyTypeEnum type, Long nodeId, Long flowId) {
+            require(type == com.hikvision.idatafusion.detl.common.PropertyTypeEnum.MODULE, "Unexpected original parameter persistence category");
+            for (ParamVo value : values) captured.add(bean(EtlParam.class, "paramName",value.getParamName(),"paramValue",value.getParamValue(),"nodeType",type.getId(),"nodeId",nodeId,"enableFlag",1));
+        }
+    }
+    static List<EtlParam> savedAdapterParameters(Map<String,Object> node, List<EtlParam> checked, long itemId, long flowId) {
+        Map<String,Object> projected = parse(json(node));
+        projected.put("adapterType", TYPES.get(text(node.get("adapterName"))));
+        projected.put("adapterParamVoList",checked);
+        SavedAdapterParameters saver = new SavedAdapterParameters();
+        saver.saveAdapterParam(bean(NodeVo.class,projected),itemId,flowId);
+        return saver.captured;
     }
     static List<EtlParam> flowParams(Object raw, long flowId, Path bundle) throws IOException {
         Map<String,Object> catalog = parse(Files.readString(bundle.resolve("instance/conf/task_config.json")));
@@ -690,7 +707,7 @@ public final class OriginalTaskCompiler {
                 mappingByItem.put(itemId, transforms);
             }
             if (node.get("adapterData") != null) dataByItem.put(itemId, bean(EtlAdapterData.class, "itemId", itemId, "adapterDataJson", json(node.get("adapterData"))));
-            paramByItem.put(itemId, params(node.get("adapterParamVoList"), plugin, itemId, 8, bundle, output));
+            paramByItem.put(itemId, savedAdapterParameters(node,params(node.get("adapterParamVoList"), plugin, itemId, 8, bundle, output),itemId,flowId));
             String name = text(node.get("stageName")); if (name.isEmpty()) name = properties.getProperty("adapterDisplayName") + "_" + visualId;
             ModuleDto module = bean(ModuleDto.class, "moduleId", moduleId, "flowId", flowId, "instanceId", instanceId, "moduleName", name, "adapterType", TYPES.get(plugin), "streamId", streamId, "stepId", stepId, "itemId", itemId, "nodeId", nodeId, "adapterId", adapterId, "adapterName", plugin, "adapterVersion", properties.getProperty("version"), "instanceHost", "127.0.0.1", "runStatus", 0);
             modules.add(module); nativeNodes.put(String.valueOf(nodeId), node);

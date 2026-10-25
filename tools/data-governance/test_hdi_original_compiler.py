@@ -107,7 +107,9 @@ def connector_visual(input_plugin='dataGeneratorInput', output_plugin='fileOutpu
                 node['adapterData'] = {'sourceType':'ftp','sourcePathType':2,'absoluteDir':'/outbox','localDir':'/平台输出',
                     'fileType':'csv','encoding':'UTF-8','colSplitter':',','addHeaderLine':'true','isAsyncGenerateText':'false'}
             node['dstTableVo'] = {'id':92,'dbId':int(connection_id),'tableName':'target_rows' if kind=='postgresql' else 'hdi_target',
-                'tableOwner':'public','messageFormat':'json','messageField':'','writeOperation':'INSERT','dataCleansing':'0','enableFlag':1}
+                'tableOwner':'public','messageFormat':'json','messageField':'','writeOperation':'INSERT','dataCleansing':'0','addEtlColumn':0,'enableFlag':1}
+            if plugin in ['postgresqlOutput','kafkaV2Output']:
+                node['adapterParamVoList']=[{'paramName':'etl.plugin.partial.failed.stop.enable','paramValue':'true'}]
     return visual, connections
 
 
@@ -194,6 +196,11 @@ class OriginalSdkTests(unittest.TestCase):
                     self.assertEqual(source['etl_stream_field'][0]['src_table_id'],source['src_table'][0]['id'])
                 if output_plugin!='fileOutput':
                     self.assertEqual(str(source['dst_table']['data_cleansing']),'0')
+                    params={x['param_name']:x['param_value'] for x in connected['config']['adapter_param']}
+                    self.assertEqual(params['etl.plugin.extend.fields'],'false')
+                    if output_plugin in ['postgresqlOutput','kafkaV2Output']:
+                        self.assertEqual(params['etl.plugin.partial.failed.stop.enable'],'true')
+
 
 
     def test_browser_connection_passwords_are_not_frozen_in_task_snapshots(self):
