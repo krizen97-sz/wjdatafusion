@@ -27,6 +27,12 @@
 
 修改连接不会改变已发布任务的冻结版本。删除/停用当前连接后，未来执行明确拒绝；不会偷偷切换到最新版本。端点策略每次解析重新校验。
 
+表和主题标识不依赖管理库的名称列排序规则：`dg_hdi_connection_table.object_key` 取原始 UTF-8 `schema + NUL + name + NUL + kind` 的 SHA-256 小写十六进制，唯一键和再次查找均使用 `connection_id + owner_id + object_key`，按ID读取时也不比较名称。名称列仅保留原文。因此即使 MySQL 的 `schema_name/table_name` 为 `utf8mb4_0900_ai_ci` 等不区分大小写的排序规则，PostgreSQL 的 `Foo/foo`、`Schema/schema` 和 Kafka 的 `Orders.V1/orders.v1` 仍分配不同的稳定平台注册ID。不要改成名称列的普通等值查找。
+
+此边界由 `HdiCoreMetadataIdentityTest` 分别验证：H2用例只证明原字节摘要与重复查找；设置 `HDI_METADATA_MYSQL_FIXTURE` 后，MySQL用例仅接受单独标记的本机测试数据库，并实证名称列的ci等值查询会命中多行，而实际注册方法仍产生不同ID。当前实现已使用该摘要键，无需对现有安装追加名称列DDL或迁移ID；相关基础SQL保持幂等，审计不会修改已有任务库或外部业务表。
+
+该可选MySQL测试的配置为0600 JSON：`owner=rynew-hdi-metadata-case-test`、`host=127.0.0.1`、`port=13306`、`database=rynew_hdi_case_<12位十六进制>`，另含账号、密码、`expectedDatadir` 及现有应用 MySQL JDBC 驱动的 `driverJar/driverSha256`。先单独创建该空测试库，测试只在其中重复应用模块建表SQL和登记测试标识。它复用已安装驱动，不新增生产依赖；不允许指定平台应用数据库，不以H2通过代替MySQL排序规则实测。
+
 ## 部署网络策略
 
 ```yaml

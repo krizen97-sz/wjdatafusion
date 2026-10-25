@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS dg_hdi_connection_revision (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Stable platform identities assigned only to tables/topics actually discovered from an owned connection.
+-- Identity is the lowercase SHA-256 of the exact UTF-8 schema/name/kind, separated by NUL bytes.
+-- Never replace object_key lookup/uniqueness with schema_name/table_name collation comparisons:
+-- PostgreSQL quoted identifiers and Kafka topics remain distinct for Foo/foo on a MySQL ci database.
 CREATE TABLE IF NOT EXISTS dg_hdi_connection_table (
   table_id BIGINT NOT NULL AUTO_INCREMENT,
   connection_id BIGINT NOT NULL,
