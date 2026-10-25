@@ -5,9 +5,9 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 
@@ -27,9 +27,23 @@ public class HdiCoreTableMetadata {
         };
     }
     public List<Map<String,Object>> taskTables(long owner, JsonNode request) {
-        long connectionId = connectionId(request); connections.get(owner, connectionId);
+        long connectionId = connectionId(request); JsonNode source = connections.get(owner, connectionId);
         ObjectNode query = ((ObjectNode)request).deepCopy(); query.put("pageSize", 200);
-        if (!query.has("schemaCode") && query.has("tableSchem")) query.set("schemaCode", query.get("tableSchem"));
+        String schema = query.path("schemaCode").asText("");
+        if (schema.isBlank()) schema = query.path("tableSchem").asText(query.path("tableSchema").asText(""));
+        if (source.path("dbType").asInt() == 16 && schema.isBlank()) {
+            // The original output cascader groups this unpaged result by schema. An omitted schema
+            // means all visible schemas; it is not the paged queryTablePage default of public.
+            List<Map<String,Object>> all = new ArrayList<>(); Set<String> schemas = new LinkedHashSet<>();
+            for (Map<String,Object> item : connections.schemas(owner, connectionId)) {
+                String actual = text(item.get("schemaCode"), "数据库模式");
+                if (!schemas.add(actual)) continue;
+                all.addAll(taskTables(owner, query.deepCopy().put("schemaCode", actual)));
+                if (all.size() > 1000) throw new HdiTaskFault(422, "所有模式的表数量超过当前浏览范围");
+            }
+            return all;
+        }
+        if (!schema.isBlank()) query.put("schemaCode", schema);
         List<Map<String,Object>> rows = new ArrayList<>();
         for (int page = 1; page <= 5; page++) {
             query.put("pageNo", page); Map<String,Object> response = connections.tables(owner, connectionId, query);

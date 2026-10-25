@@ -63,11 +63,34 @@ class HdiCoreTableMetadataTest {
         });
         var all = metadata.taskTables(7, tableRequest()); assertEquals(2, all.size()); assertEquals(2L, all.get(1).get("tableId"));
     }
+    @Test void omittedSchemaEnumeratesActualOwnedSchemasAndKeepsTheirRegisteredTableIds() {
+        when(connections.schemas(7, 1)).thenReturn(List.of(Map.of("schemaCode", "public"), Map.of("schemaCode", "fixture")));
+        when(connections.tables(eq(7L), eq(1L), any())).thenAnswer(call -> {
+            JsonNode query = call.getArgument(2); String schema = query.path("schemaCode").asText();
+            long id = schema.equals("public") ? 10L : 11L;
+            return Map.of("total", 1, "list", List.of(Map.of("id", id, "dbId", 1L, "tableName", "table_" + id, "tableSchema", schema)));
+        });
+        var all = metadata.taskTables(7, HdiProtocol.JSON.createObjectNode().put("dbId", 1));
+        assertEquals(2, all.size()); assertEquals(10L, all.get(0).get("id")); assertEquals("fixture", all.get(1).get("tableSchem")); assertEquals(11L, all.get(1).get("id"));
+        clearInvocations(connections);
+        assertEquals(1, metadata.taskTables(7, tableRequest()).size()); verify(connections, never()).schemas(anyLong(), anyLong());
+    }
+    @Test void allSchemaAggregationKeepsTheSameTotalBound() {
+        when(connections.schemas(7, 1)).thenReturn(List.of(Map.of("schemaCode", "one"), Map.of("schemaCode", "two")));
+        when(connections.tables(eq(7L), eq(1L), any())).thenAnswer(call -> {
+            JsonNode query = call.getArgument(2); List<Map<String,Object>> rows = new ArrayList<>();
+            for (int index = 0; index < 200 && (query.path("pageNo").asInt() - 1) * 200 + index < 501; index++)
+                rows.add(Map.of("id", (long)index + 1, "dbId", 1L, "tableName", "table" + index, "tableSchema", query.path("schemaCode").asText()));
+            return Map.of("list", rows, "total", 501);
+        });
+        assertEquals(422, assertThrows(HdiTaskFault.class, () -> metadata.taskTables(7, HdiProtocol.JSON.createObjectNode().put("dbId", 1))).status());
+    }
     @Test void kafkaRequiresAnActuallyListedTopicAndDoesNotInventAColumnSchema() {
         when(connections.get(7, 1)).thenReturn(HdiProtocol.JSON.createObjectNode().put("id", 1).put("dbType", 8));
         when(connections.getTable(7, 11)).thenReturn(Map.of("id", 11L, "dbId", 1L, "tableName", "source_rows", "tableSchema", "", "fieldUpdateRequestList", List.of()));
         var value = metadata.checkTargetTable(7, targetRequest("body")); assertEquals(true, value.get("access")); assertEquals(false, value.get("schemaChecked")); assertEquals(List.of(), value.get("columns"));
         assertEquals(404, assertThrows(HdiTaskFault.class, () -> metadata.taskTable(7, tableRequest().put("tableName", "no_topic"))).status());
+        verify(connections, never()).schemas(anyLong(), anyLong());
     }
     @Test @EnabledIfEnvironmentVariable(named = "HDI_CONNECTION_FIXTURE_DIR", matches = ".+")
     void existingPostgresTableIsReadAndComparedWithoutCreatingBusinessObjects() throws Exception {
@@ -78,6 +101,8 @@ class HdiCoreTableMetadataTest {
         long id = fixture.connections.saveForm(7, form).path("id").asLong(); HdiCoreTableMetadata live = new HdiCoreTableMetadata(fixture.connections);
         var request = HdiProtocol.JSON.createObjectNode().put("dbId", id).put("tableName", "source_rows").put("tableSchem", secret.path("schema").asText());
         var before = fixture.connections.tables(7, id, HdiProtocol.JSON.createObjectNode().put("schemaCode", secret.path("schema").asText()));
+        var allSchemas = live.taskTables(7, HdiProtocol.JSON.createObjectNode().put("dbId", id));
+        assertTrue(allSchemas.stream().anyMatch(row -> "output_verified_rows".equals(row.get("dbTableName")) && secret.path("schema").asText().equals(row.get("tableSchem")) && ((Number)row.get("id")).longValue() > 0));
         var table = live.taskTable(7, request); assertEquals(table.get("id"), live.taskTable(7, request).get("id"));
         ObjectNode check = HdiProtocol.JSON.createObjectNode().put("etlDatasourceId", id); check.set("databaseTable", request); var fields = check.putArray("dstTableFieldVoList");
         for (Object field : (List<?>)table.get("fields")) fields.addObject().put("fieldName", ((Map<?,?>)field).get("columnName").toString());
