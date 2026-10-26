@@ -432,6 +432,85 @@
         delete from sup_auto_inspection_health_daily where plan_id = #{planId}
     </delete>
 
+    <sql id="periodReportWhere">
+        r.inspection_time &gt;= #{beginTime} and r.inspection_time &lt; #{endTime}
+        <if test="siteId != null">and r.site_id = #{siteId}</if>
+        <if test="mainPlatformId != null">and r.main_platform_id = #{mainPlatformId}</if>
+    </sql>
+
+    <select id="selectPeriodReportGroups" resultType="java.util.HashMap">
+        select r.site_id as siteId, max(r.site_name) as siteName,
+               r.main_platform_id as mainPlatformId, max(r.main_platform_name) as mainPlatformName,
+               r.template_id as templateId, max(r.template_name) as templateName,
+               r.plan_id as planId, max(r.plan_name) as planName,
+               count(*) as totalCount,
+               sum(case when r.result_status = '1' then 1 else 0 end) as normalCount,
+               sum(case when r.result_status = '2' then 1 else 0 end) as abnormalCount,
+               sum(case when r.result_status = '4' then 1 else 0 end) as warningCount,
+               sum(case when r.result_status not in ('1','2','4') or r.result_status is null then 1 else 0 end) as skippedCount,
+               max(case when r.result_status = '1' then r.inspection_time end) as lastNormalTime,
+               max(case when r.result_status = '2' then r.inspection_time end) as lastAbnormalTime,
+               max(case when r.result_status = '4' then r.inspection_time end) as lastWarningTime,
+               max(case when r.result_status not in ('1','2','4') or r.result_status is null then r.inspection_time end) as lastSkippedTime
+        from sup_auto_inspection_record r
+        where <include refid="periodReportWhere"/>
+        group by r.site_id, r.main_platform_id, r.template_id, r.plan_id
+        order by r.site_id, r.main_platform_id, r.plan_id, r.template_id
+    </select>
+
+    <select id="selectPeriodReportDays" resultType="java.util.HashMap">
+        select date_format(r.inspection_time, '%Y-%m-%d') as reportDate, count(*) as totalCount,
+               sum(case when r.result_status = '1' then 1 else 0 end) as normalCount,
+               sum(case when r.result_status = '2' then 1 else 0 end) as abnormalCount,
+               sum(case when r.result_status = '4' then 1 else 0 end) as warningCount,
+               sum(case when r.result_status not in ('1','2','4') or r.result_status is null then 1 else 0 end) as skippedCount
+        from sup_auto_inspection_record r
+        where <include refid="periodReportWhere"/>
+        group by date_format(r.inspection_time, '%Y-%m-%d')
+        order by reportDate
+    </select>
+
+    <select id="selectPeriodReportIssues" resultType="java.util.HashMap">
+        select r.site_id as siteId, max(r.site_name) as siteName,
+               r.main_platform_id as mainPlatformId, max(r.main_platform_name) as mainPlatformName,
+               r.template_id as templateId, max(r.template_name) as templateName,
+               r.plan_id as planId, max(r.plan_name) as planName,
+               sr.step_id as stepId, max(sr.step_name) as stepName,
+               tr.target_id as targetId, tr.target_name as targetName, 'TARGET' as issueLevel,
+               sum(case when tr.result_status = '2' then 1 else 0 end) as abnormalCount,
+               sum(case when tr.result_status = '4' then 1 else 0 end) as warningCount,
+               min(case when tr.result_status in ('2','4') then r.inspection_time end) as firstIssueTime,
+               max(case when tr.result_status = '1' then r.inspection_time end) as lastNormalTime,
+               max(case when tr.result_status = '2' then r.inspection_time end) as lastAbnormalTime,
+               max(case when tr.result_status = '4' then r.inspection_time end) as lastWarningTime,
+               max(case when tr.result_status not in ('1','2','4') or tr.result_status is null then r.inspection_time end) as lastSkippedTime
+        from sup_auto_inspection_record r
+        inner join sup_auto_inspection_target_result tr on tr.record_id = r.record_id
+        left join sup_auto_inspection_step_result sr on sr.step_result_id = tr.step_result_id
+        where <include refid="periodReportWhere"/>
+        group by r.site_id, r.main_platform_id, r.template_id, r.plan_id, sr.step_id, tr.target_id, tr.target_name
+        having sum(case when tr.result_status in ('2','4') then 1 else 0 end) &gt; 0
+        union all
+        select r.site_id as siteId, max(r.site_name) as siteName,
+               r.main_platform_id as mainPlatformId, max(r.main_platform_name) as mainPlatformName,
+               r.template_id as templateId, max(r.template_name) as templateName,
+               r.plan_id as planId, max(r.plan_name) as planName,
+               null as stepId, '执行过程' as stepName, null as targetId, '未生成异常子项的执行' as targetName, 'EXECUTION' as issueLevel,
+               sum(case when r.result_status = '2' then 1 else 0 end) as abnormalCount,
+               sum(case when r.result_status = '4' then 1 else 0 end) as warningCount,
+               min(r.inspection_time) as firstIssueTime, null as lastNormalTime,
+               max(case when r.result_status = '2' then r.inspection_time end) as lastAbnormalTime,
+               max(case when r.result_status = '4' then r.inspection_time end) as lastWarningTime,
+               null as lastSkippedTime
+        from sup_auto_inspection_record r
+        where <include refid="periodReportWhere"/>
+          and r.result_status in ('2','4')
+          and not exists (select 1 from sup_auto_inspection_target_result missing_target
+                          where missing_target.record_id = r.record_id and missing_target.result_status in ('2','4'))
+        group by r.site_id, r.main_platform_id, r.template_id, r.plan_id
+        order by abnormalCount desc, warningCount desc, firstIssueTime
+    </select>
+
     <select id="selectRecordList" parameterType="java.util.HashMap" resultType="java.util.HashMap">
         select record_id as recordId, inspection_time as inspectionTime, source_type as sourceType,
                run_mode as runMode, schedule_slot_time as scheduleSlotTime, duration_ms as durationMs,

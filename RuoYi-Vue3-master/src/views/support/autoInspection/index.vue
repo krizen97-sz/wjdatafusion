@@ -367,11 +367,11 @@
       <template #header="{ titleId, titleClass }">
         <div :id="titleId" :class="titleClass" class="dialog-title">
           <span>巡检报告导出</span>
-          <strong>生成自动化巡检周报</strong>
+          <strong>生成周期汇总报告</strong>
         </div>
       </template>
       <div class="report-export">
-        <p class="report-export__tip">周报会包含签字确认区、整体健康度分析、异常展示和巡检明细。选择月份时，系统会把该月份涉及的每一周分别生成 Word，并打包为 zip。</p>
+        <p class="report-export__tip">每周或每月生成一份 Word，包含结果图表、现场与主平台汇总、检查内容和合并后的异常清单。</p>
         <el-form :model="reportExportForm" label-width="92px">
           <el-form-item label="导出方式">
             <el-radio-group v-model="reportExportForm.mode">
@@ -2344,13 +2344,13 @@ const operationGuideSteps = [
     manual: [
       '巡检驾驶舱通过图表查看近七日趋势，并分别展示现场和主平台的当日健康与待处理问题。',
       '巡检总览按天展示现场、主平台、计划、异常摘要和缺失执行；点击“查看”打开分页执行记录，展开某一次后查看步骤、子项和判定依据。',
-      '点击“导出周/月报”后，可选择自然周导出 Word 周报，也可选择月份批量导出该月所有自然周周报压缩包，周报开头包含巡检人员和用户签字确认区。'
+      '点击“导出周/月报”后，按周或按月生成一份 Word 汇总报告，包含签字区、结果分布与每日趋势图、现场和主平台汇总，以及合并后的异常清单。'
     ],
-    actions: ['在驾驶舱查看现场和主平台健康。', '按归属、模板、计划、来源和结果筛选明细。', '按周或按月导出 Word 周报归档。'],
+    actions: ['在驾驶舱查看现场和主平台健康。', '按归属、模板、计划、来源和结果筛选明细。', '按周或按月导出 Word 汇总报告归档。'],
     images: [
       guideImage('02-dashboard-drawer.png', '巡检看板图表和当月日历'),
       guideImage('03-report-export-week.png', '按周导出 Word 周报'),
-      guideImage('04-report-export-month.png', '按月导出每周独立 Word 压缩包')
+      guideImage('04-report-export-month.png', '按月导出 Word 汇总报告')
     ]
   }
 ]
@@ -2797,14 +2797,14 @@ const dashboardAbnormalStepData = computed(() => {
 const reportExportPreview = computed(() => {
   if (reportExportForm.value.mode === 'MONTH') {
     return {
-      title: `${reportExportForm.value.month || formatMonthParam(new Date())} 月度周报包`,
-      desc: '导出该月份涉及的所有自然周，每个自然周生成一个独立 Word 文件，并统一打包下载。'
+      title: `${reportExportForm.value.month || formatMonthParam(new Date())} 月报`,
+      desc: '汇总所选月份的例行与高频检测，生成一份含图表和签字区的 Word 月报。'
     }
   }
   const range = getWeekRange(reportExportForm.value.weekDate || new Date())
   return {
     title: `${formatDateParam(range.begin)} 至 ${formatDateParam(range.end)} 周报`,
-    desc: '导出所选自然周的一个 Word 周报，包含本周所有巡检内容和签字确认区。'
+    desc: '汇总所选自然周的例行与高频检测，生成一份含图表和签字区的 Word 周报。'
   }
 })
 watch(() => [route.query.tab, route.query.configTab, route.path], ([tab, subTab, path]) => {
@@ -5627,19 +5627,20 @@ function openReportExportDialog() {
 }
 
 function submitReportExport() {
+  if (reportExportLoading.value) return
   const params = {
-    reportType: 'WEEKLY_REPORT',
+    reportType: 'PERIOD_REPORT',
     reportMode: reportExportForm.value.mode
   }
   let fileName = ''
   if (reportExportForm.value.mode === 'MONTH') {
     const month = reportExportForm.value.month || formatMonthParam(new Date())
     params.month = month
-    fileName = `自动化巡检周报_${month.replace('-', '')}.zip`
+    fileName = `自动化巡检月报_${month.replace('-', '')}.docx`
   } else {
     const range = getWeekRange(reportExportForm.value.weekDate || new Date())
     params.weekDate = formatDateParam(range.begin)
-    fileName = `自动化巡检周报_${formatFileDate(range.begin)}-${formatFileDate(range.end)}.doc`
+    fileName = `自动化巡检周报_${formatFileDate(range.begin)}-${formatFileDate(range.end)}.docx`
   }
   reportExportLoading.value = true
   proxy.download('/support/autoInspection/reports/export', params, fileName)

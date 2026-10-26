@@ -6,6 +6,12 @@ import org.apache.ibatis.annotations.Param;
 
 public interface SupportAutoInspectionMapper
 {
+    List<Map<String, Object>> selectPeriodReportGroups(Map<String, Object> params);
+
+    List<Map<String, Object>> selectPeriodReportDays(Map<String, Object> params);
+
+    List<Map<String, Object>> selectPeriodReportIssues(Map<String, Object> params);
+
     List<Map<String, Object>> selectToolList(Map<String, Object> params);
 
     Map<String, Object> selectToolByCode(String toolCode);
