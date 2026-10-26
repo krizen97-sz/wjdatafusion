@@ -10,11 +10,19 @@
 
 用户必须在原 File 输出表单明确选中逻辑路径 `/平台输出`。它映射到本次 worker 私有 `run/outputs`，结果完整校验后在运行记录下载；它不是宿主机上同名物理目录。任意主机路径、空路径及别名前缀变体都不能直接执行。
 
-只有原 worker `SUCCEEDED` 且 `finalized=true`，平台才按该 owner/run 的 manifest 分块读取。每块检查 artifact ID、偏移、完整长度和 SHA 引用，完整文件再经现有 `DataGovernanceArtifactStore` 核验摘要并原子发布。平台下载只接受本地产物 UUID，不接受路径。worker 之后断开不会使已归档文件不可下载。
+完整结果要求原 worker `SUCCEEDED` 且 `finalized=true`，平台按该 owner/run 的 manifest 分块读取。每块检查 artifact ID、偏移、完整长度和 SHA 引用，文件再经现有 `DataGovernanceArtifactStore` 核验摘要并原子发布。平台下载只接受本地产物 UUID，不接受路径。worker 之后断开不会使已归档文件不可下载。
 
 原引擎成功但收编失败时，保留真实引擎成功，并明确标记产物未发布；不能把样本、部分文件或失败后的残留输出当完整交付。当前收编在终态观察线程同步执行，适合本轮小型基础文件任务；大文件或大量并行运行需要独立持久收编阶段，不能因此丢失 EngineSuccess。
 
 原模块吞吐量/行数尚未采集时返回 `available=false / NOT_COLLECTED`，行数为 null。注册执行目标的真实平台任务计数、worker 容量/占用与原 Core 在线指标是不同信息，不能用固定零代替未知观测。
+
+## 原持续输入与部分结果
+
+原RabbitMQ输入在当前消息读完后继续监听。原`no.data.max.time`只控制单次等待，没有已确认的总行数/总时长采样入口；原厂debug调度还会跳过输出。平台的“试运行”沿既有真实读写测试语义，不把这个跳过输出开关当作落地验证，也不修改原插件令它伪finish。
+
+用户通过原界面停止后，worker必须同时证明`stopRequestedByUser=true`、本次exec的`nativeState=stop`、`state=CANCELLED`、`finalized=true`、`recoveryRequired=false`且无`errorCode`，才可将已生成文件标为`artifactCompleteness=PARTIAL`。平台再次核对这些字段，按同样分块/摘要/owner规则归档，使用单独的`publishStoppedPartial`入口；真实运行状态保持CANCELLED，归档manifest的`partial=true`，不伪造SUCCEEDED。旧完整manifest未含partial字段时按false读取。
+
+界面显示“已停止”，输出页明确这些文件只代表停止前已处理的数据。后台关闭、EOF、超时、失败、原Stop未确认或资源清理未确认均不能发布部分结果；故障残留不变成可下载交付。执行时间仍受worker配置限制，默认300秒、范围1–86400秒。平台不自动重发已确认的消息，不承诺恰好一次。
 
 ## 周期计划
 

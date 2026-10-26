@@ -104,3 +104,11 @@ ready只代表原TaskList/ProcessMain实例完成Vue挂载，不代表后端任�
 | 原Rabbit持续监听停止后查看已生成文件 | 现有运行记录抽屉、归档表和警告反馈 | 复用el-alert、el-table、原下载能力 | HdiRunHistory.vue、DeliveryWorkbench.vue、ScheduleWorkbench.vue | 原Stop确认且资源清理完成后显示“部分结果”，状态保持CANCELLED；不将超时或强关包装为成功 |
 
 仅扩展平台结果管理。原消息读取、确认、输出、停止算法不改；文件仍按字节数与SHA-256归档。没有新的样本引擎、结果预览伪数据、组件或样式例外。
+
+## 原提交提示与停止按钮
+
+| 页面需要 | 现有实现 | 选择 | 参考文件 | 必需适配 |
+| --- | --- | --- | --- | --- |
+| 持续输入提交后仍可点击暂停/停止 | 原HUI Message及原画布工具栏 | 保留原通知内容、关闭按钮和生命周期，在专用iframe内下移 | task-host.html、原188.c7f3bc5a.css的`--h-height`、HdiTaskWorkspace.vue、ScheduleWorkbench.vue | 去掉原管理壳后，默认置顶通知遮挡工具栏；以两个原标准控件高度留出操作区域 |
+
+此项由真实`.el-message intercepts pointer events`操作日志定位；原通知不被删除或重写，也不改变任务状态。CSS只作用于已就绪的原iframe，复用原HUI高度变量、不影响外层Element Plus消息。需以真实新试运行的提示与暂停按钮矩形、正常点击及原Stop结果验证；不补造旧遮挡截图。

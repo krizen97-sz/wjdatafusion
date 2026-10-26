@@ -2,7 +2,9 @@
 
 入口是 `tools/data-governance/hdi_core_setup.py`。它使用已有原程序 bundle 和本仓库控制桥源码，不启动服务、不执行任务、不安装系统软件。部署机需要 Linux x86_64、原 Core 使用的完整 JDK 11、Python 3、`unshare` 与 `ip`，并允许非特权 user/network/PID namespaces。原编译器和连接元数据工具可单独复用平台现有完整 JDK 17。准备和后续平台进程应使用同一个专用系统用户。
 
-先通过已有 `hdi_native_bundle.py` 获得完整的受审原 bundle，包含 Core、八个插件（`dataGeneratorInput`、`fieldMapping`、`fileInput`、`fileOutput`、`postgresqlInput`、`postgresqlOutput`、`kafkaInput`、`kafkaV2Output`）、原编译器所需管理 JAR 及 ZooKeeper Java 库。准备入口按八插件配置检查完整性，旧三插件包不能用于本版本安装。这里的管理 JAR 只供原编译器调用，不启动原管理服务或 Agent。原包清单不允许混入运行配置、现场证书或许可文件。
+先通过已有 `hdi_native_bundle.py` 获得受审原 bundle，包含 Core、原编译器所需管理 JAR 及 ZooKeeper Java 库。本轮完整包选择十个原插件：`dataGeneratorInput`、`fieldMapping`、`fileInput`、`fileOutput`、`postgresqlInput`、`postgresqlOutput`、`kafkaInput`、`kafkaV2Output`、`rabbitmqInput`、`rabbitmqOutput`；SFTP使用原File插件。准备入口为兼容保留八插件最低预检，缺少RabbitMQ时不会在目录中广告其插件，旧三插件包不能用于本版本安装。这里的管理 JAR 只供原编译器调用，不启动原管理服务或 Agent。原包清单不允许混入运行配置、现场证书或许可文件。
+
+MySQL另用 `tools/data-governance/hdi_mysql_adapter.py --bundle /原包路径 --java-home /JDK17路径 --output /尚不存在的平台适配目录` 构建两个已授权的最小方言子类（输出Java11兼容字节码）。原读写JAR不改；平台manifest单独记录源码、公共参数来源、原依赖与构建产物。审核后记录该manifest的SHA-256，不把这个平台包合并进原bundle或冒称厂商插件。
 
 在该用户可写的现有目录下选择一个**尚不存在**的安装目录，并提供平台现有回环 Redis 的私有口令文件。口令文件必须由该用户拥有，权限不向组或其他用户开放；命令行传文件路径，不传口令值。Redis database 由部署者明确指定：
 
@@ -12,12 +14,15 @@ python3 tools/data-governance/hdi_core_setup.py \
   --bundle /srv/rynew-programs/original-detl-bundle \
   --java-home /usr/lib/jvm/java-11-openjdk-amd64 \
   --compiler-java-home /usr/lib/jvm/java-17-openjdk-amd64 \
+  --platform-adapters /srv/rynew-programs/platform-mysql-adapters \
   --redis-password-file /srv/rynew-private/redis-password \
   --redis-port 6379 \
   --redis-database 2
 ```
 
 `--java-home` 专供原 Core 和控制桥，仍必须是 Linux x86_64 JDK 11；不能因为平台使用17就把它替换成17。可选 `--compiler-java-home` 专供原任务编译器、原连接表单和元数据工具，接受完整 JDK 11或17（需要 `java`、`javac`）。上例显式采用已验收的 Core11 / Compiler17 分工。省略该选项时保持旧命令的默认行为，编译器也使用 `--java-home` 的11，不会自动寻找或切换系统 `JAVA_HOME`。输出的 `compilerArgv` 绑定独立编译器路径；worker配置及控制桥构建仍绑定Core路径。
+
+`--platform-adapters` 为可选项；不启用MySQL时省略。提供时，入口校验独立包并将同一个`root/manifestSha256`写入`inputs.platformAdapters`和worker配置，生成的compilerArgv也包含`--platform-adapters`与`--platform-adapters-sha256`。平台另配置`platform-adapters-dir`及`platform-adapters-manifest-sha256`为同一目录/摘要。目录由部署管理员提供，首次准备前应对照审核记录确认摘要；自描述manifest不能充当独立信任来源。改变目录或摘要会触发已有安装冲突，不覆盖旧配置。
 
 目录名和 Redis database 是示例，不能照搬为当前机器的既有路径。安装根必须在 Git 仓库之外；命令不创建或修改其上级目录。完整集成源码中原编译器脚本位于入口旁的 `hdi_original_compiler.py`；分开存放源码时可用 `--compiler-launcher /绝对路径/hdi_original_compiler.py` 指定同版本原编译器入口，并保留它相对于仓库根的 `data-governance/hdi-native/compiler/` 布局。该目录必须同时包含 `OriginalTaskCompiler.java` 和 `OriginalConnectionForms.java`；入口校验三份文件均存在、路径不经过符号链接，分别记录启动脚本、任务编译器和原连接表单适配源码的 SHA-256。缺少表单适配源码会在创建安装目录之前拒绝，不能把只复制主编译器的目录认定为完整源码。
 
@@ -43,4 +48,4 @@ python3 tools/data-governance/hdi_core_setup.py \
 回滚只需在平台停止对应 worker、确认 owned 子进程退出后撤销该 argv 配置；私有目录保留作为可恢复证据。本入口不会卸载 Redis、修改系统服务或更改开机启动项。
 
 
-此前基础版本完成14项针对性测试，以及隔离 Linux x86_64 / Java 11 上的真实 `PREPARED → VERIFIED` 验收：原控制桥实际编译成功，重复验证前后所有安装文件的 SHA 和修改时间不变，未启动 Redis、ZooKeeper、Core 或业务任务。旧的不完整 bundle 缺少原编译器参数 schema 时，入口已实际拒绝，未创建安装目录。当前27项聚焦测试覆盖原连接表单源码摘要、Core11/Compiler17参数分离、默认路径兼容、JDK改变不覆盖、旧receipt拒绝、JRE/不支持版本拒绝及八插件完整性；这些测试不替代新版本在部署机上的实际安装与运行验收。
+此前基础版本完成14项针对性测试，以及隔离 Linux x86_64 / Java 11 上的真实 `PREPARED → VERIFIED` 验收：原控制桥实际编译成功，重复验证前后所有安装文件的 SHA 和修改时间不变，未启动 Redis、ZooKeeper、Core 或业务任务。旧的不完整 bundle 缺少原编译器参数 schema 时，入口已实际拒绝，未创建安装目录。当前28项安装准备测试覆盖原连接表单源码摘要、Core11/Compiler17参数分离、默认路径兼容、JDK改变不覆盖、旧receipt拒绝、JRE/不支持版本拒绝以及独立平台适配包与编译器摘要绑定；这些测试不替代新版本在部署机上的实际安装与运行验收。

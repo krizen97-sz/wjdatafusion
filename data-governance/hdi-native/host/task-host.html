@@ -11,6 +11,9 @@
     html,body,#app,#detl-task-root{height:100%;width:100%;margin:0}
     body{overflow:hidden}
     html[data-hdi-metrics="unavailable"] .running-rate{display:none}
+    /* The original management shell had a header above the canvas. In this host,
+       keep native messages below its action bar so Pause/Stop remains reachable. */
+    html[data-hdi-host-state="ready"] .el-message{margin-top:calc(var(--h-height,32px) * 2)}
     /* The original source page assumes a full-width management window. Keep its
        controls and render intact while fitting the platform's narrower iframe. */
     @media(max-width:1400px){
