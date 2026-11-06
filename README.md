@@ -51,7 +51,9 @@
 
 ### 2. 初始化数据库
 
-后端默认使用 MySQL。新环境可先导入基础若依脚本，再导入现场融合脚本：
+最新全模块建表文件为 [`WDF100.0/sql/rynew_schema_latest.sql`](WDF100.0/sql/rynew_schema_latest.sql)，对应 `v4.17.2`，包含 105 张平台运行表。它只创建结构，不包含初始账号、菜单、字典、定时任务或业务数据，也不是已有库升级脚本。来源、使用边界、重建方式和升级入口见 [数据库脚本说明](WDF100.0/sql/README.md)。
+
+后端默认使用 MySQL。以下是旧的“若依基础 + 现场融合/巡检”初始化步骤，不是全模块完整安装；原脚本包含删表或数据更新操作，只能在已确认的全新库使用：
 
 ```bash
 mysql -u root -p rynew < WDF100.0/sql/ry_20260320.sql
@@ -59,7 +61,7 @@ mysql -u root -p rynew < WDF100.0/sql/quartz.sql
 mysql -u root -p rynew < WDF100.0/sql/support_deploy_all.sql
 ```
 
-如果是已有环境升级，优先按 `WDF100.0/sql/support_upgrade_*.sql` 的版本顺序执行对应升级脚本。`support_deploy_all.sql` 是现场融合管理的整合部署脚本，执行前建议先备份数据库。
+已有环境必须按实际已安装版本选择对应模块的累计升级入口，先备份再执行，不要按文件名排序盲跑所有历史 SQL。完整 `v4.17.0` 升至 `v4.17.2` 的入口为 `WDF100.0/sql/data_governance_upgrade_20261026_v4_17_0_to_v4_17_2_all.sql`，先运行配套只读检查；该增量不代替更早版本的基线补齐。
 
 ### 3. 后端启动
 
