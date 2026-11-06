@@ -39,6 +39,7 @@ is_generated_path() {
 is_shared_path() {
   case "$1" in
     AGENTS.md|README.md|docs/CODEX_WORKTREES.md|tools/codex-worktree.sh|\
+    .agents/skills/rynew-platform-dev-ops/*|\
     tools/database/*|WDF100.0/sql/rynew_schema_latest.sql|WDF100.0/sql/rynew_init_latest.sql|WDF100.0/sql/README.md|\
     RuoYi-Vue3-master/package.json|RuoYi-Vue3-master/src/router/index.js|\
     docs/frontend/UI-EXCEPTIONS.md|RuoYi-Vue3-master/scripts/ui-guard-allowlist.json|\
