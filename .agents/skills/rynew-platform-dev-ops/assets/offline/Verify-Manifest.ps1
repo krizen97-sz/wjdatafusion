@@ -1,7 +1,7 @@
 param([string]$BundleRoot = $PSScriptRoot)
 $ErrorActionPreference = 'Stop'
 $BundleRoot = (Resolve-Path -LiteralPath $BundleRoot).Path
-$entries = Get-Content -LiteralPath (Join-Path $BundleRoot 'FILES.sha256.json') -Raw | ConvertFrom-Json
+$entries = Get-Content -LiteralPath (Join-Path $BundleRoot 'FILES.sha256.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $checked = 0
 foreach ($entry in $entries) {
     if ($entry.path -match '(^|/)\.\.(/|$)' -or [IO.Path]::IsPathRooted($entry.path)) { throw 'Invalid manifest path.' }

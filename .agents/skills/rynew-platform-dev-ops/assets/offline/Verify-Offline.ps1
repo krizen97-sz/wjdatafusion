@@ -22,8 +22,8 @@ function Install-FrozenLock([string]$Project, [string]$Prefix) {
     $destination = Join-Path $Project 'package-lock.json'
     if (Test-Path -LiteralPath $destination) {
         # Normalize CRLF for Git checkouts; do not silently replace another dependency graph.
-        $existing = (Get-Content -LiteralPath $destination -Raw).Replace("`r`n", "`n").Trim()
-        $expected = (Get-Content -LiteralPath $frozen -Raw).Replace("`r`n", "`n").Trim()
+        $existing = (Get-Content -LiteralPath $destination -Raw -Encoding UTF8).Replace("`r`n", "`n").Trim()
+        $expected = (Get-Content -LiteralPath $frozen -Raw -Encoding UTF8).Replace("`r`n", "`n").Trim()
         if ($existing -ne $expected) { throw ('Different lockfile exists; preserve it and choose the matching source/lock explicitly: ' + $destination) }
     } else { Copy-Item -LiteralPath $frozen -Destination $destination }
 }

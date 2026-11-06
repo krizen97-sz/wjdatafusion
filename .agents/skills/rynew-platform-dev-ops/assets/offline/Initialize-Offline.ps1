@@ -4,7 +4,7 @@ if ($env:OS -ne 'Windows_NT') { throw 'This initializer targets Windows, not the
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'Windows x64 is required.' }
 $BundleRoot = (Resolve-Path -LiteralPath $BundleRoot).Path
 $manifestPath = Join-Path $BundleRoot 'toolchains/verified-toolchains.json'
-$tools = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+$tools = Get-Content -LiteralPath $manifestPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $expanded = Join-Path $BundleRoot 'toolchains/expanded'
 New-Item -ItemType Directory -Path $expanded -Force | Out-Null
 foreach ($tool in $tools) {
