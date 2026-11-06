@@ -1,5 +1,7 @@
 # 若依原生约定与当前开发要求
 
+原生机制以 [官网开发文档与FAQ](official-ruoyi.md) 为基础，再用本地模板和当前实现核对版本。公共/业务组件的状态、事件和领域约束见 [本地组件契约](local-components.md)，离线工具与依赖冻结见 [离线开发](offline-development.md)。
+
 ## 技术基线与源码位置
 
 以下是核验提交的依赖，不是升级建议；以当前 `package.json` 和 POM 为准。

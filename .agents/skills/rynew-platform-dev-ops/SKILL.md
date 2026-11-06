@@ -1,11 +1,13 @@
 ---
 name: rynew-platform-dev-ops
-description: 为 RYNEW 华东信息融合平台提供若依原生开发约定、当前工程规范、初始化部署、功能运维及后端业务链路指导。用于本仓库的开发、排障、交付或功能讲解；其他若依项目不自动沿用本平台的业务规则。
+description: 基于若依官网开发文档和FAQ、本地业务与组件契约，指导RYNEW平台开发、初始化部署、功能运维及Maven/npm离线迁移。用于本仓库的开发、排障和交付；不将本平台业务规则套用到其他若依项目。
 ---
 
 # RYNEW 平台开发与功能运维
 
 把需求落到本平台的代码、权限、数据和运行入口。先识别任务属于开发、讲解、诊断还是实际运维，再读取对应参考；不要一次加载所有业务文档。
+
+开发基础先看 [若依官方文档与FAQ](references/official-ruoyi.md)，再适配当前仓库。完整公开资料在离线包 `official-docs/`，本技能保存来源目录与搜索/采集入口；离线时不要求重新访问官网。新增业务和公共组件须结合 [本地组件契约](references/local-components.md) 及对应backend参考读取。
 
 ## 开始工作
 
@@ -26,6 +28,9 @@ description: 为 RYNEW 华东信息融合平台提供若依原生开发约定、
 | 任务 | 必读参考 |
 | --- | --- |
 | 新增/修改接口、页面、表、权限、版本 | [开发要求](references/development.md)；再读对应业务参考 |
+| 若依机制、官方FAQ、版本适配 | [官方开发资料](references/official-ruoyi.md)；按需检索离线镜像 |
+| 公共/业务组件、props/events、规则函数及跨模块引用 | [本地组件契约](references/local-components.md) |
+| Windows x64离线开发、冻结依赖、缓存校验、迁移包复核 | [离线开发](references/offline-development.md) |
 | 初始化、Java 外部配置、JAR 启动、dist/Nginx、升级 | [部署初始化](references/deployment.md) |
 | 了解平台功能、查页面/API/表的对应 | [平台功能地图](references/platform-map.md) |
 | 现场、主子平台、设备机房、服务器扫描、密码池 | [现场融合业务](references/backend-site-fusion.md) |
@@ -45,6 +50,7 @@ description: 为 RYNEW 华东信息融合平台提供若依原生开发约定、
 - 主部署步骤只保留 MySQL、Redis、有效密钥、外部 Spring 配置和前端代理。根据本次启用模块再读其依赖，不把 Kafka、HDI、OnlyOffice 等一概当作基础启动条件。
 - 发布按本次明确的模块清单裁剪。用户排除的模块需同时检查程序、菜单、SQL、任务、配置与手册；历史裁剪交付包不等于当前全平台源码已经永久移除该模块。
 - 仓库/技能中只放无秘密示例。运行口令、初始化密码哈希、业务数据、加密密文、私有运行配置和构建制品不随技能提交。
+- 离线开发以冻结锁文件、完整缓存、原生平台包及离线生命周期验证为依据。已有node_modules不证明npm仓库齐全，Maven有主JAR不证明插件/测试/父POM齐全；Windows原生包完整也不等于已经在Windows主机运行验收。
 
 ## 交付结果
 

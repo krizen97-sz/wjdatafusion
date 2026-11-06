@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<settings xmlns="http://maven.apache.org/SETTINGS/1.0.0">
+  <interactiveMode>false</interactiveMode>
+  <offline>true</offline>
+  <!-- Local repository is supplied explicitly with -Dmaven.repo.local. -->
+</settings>

@@ -8,6 +8,8 @@
 
 本技能没有生产凭据、连接参数、业务备份或厂商程序包；不要求GitHub/MCP账号用于本地读取。
 
+官方文档离线位置和版本适配见 [官方资料](official-ruoyi.md)，自编组件/规则见 [本地组件契约](local-components.md)。Windows工具、锁文件、专用Maven/npm库及复核脚本见 [离线开发](offline-development.md)。依赖二进制和官网镜像在本地迁移包中，不作为Git源码变更推送。
+
 ## 只读检查器
 
 ```bash

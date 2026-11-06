@@ -1,0 +1,5 @@
+const { readFileSync } = require('node:fs')
+const { deepStrictEqual } = require('node:assert/strict')
+const select = value => ({ dependencies: value.dependencies, devDependencies: value.devDependencies, overrides: value.overrides })
+deepStrictEqual(select(JSON.parse(readFileSync(process.argv[2], 'utf8'))), select(JSON.parse(readFileSync(process.argv[3], 'utf8'))))
+console.log('Source package dependency declarations match the frozen offline lock input.')

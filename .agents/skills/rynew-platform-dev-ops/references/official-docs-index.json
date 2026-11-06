@@ -1,0 +1,486 @@
+{
+  "origin": "https://doc.ruoyi.vip",
+  "retrieved_at": "2026-11-06T07:27:08.465394+00:00",
+  "scope": "all publicly linked pages under ruoyi, ruoyi-vue, ruoyi-cloud and ruoyi-app; no paid material or off-site tutorials",
+  "usage": "local offline reference; original attribution retained; no documentation-source license assumed",
+  "pages": [
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/",
+      "path": "pages/ruoyi-appindex.html",
+      "sha256": "a1910a3e11d4a92b431c9e12c1b9debda55cbd55f302ec7805ae5d8e41c8b4c8",
+      "sections": 0
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/app/jcjs.html",
+      "path": "pages/ruoyi-app__app__jcjs.html",
+      "sha256": "58595d47ab4613526b388dba0f1fe8c852487a012e260e69febb67d2dfe6bc9d",
+      "sections": 9
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/app/sjhc.html",
+      "path": "pages/ruoyi-app__app__sjhc.html",
+      "sha256": "d37e8cc84a3c305ddc8c2f47f247a223acaa3e8ee995ebc31ad70eef437aae60",
+      "sections": 10
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/app/sjjtzc.html",
+      "path": "pages/ruoyi-app__app__sjjtzc.html",
+      "sha256": "4ab1b2ab7b2ac4cdf5184f845ddb2cae8db738439208498a7142a6b28a93447d",
+      "sections": 2
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/app/smzq.html",
+      "path": "pages/ruoyi-app__app__smzq.html",
+      "sha256": "712cada9a2e5a1079dc8063a0c44b8e68b74b74d6047063ff21c819834fc092e",
+      "sections": 3
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/app/tjby.html",
+      "path": "pages/ruoyi-app__app__tjby.html",
+      "sha256": "f8b36e85bf28799ebc50f1ad530994576a4591553c128fdf7394ba7579ba51b5",
+      "sections": 7
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/app/xlsx.html",
+      "path": "pages/ruoyi-app__app__xlsx.html",
+      "sha256": "3f2fb06317b748ab3812e231f0d74e6291c06df273a46d3aba3ac55a739076ee",
+      "sections": 4
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/app/zdytb.html",
+      "path": "pages/ruoyi-app__app__zdytb.html",
+      "sha256": "64882c52e2dc77fed5cbd2309ca1c31f67018c29660be3c47f3e7ce6d7323bdb",
+      "sections": 2
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/app/zjdy.html",
+      "path": "pages/ruoyi-app__app__zjdy.html",
+      "sha256": "a1d4ae1cc3006d42563b4521e287b50f8dba6f35579b9bfe23f6eb70bf809c9a",
+      "sections": 9
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/document/cjjc.html",
+      "path": "pages/ruoyi-app__document__cjjc.html",
+      "sha256": "b985a4c202dab9de59b4c1acd0d02d41d9a8f4e4e250ecc0e46e15448fdaeec7",
+      "sections": 2
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/document/gxrz.html",
+      "path": "pages/ruoyi-app__document__gxrz.html",
+      "sha256": "5cfbac10d16066bfd0b0ff0ed7c1231b5bafebf1586cf6e8c3734d89ed0e9f42",
+      "sections": 3
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/document/hjbs.html",
+      "path": "pages/ruoyi-app__document__hjbs.html",
+      "sha256": "42026566b0404bf3f47e209e1a16c6eaea0a2b5e7ab0ab7d0b94d4483c046bb6",
+      "sections": 6
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/document/kslj.html",
+      "path": "pages/ruoyi-app__document__kslj.html",
+      "sha256": "66f4f9b02765988411ee900b04b099cc22f23fc2fd5105b0b318a7426185e6a1",
+      "sections": 4
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/document/qdsc.html",
+      "path": "pages/ruoyi-app__document__qdsc.html",
+      "sha256": "43510c4a10a33dbfbd977439c0f26484b483b76cc26e64040c74b94a7b1bf997",
+      "sections": 11
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/document/spjc.html",
+      "path": "pages/ruoyi-app__document__spjc.html",
+      "sha256": "d67f84dc1eb548a9a73250a021ef3ba9ca3e9a2285c2438a9d6f1dcf89d06630",
+      "sections": 1
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/document/xmjs.html",
+      "path": "pages/ruoyi-app__document__xmjs.html",
+      "sha256": "06633836176af1c7e23bc4c5a0f8e960aaa02482838b33472d261a0bccc29048",
+      "sections": 3
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/document/xmkz.html",
+      "path": "pages/ruoyi-app__document__xmkz.html",
+      "sha256": "45821bea0e51edf6562ff0c2fc8971701211d1abc753806a45ad75d6fa88e736",
+      "sections": 0
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/document/zjwd.html",
+      "path": "pages/ruoyi-app__document__zjwd.html",
+      "sha256": "c48c65917f6510c07467e04d93a24115a3af0697cd8111fd057c98907b4a3ce6",
+      "sections": 3
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/other/donate.html",
+      "path": "pages/ruoyi-app__other__donate.html",
+      "sha256": "e2734bbbc1140d49906b772da911d6b393d0537ef885c214ab6757381a4d190b",
+      "sections": 0
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-app/other/faq.html",
+      "path": "pages/ruoyi-app__other__faq.html",
+      "sha256": "f771ae8d4d6da195d84512f979b1a055a3446f8d00b3fa5364e0155d07453033",
+      "sections": 4
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/",
+      "path": "pages/ruoyi-cloudindex.html",
+      "sha256": "5b305937dbf02529e727eabe9dca2f93538134e5565066c77f016fee452a9149",
+      "sections": 0
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/cloud/auth.html",
+      "path": "pages/ruoyi-cloud__cloud__auth.html",
+      "sha256": "32e9aefbea26ec08fc059b3abce0f490dff8d7e507f41ea3dd8f835be6a7e220",
+      "sections": 5
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/cloud/config.html",
+      "path": "pages/ruoyi-cloud__cloud__config.html",
+      "sha256": "90e1f91cc5475fe75038bcd8e4e815de3470aae122cb3ec49e3c4b874a87c9ff",
+      "sections": 7
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/cloud/dokcer.html",
+      "path": "pages/ruoyi-cloud__cloud__dokcer.html",
+      "sha256": "c96dbe9a54b07a5970b9252533fb9b33259c96e620b7cb6e49b25923ba694f02",
+      "sections": 12
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/cloud/elk.html",
+      "path": "pages/ruoyi-cloud__cloud__elk.html",
+      "sha256": "3da51466fd9748296a3162b659d9c4b24d88970b954ec4ae57d10612ce47fecc",
+      "sections": 6
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/cloud/feign.html",
+      "path": "pages/ruoyi-cloud__cloud__feign.html",
+      "sha256": "df1fdcec23c13128f1ce51a358ab5a82fd868f31ce9e63794ec1885b86742df9",
+      "sections": 8
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/cloud/file.html",
+      "path": "pages/ruoyi-cloud__cloud__file.html",
+      "sha256": "449be0eb4862afe48494c076f98028f35f477f96863c1444932dd57369aeeb2a",
+      "sections": 5
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/cloud/gateway.html",
+      "path": "pages/ruoyi-cloud__cloud__gateway.html",
+      "sha256": "fc8316c70cea634f2b08fbfc2bef3234fa65cf1f1a993faa44b92b0295af63c1",
+      "sections": 13
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/cloud/monitor.html",
+      "path": "pages/ruoyi-cloud__cloud__monitor.html",
+      "sha256": "7ca7a38081bb726ab6528d983a3b2e82666fe5e206e3ad1c72f4a2b92bb76a7e",
+      "sections": 10
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/cloud/nacos.html",
+      "path": "pages/ruoyi-cloud__cloud__nacos.html",
+      "sha256": "eabcdaf86c1f1e0275ede1a2cce571dce24ae1f3e76dc26ccac5aaccdef2a4ea",
+      "sections": 4
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/cloud/seata.html",
+      "path": "pages/ruoyi-cloud__cloud__seata.html",
+      "sha256": "b8a5e76ab6802c02016b7e7e2cff4083beb369de58484cd7ba66c2c935117ac2",
+      "sections": 7
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/cloud/sentinel.html",
+      "path": "pages/ruoyi-cloud__cloud__sentinel.html",
+      "sha256": "b2d697694b017f6354f06e68372e05c298961fb9530c733d65996b9952091a24",
+      "sections": 9
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/cloud/sharding.html",
+      "path": "pages/ruoyi-cloud__cloud__sharding.html",
+      "sha256": "6c2e80d916c3a64dac5e7da171f1fd6c7e581247949009806aa3864478457e4c",
+      "sections": 5
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/cloud/skywalking.html",
+      "path": "pages/ruoyi-cloud__cloud__skywalking.html",
+      "sha256": "2031310864965234fec0d60c38241a20abc3a9375bc82865d4315cab8c8d42e7",
+      "sections": 5
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/cloud/swagger.html",
+      "path": "pages/ruoyi-cloud__cloud__swagger.html",
+      "sha256": "debeed583a34c21a8bbe3f39e3cbd406245309d89132069072971a72338ca5e0",
+      "sections": 6
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/document/gxrz.html",
+      "path": "pages/ruoyi-cloud__document__gxrz.html",
+      "sha256": "4ead1805b2ef4ad3234a504e59451f6e020a3bc0ab56a7eb5d8c07250b7bee22",
+      "sections": 22
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/document/hjbs.html",
+      "path": "pages/ruoyi-cloud__document__hjbs.html",
+      "sha256": "2b5b91095839310c61ca14a275e8330d7ec18d70a261b17d8e5a473d50cce3e7",
+      "sections": 7
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/document/htsc.html",
+      "path": "pages/ruoyi-cloud__document__htsc.html",
+      "sha256": "235d2185116156c699d9af7cb46da9807515147bf5cb457be25766511c08ed74",
+      "sections": 16
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/document/kslj.html",
+      "path": "pages/ruoyi-cloud__document__kslj.html",
+      "sha256": "a861b7ae97e1027c4be1b0a81d554873d5fb2226e3c151e44247910bec3b137c",
+      "sections": 4
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/document/qdsc.html",
+      "path": "pages/ruoyi-cloud__document__qdsc.html",
+      "sha256": "f7a136979a6fdd98ee8595b07d96042c4bab37e042ea62636d7623d1d868d9b4",
+      "sections": 15
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/document/spjc.html",
+      "path": "pages/ruoyi-cloud__document__spjc.html",
+      "sha256": "523d654748ca343560a22a17568178882146526940f220f55b22673709913615",
+      "sections": 1
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/document/xmjs.html",
+      "path": "pages/ruoyi-cloud__document__xmjs.html",
+      "sha256": "caf833f4887c51d2e9bef51860825f3852e40816d0d30f021cceec6c5afea570",
+      "sections": 2
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/document/xmkz.html",
+      "path": "pages/ruoyi-cloud__document__xmkz.html",
+      "sha256": "479c80e45f4d7687e4d29f554c023f037ec87baa079d362c5ef18f519dce8255",
+      "sections": 0
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/document/zjwd.html",
+      "path": "pages/ruoyi-cloud__document__zjwd.html",
+      "sha256": "592a81805b6404e7b314ccbd8332aa86865c739b3d001ade3b821cc821131139",
+      "sections": 14
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/other/donate.html",
+      "path": "pages/ruoyi-cloud__other__donate.html",
+      "sha256": "b1e8412e7f858cf2dace54e52f0a828269d5d7f14e64acfe5febb3b9d0dc3f0a",
+      "sections": 0
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-cloud/other/faq.html",
+      "path": "pages/ruoyi-cloud__other__faq.html",
+      "sha256": "64f248b6c27db2a3bd2ea690dfca3fc75b4a8d61916ab86b73019610a0070fbf",
+      "sections": 18
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-vue/",
+      "path": "pages/ruoyi-vueindex.html",
+      "sha256": "abf4a79f88721b44b4ebcd1c8920798b3f0f8e30c040cb26f9ad0d85400b49b2",
+      "sections": 0
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-vue/document/cjjc.html",
+      "path": "pages/ruoyi-vue__document__cjjc.html",
+      "sha256": "60682e73315a9f49157b0fb166e5932934ca133c7aa2e263e0538209f5ecae43",
+      "sections": 28
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-vue/document/gxrz.html",
+      "path": "pages/ruoyi-vue__document__gxrz.html",
+      "sha256": "178034fdf7b539c036e25420cfd1c59e647003b9b93503973cf6351a501c35c5",
+      "sections": 28
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-vue/document/hjbs.html",
+      "path": "pages/ruoyi-vue__document__hjbs.html",
+      "sha256": "0c485466da87d90791f4704035213733a8d8f8978b10e1f4f6e33bc9c93a049c",
+      "sections": 8
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-vue/document/htsc.html",
+      "path": "pages/ruoyi-vue__document__htsc.html",
+      "sha256": "31b8506bd6f08a4c834abd9e5b9bc992e6a1d79e4fa346c230b071ab4a9358f4",
+      "sections": 17
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-vue/document/kslj.html",
+      "path": "pages/ruoyi-vue__document__kslj.html",
+      "sha256": "ec5e29192ed4a44dcabbaf4e47d621ae3205630104483a66d0a197325bcae540",
+      "sections": 4
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-vue/document/qdsc.html",
+      "path": "pages/ruoyi-vue__document__qdsc.html",
+      "sha256": "7f7d6f1dff90c811d410ff17911bf0a8ff570de944810181052e6bd436dd88ff",
+      "sections": 15
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-vue/document/spjc.html",
+      "path": "pages/ruoyi-vue__document__spjc.html",
+      "sha256": "2a1c5cd2ecadd16802537d364c5e57803fe3655034562b4bf5ed5bbd44f80902",
+      "sections": 1
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-vue/document/xmjs.html",
+      "path": "pages/ruoyi-vue__document__xmjs.html",
+      "sha256": "17957111e5cb92137ceb504b5b5b4adc106114bd4e27d5fc88f9bd3be81b4f5d",
+      "sections": 3
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-vue/document/xmkz.html",
+      "path": "pages/ruoyi-vue__document__xmkz.html",
+      "sha256": "4e1c519ca6f515eb58e4f317000573f427bb7cc07e15806595b75ce53686a81a",
+      "sections": 1
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-vue/document/zjwd.html",
+      "path": "pages/ruoyi-vue__document__zjwd.html",
+      "sha256": "6cabcf47e9e396eb7f4ab59a0ec540be65aca246d2c090365a386aa166499b3d",
+      "sections": 14
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-vue/other/donate.html",
+      "path": "pages/ruoyi-vue__other__donate.html",
+      "sha256": "8a552cebd89e0ae2f0499e3d9bfce0ca6c4beb76eb6b172357b915ad8db27d05",
+      "sections": 0
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi-vue/other/faq.html",
+      "path": "pages/ruoyi-vue__other__faq.html",
+      "sha256": "5c5d5598d70811a48a8b73b8910c3e0066785b59aed0a77c70c3da0e8ef10166",
+      "sections": 95
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/",
+      "path": "pages/ruoyiindex.html",
+      "sha256": "316e7de86e6fda0c3bb44287dcd633eb0a7cc77aa9b418f5151c1dba4007490c",
+      "sections": 0
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/document/cjjc.html",
+      "path": "pages/ruoyi__document__cjjc.html",
+      "sha256": "ef2ee8eab00501f996c51087071b806f24099c065d0df5816cd7dba14dac2dc8",
+      "sections": 29
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/document/gnzj.html",
+      "path": "pages/ruoyi__document__gnzj.html",
+      "sha256": "bff7013bf45ad141d8c1ca4878f396302d4da3e7ede959c0ebe995abe31a7c8e",
+      "sections": 11
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/document/gxrz.html",
+      "path": "pages/ruoyi__document__gxrz.html",
+      "sha256": "0e0a64af9144fe0ee2e9b98456d4af617e3e6848ab61bc9ee68a844ecfe464fd",
+      "sections": 30
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/document/hjbs.html",
+      "path": "pages/ruoyi__document__hjbs.html",
+      "sha256": "a51aef03a17a25a2d5b91fa9d619773b86d065a8c172449b78e23e0b1b139565",
+      "sections": 5
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/document/htsc.html",
+      "path": "pages/ruoyi__document__htsc.html",
+      "sha256": "781a187e10fa86ac644be4f67cc5165907133f44e2677abade0e6936ef45b373",
+      "sections": 17
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/document/kslj.html",
+      "path": "pages/ruoyi__document__kslj.html",
+      "sha256": "8e860482b9d64c8945d1f593264db021fc60334fa53ed3771895a709bc76ca32",
+      "sections": 5
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/document/mbyq.html",
+      "path": "pages/ruoyi__document__mbyq.html",
+      "sha256": "3c03c004d121b06049f5b857d0c68ccc3d5d4149c15932662f6a39b31c1a4b37",
+      "sections": 9
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/document/qdsc.html",
+      "path": "pages/ruoyi__document__qdsc.html",
+      "sha256": "a7c5cb932f65e2509a23a4e50118727aafe74234be9ea8ead9a639076e4476ed",
+      "sections": 9
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/document/spjc.html",
+      "path": "pages/ruoyi__document__spjc.html",
+      "sha256": "ac4cbe4a15447d013dad80a00d3ec41a697cc80a0d1e5353589283bff7f03000",
+      "sections": 1
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/document/xmjs.html",
+      "path": "pages/ruoyi__document__xmjs.html",
+      "sha256": "da2580d8d8399640c1da234a23524a82df0079965924cf152b0f26e9fbc5d60a",
+      "sections": 3
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/document/xmkz.html",
+      "path": "pages/ruoyi__document__xmkz.html",
+      "sha256": "222d4c657e1f1a04b5f1f6d16b721021a92d40de2f2405e90010dd2d78d457a1",
+      "sections": 2
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/document/zjwd.html",
+      "path": "pages/ruoyi__document__zjwd.html",
+      "sha256": "f8f5f36957548b4930f90c16c37c2da127e1b86b8abbcae00638c2ca51b28bee",
+      "sections": 15
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/other/donate.html",
+      "path": "pages/ruoyi__other__donate.html",
+      "sha256": "541c0e30b057efc0a841bafb9374fcf7fe9bc5ca71b161d4f1c6bffa078695e8",
+      "sections": 0
+    },
+    {
+      "url": "https://doc.ruoyi.vip/ruoyi/other/faq.html",
+      "path": "pages/ruoyi__other__faq.html",
+      "sha256": "beaee8c34ad39ceb01bb03f8e77a6a2dcc4bc3be64a628bc1f24e775bac76ece",
+      "sections": 92
+    }
+  ],
+  "page_failures": [],
+  "asset_failures": [
+    {
+      "url": "https://bjetxgzv.cdn.bspapp.com/VKCEYUGU-uni-app-doc/04ecec40-4f3c-11eb-97b7-0dc4655d6e68.png",
+      "error_type": "URLError"
+    },
+    {
+      "url": "https://bjetxgzv.cdn.bspapp.com/VKCEYUGU-uni-app-doc/05c1ef80-4f3c-11eb-b680-7980c8a877b8.png",
+      "error_type": "URLError"
+    },
+    {
+      "url": "https://bjetxgzv.cdn.bspapp.com/VKCEYUGU-uni-app-doc/06a79490-4f3c-11eb-b680-7980c8a877b8.png",
+      "error_type": "URLError"
+    },
+    {
+      "url": "https://bjetxgzv.cdn.bspapp.com/VKCEYUGU-uni-app-doc/07834e90-4f3c-11eb-b680-7980c8a877b8.png",
+      "error_type": "URLError"
+    },
+    {
+      "url": "https://bjetxgzv.cdn.bspapp.com/VKCEYUGU-uni-app-doc/0bd78d80-4f3c-11eb-a16f-5b3e54966275.png",
+      "error_type": "URLError"
+    },
+    {
+      "url": "https://bjetxgzv.cdn.bspapp.com/VKCEYUGU-uni-app-doc/0c9c8b30-4f3c-11eb-8a36-ebb87efcf8c0.png",
+      "error_type": "URLError"
+    }
+  ],
+  "normalized_routes": [
+    {
+      "observed": "https://doc.ruoyi.vip/ruoyi-app/document/qdsc/",
+      "canonical": "https://doc.ruoyi.vip/ruoyi-app/document/qdsc.html"
+    }
+  ],
+  "asset_count": 90
+}
