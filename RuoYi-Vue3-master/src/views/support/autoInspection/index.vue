@@ -10,7 +10,7 @@
           <div class="record-board__actions">
             <el-button class="motion-entry-action" data-motion-direction="forward" type="primary" plain icon="DataAnalysis" @click="openCockpit">巡检驾驶舱</el-button>
             <el-button icon="List" @click="recordArchiveDrawerOpen = true">全部执行记录</el-button>
-            <el-button icon="Document" @click="openReportExportDialog" v-hasPermi="['support:autoInspection:export']">导出周/月报</el-button>
+            <el-button icon="Document" @click="openReportExportDialog" v-hasPermi="['support:autoInspection:export']">导出巡检报告</el-button>
             <el-button icon="Refresh" @click="refreshCurrentRecordView">刷新</el-button>
           </div>
         </header>
@@ -113,7 +113,7 @@
         </el-form>
 
         <div class="auto-toolbar">
-          <el-button type="primary" plain icon="Document" @click="openReportExportDialog" v-hasPermi="['support:autoInspection:export']">导出周/月报</el-button>
+          <el-button type="primary" plain icon="Document" @click="openReportExportDialog" v-hasPermi="['support:autoInspection:export']">导出巡检报告</el-button>
         </div>
 
         <InspectionRecordTable :rows="recordList" :loading="recordLoading" :template-label="getTemplateLabelName" :plan-label="getPlanLabelName">
@@ -366,20 +366,28 @@
     <el-dialog v-model="reportExportOpen" aria-label="巡检报告导出" width="560px" append-to-body class="auto-dialog report-export-dialog">
       <template #header="{ titleId, titleClass }">
         <div :id="titleId" :class="titleClass" class="dialog-title">
-          <span>巡检报告导出</span>
-          <strong>生成周期汇总报告</strong>
+          <strong>导出巡检报告</strong>
         </div>
       </template>
       <div class="report-export">
-        <p class="report-export__tip">每周或每月生成一份 Word，包含结果图表、现场与主平台汇总、检查内容和合并后的异常清单。</p>
-        <el-form :model="reportExportForm" label-width="92px">
-          <el-form-item label="导出方式">
+        <el-form :model="reportExportForm" :disabled="reportExportLoading" label-width="92px">
+          <el-form-item label="报告周期">
             <el-radio-group v-model="reportExportForm.mode">
-              <el-radio-button value="WEEK">按周导出</el-radio-button>
-              <el-radio-button value="MONTH">按月导出</el-radio-button>
+              <el-radio-button value="DAY">日报</el-radio-button>
+              <el-radio-button value="WEEK">周报</el-radio-button>
+              <el-radio-button value="MONTH">月报</el-radio-button>
             </el-radio-group>
           </el-form-item>
-          <el-form-item v-if="reportExportForm.mode === 'WEEK'" label="选择周">
+          <el-form-item v-if="reportExportForm.mode === 'DAY'" label="选择日期">
+            <el-date-picker
+              v-model="reportExportForm.reportDate"
+              type="date"
+              value-format="YYYY-MM-DD"
+              :clearable="false"
+              style="width: 100%"
+            />
+          </el-form-item>
+          <el-form-item v-else-if="reportExportForm.mode === 'WEEK'" label="选择周">
             <el-date-picker
               v-model="reportExportForm.weekDate"
               type="week"
@@ -398,6 +406,12 @@
               placeholder="请选择需要导出的月份"
               style="width: 100%"
             />
+          </el-form-item>
+          <el-form-item label="报告版本">
+            <el-radio-group v-model="reportExportForm.content">
+              <el-radio-button value="SUMMARY">精简版</el-radio-button>
+              <el-radio-button value="FULL">完整版</el-radio-button>
+            </el-radio-group>
           </el-form-item>
           <section class="report-export__preview">
             <strong>{{ reportExportPreview.title }}</strong>
@@ -2344,9 +2358,9 @@ const operationGuideSteps = [
     manual: [
       '巡检驾驶舱通过图表查看近七日趋势，并分别展示现场和主平台的当日健康与待处理问题。',
       '巡检总览按天展示现场、主平台、计划、异常摘要和缺失执行；点击“查看”打开分页执行记录，展开某一次后查看步骤、子项和判定依据。',
-      '点击“导出周/月报”后，按周或按月生成一份 Word 汇总报告，包含签字区、结果分布与每日趋势图、现场和主平台汇总，以及合并后的异常清单。'
+      '点击“导出巡检报告”，可选择日报、周报或月报。精简版提供图表与汇总，完整版还会逐条列出周期内的执行记录。'
     ],
-    actions: ['在驾驶舱查看现场和主平台健康。', '按归属、模板、计划、来源和结果筛选明细。', '按周或按月导出 Word 汇总报告归档。'],
+    actions: ['在驾驶舱查看现场和主平台健康。', '按归属、模板、计划、来源和结果筛选明细。', '按日、周或月导出所需版本的 Word 报告。'],
     images: [
       guideImage('02-dashboard-drawer.png', '巡检看板图表和当月日历'),
       guideImage('03-report-export-week.png', '按周导出 Word 周报'),
@@ -2795,16 +2809,31 @@ const dashboardAbnormalStepData = computed(() => {
     .slice(0, 8)
 })
 const reportExportPreview = computed(() => {
-  if (reportExportForm.value.mode === 'MONTH') {
-    return {
-      title: `${reportExportForm.value.month || formatMonthParam(new Date())} 月报`,
-      desc: '汇总所选月份的例行与高频检测，生成一份含图表和签字区的 Word 月报。'
-    }
+  const { mode, content, reportDate, month, weekDate } = reportExportForm.value
+  const full = content === 'FULL'
+  const params = { reportType: 'PERIOD_REPORT', reportMode: mode, reportContent: content }
+  let periodLabel
+  let fileStem
+  if (mode === 'DAY') {
+    params.reportDate = reportDate || formatDateParam(new Date())
+    periodLabel = `${params.reportDate} 日报`
+    fileStem = `日报_${params.reportDate.replace(/-/g, '')}`
+  } else if (mode === 'MONTH') {
+    params.month = month || formatMonthParam(new Date())
+    periodLabel = `${params.month} 月报`
+    fileStem = `月报_${params.month.replace('-', '')}`
+  } else {
+    const { begin, end } = getWeekRange(weekDate)
+    params.weekDate = formatDateParam(begin)
+    periodLabel = `${params.weekDate} 至 ${formatDateParam(end)} 周报`
+    fileStem = `周报_${formatFileDate(begin)}-${formatFileDate(end)}`
   }
-  const range = getWeekRange(reportExportForm.value.weekDate || new Date())
   return {
-    title: `${formatDateParam(range.begin)} 至 ${formatDateParam(range.end)} 周报`,
-    desc: '汇总所选自然周的例行与高频检测，生成一份含图表和签字区的 Word 周报。'
+    title: `${periodLabel} · ${full ? '完整版' : '精简版'}`,
+    desc: full ? '汇总图表与周期内每次执行的计划、模板、结果和摘要。'
+      : '签字区、结果图表、现场与主平台概况及异常汇总。',
+    params,
+    filename: `自动化巡检${fileStem}${full ? '_完整版' : ''}.docx`
   }
 })
 watch(() => [route.query.tab, route.query.configTab, route.path], ([tab, subTab, path]) => {
@@ -5621,6 +5650,7 @@ function handleRecordDetail(row) {
 }
 
 function openReportExportDialog() {
+  if (!reportExportForm.value.reportDate) reportExportForm.value.reportDate = formatDateParam(new Date())
   if (!reportExportForm.value.weekDate) reportExportForm.value.weekDate = new Date()
   if (!reportExportForm.value.month) reportExportForm.value.month = formatMonthParam(new Date())
   reportExportOpen.value = true
@@ -5628,22 +5658,10 @@ function openReportExportDialog() {
 
 function submitReportExport() {
   if (reportExportLoading.value) return
-  const params = {
-    reportType: 'PERIOD_REPORT',
-    reportMode: reportExportForm.value.mode
-  }
-  let fileName = ''
-  if (reportExportForm.value.mode === 'MONTH') {
-    const month = reportExportForm.value.month || formatMonthParam(new Date())
-    params.month = month
-    fileName = `自动化巡检月报_${month.replace('-', '')}.docx`
-  } else {
-    const range = getWeekRange(reportExportForm.value.weekDate || new Date())
-    params.weekDate = formatDateParam(range.begin)
-    fileName = `自动化巡检周报_${formatFileDate(range.begin)}-${formatFileDate(range.end)}.docx`
-  }
+  const { params, filename } = reportExportPreview.value
   reportExportLoading.value = true
-  proxy.download('/support/autoInspection/reports/export', params, fileName)
+  proxy.download('/support/autoInspection/reports/export', params, filename,
+    params.reportContent === 'FULL' ? { timeout: 120000 } : undefined)
     .finally(() => {
       reportExportLoading.value = false
       reportExportOpen.value = false
@@ -5822,7 +5840,8 @@ function defaultDashboardData() {
 }
 
 function defaultReportExportForm() {
-  return { mode: 'WEEK', weekDate: new Date(), month: formatMonthParam(new Date()) }
+  const today = new Date()
+  return { mode: 'WEEK', content: 'SUMMARY', reportDate: formatDateParam(today), weekDate: today, month: formatMonthParam(today) }
 }
 
 function buildCurrentWeekTrendRows(source = []) {
@@ -8281,17 +8300,6 @@ function resultTagType(value) {
 .report-export {
   display: grid;
   gap: 12px;
-}
-
-.report-export__tip {
-  margin: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--surface-border);
-  border-radius: 8px;
-  background: var(--surface-muted);
-  color: var(--app-muted);
-  font-size: 13px;
-  line-height: 1.65;
 }
 
 .report-export__preview {

@@ -35,7 +35,84 @@ class AutoInspectionPeriodReportTest
         assertEquals(LocalDate.of(2026, 10, 26), week.begin);
         assertEquals(LocalDate.of(2026, 11, 2), week.end);
         assertThrows(ServiceException.class, () -> AutoInspectionPeriodReport.resolve(map("reportMode", "MONTH", "month", "2026-13")));
-        assertThrows(ServiceException.class, () -> AutoInspectionPeriodReport.resolve(map("reportMode", "DAY")));
+        var day = AutoInspectionPeriodReport.resolve(map("reportMode", "DAY", "reportDate", "2026-10-31", "reportContent", "FULL"));
+        assertEquals(LocalDate.of(2026, 10, 31), day.begin);
+        assertEquals(LocalDate.of(2026, 11, 1), day.end);
+        assertEquals("自动化巡检日报_20261031_完整版.docx", day.fileName());
+        assertThrows(ServiceException.class, () -> AutoInspectionPeriodReport.resolve(map("reportMode", "DAY", "reportDate", "2026-02-30")));
+        assertThrows(ServiceException.class, () -> AutoInspectionPeriodReport.resolve(map("reportContent", "UNKNOWN")));
+    }
+
+    @Test
+    void fullDailyExportKeepsEveryExecutionAcrossPlansSharingATemplateAndTime() throws Exception
+    {
+        var records = List.of(
+                map("recordId", 21L, "planId", 1L, "planName", "上午例行计划", "templateName", "共用模板",
+                        "inspectionTime", "2026-10-31 09:00:00", "sourceType", "AUTO", "runMode", "ROUTINE",
+                        "resultStatus", "1", "summary", "第一条执行"),
+                map("recordId", 22L, "planId", 2L, "planName", "高频监测计划", "templateName", "共用模板",
+                        "inspectionTime", "2026-10-31 09:00:00", "sourceType", "AUTO", "runMode", "FREQUENT",
+                        "resultStatus", "2", "summary", "第二条执行"),
+                map("recordId", 23L, "planId", 2L, "planName", "高频监测计划", "templateName", "共用模板",
+                        "inspectionTime", "2026-10-31 09:05:00", "sourceType", "AUTO", "runMode", "FREQUENT",
+                        "resultStatus", "1", "summary", "第三条执行"));
+        var groups = List.of(
+                map("planId", 1L, "planName", "上午例行计划", "templateId", 5L, "templateName", "共用模板", "totalCount", 1L, "normalCount", 1L),
+                map("planId", 2L, "planName", "高频监测计划", "templateId", 5L, "templateName", "共用模板", "totalCount", 2L, "normalCount", 1L, "abnormalCount", 1L));
+        var days = List.of(map("reportDate", "2026-10-31 09:00", "totalCount", 3L, "normalCount", 2L, "abnormalCount", 1L));
+        var issues = List.of(map("planId", 2L, "templateId", 5L, "stepName", "业务接口检查", "targetName", "统计接口",
+                "abnormalCount", 1L, "firstIssueTime", "2026-10-31 09:00:00", "lastAbnormalTime", "2026-10-31 09:00:00",
+                "lastNormalTime", "2026-10-31 09:05:00"));
+        List<String> calls = new ArrayList<>();
+        var mapper = (SupportAutoInspectionMapper) Proxy.newProxyInstance(getClass().getClassLoader(),
+                new Class<?>[] {SupportAutoInspectionMapper.class}, (proxy, method, args) -> {
+                    calls.add(method.getName());
+                    var filters = (Map<?, ?>) args[0];
+                    assertFalse(filters.containsKey("planId"));
+                    assertFalse(filters.containsKey("templateId"));
+                    assertFalse(filters.containsKey("runMode"));
+                    assertEquals(java.sql.Timestamp.valueOf("2026-10-31 00:00:00").getTime(), ((Date) filters.get("beginTime")).getTime());
+                    assertEquals(java.sql.Timestamp.valueOf("2026-11-01 00:00:00").getTime(), ((Date) filters.get("endTime")).getTime());
+                    return switch (method.getName())
+                    {
+                        case "selectPeriodReportGroups" -> groups;
+                        case "selectPeriodReportDays" -> days;
+                        case "selectPeriodReportIssues" -> issues;
+                        case "selectPeriodReportRecords" -> records;
+                        default -> throw new AssertionError(method.getName());
+                    };
+                });
+        var service = new SupportAutoInspectionServiceImpl();
+        ReflectionTestUtils.setField(service, "autoInspectionMapper", mapper);
+        var request = new AutoInspectionReportExportBo();
+        request.setReportType("PERIOD_REPORT");
+        request.setReportMode("DAY");
+        request.setReportDate("2026-10-31");
+        request.setReportContent("FULL");
+        var response = new MockHttpServletResponse();
+        service.exportRecord(response, request);
+        assertEquals(4, calls.size());
+        assertEquals("selectPeriodReportRecords", calls.get(3));
+        byte[] bytes = response.getContentAsByteArray();
+        try (var doc = new XWPFDocument(new ByteArrayInputStream(bytes)))
+        {
+            String report = allText(doc);
+            assertTrue(report.contains("执行记录（3 条）"));
+            var table = doc.getTables().get(doc.getTables().size() - 1);
+            assertEquals(4, table.getNumberOfRows());
+            for (int i = 0; i < records.size(); i++)
+            {
+                assertTrue(table.getRow(i + 1).getCell(0).getText().contains("#" + records.get(i).get("recordId")));
+                assertTrue(table.getRow(i + 1).getCell(1).getText().contains((String) records.get(i).get("planName")));
+            }
+        }
+        String output = System.getProperty("rynew.report.output");
+        if (output != null)
+        {
+            Path dir = Path.of(output);
+            Files.createDirectories(dir);
+            Files.write(dir.resolve("双计划完整版日报.docx"), bytes);
+        }
     }
 
     @Test
@@ -167,15 +244,22 @@ class AutoInspectionPeriodReportTest
         for (String method : List.of("selectPeriodReportGroups", "selectPeriodReportDays", "selectPeriodReportIssues"))
         {
             String sql = config.getMappedStatement(SupportAutoInspectionMapper.class.getName() + "." + method)
-                    .getBoundSql(map("beginTime", new Date(), "endTime", new Date(), "siteId", 1L)).getSql();
+                    .getBoundSql(map("beginTime", new Date(), "endTime", new Date(), "siteId", 1L)).getSql().replaceAll("\\s+", " ");
             assertTrue(sql.contains("r.inspection_time >= ?"));
             assertTrue(sql.contains("r.inspection_time < ?"));
-            assertTrue(sql.contains("r.site_id = ?"));
+            assertTrue(sql.contains("coalesce(r.site_id, report_plan.site_id) = ?"));
             assertTrue(sql.contains("group by"));
             assertFalse(sql.contains("result_detail"));
             assertFalse(sql.contains("password"));
             assertFalse(sql.contains("run_mode ="));
         }
+        String detailSql = config.getMappedStatement(SupportAutoInspectionMapper.class.getName() + ".selectPeriodReportRecords")
+                .getBoundSql(map("beginTime", new Date(), "endTime", new Date(), "siteId", 1L)).getSql().replaceAll("\\s+", " ");
+        assertTrue(detailSql.contains("coalesce(r.site_id, report_plan.site_id) = ?"));
+        assertTrue(detailSql.contains("order by r.inspection_time, r.record_id"));
+        assertFalse(detailSql.contains("group by"));
+        assertFalse(detailSql.contains("limit"));
+        assertFalse(detailSql.contains("and r.plan_id ="));
     }
 
     static Map<String, Object> group(Long siteId, Long platformId, String name, long total, long normal, long abnormal, long warning, long skipped)

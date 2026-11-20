@@ -1691,6 +1691,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
     }
 
     @Override
+    @Transactional(readOnly = true)
     public void exportRecord(HttpServletResponse response, AutoInspectionReportExportBo record)
     {
         exportRecordMap(response, toMap(record));
@@ -1727,21 +1728,23 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         query.put("endTime", toDate(period.end.atStartOfDay()));
         query.put("siteId", params.get("siteId"));
         query.put("mainPlatformId", params.get("mainPlatformId"));
+        query.put("byHour", period.daily());
         // Aggregate in SQL so a month of frequent sampling never becomes an in-memory execution log.
         List<Map<String, Object>> groups = autoInspectionMapper.selectPeriodReportGroups(query);
         List<Map<String, Object>> days = autoInspectionMapper.selectPeriodReportDays(query);
         List<Map<String, Object>> issues = autoInspectionMapper.selectPeriodReportIssues(query);
         try
         {
-            byte[] bytes = AutoInspectionPeriodReport.write(period, groups, days, issues);
+            List<Map<String, Object>> records = period.full ? autoInspectionMapper.selectPeriodReportRecords(query) : List.of();
+            byte[] bytes = AutoInspectionPeriodReport.write(period, groups, days, issues, records);
             response.setContentType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
             FileUtils.setAttachmentResponseHeader(response, period.fileName());
             response.getOutputStream().write(bytes);
         }
         catch (Exception e)
         {
-            log.error("导出自动化巡检周期汇总报告失败", e);
-            throw new ServiceException("导出巡检汇总报告失败，请稍后重试");
+            log.error("导出自动化巡检周期报告失败", e);
+            throw new ServiceException("导出巡检报告失败，请稍后重试");
         }
     }
 

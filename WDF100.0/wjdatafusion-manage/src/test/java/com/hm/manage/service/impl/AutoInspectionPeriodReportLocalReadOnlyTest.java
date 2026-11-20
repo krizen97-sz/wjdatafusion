@@ -7,6 +7,7 @@ import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Timestamp;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import org.apache.ibatis.builder.xml.XMLMapperBuilder;
@@ -58,6 +59,9 @@ class AutoInspectionPeriodReportLocalReadOnlyTest
                 var days = mapper.selectPeriodReportDays(query);
                 var issues = mapper.selectPeriodReportIssues(query);
                 assertEquals(AutoInspectionPeriodReport.totals(groups), AutoInspectionPeriodReport.totals(days));
+                var records = mapper.selectPeriodReportRecords(query);
+                assertEquals(AutoInspectionPeriodReport.totals(groups).get("totalCount"), (long) records.size());
+                assertEquals(records.size(), new HashSet<>(records.stream().map(row -> row.get("recordId")).toList()).size());
                 try (var statement = session.getConnection().prepareStatement(
                         "select count(*) from sup_auto_inspection_record where inspection_time >= ? and inspection_time < ?"))
                 {
@@ -74,6 +78,33 @@ class AutoInspectionPeriodReportLocalReadOnlyTest
                     assertEquals(1L, ((Number) group.get("siteId")).longValue());
                 for (var issue : mapper.selectPeriodReportIssues(query))
                     assertEquals(1L, ((Number) issue.get("siteId")).longValue());
+                var daily = AutoInspectionPeriodReportTest.map("beginTime", Timestamp.valueOf("2026-09-22 00:00:00"),
+                        "endTime", Timestamp.valueOf("2026-09-23 00:00:00"), "byHour", true);
+                var dailyRecords = mapper.selectPeriodReportRecords(daily);
+                var hours = mapper.selectPeriodReportDays(daily);
+                assertTrue(hours.stream().allMatch(row -> row.get("reportDate").toString().endsWith(":00")));
+                assertEquals((long) dailyRecords.size(), AutoInspectionPeriodReport.totals(hours).get("totalCount"));
+                var expectedIds = new HashSet<Long>();
+                var expectedPlanIds = new HashSet<Long>();
+                try (var statement = session.getConnection().prepareStatement(
+                        "select record_id, plan_id from sup_auto_inspection_record where inspection_time >= ? and inspection_time < ?"))
+                {
+                    statement.setObject(1, daily.get("beginTime"));
+                    statement.setObject(2, daily.get("endTime"));
+                    try (var result = statement.executeQuery())
+                    {
+                        while (result.next())
+                        {
+                            expectedIds.add(result.getLong("record_id"));
+                            Long planId = result.getObject("plan_id", Long.class);
+                            if (planId != null) expectedPlanIds.add(planId);
+                        }
+                    }
+                }
+                assertEquals(expectedIds, new HashSet<>(dailyRecords.stream().map(row -> ((Number) row.get("recordId")).longValue()).toList()));
+                assertEquals(expectedPlanIds, new HashSet<>(dailyRecords.stream().filter(row -> row.get("planId") != null)
+                        .map(row -> ((Number) row.get("planId")).longValue()).toList()));
+                System.out.println("Daily report verification: " + expectedIds.size() + " executions, " + expectedPlanIds.size() + " plans");
                 String output = System.getProperty("rynew.report.output");
                 if (output != null)
                 {

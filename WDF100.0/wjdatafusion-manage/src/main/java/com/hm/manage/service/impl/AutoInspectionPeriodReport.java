@@ -39,11 +39,13 @@ import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblLayoutType;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STTblLayoutType;
 import com.hm.common.exception.ServiceException;
 
-/** Period-level reporting only: no execution log or connection payload is embedded. */
+/** Word report for a selected day, week, or month. */
 final class AutoInspectionPeriodReport
 {
     private static final DateTimeFormatter COMPACT = DateTimeFormatter.ofPattern("yyyyMMdd");
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("MM-dd HH:mm");
+    private static final DateTimeFormatter EXECUTION_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter HOUR_BUCKET = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
     private static final String[] COUNTS = {"normalCount", "abnormalCount", "warningCount", "skippedCount"};
     private static final Color[] COLORS = {new Color(52, 153, 104), new Color(207, 75, 83),
             new Color(216, 157, 48), new Color(148, 160, 177)};
@@ -52,50 +54,86 @@ final class AutoInspectionPeriodReport
     {
         final LocalDate begin;
         final LocalDate end;
-        final boolean monthly;
+        final String mode;
+        final boolean full;
 
-        private Period(LocalDate begin, LocalDate end, boolean monthly)
+        private Period(LocalDate begin, LocalDate end, String mode, boolean full)
         {
             this.begin = begin;
             this.end = end;
-            this.monthly = monthly;
+            this.mode = mode;
+            this.full = full;
         }
 
-        String title() { return monthly ? "自动化巡检月报" : "自动化巡检周报"; }
-        String label() { return begin + " 至 " + end.minusDays(1); }
+        String title()
+        {
+            return switch (mode)
+            {
+                case "DAY" -> "自动化巡检日报";
+                case "MONTH" -> "自动化巡检月报";
+                default -> "自动化巡检周报";
+            };
+        }
+
+        boolean daily() { return "DAY".equals(mode); }
+
+        String label() { return daily() ? begin.toString() : begin + " 至 " + end.minusDays(1); }
+
         String fileName()
         {
-            return title() + "_" + (monthly ? YearMonth.from(begin).toString().replace("-", "")
-                    : COMPACT.format(begin) + "-" + COMPACT.format(end.minusDays(1))) + ".docx";
+            String dates = switch (mode)
+            {
+                case "DAY" -> COMPACT.format(begin);
+                case "MONTH" -> YearMonth.from(begin).toString().replace("-", "");
+                default -> COMPACT.format(begin) + "-" + COMPACT.format(end.minusDays(1));
+            };
+            return title() + "_" + dates + (full ? "_完整版" : "") + ".docx";
         }
     }
 
     static Period resolve(Map<String, Object> params)
     {
-        String mode = text(params, "reportMode", "WEEK");
+        String mode = text(params, "reportMode", "WEEK").toUpperCase(java.util.Locale.ROOT);
+        String content = text(params, "reportContent", "SUMMARY").toUpperCase(java.util.Locale.ROOT);
+        if (!"SUMMARY".equals(content) && !"FULL".equals(content))
+        {
+            throw new ServiceException("请选择精简版或完整版");
+        }
+        boolean full = "FULL".equals(content);
         try
         {
-            if ("MONTH".equalsIgnoreCase(mode))
+            if ("MONTH".equals(mode))
             {
                 YearMonth month = YearMonth.parse(text(params, "month", YearMonth.now().toString()));
-                return new Period(month.atDay(1), month.plusMonths(1).atDay(1), true);
+                return new Period(month.atDay(1), month.plusMonths(1).atDay(1), mode, full);
             }
-            if (!"WEEK".equalsIgnoreCase(mode))
+            if ("DAY".equals(mode))
+            {
+                LocalDate day = LocalDate.parse(text(params, "reportDate", LocalDate.now().toString()));
+                return new Period(day, day.plusDays(1), mode, full);
+            }
+            if (!"WEEK".equals(mode))
             {
                 throw new IllegalArgumentException("unknown report mode");
             }
             LocalDate day = LocalDate.parse(text(params, "weekDate", LocalDate.now().toString()));
             LocalDate begin = day.with(DayOfWeek.MONDAY);
-            return new Period(begin, begin.plusDays(7), false);
+            return new Period(begin, begin.plusDays(7), mode, full);
         }
         catch (RuntimeException e)
         {
-            throw new ServiceException("请选择有效的周或月份");
+            throw new ServiceException("请选择有效的日期、周或月份");
         }
     }
 
     static byte[] write(Period period, List<Map<String, Object>> groups,
                         List<Map<String, Object>> days, List<Map<String, Object>> issues) throws IOException
+    {
+        return write(period, groups, days, issues, List.of());
+    }
+
+    static byte[] write(Period period, List<Map<String, Object>> groups, List<Map<String, Object>> days,
+                        List<Map<String, Object>> issues, List<Map<String, Object>> records) throws IOException
     {
         Map<String, Long> totals = totals(groups);
         Map<String, Map<String, Object>> scopes = new LinkedHashMap<>();
@@ -132,7 +170,7 @@ final class AutoInspectionPeriodReport
                 margins.setAttributeNS(namespace, "w:" + side, side.equals("top") || side.equals("bottom") ? "960" : "1020");
             sectionNode.appendChild(margins);
 
-            paragraph(document, period.title(), 20, true, ParagraphAlignment.CENTER);
+            paragraph(document, period.title() + (period.full ? " 完整版" : ""), 20, true, ParagraphAlignment.CENTER);
             paragraph(document, "统计周期：" + period.label() + "    生成："
                     + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")), 9, false, ParagraphAlignment.CENTER);
             table(document, List.of("巡检人员签字", "用户签字", "确认日期"),
@@ -147,7 +185,8 @@ final class AutoInspectionPeriodReport
             }
             else
             {
-                paragraph(document, "执行结果分布与每日执行趋势", 10, true, ParagraphAlignment.LEFT);
+                paragraph(document, period.daily() ? "执行结果分布与分时趋势" : "执行结果分布与每日执行趋势",
+                        10, true, ParagraphAlignment.LEFT);
                 XWPFRun image = document.createParagraph().createRun();
                 try
                 {
@@ -158,7 +197,7 @@ final class AutoInspectionPeriodReport
                 {
                     throw new IOException("无法生成报告图表", e);
                 }
-                legend(document, totals);
+                legend(document, totals, period.daily());
                 paragraph(document, "异常与关注按检查对象合并为 " + issues.size() + " 项，详见汇总清单。", 10, false, ParagraphAlignment.LEFT);
             }
             paragraph(document, "正常率按全部已记录执行统计；无记录不代表正常。例行、高频及手动执行均计入。", 9, false, ParagraphAlignment.LEFT);
@@ -177,7 +216,7 @@ final class AutoInspectionPeriodReport
             for (Map<String, Object> group : groups)
             {
                 groupRows.add(List.of(scopeLabel(group), text(group, "templateName", "未命名模板")
-                                + "\n" + text(group, "planName", "手动执行"),
+                                + "\n" + planLabel(group),
                         String.valueOf(number(group, "totalCount")), String.valueOf(number(group, "abnormalCount")),
                         String.valueOf(number(group, "warningCount")), latestStatus(group)));
             }
@@ -216,9 +255,54 @@ final class AutoInspectionPeriodReport
                 }
                 table(document, List.of("归属", "步骤 / 检查对象", "异常 / 关注次数", "首次至最近出现", "周期内最近情况"), issueRows);
             }
+            if (period.full)
+            {
+                writeExecutionRecords(document, records);
+            }
             document.write(output);
             return output.toByteArray();
         }
+    }
+
+    private static void writeExecutionRecords(XWPFDocument document, List<Map<String, Object>> records)
+    {
+        heading(document, "五、执行记录（" + records.size() + " 条）");
+        if (records.isEmpty())
+        {
+            paragraph(document, "本周期暂无执行记录。", 10, false, ParagraphAlignment.LEFT);
+            return;
+        }
+        List<String> headers = List.of("执行时间 / 编号", "计划 / 模板", "归属", "来源 / 结果", "执行摘要");
+        int[] widths = {19, 24, 17, 14, 26};
+        XWPFTable executions = createTable(document, headers, widths);
+        for (Map<String, Object> record : records)
+        {
+            LocalDateTime time = timestamp(record.get("inspectionTime"));
+            String source = "MANUAL".equals(record.get("sourceType")) ? "手动执行"
+                    : "FREQUENT".equals(record.get("runMode")) ? "高频巡检" : "例行巡检";
+            String status = switch (text(record, "resultStatus", ""))
+            {
+                case "1" -> "正常";
+                case "2" -> "异常";
+                case "4" -> "关注";
+                default -> "未执行";
+            };
+            List<String> cells = List.of(
+                    (LocalDateTime.MIN.equals(time) ? "-" : EXECUTION_TIME.format(time)) + "\n#" + record.get("recordId"),
+                    planLabel(record) + "\n" + text(record, "templateName", "未命名模板"),
+                    scopeLabel(record).replace(" / ", "\n"),
+                    source + "\n" + status,
+                    text(record, "summary", "-")
+                            + (record.get("executorName") == null ? "" : "\n" + record.get("executorName"))
+                            + (record.get("durationMs") == null ? "" : "\n耗时 " + record.get("durationMs") + " ms"));
+            writeCells(executions.createRow(), cells, widths, false);
+        }
+    }
+
+    private static String planLabel(Map<String, Object> row)
+    {
+        Object id = row.get("planId");
+        return text(row, "planName", id == null ? "手动执行" : "计划 #" + id);
     }
 
     static String scopeKey(Map<String, Object> row)
@@ -349,16 +433,8 @@ final class AutoInspectionPeriodReport
 
     private static void table(XWPFDocument document, List<String> headers, List<List<String>> rows)
     {
-        XWPFTable table = document.createTable(1, headers.size());
-        table.setWidth(9866);
-        CTTblLayoutType layout = table.getCTTbl().getTblPr().addNewTblLayout();
-        layout.setType(STTblLayoutType.FIXED);
         int[] weights = columnWeights(headers);
-        var grid = table.getCTTbl().addNewTblGrid();
-        for (int i = 0; i < weights.length; i++)
-            grid.addNewGridCol().setW(BigInteger.valueOf(9866L * weights[i] / 100));
-        table.getRow(0).setRepeatHeader(true);
-        writeCells(table.getRow(0), headers, weights, true);
+        XWPFTable table = createTable(document, headers, weights);
         if (rows.isEmpty())
         {
             List<String> empty = new ArrayList<>();
@@ -366,6 +442,22 @@ final class AutoInspectionPeriodReport
             writeCells(table.createRow(), empty, weights, false);
         }
         for (List<String> row : rows) writeCells(table.createRow(), row, weights, false);
+    }
+
+    private static XWPFTable createTable(XWPFDocument document, List<String> headers, int[] weights)
+    {
+        XWPFTable table = document.createTable(1, headers.size());
+        table.setWidth(9866);
+        CTTblLayoutType layout = table.getCTTbl().getTblPr().addNewTblLayout();
+        layout.setType(STTblLayoutType.FIXED);
+        var grid = table.getCTTbl().addNewTblGrid();
+        for (int weight : weights)
+        {
+            grid.addNewGridCol().setW(BigInteger.valueOf(9866L * weight / 100));
+        }
+        table.getRow(0).setRepeatHeader(true);
+        writeCells(table.getRow(0), headers, weights, true);
+        return table;
     }
 
     private static int[] columnWeights(List<String> headers)
@@ -402,7 +494,7 @@ final class AutoInspectionPeriodReport
         }
     }
 
-    private static void legend(XWPFDocument document, Map<String, Long> totals)
+    private static void legend(XWPFDocument document, Map<String, Long> totals, boolean daily)
     {
         XWPFParagraph paragraph = document.createParagraph();
         paragraph.setSpacingAfter(100);
@@ -418,7 +510,7 @@ final class AutoInspectionPeriodReport
         }
         XWPFRun note = paragraph.createRun();
         note.setFontSize(9);
-        note.setText("横轴：日期；纵轴：每日执行次数");
+        note.setText(daily ? "横轴为小时，纵轴为执行次数" : "横轴：日期；纵轴：每日执行次数");
     }
 
     private static byte[] chart(Period period, Map<String, Long> totals, List<Map<String, Object>> days) throws IOException
@@ -451,7 +543,7 @@ final class AutoInspectionPeriodReport
 
             Map<String, Map<String, Object>> byDate = new LinkedHashMap<>();
             for (Map<String, Object> day : days) byDate.put(text(day, "reportDate", ""), day);
-            int dayCount = (int) java.time.temporal.ChronoUnit.DAYS.between(period.begin, period.end);
+            int bucketCount = period.daily() ? 24 : (int) java.time.temporal.ChronoUnit.DAYS.between(period.begin, period.end);
             long max = Math.max(1, days.stream().mapToLong(row -> number(row, "totalCount")).max().orElse(0));
             int tickCount = (int) Math.min(4, max);
             long ceiling = (long) Math.ceil(max / (double) tickCount) * tickCount;
@@ -465,11 +557,12 @@ final class AutoInspectionPeriodReport
                 g.setColor(new Color(97, 113, 132));
                 g.drawString(String.valueOf(ceiling * tick / tickCount), 405, y + 7);
             }
-            double slot = 940.0 / dayCount;
-            for (int d = 0; d < dayCount; d++)
+            double slot = 940.0 / bucketCount;
+            for (int d = 0; d < bucketCount; d++)
             {
-                LocalDate date = period.begin.plusDays(d);
-                Map<String, Object> day = byDate.getOrDefault(date.toString(), Map.of());
+                LocalDate date = period.daily() ? period.begin : period.begin.plusDays(d);
+                String bucket = period.daily() ? HOUR_BUCKET.format(date.atTime(d, 0)) : date.toString();
+                Map<String, Object> day = byDate.getOrDefault(bucket, Map.of());
                 int x = (int) (477 + d * slot);
                 int bottom = 355;
                 for (int i = 0; i < COUNTS.length; i++)
@@ -480,7 +573,7 @@ final class AutoInspectionPeriodReport
                     bottom -= height;
                 }
                 g.setColor(new Color(97, 113, 132));
-                String dayLabel = String.valueOf(date.getDayOfMonth());
+                String dayLabel = String.valueOf(period.daily() ? d : date.getDayOfMonth());
                 g.drawString(dayLabel, x, 393);
             }
         }

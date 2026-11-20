@@ -432,17 +432,43 @@
         delete from sup_auto_inspection_health_daily where plan_id = #{planId}
     </delete>
 
+    <sql id="periodReportPlanJoin">
+        left join sup_auto_inspection_plan report_plan on report_plan.plan_id = r.plan_id
+    </sql>
+
+    <sql id="periodReportSiteId">coalesce(r.site_id, report_plan.site_id)</sql>
+    <sql id="periodReportPlatformId">
+        case when r.scope_type = 'SITE' then null
+             when r.main_platform_id is not null then r.main_platform_id
+             when r.site_id is null or r.site_id = report_plan.site_id then report_plan.main_platform_id end
+    </sql>
+    <sql id="periodReportIdentity">
+        <include refid="periodReportSiteId"/> as siteId,
+        <include refid="periodReportPlatformId"/> as mainPlatformId,
+        r.template_id as templateId, r.plan_id as planId
+    </sql>
+    <sql id="periodReportGroupKey">
+        <include refid="periodReportSiteId"/>, <include refid="periodReportPlatformId"/>, r.template_id, r.plan_id
+    </sql>
+    <sql id="periodReportSiteName">
+        coalesce(nullif(r.site_name, ''), case when r.site_id is null or r.site_id = report_plan.site_id then report_plan.site_name end)
+    </sql>
+    <sql id="periodReportPlatformName">
+        coalesce(nullif(r.main_platform_name, ''),
+          case when r.main_platform_id is null or r.main_platform_id = report_plan.main_platform_id then report_plan.main_platform_name end)
+    </sql>
+    <sql id="periodReportPlanName">coalesce(nullif(r.plan_name, ''), report_plan.plan_name)</sql>
     <sql id="periodReportWhere">
         r.inspection_time &gt;= #{beginTime} and r.inspection_time &lt; #{endTime}
-        <if test="siteId != null">and r.site_id = #{siteId}</if>
-        <if test="mainPlatformId != null">and r.main_platform_id = #{mainPlatformId}</if>
+        <if test="siteId != null">and <include refid="periodReportSiteId"/> = #{siteId}</if>
+        <if test="mainPlatformId != null">and (<include refid="periodReportPlatformId"/>) = #{mainPlatformId}</if>
     </sql>
 
     <select id="selectPeriodReportGroups" resultType="java.util.HashMap">
-        select r.site_id as siteId, max(r.site_name) as siteName,
-               r.main_platform_id as mainPlatformId, max(r.main_platform_name) as mainPlatformName,
-               r.template_id as templateId, max(r.template_name) as templateName,
-               r.plan_id as planId, max(r.plan_name) as planName,
+        select <include refid="periodReportIdentity"/>,
+               max(<include refid="periodReportSiteName"/>) as siteName,
+               max(<include refid="periodReportPlatformName"/>) as mainPlatformName,
+               max(r.template_name) as templateName, max(<include refid="periodReportPlanName"/>) as planName,
                count(*) as totalCount,
                sum(case when r.result_status = '1' then 1 else 0 end) as normalCount,
                sum(case when r.result_status = '2' then 1 else 0 end) as abnormalCount,
@@ -452,29 +478,36 @@
                max(case when r.result_status = '2' then r.inspection_time end) as lastAbnormalTime,
                max(case when r.result_status = '4' then r.inspection_time end) as lastWarningTime,
                max(case when r.result_status not in ('1','2','4') or r.result_status is null then r.inspection_time end) as lastSkippedTime
-        from sup_auto_inspection_record r
+        from sup_auto_inspection_record r <include refid="periodReportPlanJoin"/>
         where <include refid="periodReportWhere"/>
-        group by r.site_id, r.main_platform_id, r.template_id, r.plan_id
-        order by r.site_id, r.main_platform_id, r.plan_id, r.template_id
+        group by <include refid="periodReportGroupKey"/>
+        order by siteId, mainPlatformId, planId, templateId
     </select>
 
+    <sql id="periodReportTimeBucket">
+        <choose>
+            <when test="byHour">date_format(r.inspection_time, '%Y-%m-%d %H:00')</when>
+            <otherwise>date_format(r.inspection_time, '%Y-%m-%d')</otherwise>
+        </choose>
+    </sql>
+
     <select id="selectPeriodReportDays" resultType="java.util.HashMap">
-        select date_format(r.inspection_time, '%Y-%m-%d') as reportDate, count(*) as totalCount,
+        select <include refid="periodReportTimeBucket"/> as reportDate, count(*) as totalCount,
                sum(case when r.result_status = '1' then 1 else 0 end) as normalCount,
                sum(case when r.result_status = '2' then 1 else 0 end) as abnormalCount,
                sum(case when r.result_status = '4' then 1 else 0 end) as warningCount,
                sum(case when r.result_status not in ('1','2','4') or r.result_status is null then 1 else 0 end) as skippedCount
-        from sup_auto_inspection_record r
+        from sup_auto_inspection_record r <include refid="periodReportPlanJoin"/>
         where <include refid="periodReportWhere"/>
-        group by date_format(r.inspection_time, '%Y-%m-%d')
+        group by <include refid="periodReportTimeBucket"/>
         order by reportDate
     </select>
 
     <select id="selectPeriodReportIssues" resultType="java.util.HashMap">
-        select r.site_id as siteId, max(r.site_name) as siteName,
-               r.main_platform_id as mainPlatformId, max(r.main_platform_name) as mainPlatformName,
-               r.template_id as templateId, max(r.template_name) as templateName,
-               r.plan_id as planId, max(r.plan_name) as planName,
+        select <include refid="periodReportIdentity"/>,
+               max(<include refid="periodReportSiteName"/>) as siteName,
+               max(<include refid="periodReportPlatformName"/>) as mainPlatformName,
+               max(r.template_name) as templateName, max(<include refid="periodReportPlanName"/>) as planName,
                sr.step_id as stepId, max(sr.step_name) as stepName,
                tr.target_id as targetId, tr.target_name as targetName, 'TARGET' as issueLevel,
                sum(case when tr.result_status = '2' then 1 else 0 end) as abnormalCount,
@@ -484,17 +517,17 @@
                max(case when tr.result_status = '2' then r.inspection_time end) as lastAbnormalTime,
                max(case when tr.result_status = '4' then r.inspection_time end) as lastWarningTime,
                max(case when tr.result_status not in ('1','2','4') or tr.result_status is null then r.inspection_time end) as lastSkippedTime
-        from sup_auto_inspection_record r
+        from sup_auto_inspection_record r <include refid="periodReportPlanJoin"/>
         inner join sup_auto_inspection_target_result tr on tr.record_id = r.record_id
         left join sup_auto_inspection_step_result sr on sr.step_result_id = tr.step_result_id
         where <include refid="periodReportWhere"/>
-        group by r.site_id, r.main_platform_id, r.template_id, r.plan_id, sr.step_id, tr.target_id, tr.target_name
+        group by <include refid="periodReportGroupKey"/>, sr.step_id, tr.target_id, tr.target_name
         having sum(case when tr.result_status in ('2','4') then 1 else 0 end) &gt; 0
         union all
-        select r.site_id as siteId, max(r.site_name) as siteName,
-               r.main_platform_id as mainPlatformId, max(r.main_platform_name) as mainPlatformName,
-               r.template_id as templateId, max(r.template_name) as templateName,
-               r.plan_id as planId, max(r.plan_name) as planName,
+        select <include refid="periodReportIdentity"/>,
+               max(<include refid="periodReportSiteName"/>) as siteName,
+               max(<include refid="periodReportPlatformName"/>) as mainPlatformName,
+               max(r.template_name) as templateName, max(<include refid="periodReportPlanName"/>) as planName,
                null as stepId, '执行过程' as stepName, null as targetId, '未生成异常子项的执行' as targetName, 'EXECUTION' as issueLevel,
                sum(case when r.result_status = '2' then 1 else 0 end) as abnormalCount,
                sum(case when r.result_status = '4' then 1 else 0 end) as warningCount,
@@ -502,13 +535,26 @@
                max(case when r.result_status = '2' then r.inspection_time end) as lastAbnormalTime,
                max(case when r.result_status = '4' then r.inspection_time end) as lastWarningTime,
                null as lastSkippedTime
-        from sup_auto_inspection_record r
+        from sup_auto_inspection_record r <include refid="periodReportPlanJoin"/>
         where <include refid="periodReportWhere"/>
           and r.result_status in ('2','4')
           and not exists (select 1 from sup_auto_inspection_target_result missing_target
                           where missing_target.record_id = r.record_id and missing_target.result_status in ('2','4'))
-        group by r.site_id, r.main_platform_id, r.template_id, r.plan_id
+        group by <include refid="periodReportGroupKey"/>
         order by abnormalCount desc, warningCount desc, firstIssueTime
+    </select>
+
+    <select id="selectPeriodReportRecords" resultType="java.util.HashMap">
+        select r.record_id as recordId, r.inspection_time as inspectionTime,
+               r.source_type as sourceType, r.run_mode as runMode, r.result_status as resultStatus,
+               r.executor_name as executorName, r.duration_ms as durationMs, r.summary,
+               <include refid="periodReportIdentity"/>,
+               <include refid="periodReportSiteName"/> as siteName,
+               <include refid="periodReportPlatformName"/> as mainPlatformName,
+               r.template_name as templateName, <include refid="periodReportPlanName"/> as planName
+        from sup_auto_inspection_record r <include refid="periodReportPlanJoin"/>
+        where <include refid="periodReportWhere"/>
+        order by r.inspection_time, r.record_id
     </select>
 
     <select id="selectRecordList" parameterType="java.util.HashMap" resultType="java.util.HashMap">

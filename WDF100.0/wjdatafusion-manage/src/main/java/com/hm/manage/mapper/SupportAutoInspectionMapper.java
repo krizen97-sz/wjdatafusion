@@ -12,6 +12,8 @@ public interface SupportAutoInspectionMapper
 
     List<Map<String, Object>> selectPeriodReportIssues(Map<String, Object> params);
 
+    List<Map<String, Object>> selectPeriodReportRecords(Map<String, Object> params);
+
     List<Map<String, Object>> selectToolList(Map<String, Object> params);
 
     Map<String, Object> selectToolByCode(String toolCode);

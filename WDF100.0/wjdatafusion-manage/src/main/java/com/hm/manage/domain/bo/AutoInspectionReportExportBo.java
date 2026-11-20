@@ -11,6 +11,8 @@ public class AutoInspectionReportExportBo extends AutoInspectionRecordQuery
     private String weekDate;
     private String reportType;
     private String reportMode;
+    private String reportContent;
+    private String reportDate;
     private String month;
     private String rangeType;
     private List<Long> recordIds = new ArrayList<>();
@@ -23,6 +25,10 @@ public class AutoInspectionReportExportBo extends AutoInspectionRecordQuery
     public void setReportType(String reportType) { this.reportType = reportType; }
     public String getReportMode() { return reportMode; }
     public void setReportMode(String reportMode) { this.reportMode = reportMode; }
+    public String getReportContent() { return reportContent; }
+    public void setReportContent(String reportContent) { this.reportContent = reportContent; }
+    public String getReportDate() { return reportDate; }
+    public void setReportDate(String reportDate) { this.reportDate = reportDate; }
     public String getMonth() { return month; }
     public void setMonth(String month) { this.month = month; }
     public String getRangeType() { return rangeType; }
