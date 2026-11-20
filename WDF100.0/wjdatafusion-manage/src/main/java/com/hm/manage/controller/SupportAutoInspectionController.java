@@ -164,6 +164,14 @@ public class SupportAutoInspectionController extends BaseController
     }
 
     @PreAuthorize("@ss.hasPermi('support:autoInspection:template')")
+    @Log(title = "自动化巡检模板", businessType = BusinessType.EXPORT)
+    @PostMapping("/templates/{templateId}/export")
+    public void exportTemplate(HttpServletResponse response, @PathVariable Long templateId)
+    {
+        autoInspectionService.exportTemplate(response, templateId);
+    }
+
+    @PreAuthorize("@ss.hasPermi('support:autoInspection:template')")
     @Log(title = "自动化巡检模板", businessType = BusinessType.INSERT)
     @PostMapping("/templates")
     public AjaxResult addTemplate(@RequestBody AutoInspectionTemplateSaveBo template)

@@ -129,11 +129,11 @@ final class AutoInspectionPeriodReport
     static byte[] write(Period period, List<Map<String, Object>> groups,
                         List<Map<String, Object>> days, List<Map<String, Object>> issues) throws IOException
     {
-        return write(period, groups, days, issues, List.of());
+        return write(period, groups, days, issues, AutoInspectionWordDetails.Evidence.EMPTY);
     }
 
     static byte[] write(Period period, List<Map<String, Object>> groups, List<Map<String, Object>> days,
-                        List<Map<String, Object>> issues, List<Map<String, Object>> records) throws IOException
+                        List<Map<String, Object>> issues, AutoInspectionWordDetails.Evidence executionEvidence) throws IOException
     {
         Map<String, Long> totals = totals(groups);
         Map<String, Map<String, Object>> scopes = new LinkedHashMap<>();
@@ -157,25 +157,19 @@ final class AutoInspectionPeriodReport
 
         try (XWPFDocument document = new XWPFDocument(); ByteArrayOutputStream output = new ByteArrayOutputStream())
         {
-            var section = document.getDocument().getBody().addNewSectPr();
-            // Set optional section fields through DOM; the bundled POI schema subset omits their Java types.
-            var sectionNode = section.getDomNode();
-            String namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-            var size = sectionNode.getOwnerDocument().createElementNS(namespace, "w:pgSz");
-            size.setAttributeNS(namespace, "w:w", "11906");
-            size.setAttributeNS(namespace, "w:h", "16838");
-            sectionNode.appendChild(size);
-            var margins = sectionNode.getOwnerDocument().createElementNS(namespace, "w:pgMar");
-            for (String side : List.of("top", "bottom", "left", "right"))
-                margins.setAttributeNS(namespace, "w:" + side, side.equals("top") || side.equals("bottom") ? "960" : "1020");
-            sectionNode.appendChild(margins);
-
+            setPageLayout(document);
             paragraph(document, period.title() + (period.full ? " 完整版" : ""), 20, true, ParagraphAlignment.CENTER);
             paragraph(document, "统计周期：" + period.label() + "    生成："
                     + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")), 9, false, ParagraphAlignment.CENTER);
             table(document, List.of("巡检人员签字", "用户签字", "确认日期"),
                     List.of(List.of("________________", "________________", "________________")));
-            heading(document, "一、周期巡检概况");
+            if (period.full)
+            {
+                AutoInspectionWordDetails.writePlanOverview(document, executionEvidence);
+                heading(document, "二、按日巡检结果");
+                writeDailyResults(document, period, days);
+            }
+            heading(document, period.full ? "三、周期结果与状态变化" : "一、周期巡检概况");
             table(document, List.of("覆盖归属", "计划 / 模板组合", "执行次数", "正常 / 异常 / 关注 / 未执行"),
                     List.of(List.of(String.valueOf(scopes.size()), String.valueOf(groups.size()),
                             String.valueOf(totals.get("totalCount")), counts(totals))));
@@ -202,7 +196,7 @@ final class AutoInspectionPeriodReport
             }
             paragraph(document, "正常率按全部已记录执行统计；无记录不代表正常。例行、高频及手动执行均计入。", 9, false, ParagraphAlignment.LEFT);
 
-            heading(document, "二、现场与主平台汇总");
+            heading(document, period.full ? "四、现场与主平台汇总" : "二、现场与主平台汇总");
             List<List<String>> scopeRows = new ArrayList<>();
             for (Map<String, Object> scope : scopes.values())
             {
@@ -211,7 +205,7 @@ final class AutoInspectionPeriodReport
             }
             table(document, List.of("归属", "计划 / 模板", "执行", "正常率", "正常 / 异常 / 关注 / 未执行", "周期结果"), scopeRows);
 
-            heading(document, "三、检查内容汇总");
+            heading(document, period.full ? "五、计划与模板执行汇总" : "三、检查内容汇总");
             List<List<String>> groupRows = new ArrayList<>();
             for (Map<String, Object> group : groups)
             {
@@ -222,7 +216,7 @@ final class AutoInspectionPeriodReport
             }
             table(document, List.of("归属", "模板 / 计划", "执行次数", "异常", "关注", "周期末最近结果"), groupRows);
 
-            heading(document, "四、异常与关注汇总");
+            heading(document, period.full ? "六、异常与关注汇总" : "四、异常与关注汇总");
             if (issues.isEmpty())
             {
                 paragraph(document, totals.get("totalCount") == 0 ? "本周期无可分析的执行记录。"
@@ -257,16 +251,53 @@ final class AutoInspectionPeriodReport
             }
             if (period.full)
             {
-                writeExecutionRecords(document, records);
+                writeExecutionRecords(document, executionEvidence.records());
+                AutoInspectionWordDetails.writeExecutions(document, executionEvidence);
             }
             document.write(output);
             return output.toByteArray();
         }
     }
 
+    static void setPageLayout(XWPFDocument document)
+    {
+        // The bundled POI schema subset omits the Java types for the page size and margins.
+        var sectionNode = document.getDocument().getBody().addNewSectPr().getDomNode();
+        String namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+        var size = sectionNode.getOwnerDocument().createElementNS(namespace, "w:pgSz");
+        size.setAttributeNS(namespace, "w:w", "11906");
+        size.setAttributeNS(namespace, "w:h", "16838");
+        sectionNode.appendChild(size);
+        var margins = sectionNode.getOwnerDocument().createElementNS(namespace, "w:pgMar");
+        for (String side : List.of("top", "bottom", "left", "right"))
+            margins.setAttributeNS(namespace, "w:" + side, side.equals("top") || side.equals("bottom") ? "960" : "1020");
+        sectionNode.appendChild(margins);
+    }
+
+    private static void writeDailyResults(XWPFDocument doc, Period period, List<Map<String, Object>> buckets)
+    {
+        Map<String, List<Map<String, Object>>> byDay = new LinkedHashMap<>();
+        for (Map<String, Object> bucket : buckets)
+        {
+            String date = text(bucket, "reportDate", "");
+            if (date.length() >= 10)
+                byDay.computeIfAbsent(date.substring(0, 10), ignored -> new ArrayList<>()).add(bucket);
+        }
+        int[] widths = {19, 10, 10, 10, 10, 12, 11, 18};
+        XWPFTable table = createTable(doc, List.of("日期", "执行", "正常", "异常", "关注", "未执行", "正常率", "当日结论"), widths);
+        for (LocalDate day = period.begin; day.isBefore(period.end); day = day.plusDays(1))
+        {
+            Map<String, Object> row = new LinkedHashMap<>(totals(byDay.getOrDefault(day.toString(), List.of())));
+            writeCells(table.createRow(), List.of(day.toString(), String.valueOf(row.get("totalCount")),
+                    String.valueOf(row.get("normalCount")), String.valueOf(row.get("abnormalCount")),
+                    String.valueOf(row.get("warningCount")), String.valueOf(row.get("skippedCount")),
+                    rate(row), periodStatus(row)), widths, false);
+        }
+    }
+
     private static void writeExecutionRecords(XWPFDocument document, List<Map<String, Object>> records)
     {
-        heading(document, "五、执行记录（" + records.size() + " 条）");
+        heading(document, "七、执行记录（" + records.size() + " 条）");
         if (records.isEmpty())
         {
             paragraph(document, "本周期暂无执行记录。", 10, false, ParagraphAlignment.LEFT);
@@ -295,11 +326,11 @@ final class AutoInspectionPeriodReport
                     text(record, "summary", "-")
                             + (record.get("executorName") == null ? "" : "\n" + record.get("executorName"))
                             + (record.get("durationMs") == null ? "" : "\n耗时 " + record.get("durationMs") + " ms"));
-            writeCells(executions.createRow(), cells, widths, false);
+            writeCells(executions.createRow(), cells.stream().map(AutoInspectionWordDetails::safe).toList(), widths, false);
         }
     }
 
-    private static String planLabel(Map<String, Object> row)
+    static String planLabel(Map<String, Object> row)
     {
         Object id = row.get("planId");
         return text(row, "planName", id == null ? "手动执行" : "计划 #" + id);
@@ -326,7 +357,7 @@ final class AutoInspectionPeriodReport
         return result;
     }
 
-    private static String scopeLabel(Map<String, Object> row)
+    static String scopeLabel(Map<String, Object> row)
     {
         String site = text(row, "siteName", "未归属现场");
         return row.get("mainPlatformId") == null ? site + " / 现场公共"
@@ -393,7 +424,7 @@ final class AutoInspectionPeriodReport
         return value.isEmpty() ? fallback : value;
     }
 
-    private static LocalDateTime timestamp(Object value)
+    static LocalDateTime timestamp(Object value)
     {
         if (value instanceof java.sql.Timestamp t) return t.toLocalDateTime();
         if (value instanceof Date d) return d.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime();
@@ -409,14 +440,14 @@ final class AutoInspectionPeriodReport
         return time.equals(LocalDateTime.MIN) ? "-" : TIME.format(time);
     }
 
-    private static void heading(XWPFDocument document, String text)
+    static void heading(XWPFDocument document, String text)
     {
         XWPFParagraph paragraph = paragraph(document, text, 12, true, ParagraphAlignment.LEFT);
         paragraph.setKeepNext(true);
         paragraph.setSpacingBefore(180);
     }
 
-    private static XWPFParagraph paragraph(XWPFDocument document, String text, int size, boolean bold, ParagraphAlignment align)
+    static XWPFParagraph paragraph(XWPFDocument document, String text, int size, boolean bold, ParagraphAlignment align)
     {
         XWPFParagraph paragraph = document.createParagraph();
         paragraph.setAlignment(align);
@@ -444,7 +475,7 @@ final class AutoInspectionPeriodReport
         for (List<String> row : rows) writeCells(table.createRow(), row, weights, false);
     }
 
-    private static XWPFTable createTable(XWPFDocument document, List<String> headers, int[] weights)
+    static XWPFTable createTable(XWPFDocument document, List<String> headers, int[] weights)
     {
         XWPFTable table = document.createTable(1, headers.size());
         table.setWidth(9866);
@@ -468,7 +499,7 @@ final class AutoInspectionPeriodReport
         return headers.size() == 3 ? new int[] {34, 33, 33} : new int[] {18, 22, 16, 44};
     }
 
-    private static void writeCells(XWPFTableRow row, List<String> values, int[] weights, boolean header)
+    static void writeCells(XWPFTableRow row, List<String> values, int[] weights, boolean header)
     {
         row.setCantSplitRow(true);
         for (int i = 0; i < values.size(); i++)

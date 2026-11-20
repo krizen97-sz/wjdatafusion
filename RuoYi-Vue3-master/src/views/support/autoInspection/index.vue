@@ -498,12 +498,13 @@
             <template #default="scope"><el-tag size="small" :type="scope.row.status === '1' ? 'danger' : 'success'">{{ scope.row.status === '1' ? '停用' : '正常' }}</el-tag></template>
           </el-table-column>
           <el-table-column label="更新时间" prop="updateTime" width="150" align="center" />
-          <el-table-column label="操作" width="280" align="center">
+          <el-table-column label="操作" width="340" align="center">
             <template #default="scope">
               <div class="template-row-actions">
                 <el-button class="template-action template-action--edit" link type="primary" :icon="EditPen" @click="handleUpdateTemplate(scope.row)" v-hasPermi="['support:autoInspection:template']">编辑</el-button>
                 <el-button class="template-action template-action--run" link type="success" :icon="VideoPlay" :loading="templateRunId === scope.row.templateId" @click="handleRunTemplate(scope.row)" v-hasPermi="['support:autoInspection:run']">执行</el-button>
                 <el-button class="template-action template-action--copy" link type="warning" :icon="CopyDocument" :loading="templateCopyId === scope.row.templateId" @click="handleCopyTemplate(scope.row)" v-hasPermi="['support:autoInspection:template']">复制</el-button>
+                <el-button class="template-action" link type="primary" :icon="Download" @click="handleExportTemplate(scope.row)" v-hasPermi="['support:autoInspection:template']">导出</el-button>
                 <el-button class="template-action template-action--delete" link type="danger" :icon="DeleteIcon" @click="handleDeleteTemplate(scope.row)" v-hasPermi="['support:autoInspection:template']">删除</el-button>
               </div>
             </template>
@@ -2029,6 +2030,7 @@ import {
   CopyDocument,
   DataAnalysis,
   Delete as DeleteIcon,
+  Download,
   EditPen,
   Files,
   Setting,
@@ -2260,14 +2262,14 @@ const operationGuideSteps = [
   },
   {
     index: '02',
-    title: '创建和复制模板',
+    title: '维护巡检模板',
     place: '巡检配置 / 巡检模板',
     desc: '模板用于保存一组可重复执行的巡检步骤，适合按系统、平台或业务场景拆分。',
     manual: [
       '进入“巡检配置”后，先维护巡检模板。先选择或新增标签，再按系统或场景命名模板，例如“日常巡检 / TIM 平台每日巡检”。',
       '模板支持一键复制，复制后名称追加“（复制）”，适合快速创建同类系统的巡检方案；步骤也支持复制、上移、下移和编辑。'
     ],
-    actions: ['点击“新增模板”创建方案。', '使用“复制”快速生成同类模板。', '在模板弹窗中调整步骤顺序和查看步骤详情。'],
+    actions: ['点击“新增模板”创建方案。', '使用“复制”快速生成同类模板。', '点击模板所在行的“导出”，下载包含检查内容、标准和方法的 Word 清单。'],
     images: [
       guideImage('06-config-template-plan.png', '巡检模板列表和计划入口'),
       guideImage('08-template-editor.png', '模板弹窗中的步骤列表和步骤详情')
@@ -2353,12 +2355,12 @@ const operationGuideSteps = [
   {
     index: '08',
     title: '看板分析和报告归档',
-    place: '巡检驾驶舱 / 巡检总览 / 导出周月报',
+    place: '巡检驾驶舱 / 巡检总览 / 导出巡检报告',
     desc: '驾驶舱按现场和主平台展示健康；巡检总览统一按日期归属下钻，并保留完整执行证据和报告导出。',
     manual: [
       '巡检驾驶舱通过图表查看近七日趋势，并分别展示现场和主平台的当日健康与待处理问题。',
       '巡检总览按天展示现场、主平台、计划、异常摘要和缺失执行；点击“查看”打开分页执行记录，展开某一次后查看步骤、子项和判定依据。',
-      '点击“导出巡检报告”，可选择日报、周报或月报。精简版提供图表与汇总，完整版还会逐条列出周期内的执行记录。'
+      '精简版提供图表与汇总；完整版先介绍计划和模板，再展示按日结果与状态变化，附录保留逐次执行及子项明细。'
     ],
     actions: ['在驾驶舱查看现场和主平台健康。', '按归属、模板、计划、来源和结果筛选明细。', '按日、周或月导出所需版本的 Word 报告。'],
     images: [
@@ -2830,7 +2832,7 @@ const reportExportPreview = computed(() => {
   }
   return {
     title: `${periodLabel} · ${full ? '完整版' : '精简版'}`,
-    desc: full ? '汇总图表与周期内每次执行的计划、模板、结果和摘要。'
+    desc: full ? '计划与模板说明、按日统计、状态图表及逐次检查明细。'
       : '签字区、结果图表、现场与主平台概况及异常汇总。',
     params,
     filename: `自动化巡检${fileStem}${full ? '_完整版' : ''}.docx`
@@ -5536,6 +5538,10 @@ function handleDeleteTemplate(row) {
     getTemplateList()
     getTemplateOptions()
   })
+}
+
+function handleExportTemplate(row) {
+  return proxy.download(`/support/autoInspection/templates/${row.templateId}/export`, {}, `巡检模板_${row.templateId}.docx`)
 }
 
 function handleCopyTemplate(row) {

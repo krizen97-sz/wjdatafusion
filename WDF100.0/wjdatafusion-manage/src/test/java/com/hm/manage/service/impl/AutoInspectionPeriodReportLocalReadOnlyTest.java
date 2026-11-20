@@ -16,9 +16,13 @@ import org.apache.ibatis.mapping.Environment;
 import org.apache.ibatis.session.Configuration;
 import org.apache.ibatis.session.SqlSessionFactoryBuilder;
 import org.apache.ibatis.transaction.jdbc.JdbcTransactionFactory;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.yaml.snakeyaml.Yaml;
+import com.hm.manage.domain.bo.AutoInspectionReportExportBo;
 import com.hm.manage.mapper.SupportAutoInspectionMapper;
 
 @EnabledIfSystemProperty(named = "rynew.report.localSmoke", matches = "true")
@@ -105,6 +109,21 @@ class AutoInspectionPeriodReportLocalReadOnlyTest
                 assertEquals(expectedPlanIds, new HashSet<>(dailyRecords.stream().filter(row -> row.get("planId") != null)
                         .map(row -> ((Number) row.get("planId")).longValue()).toList()));
                 System.out.println("Daily report verification: " + expectedIds.size() + " executions, " + expectedPlanIds.size() + " plans");
+                var service = new SupportAutoInspectionServiceImpl();
+                ReflectionTestUtils.setField(service, "autoInspectionMapper", mapper);
+                var request = new AutoInspectionReportExportBo();
+                request.setReportType("PERIOD_REPORT");
+                request.setReportMode("DAY");
+                request.setReportDate("2026-09-22");
+                request.setReportContent("FULL");
+                var response = new MockHttpServletResponse();
+                service.exportRecord(response, request);
+                try (var doc = new XWPFDocument(new java.io.ByteArrayInputStream(response.getContentAsByteArray())))
+                {
+                    assertTrue(doc.getParagraphs().stream().anyMatch(p -> p.getText().contains("执行记录（" + expectedIds.size() + " 条）")));
+                    if (!expectedIds.isEmpty())
+                        assertTrue(doc.getParagraphs().stream().anyMatch(p -> p.getText().contains("逐次执行与检查子项")));
+                }
                 String output = System.getProperty("rynew.report.output");
                 if (output != null)
                 {

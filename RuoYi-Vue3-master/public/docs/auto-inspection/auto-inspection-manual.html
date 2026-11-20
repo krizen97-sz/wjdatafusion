@@ -62,7 +62,7 @@
 </tr>
 <tr>
 <td>管理层需要周期性报告</td>
-<td>支持按周导出 Word 周报，按月导出每周独立 Word 的压缩包</td>
+<td>支持按日、按周或按月导出 Word 巡检报告，可选精简版或完整版</td>
 </tr>
 <tr>
 <td>现场服务器账号和巡检执行账号容易混用</td>
@@ -225,11 +225,11 @@
 </tr>
 </tbody>
 </table></div>
-<h2 id="6-周报和月度周报导出">6. 周报和月度周报导出</h2>
+<h2 id="6-周报和月度周报导出">6. 日报、周报和月报导出</h2>
 <figure><img src="auto-inspection-manual-assets/03-report-export-week.png" alt="按周导出"><figcaption>按周导出</figcaption></figure>
-<p>点击“导出周/月报”后，可以选择按周或按月导出。</p>
+<p>点击“导出巡检报告”，选择日报、周报或月报和对应日期，再选精简版或完整版。均导出一份 Word 文件。</p>
 <p>按周导出时，系统生成一个 Word 周报，文件名类似：</p>
-<pre><code class="language-text">自动化巡检周报_20260622-20260628.doc
+<pre><code class="language-text">自动化巡检周报_20260622-20260628.docx
 </code></pre>
 <p>周报内容包含：</p>
 <div class="table-wrap"><table>
@@ -242,7 +242,7 @@
 <tbody>
 <tr>
 <td>签字确认</td>
-<td>文档开头包含巡检人员签字、用户签字、确认日期和备注</td>
+<td>文档开头包含巡检人员签字、用户签字和确认日期</td>
 </tr>
 <tr>
 <td>整体健康度分析</td>
@@ -253,17 +253,17 @@
 <td>汇总本周异常目标、调用信息、实际值和异常原因</td>
 </tr>
 <tr>
-<td>本周巡检内容汇总</td>
-<td>展示本周所有巡检记录</td>
+<td>完整版：计划与模板、按日统计、状态图表</td>
+<td>先介绍本周期相关计划、模板和标准，再展示每日各状态统计及趋势。</td>
 </tr>
 <tr>
-<td>巡检明细</td>
-<td>按记录、步骤和目标展开完整结果</td>
+<td>完整版：逐次检查附录</td>
+<td>按日期、执行编号、步骤和子项列出工具、标准、实测值、历史对照和执行详情。旧记录缺少的信息标注为未记录。</td>
 </tr>
 </tbody>
 </table></div>
 <figure><img src="auto-inspection-manual-assets/04-report-export-month.png" alt="按月导出"><figcaption>按月导出</figcaption></figure>
-<p>按月导出时，系统会把该月份涉及的自然周逐周生成 Word 文件，再打包为 zip。每个周报都是独立文件，方便按周归档和签字确认。即使某周没有巡检记录，也会生成一份“暂无巡检记录”的留档文档。</p>
+<p>按月导出时，统计范围为当月首日至月末，生成一份 Word 月报。如需单独归档标准，可在“巡检配置 → 巡检模板”点击模板所在行的“导出”，下载含检查内容、标准和方法的 Word 清单。</p>
 <h2 id="7-查看巡检详情">7. 查看巡检详情</h2>
 <figure><img src="auto-inspection-manual-assets/05-record-detail.png" alt="巡检详情"><figcaption>巡检详情</figcaption></figure>
 <p>巡检记录行点击“详情”后，会打开右侧详情抽屉。详情页重点突出“步骤 / 子项”的层级关系。</p>

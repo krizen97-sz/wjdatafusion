@@ -1736,16 +1736,112 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
         try
         {
             List<Map<String, Object>> records = period.full ? autoInspectionMapper.selectPeriodReportRecords(query) : List.of();
-            byte[] bytes = AutoInspectionPeriodReport.write(period, groups, days, issues, records);
-            response.setContentType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-            FileUtils.setAttachmentResponseHeader(response, period.fileName());
-            response.getOutputStream().write(bytes);
+            List<Long> recordIds = records.stream().map(record -> toLong(record.get("recordId"))).filter(id -> id != null).distinct().toList();
+            Map<Long, List<Map<String, Object>>> steps = new HashMap<>();
+            Map<Long, List<Map<String, Object>>> targets = new HashMap<>();
+            // Batch detail reads by execution ID; different plans can share both template and execution time.
+            for (int i = 0; i < recordIds.size(); i += 500)
+            {
+                List<Long> batch = recordIds.subList(i, Math.min(i + 500, recordIds.size()));
+                steps.putAll(groupByLong(autoInspectionMapper.selectStepResultsByRecordIds(batch), "recordId"));
+                targets.putAll(groupByLong(autoInspectionMapper.selectTargetResultsByRecordIds(batch), "recordId"));
+            }
+            for (List<Map<String, Object>> rows : steps.values())
+            {
+                for (Map<String, Object> step : rows)
+                {
+                    step.put("exportRequirement", formatThreshold(step));
+                }
+            }
+            var evidence = period.full ? periodReportEvidence(period, query, records, steps, targets)
+                    : AutoInspectionWordDetails.Evidence.EMPTY;
+            writeWord(response, period.fileName(), AutoInspectionPeriodReport.write(period, groups, days, issues, evidence));
         }
         catch (Exception e)
         {
             log.error("导出自动化巡检周期报告失败", e);
             throw new ServiceException("导出巡检报告失败，请稍后重试");
         }
+    }
+
+    private AutoInspectionWordDetails.Evidence periodReportEvidence(AutoInspectionPeriodReport.Period period,
+            Map<String, Object> query, List<Map<String, Object>> records,
+            Map<Long, List<Map<String, Object>>> steps, Map<Long, List<Map<String, Object>>> targets)
+    {
+        Set<Long> executedPlans = records.stream().map(row -> toLong(row.get("planId"))).filter(id -> id != null).collect(Collectors.toSet());
+        Map<Long, Map<String, Object>> plans = new LinkedHashMap<>();
+        Set<Long> unexecuted = new LinkedHashSet<>();
+        for (Map<String, Object> plan : autoInspectionMapper.selectPlanList(query))
+        {
+            Long planId = toLong(plan.get("planId"));
+            plans.put(planId, plan);
+            if (executedPlans.contains(planId) || !STATUS_NORMAL.equals(str(plan, "status")))
+            {
+                continue;
+            }
+            LocalDateTime created = toLocalDateTime(plan.get("createTime"));
+            boolean scheduled = period.begin.datesUntil(period.end).anyMatch(day ->
+                    AutoInspectionPlanScheduleMatcher.resolve(str(plan, "cronExpression"), created, day, ZoneId.systemDefault()).scheduled());
+            if (scheduled) unexecuted.add(planId);
+        }
+        return new AutoInspectionWordDetails.Evidence(records, steps, targets, plans, unexecuted);
+    }
+
+    @Override
+    public void exportTemplate(HttpServletResponse response, Long templateId)
+    {
+        Map<String, Object> template = selectTemplateMapById(templateId);
+        List<Map<String, Object>> steps = castList(template.get("steps"));
+        try
+        {
+            byte[] bytes = AutoInspectionWordDetails.writeTemplate(template, steps,
+                    this::templateRequirement, this::resolveTimeout);
+            writeWord(response, "巡检模板_" + templateId + ".docx", bytes);
+        }
+        catch (IOException e)
+        {
+            log.error("导出自动化巡检模板失败，模板ID={}", templateId, e);
+            throw new ServiceException("导出巡检模板失败，请稍后重试");
+        }
+    }
+
+    private String templateRequirement(Map<String, Object> step, Map<String, Object> target)
+    {
+        if (TOOL_HTTP_HEALTH.equals(str(step, "toolCode")))
+        {
+            String threshold = formatThreshold(step);
+            return "HTTP 状态码：" + formatExpectedHttpStatus(parseExtraParamsMap(target))
+                    + ("-".equals(threshold) ? "" : "\n" + threshold);
+        }
+        if (TOOL_HTTP_API_TEST.equals(str(step, "toolCode")))
+        {
+            return AutoInspectionWordDetails.apiRequirements(parseExtraParamsMap(target));
+        }
+        String rule = formatThreshold(step);
+        if (!usesPreviousComparison(step))
+        {
+            return rule;
+        }
+        String scope = resolveComparisonScope(step, target);
+        String window = switch (scope)
+        {
+            case AutoInspectionComparisonWindow.SCOPE_DAY -> "同一自然日";
+            case AutoInspectionComparisonWindow.SCOPE_HOUR -> "同一自然小时";
+            default -> "连续采样";
+        };
+        return "本次值-上次值" + labelCompareRule(StringUtils.defaultIfBlank(str(step, "compareRule"), RULE_MIN))
+                + " " + resolveComparisonThreshold(step).stripTrailingZeros().toPlainString()
+                + StringUtils.defaultString(str(step, "thresholdUnit"))
+                + "\n取样范围：" + window + "；无历史对照时只建立基线"
+                + (shouldResetComparisonBaseline(step, scope) ? "；计数回落时重新建立基线" : "");
+    }
+
+    private void writeWord(HttpServletResponse response, String fileName, byte[] bytes) throws IOException
+    {
+        response.setContentType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        FileUtils.setAttachmentResponseHeader(response, fileName);
+        response.setContentLength(bytes.length);
+        response.getOutputStream().write(bytes);
     }
 
     private String escapeHtml(Object value)
@@ -2953,6 +3049,7 @@ public class SupportAutoInspectionServiceImpl implements ISupportAutoInspectionS
                 + "；状态码：" + response.statusCode()
                 + "；响应耗时：" + formatDecimal(latency) + "ms"
                 + "；条件：" + assertionSummary.passedCount + "/" + assertionSummary.totalCount + "通过"
+                + "；判定条件：" + maskSensitiveText(AutoInspectionWordDetails.apiRequirements(options), secretBucket)
                 + "；响应预览：" + responsePreview;
         if (!assertionSummary.failures.isEmpty())
         {

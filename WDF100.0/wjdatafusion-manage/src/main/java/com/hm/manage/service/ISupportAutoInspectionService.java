@@ -97,4 +97,6 @@ public interface ISupportAutoInspectionService
     AutoInspectionRunResultVo runScheduledPlan(Long planId, String executorName);
 
     void exportRecord(HttpServletResponse response, AutoInspectionReportExportBo query);
+
+    void exportTemplate(HttpServletResponse response, Long templateId);
 }
