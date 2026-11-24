@@ -42,28 +42,27 @@
           <p v-if="workspaceSummary.unfiledCount > 0" class="root-folder-note is-warning">
             检测到 {{ workspaceSummary.unfiledCount }} 个历史根文档，请移入具体目录
           </p>
-          <div class="folder-tree-caption"><span>文件夹</span><span>文件</span></div>
+          <div class="folder-tree-caption" aria-hidden="true">
+            <span class="folder-label"><el-icon class="folder-column-icon"><Folder /></el-icon><span class="folder-name-heading">目录名称</span></span>
+            <span class="folder-count-heading">文件数</span>
+          </div>
           <el-scrollbar class="folder-scroll">
             <el-tree
               v-loading="loading.folders"
               :data="folderTree"
               node-key="folderId"
+              :indent="0"
+              :props="{ label: 'folderName', children: 'children' }"
+              @node-click="selectFolder"
               default-expand-all
               :expand-on-click-node="false"
               empty-text="还没有目录，点击上方 + 新建"
             >
-              <template #default="{ data }">
+              <template #default="{ node, data }">
                 <div
                   class="folder-node"
                   :class="[{ 'is-active': Number(query.folderId) === Number(data.folderId) }, dropTargetClass('FOLDER', data.folderId), folderSortClass(data)]"
-                  :style="{ '--folder-color': normalizeFolderColor(data.folderColor) }"
-                  role="treeitem"
-                  tabindex="0"
-                  :aria-selected="Number(query.folderId) === Number(data.folderId)"
-                  :aria-label="`打开目录 ${data.folderName}`"
-                  @click="selectFolder(data)"
-                  @keydown.enter.prevent="selectFolder(data)"
-                  @keydown.space.prevent="selectFolder(data)"
+                  :style="{ ...folderTone(data.folderColor), '--folder-indent': `${Math.min(node.level - 1, 4) * 12}px` }"
                   @dragenter.prevent.stop="enterFolderNodeDrag($event, data)"
                   @dragover.prevent.stop="enterFolderNodeDrag($event, data)"
                   @dragleave.stop="leaveFolderNodeDrag($event, data)"
@@ -71,23 +70,28 @@
                 >
                   <button
                     type="button"
-                    class="folder-drag-handle"
+                    class="folder-label folder-drag-handle"
                     draggable="true"
-                    :aria-label="`拖动“${data.folderName}”调整同级顺序`"
-                    title="拖动调整同级顺序"
-                    @click.stop
+                    :aria-current="Number(query.folderId) === Number(data.folderId) ? 'location' : undefined"
+                    :aria-label="`打开目录 ${data.folderName}，${folderPalette(data.folderColor).label}，${Number(data.documentCount || 0)} 个文件`"
+                    :title="`${data.folderName} · ${folderPalette(data.folderColor).label}；拖动调整同级顺序`"
+                    @keydown.left.stop.prevent="node.collapse()"
+                    @keydown.right.stop.prevent="node.expand()"
                     @dragstart.stop="startFolderDrag($event, data)"
                     @dragend.stop="endFolderDrag"
-                  ><el-icon><Rank /></el-icon></button>
-                  <span class="folder-color-icon" aria-hidden="true"><el-icon><Folder /></el-icon></span>
-                  <span class="folder-name">{{ data.folderName }}</span>
+                  >
+                    <span class="folder-color-icon" aria-hidden="true"><el-icon><FolderOpened v-if="Number(query.folderId) === Number(data.folderId)" /><Folder v-else /></el-icon></span>
+                    <span class="folder-name">{{ data.folderName }}</span>
+                  </button>
                   <small class="folder-file-count" :title="`共 ${Number(data.documentCount || 0)} 个文件，${formatFileSize(data.totalSize)}`">{{ Number(data.documentCount || 0) }}</small>
-                  <el-dropdown trigger="click" @command="(command) => folderCommand(command, data)">
-                    <el-button text circle size="small" aria-label="目录操作" @click.stop><el-icon><MoreFilled /></el-icon></el-button>
+                  <el-dropdown trigger="click" @command="(command) => folderCommand(command, data, node)">
+                    <el-button text circle size="small" :aria-label="`目录操作：${data.folderName}`" @click.stop><el-icon><MoreFilled /></el-icon></el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
                         <el-dropdown-item command="child">新建子目录</el-dropdown-item>
                         <el-dropdown-item command="edit">编辑名称与颜色</el-dropdown-item>
+                        <el-dropdown-item command="up" divided :disabled="loading.folderSort || !node.previousSibling">上移</el-dropdown-item>
+                        <el-dropdown-item command="down" :disabled="loading.folderSort || !node.nextSibling">下移</el-dropdown-item>
                         <el-dropdown-item command="delete" divided>删除目录</el-dropdown-item>
                       </el-dropdown-menu>
                     </template>
@@ -393,22 +397,17 @@
           />
         </el-form-item>
         <el-form-item label="目录颜色">
-          <div class="folder-color-picker" role="radiogroup" aria-label="目录颜色">
-            <button
+          <el-radio-group v-model="folderDialog.folderColor" class="folder-color-picker">
+            <el-radio
               v-for="option in FOLDER_COLOR_OPTIONS"
               :key="option.value"
-              type="button"
-              role="radio"
-              :aria-checked="folderDialog.folderColor === option.value"
-              :class="{ 'is-active': folderDialog.folderColor === option.value }"
-              @click="folderDialog.folderColor = option.value"
+              :value="option.value"
+              :style="folderTone(option.value)"
             >
-              <span class="folder-color-swatch" :style="{ '--swatch-color': option.value }"><el-icon><Folder /></el-icon></span>
+              <span class="folder-color-icon" aria-hidden="true"><el-icon><Folder /></el-icon></span>
               <span>{{ option.label }}</span>
-              <el-icon class="folder-color-check"><CircleCheckFilled /></el-icon>
-            </button>
-          </div>
-          <p class="folder-color-note">颜色用于快速辨认目录，名称与层级关系保持不变。</p>
+            </el-radio>
+          </el-radio-group>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -420,7 +419,7 @@
     <el-dialog v-model="moveDialog.open" title="选择目标目录" width="460px" append-to-body>
       <p class="move-dialog-note">根目录不能挂载文件，请选择一个具体目录。</p>
       <el-tree :data="folderTree" node-key="folderId" default-expand-all :expand-on-click-node="false" @node-click="(data) => moveDialog.folderId = data.folderId">
-        <template #default="{ data }"><div class="move-node" :class="{ 'is-active': Number(moveDialog.folderId) === Number(data.folderId) }" :style="{ '--folder-color': normalizeFolderColor(data.folderColor) }"><el-icon><Folder /></el-icon>{{ data.folderName }}</div></template>
+        <template #default="{ data }"><div class="move-node" :class="{ 'is-active': Number(moveDialog.folderId) === Number(data.folderId) }" :style="folderTone(data.folderColor)"><span class="folder-color-icon"><el-icon><Folder /></el-icon></span>{{ data.folderName }}</div></template>
       </el-tree>
       <template #footer><el-button @click="moveDialog.open = false">取消</el-button><el-button type="primary" :loading="loading.mutation" :disabled="!moveDialog.folderId" @click="submitMove">移动到此处</el-button></template>
     </el-dialog>
@@ -466,6 +465,7 @@ import {
   buildFolderTree,
   collaboratorNames,
   formatFileSize,
+  folderPalette,
   formatUploadLimit,
   formatStorageMegabytes,
   initials,
@@ -911,9 +911,21 @@ async function submitFolderDialog() {
   }
 }
 
-async function folderCommand(command, folder) {
+function folderTone(value) {
+  const option = folderPalette(value)
+  return { '--folder-light': option.light, '--folder-dark': option.dark }
+}
+
+async function folderCommand(command, folder, node) {
   if (command === 'child') return createFolder(folder.folderId)
   if (command === 'edit') return editFolder(folder)
+  if (command === 'up' || command === 'down') {
+    const sibling = command === 'up' ? node.previousSibling : node.nextSibling
+    if (!sibling || loading.folderSort) return
+    const direction = command === 'up' ? 'BEFORE' : 'AFTER'
+    return saveFolderOrder(Number(folder.parentId || 0), reorderSiblingFolderIds(folders.value, folder.folderId, sibling.data.folderId, direction))
+  }
+  if (command !== 'delete') return
   await proxy.$modal.confirm(`确认删除目录“${folder.folderName}”吗？目录必须为空。`)
   await deleteDocumentFolder(folder.folderId)
   if (Number(query.folderId) === Number(folder.folderId)) query.folderId = query.scope === 'MY' ? 0 : null
@@ -1179,8 +1191,13 @@ async function dropOnFolderNode(event, folder) {
     return
   }
 
-  const currentIds = sortedSiblingFolderIds(parentId)
   endFolderDrag()
+  return saveFolderOrder(parentId, folderIds)
+}
+
+async function saveFolderOrder(parentId, folderIds) {
+  if (!folderIds.length || loading.folderSort) return
+  const currentIds = sortedSiblingFolderIds(parentId)
   if (folderIds.every((folderId, index) => folderId === currentIds[index])) return
 
   const snapshot = folders.value.map((item) => ({ ...item }))

@@ -41,12 +41,12 @@ export function documentUploadError(error) {
 export const DEFAULT_FOLDER_COLOR = '#4F7CCF'
 
 export const FOLDER_COLOR_OPTIONS = [
-  { value: '#4F7CCF', label: '海蓝' },
-  { value: '#2F8F6B', label: '松绿' },
-  { value: '#A06A2B', label: '琥珀' },
-  { value: '#8A63B8', label: '藤紫' },
-  { value: '#C45D6A', label: '绯红' },
-  { value: '#5C718A', label: '灰蓝' }
+  { value: '#4F7CCF', label: '海蓝', light: '#2468B4', dark: '#79B8FF' },
+  { value: '#2F8F6B', label: '松绿', light: '#14734C', dark: '#69D79F' },
+  { value: '#A06A2B', label: '琥珀', light: '#A45305', dark: '#FFC469' },
+  { value: '#8A63B8', label: '藤紫', light: '#7844B7', dark: '#CBA8FF' },
+  { value: '#C45D6A', label: '绯红', light: '#BB3455', dark: '#FF91A8' },
+  { value: '#5C718A', label: '灰蓝', light: '#536371', dark: '#B8CAD4' }
 ]
 
 export const DOCUMENT_SCOPES = [
@@ -92,6 +92,11 @@ export function buildFolderTree(folders = []) {
 export function normalizeFolderColor(value) {
   const normalized = String(value || '').trim().toUpperCase()
   return FOLDER_COLOR_OPTIONS.some((option) => option.value === normalized) ? normalized : DEFAULT_FOLDER_COLOR
+}
+
+export function folderPalette(value) {
+  const normalized = normalizeFolderColor(value)
+  return FOLDER_COLOR_OPTIONS.find((option) => option.value === normalized)
 }
 
 export function reorderSiblingFolderIds(folders = [], draggedFolderId, targetFolderId, position) {

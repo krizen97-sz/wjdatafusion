@@ -12,6 +12,7 @@ import {
   expirationForMode,
   expirationState,
   formatFileSize,
+  folderPalette,
   formatStorageMegabytes,
   initials,
   isArchiveFile,
@@ -73,11 +74,14 @@ test('folder tree keeps ownership hierarchy and configured order', () => {
   assert.deepEqual(tree[0].children.map((item) => item.folderId), [4, 3])
 })
 
-test('folder colors stay within the restrained preset palette', () => {
+test('legacy saved folder colors keep their identity across light and dark palettes', () => {
   assert.equal(FOLDER_COLOR_OPTIONS.length, 6)
   assert.equal(normalizeFolderColor('#2f8f6b'), '#2F8F6B')
   assert.equal(normalizeFolderColor('javascript:alert(1)'), DEFAULT_FOLDER_COLOR)
   assert.equal(normalizeFolderColor(''), DEFAULT_FOLDER_COLOR)
+  assert.deepEqual(FOLDER_COLOR_OPTIONS.map((option) => folderPalette(option.value.toLowerCase())), FOLDER_COLOR_OPTIONS)
+  assert.equal(folderPalette(null).value, DEFAULT_FOLDER_COLOR)
+  for (const theme of ['light', 'dark']) assert.equal(new Set(FOLDER_COLOR_OPTIONS.map((option) => option[theme])).size, 6)
 })
 
 test('folder sorting only reorders complete sibling groups', () => {
@@ -150,7 +154,7 @@ test('list view exposes direct permission and modification-record entry points',
 test('folder counts keep a fixed grid column when the selected label becomes bold', () => {
   const source = readFileSync(new URL('../workspace/DocumentWorkspace.scss', import.meta.url), 'utf8')
   const folderBlock = source.slice(source.indexOf('.folder-node {'), source.indexOf('.folder-file-count'))
-  assert.match(source, /grid-template-columns: 18px 17px minmax\(0, 1fr\) 28px 28px/)
+  assert.match(source, /\.folder-tree-caption,\s*\.folder-node\s*\{[^}]*grid-template-columns:\s*var\(--folder-columns\)/s)
   assert.match(source, /&\.is-active \.folder-name \{ font-weight: 650; \}/)
   assert.match(source, /font-variant-numeric: tabular-nums/)
   assert.doesNotMatch(folderBlock, /&\.is-active \{[^}]*font-weight:/s)
@@ -159,10 +163,10 @@ test('folder counts keep a fixed grid column when the selected label becomes bol
 test('workspace exposes accessible folder color editing and same-level drag sorting', () => {
   const source = readFileSync(new URL('../workspace/index.vue', import.meta.url), 'utf8')
   const api = readFileSync(new URL('../../../api/document/workspace.js', import.meta.url), 'utf8')
-  assert.match(source, /class="folder-drag-handle"/)
+  assert.match(source, /class="folder-label folder-drag-handle"/)
   assert.match(source, /拖动调整同级顺序/)
   assert.match(source, /FOLDER_COLOR_OPTIONS/)
-  assert.match(source, /role="radiogroup"/)
+  assert.match(source, /<el-radio-group v-model="folderDialog.folderColor"/)
   assert.match(source, /reorderSiblingFolderIds/)
   assert.match(source, /reorderDocumentFolders/)
   assert.match(api, /\/document\/workspace\/folders\/reorder/)
