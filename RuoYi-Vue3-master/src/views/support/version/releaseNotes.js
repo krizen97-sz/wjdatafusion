@@ -1,5 +1,18 @@
 export const releaseNotes = [
   {
+    version: 'v4.17.6', submitTime: '2026-11-24 10:56:00',
+    level: 'patch', levelLabel: '修订版本', tagType: 'success',
+    title: '文档目录对齐与我的收藏',
+    summary: '目录树按表头对齐文件夹和文件数，提供更易区分的目录配色。可将自己的文件和获授权的共享文件加入个人收藏。',
+    changes: [
+      '展开多级目录、选择长名称或打开目录操作时，文件数保持在同一列。目录配色适配浅色与深色主题。',
+      '列表和网格支持收藏与取消收藏，可在“我的收藏”中集中查看。每个账号独立保存收藏，并按当前文件访问权限展示。'
+    ],
+    scope: ['文档管理', '目录树', '个人收藏'],
+    database: '升级已有平台时，先执行本版本增量 SQL 创建 doc_favorite。',
+    scripts: ['document_management_upgrade_20261124_v4_17_6_favorites.sql']
+  },
+  {
     version: 'v4.17.5', submitTime: '2026-11-24 10:11:00',
     level: 'patch', levelLabel: '修订版本', tagType: 'success',
     title: '优化内网文档编辑器打开流程',
