@@ -107,6 +107,7 @@
               :key="scope.value"
               type="button"
               :class="[{ 'is-active': query.scope === scope.value }, dropTargetClass('SCOPE', scope.value)]"
+              :aria-current="query.scope === scope.value ? 'page' : undefined"
               @click="selectScope(scope.value)"
               @dragenter.prevent.stop="enterDragTarget($event, 'SCOPE', scope.value, scope.label)"
               @dragover.prevent.stop="enterDragTarget($event, 'SCOPE', scope.value, scope.label)"
@@ -117,7 +118,7 @@
               <span>{{ scope.label }}</span>
             </button>
           </nav>
-          <div v-if="!showFolderNavigation" class="scope-context">
+          <div v-if="!showFolderNavigation && query.scope !== 'FAVORITES'" class="scope-context">
             <el-icon><InfoFilled /></el-icon>
             <span>{{ scopeDescription }}</span>
           </div>
@@ -140,19 +141,21 @@
               <el-button class="compact-panel-action" size="small" icon="Refresh" :loading="loading.documents" aria-label="刷新" title="刷新" @click="refreshWorkspace">
                 <span class="compact-panel-action-label">刷新</span>
               </el-button>
-              <el-button class="compact-panel-action" size="small" icon="FolderAdd" aria-label="新建目录" title="新建目录" @click="createFolder(0)" v-hasPermi="[FILE_MANAGEMENT_PERMISSION]">
+              <el-button v-if="query.scope !== 'FAVORITES'" class="compact-panel-action" size="small" icon="FolderAdd" aria-label="新建目录" title="新建目录" @click="createFolder(0)" v-hasPermi="[FILE_MANAGEMENT_PERMISSION]">
                 <span class="compact-panel-action-label">新建目录</span>
               </el-button>
               <el-button v-if="isDocumentAdmin" class="compact-panel-action" size="small" icon="Setting" aria-label="空间管理" title="空间管理" @click="storageDrawerOpen = true">
                 <span class="compact-panel-action-label">空间管理</span>
               </el-button>
-              <el-button class="upload-document-button" size="small" icon="Upload" @click="openUploadDialog" v-hasPermi="[FILE_MANAGEMENT_PERMISSION]">上传文件</el-button>
-              <el-button class="create-word-button" size="small" type="primary" :loading="loading.mutation" @click="createNewDocument('docx')" v-hasPermi="['document:document:add']">
-                <el-icon><DocumentAdd /></el-icon>新建 Word
-              </el-button>
-              <el-button class="create-excel-button" size="small" :loading="loading.mutation" @click="createNewDocument('xlsx')" v-hasPermi="['document:document:add']">
-                <el-icon><Grid /></el-icon>新建 Excel
-              </el-button>
+              <template v-if="query.scope !== 'FAVORITES'">
+                <el-button class="upload-document-button" size="small" icon="Upload" @click="openUploadDialog" v-hasPermi="[FILE_MANAGEMENT_PERMISSION]">上传文件</el-button>
+                <el-button class="create-word-button" size="small" type="primary" :loading="loading.mutation" @click="createNewDocument('docx')" v-hasPermi="['document:document:add']">
+                  <el-icon><DocumentAdd /></el-icon>新建 Word
+                </el-button>
+                <el-button class="create-excel-button" size="small" :loading="loading.mutation" @click="createNewDocument('xlsx')" v-hasPermi="['document:document:add']">
+                  <el-icon><Grid /></el-icon>新建 Excel
+                </el-button>
+              </template>
             </div>
             <div class="view-switch" aria-label="视图切换">
               <button type="button" :class="{ 'is-active': viewMode === 'list' }" aria-label="列表视图" @click="setViewMode('list')"><el-icon><List /></el-icon></button>
@@ -226,10 +229,15 @@
                   @change="(checked) => toggleDocumentSelection(document.documentId, checked)"
                 />
               </span>
-              <a class="document-name" :href="documentHref(document)" :target="isArchiveFile(document.fileType) ? null : '_blank'" rel="noopener noreferrer" @click="guardDocumentOpen($event, document)">
-                <span class="file-mark" :class="`is-${document.fileType}`">{{ fileMarkLabel(document.fileType) }}</span>
-                <span><strong>{{ document.title }}</strong><small>{{ String(document.fileType || '').toUpperCase() }} · {{ formatFileSize(document.fileSize) }}</small></span>
-              </a>
+              <div class="document-name-cell">
+                <a class="document-name" :href="documentHref(document)" :target="isArchiveFile(document.fileType) ? null : '_blank'" rel="noopener noreferrer" @click="guardDocumentOpen($event, document)">
+                  <span class="file-mark" :class="`is-${document.fileType}`">{{ fileMarkLabel(document.fileType) }}</span>
+                  <span><strong>{{ document.title }}</strong><small>{{ String(document.fileType || '').toUpperCase() }} · {{ formatFileSize(document.fileSize) }}</small></span>
+                </a>
+                <el-button v-if="document.lifecycleStatus !== 'TRASH'" class="favorite-button" text circle size="small"
+                  :aria-label="`收藏“${document.title}”`" v-bind="favoriteButtonProps(document)"
+                  @click.stop="toggleFavorite(document)" @dragstart.stop.prevent />
+              </div>
               <span class="folder-location-cell" :title="documentFolderPath(document)"><el-icon><Folder /></el-icon><span>{{ documentFolderPath(document) }}</span></span>
               <span class="owner-cell">{{ document.ownerName || '-' }}</span>
               <span class="collaboration-cell">
@@ -289,10 +297,15 @@
                   />
                   <span class="file-mark" :class="`is-${document.fileType}`">{{ fileMarkLabel(document.fileType) }}</span>
                 </span>
-                <el-dropdown trigger="click" @command="(command) => documentCommand(command, document)">
-                  <el-button text circle aria-label="文档操作" title="文档操作"><el-icon><MoreFilled /></el-icon></el-button>
-                  <template #dropdown><DocumentActionMenu :document="document" compact /></template>
-                </el-dropdown>
+                <div class="card-file-actions">
+                  <el-button v-if="document.lifecycleStatus !== 'TRASH'" class="favorite-button" text circle size="small"
+                    :aria-label="`收藏“${document.title}”`" v-bind="favoriteButtonProps(document)"
+                    @click.stop="toggleFavorite(document)" @dragstart.stop.prevent />
+                  <el-dropdown trigger="click" @command="(command) => documentCommand(command, document)">
+                    <el-button text circle aria-label="文档操作" title="文档操作"><el-icon><MoreFilled /></el-icon></el-button>
+                    <template #dropdown><DocumentActionMenu :document="document" compact /></template>
+                  </el-dropdown>
+                </div>
               </div>
               <a :href="documentHref(document)" :target="isArchiveFile(document.fileType) ? null : '_blank'" rel="noopener noreferrer" @click="guardDocumentOpen($event, document)">{{ document.title }}</a>
               <span class="document-card-meta">{{ String(document.fileType || '').toUpperCase() }} · {{ formatFileSize(document.fileSize) }}</span>
@@ -301,6 +314,9 @@
             </article>
           </div>
 
+          <el-empty v-else-if="listFailed" :image-size="92" description="文档列表加载失败">
+            <el-button @click="loadDocuments">重新加载</el-button>
+          </el-empty>
           <el-empty v-else :image-size="92" :description="emptyDescription">
             <el-button v-if="canCreateInCurrentFolder" type="primary" @click="createNewDocument('docx')" v-hasPermi="['document:document:add']">新建第一份文档</el-button>
           </el-empty>
@@ -435,6 +451,7 @@ import {
   listDocumentFolders,
   listDocuments as listDocumentsRequest,
   reorderDocumentFolders,
+  setDocumentFavorite,
   trashDocument,
   updateDocument,
   updateDocumentFolder
@@ -466,6 +483,7 @@ const router = useRouter()
 const { proxy } = getCurrentInstance()
 const folders = ref([])
 const documents = ref([])
+const listFailed = ref(false)
 const workspaceSummary = ref({
   fileCount: 0,
   totalSize: 0,
@@ -491,6 +509,7 @@ const dragHover = reactive({ kind: '', id: null, label: '', allowed: false, reas
 const folderSortHover = reactive({ folderId: null, label: '', position: '', allowed: false, reason: '' })
 const undoState = ref(null)
 const selectedDocumentIds = ref([])
+const pendingFavorites = reactive(new Set())
 const viewMode = ref(window.localStorage.getItem('document-workspace-view') === 'grid' ? 'grid' : 'list')
 const loading = reactive({ folders: false, documents: false, mutation: false, batchDownload: false, folderSort: false })
 const query = reactive({ scope: 'MY', folderId: 0, keyword: '', fileType: '', accessPermission: '' })
@@ -580,17 +599,18 @@ const SHARED_PERMISSION_FILTERS = [
 ]
 const scopeDescription = computed(() => ({
   MY: '你创建并拥有的全部文档',
+  FAVORITES: '你收藏且仍可访问的文件',
   SHARED: '其他成员授权你查看或编辑的文档',
   RECENT: '最近打开和编辑过的文档',
   ARCHIVED: '已完成归档、仍可查看的文档',
   TRASH: '已移入回收站的文档',
   ADMIN_ALL: '拥有文档管理权限的全部用户文件；管理员仅做全局查看与下载'
 })[query.scope])
-const emptyDescription = computed(() => query.keyword
+const emptyDescription = computed(() => (query.keyword || query.fileType || query.accessPermission)
   ? '没有匹配当前搜索条件的文档'
   : (rootFolderActive.value
       ? '当前还没有文档，请先在具体目录中新建或上传'
-      : ({ MY: '当前目录还没有文档', SHARED: '暂时没有共享给你的文档', RECENT: '还没有最近打开的文档', ARCHIVED: '还没有已归档文档', TRASH: '回收站为空', ADMIN_ALL: '暂无文档管理用户文件' })[query.scope]))
+      : ({ MY: '当前目录还没有文档', FAVORITES: '暂无收藏，点击文件旁的星标即可添加', SHARED: '暂时没有共享给你的文档', RECENT: '还没有最近打开的文档', ARCHIVED: '还没有已归档文档', TRASH: '回收站为空', ADMIN_ALL: '暂无文档管理用户文件' })[query.scope]))
 
 onMounted(refreshWorkspace)
 onBeforeUnmount(() => {
@@ -631,12 +651,19 @@ async function loadFolders() {
 async function loadDocuments() {
   const sequence = ++loadSequence
   loading.documents = true
+  listFailed.value = false
   try {
     const response = await listDocumentsRequest({ ...query })
     if (sequence === loadSequence) {
       documents.value = response.data || []
       const visibleIds = new Set(downloadableDocuments.value.map((item) => Number(item.documentId)))
       selectedDocumentIds.value = selectedDocumentIds.value.filter((id) => visibleIds.has(Number(id)))
+    }
+  } catch {
+    if (sequence === loadSequence) {
+      documents.value = []
+      selectedDocumentIds.value = []
+      listFailed.value = true
     }
   } finally {
     if (sequence === loadSequence) loading.documents = false
@@ -649,6 +676,7 @@ function scheduleSearch() {
 }
 
 function selectScope(scope) {
+  if (scope !== query.scope) documents.value = []
   selectedDocumentIds.value = []
   query.scope = scope
   query.folderId = scope === 'MY' ? 0 : null
@@ -668,7 +696,49 @@ function selectFolder(folder) {
 }
 
 function documentFolderPath(document) {
+  if (query.scope === 'FAVORITES' && document.accessPermission !== 'OWNER') {
+    return document.accessPermission === 'ADMIN' ? '全部用户文件' : '与我共享'
+  }
   return resolveDocumentFolderPath(folders.value, document)
+}
+
+function favoriteButtonProps(document) {
+  const selected = document.favorite === true
+  return {
+    icon: selected ? 'StarFilled' : 'Star',
+    type: selected ? 'warning' : undefined,
+    title: selected ? '取消收藏' : '添加到我的收藏',
+    'aria-pressed': selected,
+    disabled: pendingFavorites.has(document.documentId)
+  }
+}
+
+async function toggleFavorite(document) {
+  const id = document.documentId
+  if (pendingFavorites.has(id) || document.lifecycleStatus === 'TRASH') return
+  const favorite = document.favorite !== true
+  pendingFavorites.add(id)
+  try {
+    try {
+      await setDocumentFavorite(id, favorite)
+    } catch {
+      // A revoked share or lost response can invalidate a previously visible file.
+      // The request interceptor reports the error, then the list reconciles with the server.
+      await loadDocuments()
+      return
+    }
+    const visible = documents.value.find((item) => item.documentId === id)
+    if (visible) visible.favorite = favorite
+    if (!favorite && query.scope === 'FAVORITES') {
+      documents.value = documents.value.filter((item) => item.documentId !== id)
+      selectedDocumentIds.value = selectedDocumentIds.value.filter((selected) => Number(selected) !== Number(id))
+    }
+    // A fetch begun before this write may contain stale flags. Refresh the
+    // current query, including when the user entered Favorites during the write.
+    if (loading.documents || (favorite && query.scope === 'FAVORITES' && !visible)) await loadDocuments()
+  } finally {
+    pendingFavorites.delete(id)
+  }
 }
 
 function setViewMode(mode) {

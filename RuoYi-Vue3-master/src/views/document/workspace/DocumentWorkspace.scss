@@ -468,6 +468,15 @@
 
 .selection-cell { display: flex; align-items: center; justify-content: center; }
 
+.document-name-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  .document-name { flex: 1; }
+}
+.favorite-button { flex: none; }
+.card-file-actions { display: flex; align-items: center; }
+
 .document-name {
   display: flex;
   min-width: 0;

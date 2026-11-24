@@ -40,6 +40,14 @@ export function getDocument(documentId) {
   return request({ url: `/document/workspace/documents/${documentId}`, method: 'get' })
 }
 
+export function setDocumentFavorite(documentId, favorite) {
+  return request({
+    url: `/document/workspace/documents/${documentId}/favorite`,
+    method: favorite ? 'put' : 'delete',
+    headers: { repeatSubmit: false }
+  })
+}
+
 export function getDocumentPreview(documentId, onDownloadProgress) {
   return request({
     url: `/document/workspace/documents/${documentId}/preview`,

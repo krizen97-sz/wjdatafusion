@@ -51,6 +51,7 @@ export const FOLDER_COLOR_OPTIONS = [
 
 export const DOCUMENT_SCOPES = [
   { value: 'MY', label: '我的文档', icon: 'Document' },
+  { value: 'FAVORITES', label: '我的收藏', icon: 'Star' },
   { value: 'SHARED', label: '与我共享', icon: 'User' },
   { value: 'RECENT', label: '最近', icon: 'Clock' },
   { value: 'ARCHIVED', label: '已归档', icon: 'Box' },
