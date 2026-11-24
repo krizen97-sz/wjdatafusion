@@ -5,14 +5,14 @@
       <span class="file-mark" :class="`is-${currentDocument?.fileType || 'docx'}`">{{ ['xls', 'xlsx'].includes(currentDocument?.fileType) ? 'X' : 'W' }}</span>
       <div class="editor-title">
         <strong>{{ currentDocument?.title || '正在打开文档…' }}</strong>
-        <span>{{ permission === 'EDIT' ? '可编辑' : '仅查看' }} · 服务器版本 {{ currentDocument?.contentVersion || 1 }}</span>
+        <span v-if="currentDocument">{{ permission === 'EDIT' ? '可编辑' : '仅查看' }} · 服务器版本 {{ currentDocument.contentVersion }}</span>
       </div>
       <div class="editor-spacer" />
       <button
         type="button"
         class="save-state"
         :class="`is-${saveState.type}`"
-        :disabled="saveState.type !== 'error' || permission !== 'EDIT'"
+        :disabled="!!fatalError || saveState.type !== 'error' || permission !== 'EDIT'"
         :title="saveState.type === 'error' && permission === 'EDIT' ? '点击重新保存' : saveState.label"
         @click="retryServerSave"
       >
@@ -28,48 +28,52 @@
       <el-button
         v-if="currentDocument?.accessPermission === 'OWNER'"
         icon="Share"
-        @click="shareOpen = true"
+        @click="openShare"
         v-hasPermi="['document:document:share']"
       >共享</el-button>
     </header>
 
     <main class="editor-stage">
-      <div v-if="loading" class="editor-placeholder">
+      <div v-if="loading" class="editor-placeholder" role="status">
         <span class="platform-loading-mark is-large" aria-hidden="true"></span>
-        <strong>正在连接内网编辑器</strong>
-        <span>文档内容不会离开当前内网环境</span>
+        <strong>{{ openStage }}</strong>
       </div>
-      <div v-else-if="fatalError" class="editor-error">
+      <div v-else-if="fatalError" class="editor-error" role="alert">
         <el-icon><WarningFilled /></el-icon>
         <strong>在线编辑器暂时无法打开</strong>
         <span>{{ fatalError }}</span>
         <el-button type="primary" @click="initializeEditor">重新连接</el-button>
       </div>
-      <div id="onlyoffice-editor" class="onlyoffice-editor" :class="{ 'is-hidden': loading || fatalError }" />
+      <div ref="editorHost" class="document-editor-host" />
     </main>
 
-    <DocumentShareDrawer v-model="shareOpen" :document="currentDocument" @saved="reloadDocument" />
+    <DocumentShareDrawer v-if="shareRequested" v-model="shareOpen" :document="currentDocument" @saved="reloadDocument" />
   </div>
 </template>
 
 <script setup name="DocumentEditor">
-import { onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import DocumentShareDrawer from '../components/DocumentShareDrawer.vue'
+import { loadEditorApi, prepareDocumentEditor } from './documentEditorStartup.js'
 import { forceSaveDocument, getDocument, getDocumentEditorConfig } from '@/api/document/workspace.js'
 
 const FORCE_SAVE_DEBOUNCE_MS = 800
 const SERVER_SAVE_TIMEOUT_MS = 45000
 const PERSISTENCE_POLL_ACTIVE_MS = 1000
 const PERSISTENCE_POLL_IDLE_MS = 15000
+const EDITOR_FRAME_TIMEOUT_MS = 60000
+const DocumentShareDrawer = defineAsyncComponent(() => import('../components/DocumentShareDrawer.vue'))
 
 const route = useRoute()
 const router = useRouter()
 const currentDocument = ref(null)
 const permission = ref('VIEW')
 const loading = ref(true)
+const openStage = ref('正在读取文档权限')
+const editorHost = ref(null)
 const fatalError = ref('')
 const shareOpen = ref(false)
+const shareRequested = ref(false)
 const saveState = reactive({ type: 'ready', label: '准备连接' })
 let editorInstance = null
 let persistenceTimer = null
@@ -83,35 +87,55 @@ let changeRevision = 0
 let syncedRevision = 0
 let requestedRevision = 0
 let persistedRevision = 0
+let openAttempt = 0
+let frameTimer = null
 
 onMounted(initializeEditor)
 onBeforeUnmount(() => {
-  stopPersistencePolling()
+  openAttempt++
   destroyEditor()
 })
 
 async function initializeEditor() {
+  const attempt = ++openAttempt
   destroyEditor()
   resetSaveTracking()
   loading.value = true
+  openStage.value = '正在读取文档权限'
+  currentDocument.value = null
+  permission.value = 'VIEW'
   fatalError.value = ''
   saveState.type = 'syncing'
   saveState.label = '正在连接'
   try {
     const documentId = route.params.documentId
-    const [detailResponse, bootstrapResponse] = await Promise.all([
-      getDocument(documentId),
-      getDocumentEditorConfig(documentId)
-    ])
-    currentDocument.value = detailResponse.data
-    lastPersistedVersion = Number(currentDocument.value?.contentVersion || 0)
+    const bootstrapResponse = await getDocumentEditorConfig(documentId)
+    if (attempt !== openAttempt) return
     const bootstrap = bootstrapResponse.data || {}
     permission.value = bootstrap.permission || 'VIEW'
-    await loadOnlyOfficeApi(bootstrap.apiJsUrl)
+    openStage.value = '正在加载内网编辑器'
+    const { api, documentInfo } = await prepareDocumentEditor(bootstrap, loadEditorApi,
+      async () => (await getDocument(documentId)).data)
+    if (attempt !== openAttempt) return
+    currentDocument.value = documentInfo
+    lastPersistedVersion = Number(documentInfo.contentVersion || 0)
+    window.document.title = `${documentInfo.title} - 在线文档`
+    openStage.value = '正在打开文档'
+    let ready = false
     const config = {
       ...(bootstrap.config || {}),
       events: {
+        onAppReady: () => {
+          if (attempt !== openAttempt || fatalError.value) return
+          window.clearTimeout(frameTimer)
+          loading.value = false
+        },
         onDocumentReady: () => {
+          if (attempt !== openAttempt || ready || fatalError.value) return
+          ready = true
+          window.clearTimeout(frameTimer)
+          loading.value = false
+          startPersistencePolling()
           if (permission.value === 'EDIT') {
             saveState.type = 'ready'
             saveState.label = '编辑器已连接'
@@ -120,28 +144,57 @@ async function initializeEditor() {
             saveState.label = '仅查看，不会修改文档'
           }
         },
-        onDocumentStateChange: handleDocumentStateChange,
+        onDocumentStateChange: (event) => {
+          if (attempt === openAttempt && !fatalError.value) handleDocumentStateChange(event)
+        },
         onError: (event) => {
+          if (attempt !== openAttempt) return
           clearServerSaveWait()
           saveState.type = 'error'
+          if (!ready) {
+            window.clearTimeout(frameTimer)
+            loading.value = false
+            const code = event?.data?.errorCode
+            fatalError.value = `编辑器未能打开文档${code ? `（错误码 ${code}）` : ''}，请重新连接`
+            saveState.label = '打开失败'
+            return
+          }
           saveState.label = `保存失败${event?.data?.errorCode ? ` (${event.data.errorCode})` : ''}，点击重试`
         },
         onWarning: () => {
+          if (attempt !== openAttempt || !ready || fatalError.value) return
           saveState.type = 'syncing'
           saveState.label = '连接波动，正在重试'
         }
       }
     }
-    loading.value = false
-    await new Promise((resolve) => requestAnimationFrame(resolve))
-    editorInstance = new window.DocsAPI.DocEditor('onlyoffice-editor', config)
-    startPersistencePolling()
+    // The SDK replaces its placeholder with an iframe. Keep the Vue-owned host
+    // mounted and give each attempt a fresh child, including after failure.
+    editorHost.value.textContent = ''
+    const target = window.document.createElement('div')
+    target.id = 'document-editor-' + attempt
+    editorHost.value.appendChild(target)
+    frameTimer = window.setTimeout(() => {
+      if (attempt !== openAttempt || !loading.value) return
+      loading.value = false
+      fatalError.value = '编辑器未响应，请检查内网连接后重试'
+      saveState.type = 'error'
+      saveState.label = '连接超时'
+    }, EDITOR_FRAME_TIMEOUT_MS)
+    editorInstance = new api.DocEditor(target.id, config)
   } catch (error) {
+    if (attempt !== openAttempt) return
+    window.clearTimeout(frameTimer)
     loading.value = false
-    fatalError.value = error?.message || String(error || '请检查 ONLYOFFICE 内网服务和 JWT 配置')
+    fatalError.value = error?.message || String(error || '请检查内网编辑服务是否可用')
     saveState.type = 'error'
     saveState.label = '连接失败'
   }
+}
+
+function openShare() {
+  shareRequested.value = true
+  shareOpen.value = true
 }
 
 async function reloadDocument() {
@@ -252,11 +305,12 @@ function settleSaveState() {
 }
 
 function startPersistencePolling(delay = PERSISTENCE_POLL_IDLE_MS) {
+  const attempt = openAttempt
   stopPersistencePolling()
   persistenceTimer = window.setTimeout(async () => {
     persistenceTimer = null
     await refreshPersistedState()
-    if (!loading.value && !fatalError.value) {
+    if (attempt === openAttempt && !loading.value && !fatalError.value) {
       startPersistencePolling(serverSavePending ? PERSISTENCE_POLL_ACTIVE_MS : PERSISTENCE_POLL_IDLE_MS)
     }
   }, delay)
@@ -270,8 +324,10 @@ function stopPersistencePolling() {
 async function refreshPersistedState() {
   if (persistencePolling || loading.value || fatalError.value) return
   persistencePolling = true
+  const attempt = openAttempt
   try {
     const response = await getDocument(route.params.documentId)
+    if (attempt !== openAttempt) return
     const document = response.data || {}
     const nextVersion = Number(document.contentVersion || 0)
     currentDocument.value = document
@@ -284,7 +340,7 @@ async function refreshPersistedState() {
       }
     }
   } catch {
-    if (permission.value === 'EDIT' && (serverSavePending || requestedRevision > persistedRevision)) {
+    if (attempt === openAttempt && permission.value === 'EDIT' && (serverSavePending || requestedRevision > persistedRevision)) {
       saveState.type = 'error'
       saveState.label = '暂时无法确认服务器保存状态，点击重试'
     }
@@ -324,29 +380,8 @@ function resetSaveTracking() {
   persistedRevision = 0
 }
 
-function loadOnlyOfficeApi(url) {
-  if (window.DocsAPI?.DocEditor) return Promise.resolve()
-  if (!url) return Promise.reject(new Error('后端未返回 ONLYOFFICE API 地址'))
-  const existing = [...window.document.querySelectorAll('script[data-onlyoffice-api]')]
-    .find((script) => script.dataset.onlyofficeApi === url)
-  if (existing) {
-    return new Promise((resolve, reject) => {
-      existing.addEventListener('load', resolve, { once: true })
-      existing.addEventListener('error', () => reject(new Error('内网编辑器脚本加载失败')), { once: true })
-    })
-  }
-  return new Promise((resolve, reject) => {
-    const script = window.document.createElement('script')
-    script.src = url
-    script.async = true
-    script.dataset.onlyofficeApi = url
-    script.onload = () => window.DocsAPI?.DocEditor ? resolve() : reject(new Error('ONLYOFFICE API 未正确初始化'))
-    script.onerror = () => reject(new Error('无法访问内网 ONLYOFFICE 服务'))
-    window.document.head.appendChild(script)
-  })
-}
-
 function destroyEditor() {
+  window.clearTimeout(frameTimer)
   stopPersistencePolling()
   clearForceSaveTimer()
   clearServerSaveWait()
@@ -391,8 +426,7 @@ function closeEditor() {
 .save-state.is-syncing { color: var(--el-color-primary); background: var(--surface-subtle); }
 .save-state.is-error { color: var(--el-color-danger); background: var(--el-color-danger-light-9); }
 .editor-stage { position: relative; min-height: 0; flex: 1; }
-.onlyoffice-editor { width: 100%; height: 100%; }
-.onlyoffice-editor.is-hidden { visibility: hidden; }
+.document-editor-host { width: 100%; height: 100%; }
 .editor-placeholder,
 .editor-error { position: absolute; z-index: 2; inset: 0; display: flex; align-items: center; justify-content: center; gap: 10px; flex-direction: column; background: var(--surface-muted); color: var(--app-muted); }
 .editor-error > .el-icon { color: var(--el-color-primary); font-size: 28px; }

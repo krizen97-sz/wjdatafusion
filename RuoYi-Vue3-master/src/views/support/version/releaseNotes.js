@@ -1,5 +1,18 @@
 export const releaseNotes = [
   {
+    version: 'v4.17.5', submitTime: '2026-11-24 10:11:00',
+    level: 'patch', levelLabel: '修订版本', tagType: 'success',
+    title: '优化内网文档编辑器打开流程',
+    summary: '打开 Word 文档或 Excel 表格时复用授权配置中的文档信息，按阶段显示中文状态。',
+    changes: [
+      '打开编辑页时一次获取权限、文档摘要和编辑配置。共享面板在首次使用时加载。',
+      '编辑服务连接失败和脚本超时可以原页重试，文档就绪后才开始同步服务器版本。'
+    ],
+    scope: ['文档管理', '在线编辑', '内网部署'],
+    database: '无需数据库升级，编辑配置与文档摘要合并需配套更新后端。',
+    scripts: []
+  },
+  {
     version: 'v4.17.4', submitTime: '2026-11-20 14:12:24',
     level: 'patch', levelLabel: '修订版本', tagType: 'success',
     title: '完善巡检完整版报告与模板导出',
