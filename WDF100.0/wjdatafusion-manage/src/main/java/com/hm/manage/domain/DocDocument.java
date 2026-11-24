@@ -24,6 +24,7 @@ public class DocDocument extends BaseEntity
     private String ownerAvatar;
     private String folderName;
     private String accessPermission;
+    private boolean favorite;
     private String collaboratorNames;
     private Integer collaboratorCount;
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
@@ -60,6 +61,8 @@ public class DocDocument extends BaseEntity
     public String getFolderName() { return folderName; }
     public void setFolderName(String folderName) { this.folderName = folderName; }
     public String getAccessPermission() { return accessPermission; }
+    public boolean isFavorite() { return favorite; }
+    public void setFavorite(boolean favorite) { this.favorite = favorite; }
     public void setAccessPermission(String accessPermission) { this.accessPermission = accessPermission; }
     public String getCollaboratorNames() { return collaboratorNames; }
     public void setCollaboratorNames(String collaboratorNames) { this.collaboratorNames = collaboratorNames; }

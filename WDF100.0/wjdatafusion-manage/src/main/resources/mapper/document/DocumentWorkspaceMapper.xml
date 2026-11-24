@@ -36,6 +36,7 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <result property="ownerAvatar" column="owner_avatar"/>
         <result property="folderName" column="folder_name"/>
         <result property="accessPermission" column="access_permission"/>
+        <result property="favorite" column="is_favorite"/>
         <result property="collaboratorNames" column="collaborator_names"/>
         <result property="collaboratorCount" column="collaborator_count"/>
         <result property="lastOpenedTime" column="last_opened_time"/>
@@ -341,12 +342,13 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </update>
 
     <select id="selectDocumentList" resultMap="DocDocumentResult">
-        select <include refid="documentProjection"/>
+        select <include refid="documentProjection"/>, (fav.user_id is not null) as is_favorite
         from doc_document d
+        left join doc_favorite fav on fav.user_id = #{userId} and fav.document_id = d.document_id
         join sys_user u on u.user_id = d.owner_id
         left join doc_folder f on f.folder_id = d.folder_id and f.deleted = '0'
         where 1 = 1
-        <if test="scope != 'ADMIN_ALL'">
+        <if test="scope != 'ADMIN_ALL' and !includeAdminFavorites">
             and (d.owner_id = #{userId}
                  or exists(select 1 from doc_acl access_acl
                            where access_acl.document_id = d.document_id and access_acl.user_id = #{userId}
@@ -355,6 +357,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         <choose>
             <when test="scope == 'ADMIN_ALL'">
                 and 1 = 1
+            </when>
+            <when test="scope == 'FAVORITES'">
+                and fav.user_id is not null and d.lifecycle_status in ('ACTIVE','ARCHIVED')
             </when>
             <when test="scope == 'SHARED'">
                 and d.owner_id != #{userId} and d.lifecycle_status = 'ACTIVE'
@@ -393,8 +398,22 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         </if>
         <choose>
             <when test="scope == 'RECENT'">order by last_opened_time desc, d.update_time desc</when>
+            <when test="scope == 'FAVORITES'">order by fav.create_time desc, d.document_id desc</when>
             <otherwise>order by d.update_time desc, d.document_id desc</otherwise>
         </choose>
+    </select>
+
+    <insert id="insertFavorite">
+        insert into doc_favorite(user_id, document_id) values(#{userId}, #{documentId})
+        on duplicate key update create_time = create_time
+    </insert>
+
+    <delete id="deleteFavorite">
+        delete from doc_favorite where user_id = #{userId} and document_id = #{documentId}
+    </delete>
+
+    <select id="isFavorite" resultType="boolean">
+        select exists(select 1 from doc_favorite where user_id = #{userId} and document_id = #{documentId})
     </select>
 
     <select id="selectDocumentRecord" resultMap="DocDocumentResult">
@@ -412,8 +431,9 @@ PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
     </select>
 
     <select id="selectAccessibleDocument" resultMap="DocDocumentResult">
-        select <include refid="documentProjection"/>
+        select <include refid="documentProjection"/>, (fav.user_id is not null) as is_favorite
         from doc_document d
+        left join doc_favorite fav on fav.user_id = #{userId} and fav.document_id = d.document_id
         join sys_user u on u.user_id = d.owner_id
         left join doc_folder f on f.folder_id = d.folder_id and f.deleted = '0'
         where d.document_id = #{documentId}

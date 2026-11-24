@@ -59,7 +59,7 @@ import com.hm.system.service.ISysUserService;
 public class DocumentWorkspaceServiceImpl implements IDocumentWorkspaceService
 {
     private static final Logger log = LoggerFactory.getLogger(DocumentWorkspaceServiceImpl.class);
-    private static final Set<String> SCOPES = Set.of("MY", "SHARED", "RECENT", "ARCHIVED", "TRASH", "ADMIN_ALL");
+    private static final Set<String> SCOPES = Set.of("MY", "SHARED", "RECENT", "ARCHIVED", "TRASH", "ADMIN_ALL", "FAVORITES");
     private static final Set<String> FILE_TYPES = Set.of("doc", "docx", "xls", "xlsx", "pdf", "zip", "rar");
     private static final Set<String> CREATABLE_FILE_TYPES = Set.of("docx", "xlsx");
     private static final Set<String> ARCHIVE_FILE_TYPES = Set.of("zip", "rar");
@@ -384,21 +384,48 @@ public class DocumentWorkspaceServiceImpl implements IDocumentWorkspaceService
                 throw new ServiceException("共享权限筛选无效");
             }
         }
+        boolean includeAdminFavorites = "FAVORITES".equals(normalizedScope) && isDocumentAdmin();
         List<DocDocument> documents = mapper.selectDocumentList(SecurityUtils.getUserId(), normalizedScope,
-            normalizedFolderId, normalizedKeyword, normalizedFileType, normalizedAccessPermission);
+            normalizedFolderId, normalizedKeyword, normalizedFileType, normalizedAccessPermission, includeAdminFavorites);
         if ("ADMIN_ALL".equals(normalizedScope))
         {
             Long currentUserId = SecurityUtils.getUserId();
             documents.forEach(document -> document.setAccessPermission(
                 currentUserId.equals(document.getOwnerId()) ? "OWNER" : "ADMIN"));
         }
+        else if (includeAdminFavorites)
+        {
+            documents.stream().filter(document -> document.getAccessPermission() == null)
+                .forEach(document -> document.setAccessPermission("ADMIN"));
+        }
         return documents;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void addFavorite(Long documentId)
+    {
+        requireReadable(documentId, false);
+        mapper.insertFavorite(SecurityUtils.getUserId(), documentId);
+    }
+
+    @Override
+    public void removeFavorite(Long documentId)
+    {
+        // A user may discard a personal bookmark even after losing access.
+        // The response is identical whether the document or bookmark exists or not.
+        mapper.deleteFavorite(SecurityUtils.getUserId(), documentId);
     }
 
     @Override
     public DocDocument getDocument(Long documentId)
     {
-        return requireReadable(documentId, true);
+        DocDocument document = requireReadable(documentId, true);
+        if ("ADMIN".equals(document.getAccessPermission()))
+        {
+            document.setFavorite(mapper.isFavorite(SecurityUtils.getUserId(), documentId));
+        }
+        return document;
     }
 
     @Override

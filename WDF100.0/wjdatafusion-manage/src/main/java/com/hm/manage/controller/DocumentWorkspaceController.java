@@ -133,6 +133,22 @@ public class DocumentWorkspaceController extends BaseController
         return success(workspaceService.getDocument(documentId));
     }
 
+    @PreAuthorize("@ss.hasPermi('document:file:manage')")
+    @PutMapping("/documents/{documentId}/favorite")
+    public AjaxResult addFavorite(@PathVariable Long documentId)
+    {
+        workspaceService.addFavorite(documentId);
+        return success();
+    }
+
+    @PreAuthorize("@ss.hasPermi('document:file:manage')")
+    @DeleteMapping("/documents/{documentId}/favorite")
+    public AjaxResult removeFavorite(@PathVariable Long documentId)
+    {
+        workspaceService.removeFavorite(documentId);
+        return success();
+    }
+
     @PreAuthorize("@ss.hasPermi('document:file:manage') and @ss.hasPermi('document:document:add')")
     @Log(title = "在线文档", businessType = BusinessType.INSERT)
     @PostMapping("/documents")

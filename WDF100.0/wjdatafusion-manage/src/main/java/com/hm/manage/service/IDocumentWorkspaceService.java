@@ -42,6 +42,10 @@ public interface IDocumentWorkspaceService
 
     DocDocument getDocument(Long documentId);
 
+    void addFavorite(Long documentId);
+
+    void removeFavorite(Long documentId);
+
     DocDocument createDocument(DocCreateBo input);
 
     DocDocument copyDocument(Long documentId);

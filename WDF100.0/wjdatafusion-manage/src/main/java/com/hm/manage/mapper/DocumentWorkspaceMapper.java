@@ -64,7 +64,13 @@ public interface DocumentWorkspaceMapper
 
     List<DocDocument> selectDocumentList(@Param("userId") Long userId, @Param("scope") String scope,
         @Param("folderId") Long folderId, @Param("keyword") String keyword, @Param("fileType") String fileType,
-        @Param("accessPermission") String accessPermission);
+        @Param("accessPermission") String accessPermission, @Param("includeAdminFavorites") boolean includeAdminFavorites);
+
+    int insertFavorite(@Param("userId") Long userId, @Param("documentId") Long documentId);
+
+    int deleteFavorite(@Param("userId") Long userId, @Param("documentId") Long documentId);
+
+    boolean isFavorite(@Param("userId") Long userId, @Param("documentId") Long documentId);
 
     DocDocument selectDocumentRecord(Long documentId);
 

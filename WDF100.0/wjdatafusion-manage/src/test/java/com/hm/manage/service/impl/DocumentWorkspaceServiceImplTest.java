@@ -90,13 +90,13 @@ class DocumentWorkspaceServiceImplTest
         setCurrentUser(7L, "owner", "文档所有者");
 
         DocDocument document = ownedDocument(42L, 7L);
-        when(mapper.selectDocumentList(7L, "MY", null, "", "", ""))
+        when(mapper.selectDocumentList(7L, "MY", null, "", "", "", false))
             .thenReturn(List.of(document));
 
         List<DocDocument> result = service.listDocuments("MY", 0L, "", "", "");
 
         assertEquals(List.of(document), result);
-        verify(mapper).selectDocumentList(7L, "MY", null, "", "", "");
+        verify(mapper).selectDocumentList(7L, "MY", null, "", "", "", false);
         verify(mapper, never()).selectFolderById(any(Long.class));
     }
 
@@ -905,7 +905,7 @@ class DocumentWorkspaceServiceImplTest
         setAdminCurrentUser(1L, "admin", "管理员");
         DocDocument otherOwnersFile = ownedDocument(88L, 9L);
         otherOwnersFile.setAccessPermission(null);
-        when(mapper.selectDocumentList(1L, "ADMIN_ALL", null, "", "", ""))
+        when(mapper.selectDocumentList(1L, "ADMIN_ALL", null, "", "", "", false))
             .thenReturn(List.of(otherOwnersFile));
 
         List<DocDocument> result = service.listDocuments("ADMIN_ALL", null, "", "", "");
@@ -950,6 +950,31 @@ class DocumentWorkspaceServiceImplTest
         assertEquals(maxUploadMb * megabyte, result.getMaxUploadSize());
         assertEquals(4D, result.getUsagePercent());
         verify(mapper).updateQuota(2L, 500L * megabyte, maxUploadMb * megabyte, "admin");
+    }
+
+    @Test
+    void canBookmarkSharedReadOnlyDocumentButCannotBookmarkInaccessibleOrTrashedDocuments()
+    {
+        DocumentWorkspaceMapper mapper = mock(DocumentWorkspaceMapper.class);
+        DocumentWorkspaceServiceImpl service = new DocumentWorkspaceServiceImpl();
+        ReflectionTestUtils.setField(service, "mapper", mapper);
+        setCurrentUser(7L, "reader", "只读用户");
+
+        DocDocument shared = ownedDocument(42L, 8L);
+        shared.setAccessPermission("VIEW");
+        when(mapper.selectAccessibleDocument(42L, 7L)).thenReturn(shared);
+        service.addFavorite(42L);
+        verify(mapper).insertFavorite(7L, 42L);
+
+        DocDocument trashed = ownedDocument(43L, 7L);
+        trashed.setLifecycleStatus("TRASH");
+        when(mapper.selectAccessibleDocument(43L, 7L)).thenReturn(trashed);
+        assertThrows(ServiceException.class, () -> service.addFavorite(43L));
+        assertThrows(ServiceException.class, () -> service.addFavorite(44L));
+        verify(mapper, never()).insertFavorite(7L, 43L);
+        verify(mapper, never()).insertFavorite(7L, 44L);
+        service.removeFavorite(44L);
+        verify(mapper).deleteFavorite(7L, 44L);
     }
 
     @ParameterizedTest
