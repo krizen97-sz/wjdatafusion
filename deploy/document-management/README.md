@@ -76,7 +76,9 @@ curl -fsS -o /dev/null -w '%{http_code}\n' \
 
 ```bash
 DOCUMENT_MANAGEMENT_ONLY_OFFICE_ENABLED=true
-DOCUMENT_MANAGEMENT_ONLY_OFFICE_SERVER_URL=http://139.224.24.77:5555/onlyoffice
+DOCUMENT_MANAGEMENT_ONLY_OFFICE_SERVER_URL=http://127.0.0.1:8082
+DOCUMENT_MANAGEMENT_ONLY_OFFICE_BROWSER_PATH=/onlyoffice
+DOCUMENT_MANAGEMENT_ONLY_OFFICE_PLUGINS_ENABLED=false
 DOCUMENT_MANAGEMENT_ONLY_OFFICE_PLATFORM_BASE_URL=http://onlyoffice-gateway:8083
 DOCUMENT_MANAGEMENT_ONLY_OFFICE_JWT_SECRET=<与 /opt/rynew/onlyoffice/.env 完全一致>
 DOCUMENT_MANAGEMENT_ONLY_OFFICE_TRUSTED_DOWNLOAD_HOSTS=139.224.24.77,2.57.0.250,onlyoffice-documentserver,rynew-onlyoffice-documentserver
@@ -84,9 +86,9 @@ DOCUMENT_MANAGEMENT_STORAGE_ROOT=/opt/rynew/data/documents
 DOCUMENT_MANAGEMENT_MAX_FILE_SIZE=52428800
 ```
 
-两个 URL 不能混用：
-
-- `DOCUMENT_MANAGEMENT_ONLY_OFFICE_SERVER_URL` 是浏览器能访问的编辑器地址。
+- `DOCUMENT_MANAGEMENT_ONLY_OFFICE_BROWSER_PATH=/onlyoffice` 让浏览器从当前平台站点加载编辑器。内网用户可直接访问内网地址，外网映射也使用各自的原入口。此路径须已在业务 Nginx 中代理到编辑服务。
+- `DOCUMENT_MANAGEMENT_ONLY_OFFICE_SERVER_URL` 指向平台后端可达的编辑服务，用于强制保存、撤销会话和下载签名缓存。250 的后端在宿主机运行，实际网关为 `127.0.0.1:8082`。其他部署按网关可达地址配置。若不配置 browser-path，浏览器继续使用 server-url。
+- `DOCUMENT_MANAGEMENT_ONLY_OFFICE_PLUGINS_ENABLED=false` 关闭第三方编辑器扩展入口。简体中文和中国地区为默认值，新文档使用引擎自带中文字体 WenQuanYi Zen Hei。
 - `DOCUMENT_MANAGEMENT_ONLY_OFFICE_PLATFORM_BASE_URL` 是 DocumentServer 容器能访问的平台文件与回调地址。
 - `DOCUMENT_MANAGEMENT_ONLY_OFFICE_TRUSTED_DOWNLOAD_HOSTS` 必须只列出实际回调下载地址可能使用的精确主机；当前公网虚拟路径会生成 `139.224.24.77` 下载地址，因此需要加入该 IP，不能使用通配或关闭 SSRF 校验。
 

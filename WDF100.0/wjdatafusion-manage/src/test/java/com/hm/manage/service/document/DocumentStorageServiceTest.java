@@ -68,6 +68,12 @@ class DocumentStorageServiceTest
                 StandardCharsets.UTF_8);
             assertTrue(styles.contains("w:val=\"zh-CN\""));
             assertTrue(styles.contains("w:eastAsia=\"zh-CN\""));
+            assertTrue(styles.contains("w:eastAsia=\"WenQuanYi Zen Hei\""));
+        }
+        try (var workbook = new org.apache.poi.xssf.usermodel.XSSFWorkbook(sheet.toFile()))
+        {
+            assertEquals("工作表1", workbook.getSheetName(0));
+            assertEquals("WenQuanYi Zen Hei", workbook.getFontAt(0).getFontName());
         }
     }
 

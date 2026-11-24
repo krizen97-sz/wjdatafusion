@@ -97,6 +97,7 @@ public class OnlyOfficeDocumentEditorProvider implements DocumentEditorProvider
             "forcesave", true,
             "compactHeader", false,
             "help", false,
+            "plugins", config.isPluginsEnabled(),
             "about", false,
             "feedback", false));
 
@@ -111,8 +112,18 @@ public class OnlyOfficeDocumentEditorProvider implements DocumentEditorProvider
 
         Map<String, Object> bootstrap = new LinkedHashMap<>();
         bootstrap.put("provider", getProviderName());
-        bootstrap.put("apiJsUrl", stripTrailingSlash(config.getServerUrl())
+        bootstrap.put("apiJsUrl", stripTrailingSlash(StringUtils.defaultIfBlank(config.getBrowserPath(), config.getServerUrl()))
             + "/web-apps/apps/api/documents/api.js");
+        Map<String, Object> documentInfo = new LinkedHashMap<>();
+        documentInfo.put("documentId", document.getDocumentId());
+        documentInfo.put("title", document.getTitle());
+        documentInfo.put("fileType", document.getFileType());
+        documentInfo.put("contentVersion", document.getContentVersion());
+        documentInfo.put("collaboratorCount", document.getCollaboratorCount());
+        documentInfo.put("accessPermission", document.getAccessPermission());
+        documentInfo.put("updateTime", document.getUpdateTime() == null ? null
+            : com.hm.common.utils.DateUtils.parseDateToStr("yyyy-MM-dd HH:mm:ss", document.getUpdateTime()));
+        bootstrap.put("documentInfo", documentInfo);
         bootstrap.put("permission", editable ? "EDIT" : "VIEW");
         bootstrap.put("config", editor);
         return bootstrap;
@@ -172,6 +183,22 @@ public class OnlyOfficeDocumentEditorProvider implements DocumentEditorProvider
             || StringUtils.isBlank(source.getHost()) || !trustedHosts(config).contains(source.getHost().toLowerCase(Locale.ROOT)))
         {
             throw new ServiceException("编辑器回调下载地址不在内网白名单中");
+        }
+
+        // A signed cache URL is published under the browser mount. Retrieve that
+        // file through the local gateway while preserving its signature query.
+        String mount = stripTrailingSlash(config.getBrowserPath());
+        if (!mount.isEmpty() && source.getRawPath().startsWith(mount + "/cache/files/"))
+        {
+            String cachePath = source.getRawPath().substring(mount.length());
+            String decodedPath = source.getPath();
+            if (decodedPath.indexOf('\\') >= 0 || decodedPath.contains("%")
+                || List.of(decodedPath.split("/")).stream().anyMatch(segment -> segment.equals(".") || segment.equals("..")))
+            {
+                throw new ServiceException("编辑器缓存文件地址无效");
+            }
+            String query = source.getRawQuery() == null ? "" : "?" + source.getRawQuery();
+            source = URI.create(stripTrailingSlash(config.getServerUrl()) + cachePath + query);
         }
 
         HttpClient client = HttpClient.newBuilder()
@@ -327,7 +354,7 @@ public class OnlyOfficeDocumentEditorProvider implements DocumentEditorProvider
         }
         if (StringUtils.isBlank(config.getServerUrl()) || StringUtils.isBlank(config.getPlatformBaseUrl()))
         {
-            throw new ServiceException("ONLYOFFICE 内网地址配置不完整");
+            throw new ServiceException("在线编辑服务的内网地址配置不完整");
         }
         return config;
     }
@@ -350,7 +377,7 @@ public class OnlyOfficeDocumentEditorProvider implements DocumentEditorProvider
             }
             catch (Exception exception)
             {
-                throw new ServiceException("ONLYOFFICE 服务地址配置无效");
+                throw new ServiceException("在线编辑服务地址无效");
             }
         }
         return hosts;

@@ -97,6 +97,8 @@ public class DocumentManagementProperties
     {
         private boolean enabled;
         private String serverUrl;
+        private String browserPath;
+        private boolean pluginsEnabled = true;
         private String platformBaseUrl;
         private String jwtSecret;
         private int fileTokenMinutes = 15;
@@ -130,6 +132,32 @@ public class DocumentManagementProperties
         public String getPlatformBaseUrl()
         {
             return platformBaseUrl;
+        }
+
+        /** Optional same-origin mount, e.g. /onlyoffice. Without it the existing server URL is used. */
+        public String getBrowserPath()
+        {
+            return browserPath;
+        }
+
+        public void setBrowserPath(String browserPath)
+        {
+            if (browserPath != null && !browserPath.isBlank()
+                && !browserPath.matches("(/[A-Za-z0-9_-]+)+/?"))
+            {
+                throw new IllegalArgumentException("编辑器浏览器入口必须是本站绝对路径");
+            }
+            this.browserPath = browserPath;
+        }
+
+        public boolean isPluginsEnabled()
+        {
+            return pluginsEnabled;
+        }
+
+        public void setPluginsEnabled(boolean pluginsEnabled)
+        {
+            this.pluginsEnabled = pluginsEnabled;
         }
 
         public void setPlatformBaseUrl(String platformBaseUrl)

@@ -59,6 +59,7 @@ public class DocumentStorageService
 {
     private static final Logger log = LoggerFactory.getLogger(DocumentStorageService.class);
     private static final String DEFAULT_DOCUMENT_LANGUAGE = "zh-CN";
+    private static final String DEFAULT_DOCUMENT_FONT = "WenQuanYi Zen Hei";
     private static final Set<String> SUPPORTED_FILE_TYPES = Set.of("doc", "docx", "xls", "xlsx");
     private static final Set<String> OPEN_XML_FILE_TYPES = Set.of("docx", "xlsx");
     private static final Set<String> ARCHIVE_FILE_TYPES = Set.of("zip", "rar");
@@ -175,6 +176,9 @@ public class DocumentStorageService
             {
                 document.createStyles().setSpellingLanguage(DEFAULT_DOCUMENT_LANGUAGE);
                 document.getStyles().setEastAsia(DEFAULT_DOCUMENT_LANGUAGE);
+                var fonts = org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFonts.Factory.newInstance();
+                fonts.setEastAsia(DEFAULT_DOCUMENT_FONT);
+                document.getStyles().setDefaultFonts(fonts);
                 document.createParagraph();
                 document.write(output);
             }
@@ -184,7 +188,9 @@ public class DocumentStorageService
         {
             try (XSSFWorkbook workbook = new XSSFWorkbook(); OutputStream output = Files.newOutputStream(target))
             {
-                workbook.createSheet("Sheet1");
+                workbook.getFontAt(0).setFontName(DEFAULT_DOCUMENT_FONT);
+                workbook.getFontAt(0).setScheme(org.apache.poi.ss.usermodel.FontScheme.NONE);
+                workbook.createSheet("工作表1");
                 workbook.write(output);
             }
             return;

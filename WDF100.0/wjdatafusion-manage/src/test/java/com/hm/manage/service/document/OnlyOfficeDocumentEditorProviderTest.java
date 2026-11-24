@@ -57,6 +57,8 @@ class OnlyOfficeDocumentEditorProviderTest
     {
         properties.getOnlyOffice().setEnabled(true);
         properties.getOnlyOffice().setServerUrl("http://onlyoffice-documentserver");
+        properties.getOnlyOffice().setBrowserPath("/onlyoffice");
+        properties.getOnlyOffice().setPluginsEnabled(false);
         properties.getOnlyOffice().setPlatformBaseUrl("http://platform:8080");
         document.setFileType("docx");
         document.setDocumentType("word");
@@ -73,6 +75,13 @@ class OnlyOfficeDocumentEditorProviderTest
         Map<String, Object> editorConfig = (Map<String, Object>) config.get("editorConfig");
         Map<String, Object> customization = (Map<String, Object>) editorConfig.get("customization");
         assertEquals("zh-CN", editorConfig.get("lang"));
+        assertEquals("/onlyoffice/web-apps/apps/api/documents/api.js", bootstrap.get("apiJsUrl"));
+        assertEquals(false, customization.get("plugins"));
+        Map<String, Object> summary = (Map<String, Object>) bootstrap.get("documentInfo");
+        assertEquals(42L, summary.get("documentId"));
+        assertEquals("测试文档.docx", summary.get("title"));
+        assertFalse(summary.containsKey("storageKey"));
+        assertTrue(((String) editorConfig.get("callbackUrl")).startsWith("http://platform:8080/"));
         assertEquals("zh-CN", editorConfig.get("region"));
         assertEquals(false, customization.get("about"));
         assertEquals(false, customization.get("help"));
@@ -107,6 +116,41 @@ class OnlyOfficeDocumentEditorProviderTest
         assertEquals(true, permissions.get("copy"));
         assertEquals(false, permissions.get("download"));
         assertEquals(false, permissions.get("print"));
+    }
+
+    @Test
+    void retrievesSignedPublicCacheThroughLocalGateway() throws Exception
+    {
+        HttpServer gateway = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        AtomicReference<String> requested = new AtomicReference<>();
+        gateway.createContext("/cache/files/", exchange -> {
+            requested.set(exchange.getRequestURI().toASCIIString());
+            exchange.sendResponseHeaders(200, 2);
+            exchange.getResponseBody().write(new byte[] { 8, 9 });
+            exchange.close();
+        });
+        gateway.start();
+        var target = java.nio.file.Files.createTempFile("doc-save-test-", ".tmp");
+        try
+        {
+            var editor = properties.getOnlyOffice();
+            editor.setEnabled(true);
+            editor.setBrowserPath("/onlyoffice/");
+            editor.setPlatformBaseUrl("http://platform:8080");
+            editor.setServerUrl("http://127.0.0.1:" + gateway.getAddress().getPort());
+            editor.setTrustedDownloadHosts(List.of("portal.example"));
+            String file = "/cache/files/run/test%20file.docx?md5=a%2Bb&expires=123";
+            provider.downloadCallbackFile("https://portal.example/onlyoffice" + file, target);
+            assertEquals(file, requested.get());
+            assertEquals(2L, java.nio.file.Files.size(target));
+            assertThrows(ServiceException.class, () -> provider.downloadCallbackFile("https://unlisted.example/onlyoffice" + file, target));
+            assertThrows(IllegalArgumentException.class, () -> editor.setBrowserPath("//unlisted.example/path"));
+        }
+        finally
+        {
+            gateway.stop(0);
+            java.nio.file.Files.deleteIfExists(target);
+        }
     }
 
     @Test

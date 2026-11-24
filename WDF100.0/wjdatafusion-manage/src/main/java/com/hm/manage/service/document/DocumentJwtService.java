@@ -124,7 +124,7 @@ public class DocumentJwtService
         String secret = properties.getOnlyOffice().getJwtSecret();
         if (StringUtils.isBlank(secret) || secret.length() < 32)
         {
-            throw new ServiceException("ONLYOFFICE JWT 密钥未配置或长度不足32位");
+            throw new ServiceException("在线编辑服务签名密钥未配置或长度不足32位");
         }
     }
 }
