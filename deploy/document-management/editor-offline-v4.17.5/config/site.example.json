@@ -1,0 +1,20 @@
+{
+  "jar": "/opt/java/wjdatafusion-admin.jar",
+  "dist": "/usr/local/nginx/dist",
+  "env_file": "/opt/java/document-management.env",
+  "nginx_conf": "/usr/local/nginx/conf/nginx.conf",
+  "nginx_candidate": "/etc/rynew-editor-upgrade/nginx-candidate.conf",
+  "backup_root": "/var/backups/rynew-editor",
+  "backend_health_url": "http://127.0.0.1:8080/captchaImage",
+  "editor_server_url": "http://127.0.0.1:8082",
+  "editor_health_url": "http://127.0.0.1:8082/healthcheck",
+  "portal_editor_health_url": "http://32.73.150.46/onlyoffice/healthcheck",
+  "browser_path": "/onlyoffice",
+  "plugins_enabled": false,
+  "commands": {
+    "stop": ["/usr/bin/systemctl", "stop", "rynew.service"],
+    "start": ["/usr/bin/systemctl", "start", "rynew.service"],
+    "nginx_test": ["/usr/local/nginx/sbin/nginx", "-t"],
+    "nginx_reload": ["/usr/local/nginx/sbin/nginx", "-s", "reload"]
+  }
+}
