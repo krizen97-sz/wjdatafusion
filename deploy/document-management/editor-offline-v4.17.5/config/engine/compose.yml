@@ -1,0 +1,66 @@
+services:
+  onlyoffice-documentserver:
+    image: ${ONLYOFFICE_IMAGE:?Use images.lock.env}
+    platform: linux/amd64
+    pull_policy: never
+    hostname: onlyoffice-documentserver
+    restart: unless-stopped
+    shm_size: 1gb
+    stop_grace_period: 90s
+    environment:
+      JWT_ENABLED: "true"
+      JWT_SECRET: ${ONLYOFFICE_JWT_SECRET:?Run prepare.sh first}
+      JWT_HEADER: AuthorizationJwt
+      JWT_IN_BODY: "true"
+      ALLOW_PRIVATE_IP_ADDRESS: "true"
+      ALLOW_META_IP_ADDRESS: "false"
+    expose: ["80"]
+    volumes:
+      - document_data:/var/www/onlyoffice/Data
+      - document_logs:/var/log/onlyoffice
+      - document_lib:/var/lib/onlyoffice
+      - document_db:/var/lib/postgresql
+      - ./fonts:/usr/share/fonts/truetype/rynew-offline:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1/healthcheck"]
+      interval: 20s
+      timeout: 10s
+      retries: 18
+      start_period: 120s
+    logging:
+      driver: json-file
+      options: {max-size: "20m", max-file: "3"}
+    networks: [document_internal]
+
+  onlyoffice-gateway:
+    image: ${GATEWAY_IMAGE:?Use images.lock.env}
+    platform: linux/amd64
+    pull_policy: never
+    restart: unless-stopped
+    depends_on:
+      onlyoffice-documentserver:
+        condition: service_healthy
+    ports:
+      - "${PUBLIC_BIND_IP:-0.0.0.0}:${PUBLIC_PORT:-8082}:8082"
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - ./config/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    read_only: true
+    tmpfs: [/var/cache/nginx, /var/run, /tmp]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    networks: [document_internal, document_ingress]
+
+networks:
+  document_internal:
+    internal: true
+  document_ingress:
+    driver: bridge
+
+volumes:
+  document_data:
+  document_logs:
+  document_lib:
+  document_db:
