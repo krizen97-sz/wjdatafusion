@@ -1,9 +1,9 @@
--- RYNEW v4.17.2 complete fresh-database initialization (2026-11-06).
+-- RYNEW v4.17.6 complete fresh-database initialization (2026-11-24).
 -- EMPTY DATABASE ONLY. Not an upgrade. Use a new batch connection, never --force.
 -- Set @rynew_admin_password_hash to your installation-specific BCrypt hash first.
 -- No universal bootstrap password, source users, business rows or live credentials.
 -- Prepare a private runnable copy: node tools/database/init-latest.mjs --prepare --password-file FILE --output FILE
--- Source SHA-256 (schema snapshot): e4e98bc986f01de8ead28ae038c074499999433f38577a244d0895bb46f24957
+-- Source SHA-256 (schema snapshot): 49734ad14955093d0de38c9e276ef91206134ee3a13c0d93fc6a2337d3ca16e0
 -- 5600bf38bd8883e52a9f6b897b6ce9f4f4ef9532d09f6c10fb6f0082a3c00cf7  ry_20260320.sql
 -- 5a0e64a518eb16a1ffbb65b1569002e41ec3b1639b0d5770468beecc3c05fc52  quartz.sql
 -- b20cbc56fb54ba136fca28ff3f434559b036a35cbc2c9d69621c163d94ae049f  support_deploy_all.sql
@@ -26,6 +26,7 @@
 -- fdf96216d33dda116a84f9f1af2e222e5b63f83dbd5028e51f9dc4283ca4063a  document_management_p1_20260816.sql
 -- 262cafdb6256e6dc0670b1fbb9c89e5550d27e39e54424325e6907320a109c85  document_management_p1_lightweight_versions_20260816.sql
 -- 56091befa1a5a8e3c87c374d4df552774e0659d78291cd03d127cd572c2c5947  document_management_v3_9_19_archive_quota_20260816.sql
+-- 04c693dcdc1e7a5675f2359595593f94d5a8c90d424b228a5408727043beed5e  document_management_upgrade_20261124_v4_17_6_favorites.sql
 -- b01fc807db43d6e4959384e7b34844f38f4f63cc0ee1cfe7a0615190ce690b2d  knowledge_center_upgrade_20260829_v3_14_3_to_v3_15_2_all.sql
 -- cfe9890219645ef047ead5c19e53109197562f4012e20a28a8376e12661a1ac3  data_governance_hdi_core_upgrade_20261013.sql
 -- fc697ec815ec7ee9d62dd43b6810ef7d12364295f50358bcfcad673f6169464f  data_governance_hdi_connections_upgrade_20261025.sql
@@ -34,7 +35,7 @@
 -- 3da01f25f172bf79b8cbcf98eadf6edd7d4453bb8a048f082242ce10d78ff6a8  document_management_v3_9_21_document_role_20260816.sql
 -- d65c0b76859ae7f03ef4f3e4bd8247f9ed81fcaaff6d6c162c8af2548f053e2a  data_governance_upgrade_20260909_v4_5_0.sql
 -- a32d768049d4c46a56a7ae238cd3d996b6b7ddcdd408224b6ab80fe7fb2994fc  support_upgrade_20260826_menu_icons_v3_14_3.sql
--- Seed policy SHA-256: 6d9fa201a84a3c3599c85c3a48d87dbeb7702e976d93e65269525b71f2c0c940
+-- Seed policy SHA-256: 3885d7f486eccc9997be02f08b370b743de8460fa14f74ac0a417ef892e9d413
 
 SET NAMES utf8mb4;
 CREATE TEMPORARY TABLE rynew_init_guard(check_name VARCHAR(80) PRIMARY KEY);
@@ -50,7 +51,7 @@ INSERT INTO rynew_init_guard VALUES('EMPTY_DATABASE_REQUIRED');
 INSERT INTO rynew_init_guard SELECT 'EMPTY_DATABASE_REQUIRED' WHERE (SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE())<>0 OR (SELECT COUNT(*) FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA=DATABASE())<>0 OR (SELECT COUNT(*) FROM information_schema.EVENTS WHERE EVENT_SCHEMA=DATABASE())<>0;
 
 -- BEGIN SCHEMA SNAPSHOT
--- RYNEW v4.17.2 latest platform schema (2026-11-06).
+-- RYNEW v4.17.6 latest platform schema (2026-11-24).
 -- Schema only: no accounts, passwords, menus, dictionaries, jobs or business rows.
 -- Source: repository SQL rebuilt in a new socket-only MySQL; never a live database export.
 -- Select an EMPTY target database before importing; database creation is deliberately excluded.
@@ -81,6 +82,7 @@ INSERT INTO rynew_init_guard SELECT 'EMPTY_DATABASE_REQUIRED' WHERE (SELECT COUN
 -- fdf96216d33dda116a84f9f1af2e222e5b63f83dbd5028e51f9dc4283ca4063a  document_management_p1_20260816.sql
 -- 262cafdb6256e6dc0670b1fbb9c89e5550d27e39e54424325e6907320a109c85  document_management_p1_lightweight_versions_20260816.sql
 -- 56091befa1a5a8e3c87c374d4df552774e0659d78291cd03d127cd572c2c5947  document_management_v3_9_19_archive_quota_20260816.sql
+-- 04c693dcdc1e7a5675f2359595593f94d5a8c90d424b228a5408727043beed5e  document_management_upgrade_20261124_v4_17_6_favorites.sql
 -- b01fc807db43d6e4959384e7b34844f38f4f63cc0ee1cfe7a0615190ce690b2d  knowledge_center_upgrade_20260829_v3_14_3_to_v3_15_2_all.sql
 -- cfe9890219645ef047ead5c19e53109197562f4012e20a28a8376e12661a1ac3  data_governance_hdi_core_upgrade_20261013.sql
 -- fc697ec815ec7ee9d62dd43b6810ef7d12364295f50358bcfcad673f6169464f  data_governance_hdi_connections_upgrade_20261025.sql
@@ -419,6 +421,17 @@ CREATE TABLE IF NOT EXISTS `doc_document` (
   KEY `idx_doc_document_folder_status` (`folder_id`,`lifecycle_status`,`update_time`),
   KEY `idx_doc_document_type` (`file_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='在线文档';
+
+-- Table: doc_favorite
+CREATE TABLE IF NOT EXISTS `doc_favorite` (
+  `user_id` bigint NOT NULL COMMENT '收藏用户ID',
+  `document_id` bigint NOT NULL COMMENT '文档ID',
+  `create_time` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '收藏时间',
+  PRIMARY KEY (`user_id`,`document_id`),
+  KEY `idx_doc_favorite_user_time` (`user_id`,`create_time`,`document_id`),
+  KEY `idx_doc_favorite_document` (`document_id`),
+  CONSTRAINT `fk_doc_favorite_document` FOREIGN KEY (`document_id`) REFERENCES `doc_document` (`document_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='文档个人收藏';
 
 -- Table: doc_folder
 CREATE TABLE IF NOT EXISTS `doc_folder` (

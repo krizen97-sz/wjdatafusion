@@ -123,7 +123,7 @@ test('complete fresh install is usable, minimal and rejects unsafe reinstallatio
     assert.equal(await q("SELECT next_value FROM dg_hdi_counter WHERE counter_name='native_runtime'"), '100000')
     assert.equal(await q("SELECT workspace_key FROM dg_hdi_workspace"), 'platform')
     const tables = (await q('SHOW TABLES')).split('\n')
-    assert.equal(tables.length, 105)
+    assert.equal(tables.length, 106)
     for (const table of tables.filter(table => !seedTables.includes(table))) {
       assert.equal(await q('SELECT COUNT(*) FROM `' + table + '`'), '0', table)
     }

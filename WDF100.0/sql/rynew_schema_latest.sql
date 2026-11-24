@@ -1,4 +1,4 @@
--- RYNEW v4.17.2 latest platform schema (2026-11-06).
+-- RYNEW v4.17.6 latest platform schema (2026-11-24).
 -- Schema only: no accounts, passwords, menus, dictionaries, jobs or business rows.
 -- Source: repository SQL rebuilt in a new socket-only MySQL; never a live database export.
 -- Select an EMPTY target database before importing; database creation is deliberately excluded.
@@ -29,6 +29,7 @@
 -- fdf96216d33dda116a84f9f1af2e222e5b63f83dbd5028e51f9dc4283ca4063a  document_management_p1_20260816.sql
 -- 262cafdb6256e6dc0670b1fbb9c89e5550d27e39e54424325e6907320a109c85  document_management_p1_lightweight_versions_20260816.sql
 -- 56091befa1a5a8e3c87c374d4df552774e0659d78291cd03d127cd572c2c5947  document_management_v3_9_19_archive_quota_20260816.sql
+-- 04c693dcdc1e7a5675f2359595593f94d5a8c90d424b228a5408727043beed5e  document_management_upgrade_20261124_v4_17_6_favorites.sql
 -- b01fc807db43d6e4959384e7b34844f38f4f63cc0ee1cfe7a0615190ce690b2d  knowledge_center_upgrade_20260829_v3_14_3_to_v3_15_2_all.sql
 -- cfe9890219645ef047ead5c19e53109197562f4012e20a28a8376e12661a1ac3  data_governance_hdi_core_upgrade_20261013.sql
 -- fc697ec815ec7ee9d62dd43b6810ef7d12364295f50358bcfcad673f6169464f  data_governance_hdi_connections_upgrade_20261025.sql
@@ -367,6 +368,17 @@ CREATE TABLE IF NOT EXISTS `doc_document` (
   KEY `idx_doc_document_folder_status` (`folder_id`,`lifecycle_status`,`update_time`),
   KEY `idx_doc_document_type` (`file_type`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='在线文档';
+
+-- Table: doc_favorite
+CREATE TABLE IF NOT EXISTS `doc_favorite` (
+  `user_id` bigint NOT NULL COMMENT '收藏用户ID',
+  `document_id` bigint NOT NULL COMMENT '文档ID',
+  `create_time` datetime(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) COMMENT '收藏时间',
+  PRIMARY KEY (`user_id`,`document_id`),
+  KEY `idx_doc_favorite_user_time` (`user_id`,`create_time`,`document_id`),
+  KEY `idx_doc_favorite_document` (`document_id`),
+  CONSTRAINT `fk_doc_favorite_document` FOREIGN KEY (`document_id`) REFERENCES `doc_document` (`document_id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='文档个人收藏';
 
 -- Table: doc_folder
 CREATE TABLE IF NOT EXISTS `doc_folder` (

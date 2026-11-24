@@ -7,7 +7,7 @@ import { withIsolatedMysql } from './isolated-mysql.mjs'
 
 export const root = fileURLToPath(new URL('../../', import.meta.url))
 export const output = resolve(root, 'WDF100.0/sql/rynew_schema_latest.sql')
-export const version = 'v4.17.2'
+export const version = 'v4.17.6'
 export const sources = [
   'ry_20260320.sql',
   'quartz.sql',
@@ -31,6 +31,7 @@ export const sources = [
   'document_management_p1_20260816.sql',
   'document_management_p1_lightweight_versions_20260816.sql',
   'document_management_v3_9_19_archive_quota_20260816.sql',
+  'document_management_upgrade_20261124_v4_17_6_favorites.sql',
   'knowledge_center_upgrade_20260829_v3_14_3_to_v3_15_2_all.sql',
   'data_governance_hdi_core_upgrade_20261013.sql',
   'data_governance_hdi_connections_upgrade_20261025.sql'
@@ -87,7 +88,7 @@ export async function schemaMetadata(mysql, database) {
 
 export function renderSchema(definitions) {
   return [
-    '-- RYNEW ' + version + ' latest platform schema (2026-11-06).',
+    '-- RYNEW ' + version + ' latest platform schema (2026-11-24).',
     '-- Schema only: no accounts, passwords, menus, dictionaries, jobs or business rows.',
     '-- Source: repository SQL rebuilt in a new socket-only MySQL; never a live database export.',
     '-- Select an EMPTY target database before importing; database creation is deliberately excluded.',

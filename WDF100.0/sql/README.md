@@ -1,10 +1,10 @@
 # 数据库脚本入口
 
-当前应用版本：`v4.17.2`；建表快照更新日期：`2026-11-06`。
+当前应用版本为 `v4.17.6`，建表快照更新于 `2026-11-24`。
 
 ## 新库完整初始化
 
-[`rynew_init_latest.sql`](rynew_init_latest.sql) 是与最新结构匹配的完整新库入口：105 张运行表及必要的技术初始化数据，**不是业务库导出，也不是升级脚本**。
+[`rynew_init_latest.sql`](rynew_init_latest.sql) 用于新库安装，包含 106 张运行表及必要的初始数据。
 
 目标为 MySQL 8，实测版本为 `8.4.6`；不适用于 MySQL 5.7、MariaDB 或 PostgreSQL。安装期间不要启动应用写入或并行执行其他迁移。
 
@@ -50,7 +50,7 @@ mysql --login-path=rynew-install --database=EMPTY_DATABASE --default-character-s
 
 ## 最新建表 SQL
 
-[`rynew_schema_latest.sql`](rynew_schema_latest.sql) 是平台 MySQL 运行表的最新**仅结构**快照，共 105 张表：
+[`rynew_schema_latest.sql`](rynew_schema_latest.sql) 是平台 MySQL 运行表的最新**仅结构**快照，共 106 张表。
 
 | 范围 | 表数 |
 | --- | ---: |
@@ -59,7 +59,7 @@ mysql --login-path=rynew-install --database=EMPTY_DATABASE --default-character-s
 | 现场融合、设备、服务器与凭据池 | 19 |
 | 自动巡检 | 11 |
 | 旧巡检历史兼容表 | 8 |
-| 文档管理 | 6 |
+| 文档管理 | 7 |
 | 知识中心 | 6 |
 | IPAM | 13 |
 | 数据治理原生任务、连接及对象标识 | 10 |
@@ -90,6 +90,7 @@ mysql --login-path=rynew-install --database=EMPTY_DATABASE --default-character-s
 
 | 实际基线 | 入口 | 说明 |
 | --- | --- | --- |
+| 完整 v4.17.2～v4.17.5 | [文档收藏增量](document_management_upgrade_20261124_v4_17_6_favorites.sql) | 新增个人收藏关系表，部署支持“我的收藏”的应用前执行 |
 | 完整 v4.17.0 | `data_governance_upgrade_20261026_v4_17_0_to_v4_17_2_all.sql` | 新增 10 张 HDI 表；先后运行 `data_governance_check_20261026_v4_17_0_to_v4_17_2.sql` |
 | 完整 v4.16.0，尚未完成凭据池迁移 | `support_upgrade_20260929_server_credential_password_pool_v4_17_0.sql` | 先备份、停写及停止扫描，保留加密密钥；升级不接触服务器本身 |
 | 完整 v4.4.1 升至 v4.8.3 | `data_governance_upgrade_20260918_v4_4_1_to_v4_8_3_all.sql` | 先核对同名 README 的菜单和文档额度基线 |

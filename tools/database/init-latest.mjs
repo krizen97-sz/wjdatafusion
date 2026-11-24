@@ -102,7 +102,7 @@ export function renderInit(seeds) {
   assert.deepEqual(seeds.map(seed => seed.table), seedTables)
   const schema = readFileSync(schemaOutput, 'utf8')
   return [
-    '-- RYNEW ' + version + ' complete fresh-database initialization (2026-11-06).',
+    '-- RYNEW ' + version + ' complete fresh-database initialization (2026-11-24).',
     '-- EMPTY DATABASE ONLY. Not an upgrade. Use a new batch connection, never --force.',
     '-- Set @rynew_admin_password_hash to your installation-specific BCrypt hash first.',
     '-- No universal bootstrap password, source users, business rows or live credentials.',
